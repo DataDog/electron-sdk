@@ -1,1 +1,8 @@
 Component,Origin,License,Copyright
+dev,@rollup/plugin-commonjs,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)
+dev,@rollup/plugin-node-resolve,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)
+dev,@rollup/plugin-typescript,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)
+dev,rollup,MIT,Copyright (c) 2017 Rollup contributors (https://github.com/rollup/rollup/graphs/contributors)
+dev,rollup-plugin-dts,LGPL-3.0-only,Copyright Arpad Borsos
+dev,tslib,0BSD,Copyright Microsoft Corporation
+dev,typescript,Apache-2.0,Copyright Microsoft Corporation
