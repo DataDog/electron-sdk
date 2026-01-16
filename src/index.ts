@@ -1,3 +1,3 @@
 export function init() {
-    return true
+  return true;
 }
