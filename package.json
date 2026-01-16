@@ -1,0 +1,22 @@
+{
+  "name": "@datadog/electron-sdk",
+  "version": "0.1.0",
+  "description": "DataDog SDK for Electron applications",
+  "files": [
+    "README.md"
+  ],
+  "scripts": {
+    "build": "echo 'Build script to be configured'",
+    "test": "echo 'Test script to be configured'",
+    "lint": "echo 'Lint script to be configured'",
+    "format": "echo 'Format script to be configured'"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:DataDog/electron-sdk.git"
+  },
+  "volta": {
+    "node": "25.3.0",
+    "yarn": "4.12.0"
+  }
+}
