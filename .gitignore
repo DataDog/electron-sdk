@@ -1,6 +1,9 @@
 # Build
 /dist/
 
+# Coverage
+/coverage/
+
 # Yarn Berry (PnP)
 .pnp.*
 .yarn/*
