@@ -1,0 +1,47 @@
+variables:
+  CI_IMAGE_REPO: 'ci/${CI_PROJECT_NAME}'
+  CI_IMAGE: 'registry.ddbuild.io/${CI_IMAGE_REPO}:v91485946-3e81654e@sha256:36dd361d9a2e54f541313a16559be8e58c0358f939c912136652219f0e03a1e5' # https://gitlab.ddbuild.io/DataDog/electron-sdk/-/jobs/1360205576
+
+stages:
+  - docker
+  - test
+
+default:
+  tags: ['arch:amd64']
+  image: $CI_IMAGE
+
+build-container-image:
+  stage: docker
+  image: 'registry.ddbuild.io/images/docker:27.3.1'
+  when: manual
+  script: |-
+    docker buildx build \
+      --platform=linux/amd64 \
+      --label target=build \
+      --tag registry.ddbuild.io/${CI_IMAGE_REPO}:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA} \
+      --push \
+      .
+
+format:
+  stage: test
+  script:
+    - yarn
+    - yarn format:check
+
+lint:
+  stage: test
+  script:
+    - yarn
+    - yarn lint
+
+build:
+  stage: test
+  script:
+    - yarn
+    - yarn build
+
+unit:
+  stage: test
+  script:
+    - yarn
+    - yarn test:unit
