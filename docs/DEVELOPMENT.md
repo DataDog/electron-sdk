@@ -2,6 +2,28 @@
 
 Key architectural decisions for developers and AI agents working on this project.
 
+## Documentation Policy
+
+When making changes that impact development workflows or architecture, update the relevant section in this document. This includes:
+
+- Build system changes
+- New directory structures or conventions
+- Testing infrastructure updates
+- Dependency management processes
+- Module system or TypeScript configuration changes
+
+## Development Workflow
+
+Before committing changes, always run:
+
+1. **Format**: `yarn format` - Auto-fix code style issues
+2. **Lint**: `yarn lint` - Check for code quality issues
+3. **Tests**: Run appropriate tests based on your changes:
+   - **Type check**: `yarn typecheck` - Verify TypeScript types
+   - **Build**: `yarn build` - Verify the SDK builds correctly
+   - **Unit tests**: `yarn test:unit` - For SDK code changes
+   - **E2E tests**: `yarn test:e2e:init && yarn test:e2e` - For integration testing
+
 ## Build System
 
 ### Dual Output (Rollup)
@@ -24,6 +46,7 @@ When adding a new dependency, you must update `LICENSE-3rdparty.csv`:
 4. Fetch license info from GitHub raw LICENSE file
 
 **Example:**
+
 ```csv
 dev,chokidar,MIT,Copyright (c) 2012 Paul Miller / Elan Shanker
 ```
@@ -37,6 +60,7 @@ dev,chokidar,MIT,Copyright (c) 2012 Paul Miller / Elan Shanker
 ### Updating Dependencies
 
 Always use latest stable versions for new dependencies. Check with:
+
 ```bash
 npm view <package>@latest version
 ```
@@ -63,3 +87,13 @@ Two watchers handle different reload scenarios:
 Grace periods prevent reload loops during initial TypeScript compilation.
 
 No watching of HTML changes for now to avoid extra complexity.
+
+## E2E Testing
+
+### Directory Structure
+
+- **e2e/app/**: Minimal Electron app used as test fixture (main, preload, renderer)
+- **e2e/lib/**: Shared test utilities (Playwright fixtures for app launch/cleanup)
+- **e2e/scenarios/**: Test files using Playwright
+
+Tests import custom `test` and `expect` from `lib/helpers.ts` for automatic app lifecycle management.

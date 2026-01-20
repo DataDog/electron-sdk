@@ -1,6 +1,6 @@
 variables:
   CI_IMAGE_REPO: 'ci/${CI_PROJECT_NAME}'
-  CI_IMAGE: 'registry.ddbuild.io/${CI_IMAGE_REPO}:v91485946-3e81654e@sha256:36dd361d9a2e54f541313a16559be8e58c0358f939c912136652219f0e03a1e5' # https://gitlab.ddbuild.io/DataDog/electron-sdk/-/jobs/1360205576
+  CI_IMAGE: 'registry.ddbuild.io/${CI_IMAGE_REPO}:v91688719-11de542a@sha256:74eed547ec073d74b011ecaa861abdd3e0e7e81d49117cca509b756efbb8b2d3' # https://gitlab.ddbuild.io/DataDog/electron-sdk/-/jobs/1362784617
 
 stages:
   - docker
@@ -45,3 +45,14 @@ unit:
   script:
     - yarn
     - yarn test:unit
+
+e2e:
+  stage: test
+  script:
+    - yarn
+    - yarn test:e2e:ci
+  artifacts:
+    when: on_failure
+    paths:
+      - e2e/test-results/
+      - e2e/playwright-report/

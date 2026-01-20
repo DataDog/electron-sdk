@@ -1,0 +1,16 @@
+{
+  "name": "e2e-test-app",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc && tsc --project tsconfig.renderer.json && mkdir -p ./dist && cp src/index.html dist/"
+  },
+  "dependencies": {
+    "@datadog/electron-sdk": "portal:../.."
+  },
+  "devDependencies": {
+    "electron": "40.0.0",
+    "typescript": "5.7.3"
+  }
+}

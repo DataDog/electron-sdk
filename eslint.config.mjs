@@ -25,5 +25,33 @@ export default tseslint.config(
       },
     },
   },
+  {
+    files: ['e2e/scenarios/**/*.ts', 'e2e/playwright.config.ts'],
+    languageOptions: {
+      parserOptions: {
+        project: './e2e/tsconfig.json',
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+  {
+    files: ['e2e/app/src/**/*.ts'],
+    ignores: ['e2e/app/src/renderer.ts'],
+    languageOptions: {
+      parserOptions: {
+        project: './e2e/app/tsconfig.json',
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+  {
+    files: ['e2e/app/src/renderer.ts'],
+    languageOptions: {
+      parserOptions: {
+        project: './e2e/app/tsconfig.renderer.json',
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
   prettier
 );

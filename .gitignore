@@ -1,17 +1,17 @@
-# Build
-/dist/
+# Build outputs
+dist/
+*.tsbuildinfo
 
 # Coverage
-/coverage/
+coverage/
 
-# Yarn Berry (PnP)
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/sdks
-!.yarn/versions
+# Test results
+test-results/
+playwright-report/
+
+# Dependencies & Yarn
+**/node_modules/
+**/.yarn/
 
 # IA settings
 /.claude/settings.local.json
