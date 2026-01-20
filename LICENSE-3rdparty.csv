@@ -5,6 +5,10 @@ dev,@rollup/plugin-node-resolve,MIT,Copyright (c) 2019 RollupJS Plugin Contribut
 dev,@rollup/plugin-typescript,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)
 dev,@vitest/coverage-v8,MIT,Copyright (c) 2021-Present VoidZero Inc.
 dev,@vitest/ui,MIT,Copyright (c) 2021-Present VoidZero Inc.
+dev,chokidar,MIT,Copyright (c) 2012 Paul Miller / Elan Shanker
+dev,concurrently,MIT,Copyright (c) 2015 Kimmo Brunfeldt
+dev,electron,MIT,Copyright Electron contributors / GitHub Inc.
+dev,electron-reloader,MIT,Copyright Sindre Sorhus
 dev,eslint,MIT,Copyright OpenJS Foundation and other contributors
 dev,eslint-config-prettier,MIT,Copyright (c) 2017-2023 Simon Lydell and contributors
 dev,eslint-plugin-prettier,MIT,Copyright (c) 2017 Andres Suarez and Teddy Katz

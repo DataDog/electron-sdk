@@ -18,7 +18,8 @@
     "test:unit": "vitest run --coverage",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "dev:playground": "cd playground && yarn install && cd .. && concurrently --names \"SDK,PLAYGROUND\" -c \"blue,magenta\" \"yarn build:watch\" \"cd playground && yarn dev\""
   },
   "devDependencies": {
     "@eslint/js": "9.39.2",
@@ -27,6 +28,7 @@
     "@rollup/plugin-typescript": "12.1.2",
     "@vitest/coverage-v8": "4.0.17",
     "@vitest/ui": "4.0.17",
+    "concurrently": "9.1.2",
     "eslint": "9.39.2",
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-prettier": "5.5.5",
@@ -39,7 +41,7 @@
     "vitest": "4.0.17"
   },
   "peerDependencies": {
-    "electron": ">=30.0.0"
+    "electron": ">=30.0.0 <41"
   },
   "repository": {
     "type": "git",

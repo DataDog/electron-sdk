@@ -4,7 +4,7 @@ import prettier from 'eslint-plugin-prettier/recommended';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'coverage/**', '*.js', '*.cjs', '*.mjs'],
+    ignores: ['**/dist/**', '**/node_modules/**', 'coverage/**', '*.js', '*.cjs', '*.mjs'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
@@ -12,6 +12,15 @@ export default tseslint.config(
     languageOptions: {
       parserOptions: {
         project: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+  {
+    files: ['playground/**/*.ts'],
+    languageOptions: {
+      parserOptions: {
+        project: './playground/tsconfig.eslint.json',
         tsconfigRootDir: import.meta.dirname,
       },
     },
