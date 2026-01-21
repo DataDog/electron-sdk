@@ -25,9 +25,13 @@ app.on('activate', () => {
 });
 
 function createWindow() {
+  // Show window only in debug mode (when Playwright's --debug flag is used)
+  const isDebugMode = process.env.PWDEBUG === '1';
+
   mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
+    show: isDebugMode, // Hidden by default, visible in debug mode
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
