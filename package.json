@@ -16,7 +16,7 @@
     "build:watch": "rollup -c --watch",
     "typecheck": "tsc -b",
     "dev:init": "cd playground && yarn install",
-    "dev": "yarn dev:init && concurrently --names \"SDK,PLAYGROUND\" -c \"blue,magenta\" \"yarn build:watch\" \"cd playground && yarn dev\"",
+    "dev": "scripts/cli dev",
     "test": "vitest",
     "test:unit": "vitest run --coverage",
     "test:e2e:init": "yarn build && cd e2e/app && yarn install && yarn build",
