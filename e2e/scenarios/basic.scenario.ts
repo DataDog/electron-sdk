@@ -1,14 +1,33 @@
 import { test, expect } from '../lib/helpers';
+import type { RumViewEvent } from '@datadog/electron-sdk';
 
-test('SDK initialization', async ({ window }) => {
-  // Click "Initialize SDK" button
-  const initBtn = window.locator('#init-btn');
-  await initBtn.click();
+test('SDK initialization with default config', async ({ window }) => {
+  const statusDiv = window.locator('#status');
+  await expect(statusDiv).toContainText('SDK initialized');
+});
 
-  // Wait for result to be displayed
-  const resultDiv = window.locator('#result');
-  await expect(resultDiv).toHaveText('true');
+test('SDK sends RUM view event to intake', async ({ window, intake }) => {
+  await window.waitForTimeout(1000);
 
-  // Verify success styling applied
-  await expect(resultDiv).toHaveClass('success');
+  const events = intake.getEvents();
+  expect(events).toHaveLength(1);
+
+  const event = events[0];
+  const rumEvent = event.body as RumViewEvent;
+
+  expect(rumEvent).toMatchObject({
+    type: 'view',
+    service: 'e2e-test-app',
+  });
+
+  expect(rumEvent.date).toBeDefined();
+  expect(rumEvent.session.id).toBeDefined();
+  expect(rumEvent.view.id).toBeDefined();
+  expect(rumEvent.view.name).toBeDefined();
+  expect(rumEvent.view.url).toBeDefined();
+  expect(rumEvent.application.id).toBeDefined();
+  expect(rumEvent._dd.format_version).toBe(2);
+
+  expect(event.headers['content-type']).toContain('application/json');
+  expect(event.headers['dd-api-key']).toBe('test-client-token');
 });

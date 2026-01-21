@@ -1,5 +1,3 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge } from 'electron';
 
-contextBridge.exposeInMainWorld('electronAPI', {
-  initSDK: () => ipcRenderer.invoke('init-sdk'),
-});
+contextBridge.exposeInMainWorld('electronAPI', {});

@@ -24,7 +24,7 @@ const config = [
       nodeResolve(),
       commonjs(),
       typescript({
-        tsconfig: './tsconfig.json',
+        tsconfig: './tsconfig.build.json',
         declaration: false, // We'll generate declarations separately
         declarationMap: false,
       }),
@@ -37,7 +37,7 @@ const config = [
       file: 'dist/index.d.ts',
       format: 'esm',
     },
-    plugins: [dts()],
+    plugins: [dts({ tsconfig: './tsconfig.build.json' })],
   },
 ];
 

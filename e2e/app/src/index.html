@@ -10,40 +10,27 @@
     <title>E2E Test App</title>
     <style>
       body {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         padding: 40px;
         max-width: 600px;
         margin: 0 auto;
       }
-      button {
-        padding: 10px 20px;
-        font-size: 16px;
-        cursor: pointer;
-      }
-      button:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-      }
-      #result {
+      #status {
         margin-top: 20px;
-        padding: 10px;
+        padding: 15px;
         border-radius: 4px;
-        font-weight: bold;
+        font-weight: 500;
       }
-      #result.success {
-        background-color: #d4edda;
-        color: #155724;
-      }
-      #result.error {
-        background-color: #f8d7da;
-        color: #721c24;
+      #status.info {
+        background-color: #d1ecf1;
+        color: #0c5460;
       }
     </style>
   </head>
   <body>
     <h1>E2E Test App</h1>
-    <button id="init-btn">Initialize SDK</button>
-    <div id="result"></div>
+    <p>SDK is automatically initialized on app launch.</p>
+    <div id="status"></div>
     <script src="renderer.js"></script>
   </body>
 </html>

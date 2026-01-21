@@ -101,7 +101,11 @@ No watching of HTML changes for now to avoid extra complexity.
 ### Directory Structure
 
 - **e2e/app/**: Minimal Electron app used as test fixture (main, preload, renderer)
-- **e2e/lib/**: Shared test utilities (Playwright fixtures for app launch/cleanup)
+- **e2e/lib/**: Shared test utilities
+  - `helpers.ts`: Playwright fixtures for app launch/cleanup
+  - `intake.ts`: Local HTTP server that captures RUM events sent by the SDK for testing
 - **e2e/scenarios/**: Test files using Playwright
 
 Tests import custom `test` and `expect` from `lib/helpers.ts` for automatic app lifecycle management.
+
+The intake server runs on a dynamic port (OS-assigned) to avoid conflicts and integrates via Playwright fixture for automatic lifecycle management.

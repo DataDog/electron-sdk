@@ -41,7 +41,12 @@ function createWindow() {
 // IPC handler to initialize SDK from renderer
 ipcMain.handle('init-sdk', () => {
   console.log('Initializing SDK from main process (triggered by button)...');
-  const result = init();
+  const result = init({
+    proxy: 'https://browser-intake-datadoghq.com',
+    clientToken: 'playground-token',
+    service: 'playground-app',
+    env: 'development',
+  });
   console.log('SDK init result:', result);
   return result;
 });

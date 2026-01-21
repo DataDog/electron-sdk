@@ -4,6 +4,7 @@ dev,@playwright/test,Apache-2.0,Copyright Microsoft Corporation
 dev,@rollup/plugin-commonjs,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)
 dev,@rollup/plugin-node-resolve,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)
 dev,@rollup/plugin-typescript,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)
+dev,@types/node,MIT,Copyright (c) Microsoft Corporation
 dev,@vitest/coverage-v8,MIT,Copyright (c) 2021-Present VoidZero Inc.
 dev,@vitest/ui,MIT,Copyright (c) 2021-Present VoidZero Inc.
 dev,chokidar,MIT,Copyright (c) 2012 Paul Miller / Elan Shanker
