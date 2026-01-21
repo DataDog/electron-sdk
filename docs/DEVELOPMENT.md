@@ -49,8 +49,9 @@ When adding a new dependency, you must update `LICENSE-3rdparty.csv`:
 
 1. Add entry with format: `Component,Origin,License,Copyright`
 2. Use `dev` prefix for all devDependencies (including playground)
-3. Maintain alphabetical order by package name
-4. Fetch license info from GitHub raw LICENSE file
+3. **Do not include version numbers** - list package name only
+4. Maintain alphabetical order by package name
+5. Fetch license info from GitHub raw LICENSE file
 
 **Example:**
 
