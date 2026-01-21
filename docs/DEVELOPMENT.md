@@ -14,15 +14,22 @@ When making changes that impact development workflows or architecture, update th
 
 ## Development Workflow
 
-Before committing changes, always run:
+### Git Hooks
 
-1. **Format**: `yarn format` - Auto-fix code style issues
-2. **Lint**: `yarn lint` - Check for code quality issues
-3. **Tests**: Run appropriate tests based on your changes:
-   - **Type check**: `yarn typecheck` - Verify TypeScript types
-   - **Build**: `yarn build` - Verify the SDK builds correctly
-   - **Unit tests**: `yarn test:unit` - For SDK code changes
-   - **E2E tests**: `yarn test:e2e:init && yarn test:e2e` - For integration testing
+The project uses [husky](https://typicode.github.io/husky/) for git hooks:
+
+- **pre-commit**: Automatically runs `yarn format && yarn lint` before each commit
+
+Git hooks are installed automatically when running `yarn install` via the `prepare` script.
+
+### Manual Checks
+
+Before committing changes, the pre-commit hook automatically runs format and lint. Additionally, run appropriate tests based on your changes:
+
+- **Type check**: `yarn typecheck` - Verify TypeScript types
+- **Build**: `yarn build` - Verify the SDK builds correctly
+- **Unit tests**: `yarn test:unit` - For SDK code changes
+- **E2E tests**: `yarn test:e2e:init && yarn test:e2e` - For integration testing
 
 ## Build System
 
