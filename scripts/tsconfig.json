@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "preserve",
+    "lib": ["ES2024"],
+    "rootDir": ".",
+    "composite": true,
+    "allowImportingTsExtensions": true
+  },
+  "include": ["."]
+}

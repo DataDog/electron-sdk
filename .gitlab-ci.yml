@@ -46,6 +46,12 @@ unit:
     - yarn
     - yarn test:unit
 
+check-licenses:
+  stage: test
+  script:
+    - yarn
+    - node scripts/check-licenses.ts
+
 e2e:
   stage: test
   script:

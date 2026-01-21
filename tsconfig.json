@@ -4,6 +4,7 @@
     { "path": "./src" },
     { "path": "./e2e/tsconfig.json" },
     { "path": "./e2e/app" },
-    { "path": "./playground" }
+    { "path": "./playground" },
+    { "path": "./scripts" }
   ]
 }
