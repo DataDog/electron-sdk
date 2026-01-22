@@ -15,3 +15,6 @@ playwright-report/
 
 # IA settings
 /.claude/settings.local.json
+
+# Logs
+*.log

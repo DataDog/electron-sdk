@@ -62,3 +62,9 @@ e2e:
     paths:
       - e2e/test-results/
       - e2e/playwright-report/
+
+playground:
+  stage: test
+  script:
+    - yarn
+    - scripts/cli test_playground
