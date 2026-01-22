@@ -2,9 +2,9 @@
   "files": [],
   "references": [
     { "path": "./src" },
+    { "path": "./scripts" },
     { "path": "./e2e/tsconfig.json" },
     { "path": "./e2e/app" },
-    { "path": "./playground" },
-    { "path": "./scripts" }
+    { "path": "./playground" }
   ]
 }

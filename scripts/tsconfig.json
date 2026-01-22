@@ -1,11 +1,13 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "module": "preserve",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "lib": ["ES2024"],
     "rootDir": ".",
-    "composite": true,
+    "noEmit": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["."]
+  "include": ["."],
+  "exclude": ["node_modules"]
 }

@@ -19,4 +19,5 @@ export function init(configuration: InitConfiguration): boolean {
   }
 }
 
-export type { InitConfiguration, RumViewEvent } from './types';
+export type { InitConfiguration } from './types';
+export type * from './rumEvent.types';

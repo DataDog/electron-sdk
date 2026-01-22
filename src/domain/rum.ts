@@ -1,4 +1,5 @@
-import type { InitConfiguration, RumViewEvent } from '../types';
+import type { InitConfiguration } from '../types';
+import type { RumViewEvent } from '../rumEvent.types';
 
 /**
  * UUID v4
@@ -21,17 +22,23 @@ export function createDummyViewEvent(config: InitConfiguration): RumViewEvent {
     service: config.service,
     session: {
       id: sessionId,
+      type: 'user',
     },
     view: {
       id: viewId,
       name: 'dummy-view',
       url: 'electron://app',
+      time_spent: 0,
+      action: { count: 0 },
+      error: { count: 0 },
+      resource: { count: 0 },
     },
     application: {
       id: 'electron-app',
     },
     _dd: {
       format_version: 2,
+      document_version: 1,
     },
   };
 }

@@ -31,6 +31,29 @@ Before committing changes, the pre-commit hook automatically runs format and lin
 - **Unit tests**: `yarn test:unit` - For SDK code changes
 - **E2E tests**: `yarn test:e2e:init && yarn test:e2e` - For integration testing
 
+## Script Guidelines
+
+### Script Preferences
+
+When adding automation scripts to the project:
+
+1. **Prefer Node.js scripts** over bash scripts for:
+   - Complex logic and error handling
+   - Cross-platform compatibility
+   - TypeScript integration
+   - JSON/data processing
+
+2. **Bash scripts belong in `scripts/cli`**:
+   - All bash scripts should be implemented as commands in `scripts/cli`
+   - Use `cmd_<name>` function pattern for new commands
+   - Accessible via `scripts/cli <command>` or `yarn` scripts
+   - Example: `scripts/cli build_fork` or `yarn postinstall`
+
+3. **Examples**:
+   - ✅ Node.js: `scripts/generate-schema-types.ts` (complex JSON processing)
+   - ✅ CLI command: `scripts/cli build_fork` (build automation)
+   - ❌ Standalone bash: `scripts/build-fork.sh` (should be in CLI instead)
+
 ## Build System
 
 ### Dual Output (Rollup)
@@ -72,6 +95,19 @@ Always use latest stable versions for new dependencies. Check with:
 ```bash
 npm view <package>@latest version
 ```
+
+## RUM Events Schema Management
+
+Types auto-generated from [rum-events-format](https://github.com/DataDog/rum-events-format) submodule → `src/rumEvent.types.ts` (committed).
+
+```bash
+yarn json-schemas:sync      # Update schema and regenerate
+yarn json-schemas:generate  # Regenerate only
+```
+
+⚠️ Never edit `src/rumEvent.types.ts` manually.
+
+**Note:** `readOnly` properties in schemas generate TypeScript `readonly` modifiers via the fork `bcaudan/json-schema-to-typescript#bcaudan/add-readonly-support` (based on v11.0.1), ensuring compile-time immutability for SDK-managed properties.
 
 ## Playground Architecture
 

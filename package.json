@@ -12,6 +12,9 @@
   ],
   "scripts": {
     "prepare": "husky",
+    "postinstall": "scripts/cli init_submodule && scripts/cli build_fork",
+    "json-schemas:sync": "scripts/cli sync_schemas",
+    "json-schemas:generate": "node scripts/generate-schema-types.ts",
     "build": "rollup -c",
     "build:watch": "rollup -c --watch",
     "typecheck": "tsc -b",
@@ -41,6 +44,7 @@
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-prettier": "5.5.5",
     "husky": "9.1.7",
+    "json-schema-to-typescript": "bcaudan/json-schema-to-typescript#bcaudan/add-readonly-support",
     "playwright": "1.55.1",
     "prettier": "3.8.0",
     "rollup": "4.30.1",

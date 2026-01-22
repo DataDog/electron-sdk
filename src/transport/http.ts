@@ -1,4 +1,4 @@
-import type { RumViewEvent } from '../types';
+import type { RumViewEvent } from '../rumEvent.types';
 
 export function computeIntakeUrl(proxy: string): string {
   return proxy;

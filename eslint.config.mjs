@@ -4,7 +4,7 @@ import prettier from 'eslint-plugin-prettier/recommended';
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/node_modules/**', 'coverage/**', '*.mjs'],
+    ignores: ['**/dist/**', '**/node_modules/**', 'coverage/**', '*.mjs', 'rum-events-format/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,

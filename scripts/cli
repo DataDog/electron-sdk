@@ -26,4 +26,57 @@ cmd_dev () {
   concurrently --names "SDK,PLAYGROUND" -c "blue,magenta" "yarn build:watch" "cd playground && yarn dev"
 }
 
+cmd_init_submodule () {
+  if [ ! -d "rum-events-format/.git" ]; then
+    echo "Initializing rum-events-format submodule..."
+    git submodule update --init --recursive rum-events-format
+  else
+    echo "rum-events-format submodule already initialized"
+  fi
+}
+
+cmd_update_submodule () {
+  echo "Updating rum-events-format submodule..."
+  git submodule update --remote rum-events-format
+  echo "✓ Submodule updated to latest master"
+}
+
+cmd_sync_schemas () {
+  cmd_update_submodule
+  node scripts/generate-schema-types.ts
+  echo ""
+  echo "✓ Schema sync complete"
+}
+
+cmd_build_fork () {
+  echo "Building json-schema-to-typescript fork..."
+
+  if [ ! -d "node_modules/json-schema-to-typescript" ]; then
+    echo "Error: json-schema-to-typescript not found in node_modules"
+    exit 1
+  fi
+
+  cd node_modules/json-schema-to-typescript
+
+  # Remove any existing dist
+  rm -rf dist
+
+  # Build with TypeScript, ignoring type errors
+  # The fork (v11.0.1) builds successfully despite type errors
+  # This is expected and documented in rum-events-format
+  npx tsc --skipLibCheck -d 2>&1 || true
+
+  # Move files if they're in the wrong place (tsconfig outputs to dist/ not dist/src/)
+  if [ -f "dist/cli.js" ] && [ ! -d "dist/src" ]; then
+    mkdir -p dist/src
+    mv dist/*.js dist/*.d.ts dist/*.map dist/src/ 2>/dev/null || true
+    if [ -d "dist/types" ]; then
+      mv dist/types dist/src/
+    fi
+  fi
+
+  cd ../..
+  echo "✓ Fork build complete"
+}
+
 main "$@"
