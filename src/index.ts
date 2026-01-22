@@ -1,23 +1,23 @@
-import type { InitConfiguration } from './types';
-import { computeIntakeUrl, sendEvent } from './transport/http';
+import type { InitConfiguration } from './config';
+import { buildConfiguration } from './config';
+import { sendEvent } from './transport/http';
 import { createDummyViewEvent } from './domain/rum';
 
 export function init(configuration: InitConfiguration): boolean {
-  try {
-    const intakeUrl = computeIntakeUrl(configuration.proxy);
+  const config = buildConfiguration(configuration);
 
-    const viewEvent = createDummyViewEvent(configuration);
-
-    sendEvent(viewEvent, intakeUrl, configuration.clientToken).catch((error) => {
-      console.error('Failed to send RUM view event:', error);
-    });
-
-    return true;
-  } catch (error) {
-    console.error('SDK initialization failed:', error);
+  if (!config) {
     return false;
   }
+
+  const viewEvent = createDummyViewEvent(config);
+
+  sendEvent(config, viewEvent).catch((error) => {
+    console.error('Failed to send RUM view event:', error);
+  });
+
+  return true;
 }
 
-export type { InitConfiguration } from './types';
+export type { InitConfiguration } from './config';
 export type * from './rumEvent.types';

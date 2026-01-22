@@ -1,15 +1,16 @@
 import type { RumViewEvent } from '../rumEvent.types';
+import { Configuration } from '../config';
 
-export function computeIntakeUrl(proxy: string): string {
-  return proxy;
+export function computeIntakeUrl(proxy?: string): string {
+  return proxy || '';
 }
 
-export async function sendEvent(event: RumViewEvent, intakeUrl: string, clientToken: string): Promise<void> {
-  const response = await fetch(intakeUrl, {
+export async function sendEvent(config: Configuration, event: RumViewEvent): Promise<void> {
+  const response = await fetch(config.intakeUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'DD-API-KEY': clientToken,
+      'DD-API-KEY': config.clientToken,
     },
     body: JSON.stringify(event),
   });

@@ -1,7 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { init } from './index';
+import type { InitConfiguration } from './config';
 
 describe('init', () => {
+  let consoleErrorSpy: any;
+
   beforeEach(() => {
     global.fetch = vi.fn(() =>
       Promise.resolve({
@@ -9,6 +12,11 @@ describe('init', () => {
         status: 200,
       } as Response)
     );
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
   });
 
   it('should return true', () => {
@@ -43,5 +51,47 @@ describe('init', () => {
         body: expect.stringContaining('"service":"test-service"') as string,
       })
     );
+  });
+
+  describe('configuration validation', () => {
+    it('returns false when a required property is empty', () => {
+      const config = {
+        proxy: 'http://localhost:3000',
+        service: '',
+        clientToken: 'test-token',
+      };
+
+      expect(init(config)).toBe(false);
+    });
+
+    it('returns false when a required property is missing', () => {
+      const config = {
+        proxy: 'http://localhost:3000',
+        service: 'test-service',
+      } as InitConfiguration;
+
+      expect(init(config)).toBe(false);
+    });
+
+    it('returns true when an optional property is missing', () => {
+      const config = {
+        service: 'test-service',
+        clientToken: 'test-token',
+      };
+
+      expect(init(config)).toBe(true);
+    });
+
+    it('logs configuration error message', () => {
+      const config = {
+        proxy: 'http://localhost:3000',
+        service: '',
+        clientToken: 'test-token',
+      };
+
+      init(config);
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('service'));
+    });
   });
 });
