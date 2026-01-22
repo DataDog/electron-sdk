@@ -12,6 +12,8 @@ When making changes that impact development workflows or architecture, update th
 - Dependency management processes
 - Module system or TypeScript configuration changes
 
+**Keep it concise**: Document the essential information only. Prefer command examples and brief explanations over lengthy descriptions. Skip obvious details and implementation rationale unless critical for understanding.
+
 ## Development Workflow
 
 ### Git Hooks
@@ -101,13 +103,13 @@ npm view <package>@latest version
 Types auto-generated from [rum-events-format](https://github.com/DataDog/rum-events-format) submodule → `src/rumEvent.types.ts` (committed).
 
 ```bash
-yarn json-schemas:sync      # Update schema and regenerate
-yarn json-schemas:generate  # Regenerate only
+yarn json-schemas:sync      # Update submodule + regenerate types
+yarn json-schemas:generate  # Regenerate types only
 ```
 
-⚠️ Never edit `src/rumEvent.types.ts` manually.
+**Fork dependency**: Uses `bcaudan/json-schema-to-typescript#bcaudan/add-readonly-support` (v11.0.1) for `readonly` modifier support. Built lazily when generating types (not during `yarn install`) to avoid CI rate limiting.
 
-**Note:** `readOnly` properties in schemas generate TypeScript `readonly` modifiers via the fork `bcaudan/json-schema-to-typescript#bcaudan/add-readonly-support` (based on v11.0.1), ensuring compile-time immutability for SDK-managed properties.
+⚠️ Never edit `src/rumEvent.types.ts` manually.
 
 ## Playground Architecture
 

@@ -12,9 +12,9 @@
   ],
   "scripts": {
     "prepare": "husky",
-    "postinstall": "scripts/cli init_submodule && scripts/cli build_fork",
+    "postinstall": "scripts/cli init_submodule",
     "json-schemas:sync": "scripts/cli sync_schemas",
-    "json-schemas:generate": "node scripts/generate-schema-types.ts",
+    "json-schemas:generate": "scripts/cli generate_schemas",
     "build": "rollup -c",
     "build:watch": "rollup -c --watch",
     "typecheck": "tsc -b",

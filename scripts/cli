@@ -90,9 +90,14 @@ cmd_update_submodule () {
 
 cmd_sync_schemas () {
   cmd_update_submodule
-  node scripts/generate-schema-types.ts
+  cmd_generate_schemas
   echo ""
   echo "✓ Schema sync complete"
+}
+
+cmd_generate_schemas () {
+  cmd_build_fork
+  node scripts/generate-schema-types.ts
 }
 
 cmd_build_fork () {

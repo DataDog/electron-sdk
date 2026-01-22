@@ -5,7 +5,7 @@ export function setupHotReload(): void {
   // Watch playground files - delay startup to avoid initial compilation triggers
   try {
     setTimeout(() => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-call
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       require('electron-reloader')(module, {
         debug: true,
         watchRenderer: true,
