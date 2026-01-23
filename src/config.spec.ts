@@ -5,6 +5,7 @@ import type { InitConfiguration } from './config';
 describe('buildConfiguration', () => {
   // Default valid config used as base for all tests
   const DEFAULT_CONFIG: InitConfiguration = {
+    site: 'datadoghq.com',
     service: 'test-service',
     clientToken: 'test-token',
   };
@@ -127,6 +128,58 @@ describe('buildConfiguration', () => {
     });
   });
 
+  describe('site validation', () => {
+    const VALID_DATADOG_SITES = [
+      'datadoghq.com',
+      'datadoghq.eu',
+      'us3.datadoghq.com',
+      'us5.datadoghq.com',
+      'ap1.datadoghq.com',
+      'ap2.datadoghq.com',
+      'ddog-gov.com',
+      'datad0g.com',
+    ];
+
+    it.each([
+      { value: undefined, description: 'undefined' },
+      { value: '', description: 'empty string' },
+      { value: 123, description: 'number' },
+      { value: null, description: 'null' },
+      { value: 'invalid-site.com', description: 'invalid site' },
+    ])('returns undefined and logs error when site is $description', ({ value }) => {
+      const config = {
+        ...DEFAULT_CONFIG,
+        site: value,
+      } as unknown as InitConfiguration;
+
+      expect(buildConfiguration(config)).toBeUndefined();
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        `Configuration error: 'site' must be one of: ${VALID_DATADOG_SITES.join(', ')}`
+      );
+    });
+
+    it.each([
+      { site: 'datadoghq.com', expectedUrl: 'https://browser-intake-datadoghq.com/api/v2/rum' },
+      { site: 'datadoghq.eu', expectedUrl: 'https://browser-intake-datadoghq.eu/api/v2/rum' },
+      { site: 'us3.datadoghq.com', expectedUrl: 'https://browser-intake-us3-datadoghq.com/api/v2/rum' },
+      { site: 'us5.datadoghq.com', expectedUrl: 'https://browser-intake-us5-datadoghq.com/api/v2/rum' },
+      { site: 'ap1.datadoghq.com', expectedUrl: 'https://browser-intake-ap1-datadoghq.com/api/v2/rum' },
+      { site: 'ap2.datadoghq.com', expectedUrl: 'https://browser-intake-ap2-datadoghq.com/api/v2/rum' },
+      { site: 'ddog-gov.com', expectedUrl: 'https://browser-intake-ddog-gov.com/api/v2/rum' },
+      { site: 'datad0g.com', expectedUrl: 'https://browser-intake-datad0g.com/api/v2/rum' },
+    ])('accepts valid site: $site', ({ site, expectedUrl }) => {
+      const config = {
+        ...DEFAULT_CONFIG,
+        site,
+      };
+
+      const result = buildConfiguration(config);
+
+      expect(result).toBeDefined();
+      expect(result?.intakeUrl).toBe(expectedUrl);
+    });
+  });
+
   describe('error logging', () => {
     it('logs error for missing service', () => {
       const config = {
@@ -136,9 +189,7 @@ describe('buildConfiguration', () => {
 
       buildConfiguration(config);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "Configuration error: 'service' must be a string, received: undefined"
-      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith("Configuration error: 'service' must be a non-empty string");
     });
 
     it('logs error for empty clientToken', () => {
@@ -149,7 +200,7 @@ describe('buildConfiguration', () => {
 
       buildConfiguration(config);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith("Configuration error: 'clientToken' must not be empty");
+      expect(consoleErrorSpy).toHaveBeenCalledWith("Configuration error: 'clientToken' must be a non-empty string");
     });
 
     it('includes field name in error message', () => {
@@ -173,15 +224,16 @@ describe('buildConfiguration', () => {
       buildConfiguration(config);
 
       expect(consoleErrorSpy).toHaveBeenCalledTimes(2);
-      expect(consoleErrorSpy).toHaveBeenCalledWith("Configuration error: 'service' must not be empty");
-      expect(consoleErrorSpy).toHaveBeenCalledWith("Configuration error: 'clientToken' must not be empty");
+      expect(consoleErrorSpy).toHaveBeenCalledWith("Configuration error: 'service' must be a non-empty string");
+      expect(consoleErrorSpy).toHaveBeenCalledWith("Configuration error: 'clientToken' must be a non-empty string");
     });
   });
 
   describe('intakeUrl computation', () => {
-    it('computes intakeUrl from proxy', () => {
+    it('uses proxy when provided (proxy takes precedence)', () => {
       const config = {
         ...DEFAULT_CONFIG,
+        site: 'datadoghq.com',
         proxy: 'http://localhost:3000',
       };
 
@@ -190,16 +242,15 @@ describe('buildConfiguration', () => {
       expect(result?.intakeUrl).toBe('http://localhost:3000');
     });
 
-    it('computes intakeUrl when proxy is undefined', () => {
+    it('generates intakeUrl from site when proxy is not provided', () => {
       const config = {
         ...DEFAULT_CONFIG,
+        site: 'datadoghq.eu',
       };
 
       const result = buildConfiguration(config);
 
-      expect(result?.intakeUrl).toBeDefined();
-      // intakeUrl should be computed even when proxy is undefined
-      expect(typeof result?.intakeUrl).toBe('string');
+      expect(result?.intakeUrl).toBe('https://browser-intake-datadoghq.eu/api/v2/rum');
     });
   });
 });

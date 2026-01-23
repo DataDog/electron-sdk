@@ -1,10 +1,6 @@
 import type { RumViewEvent } from '../rumEvent.types';
 import { Configuration } from '../config';
 
-export function computeIntakeUrl(proxy?: string): string {
-  return proxy || '';
-}
-
 export async function sendEvent(config: Configuration, event: RumViewEvent): Promise<void> {
   const response = await fetch(config.intakeUrl, {
     method: 'POST',

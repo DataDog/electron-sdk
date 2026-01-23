@@ -35,6 +35,7 @@ export const test = base.extend<TestFixtures>({
     } as Record<string, string>;
 
     const config: InitConfiguration = {
+      site: 'datadoghq.com',
       proxy: `http://localhost:${intake.getPort()}/api/v2/rum`,
       clientToken: 'test-client-token',
       service: 'e2e-test-app',

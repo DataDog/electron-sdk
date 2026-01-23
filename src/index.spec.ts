@@ -21,6 +21,7 @@ describe('init', () => {
 
   it('should return true', () => {
     const config = {
+      site: 'datadoghq.com',
       proxy: 'http://localhost:3000',
       clientToken: 'test-token',
       service: 'test-service',
@@ -30,6 +31,7 @@ describe('init', () => {
 
   it('should call fetch with correct parameters', async () => {
     const config = {
+      site: 'datadoghq.com',
       proxy: 'http://localhost:3000',
       clientToken: 'test-token',
       service: 'test-service',
@@ -56,6 +58,7 @@ describe('init', () => {
   describe('configuration validation', () => {
     it('returns false when a required property is empty', () => {
       const config = {
+        site: 'datadoghq.com',
         proxy: 'http://localhost:3000',
         service: '',
         clientToken: 'test-token',
@@ -66,6 +69,7 @@ describe('init', () => {
 
     it('returns false when a required property is missing', () => {
       const config = {
+        site: 'datadoghq.com',
         proxy: 'http://localhost:3000',
         service: 'test-service',
       } as InitConfiguration;
@@ -75,6 +79,7 @@ describe('init', () => {
 
     it('returns true when an optional property is missing', () => {
       const config = {
+        site: 'datadoghq.com',
         service: 'test-service',
         clientToken: 'test-token',
       };
@@ -84,6 +89,7 @@ describe('init', () => {
 
     it('logs configuration error message', () => {
       const config = {
+        site: 'datadoghq.com',
         proxy: 'http://localhost:3000',
         service: '',
         clientToken: 'test-token',

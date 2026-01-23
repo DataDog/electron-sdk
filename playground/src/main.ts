@@ -42,10 +42,10 @@ function createWindow() {
 ipcMain.handle('init-sdk', () => {
   console.log('Initializing SDK from main process (triggered by button)...');
   const result = init({
-    proxy: 'https://browser-intake-datadoghq.com',
+    site: 'datad0g.com',
     clientToken: 'playground-token',
-    service: 'playground-app',
-    env: 'development',
+    service: 'electron-playground',
+    env: 'dev',
   });
   console.log('SDK init result:', result);
   return result;
