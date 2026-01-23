@@ -8,6 +8,7 @@ describe('buildConfiguration', () => {
     site: 'datadoghq.com',
     service: 'test-service',
     clientToken: 'test-token',
+    applicationId: 'test-app-id',
   };
 
   let consoleErrorSpy: any;
@@ -20,34 +21,35 @@ describe('buildConfiguration', () => {
     consoleErrorSpy.mockRestore();
   });
 
-  describe.each([{ fieldName: 'service' as const }, { fieldName: 'clientToken' as const }])(
-    'required field validation: $fieldName',
-    ({ fieldName }) => {
-      it.each([
-        { value: undefined, description: 'missing' },
-        { value: '', description: 'empty string' },
-        { value: 123, description: 'not a string' },
-      ])('returns undefined when $description', ({ value }) => {
-        const config = {
-          ...DEFAULT_CONFIG,
-          [fieldName]: value,
-        } as unknown as InitConfiguration;
+  describe.each([
+    { fieldName: 'service' as const },
+    { fieldName: 'clientToken' as const },
+    { fieldName: 'applicationId' as const },
+  ])('required field validation: $fieldName', ({ fieldName }) => {
+    it.each([
+      { value: undefined, description: 'missing' },
+      { value: '', description: 'empty string' },
+      { value: 123, description: 'not a string' },
+    ])('returns undefined when $description', ({ value }) => {
+      const config = {
+        ...DEFAULT_CONFIG,
+        [fieldName]: value,
+      } as unknown as InitConfiguration;
 
-        expect(buildConfiguration(config)).toBeUndefined();
-      });
+      expect(buildConfiguration(config)).toBeUndefined();
+    });
 
-      it('logs error to console when validation fails', () => {
-        const config = {
-          ...DEFAULT_CONFIG,
-          [fieldName]: '',
-        };
+    it('logs error to console when validation fails', () => {
+      const config = {
+        ...DEFAULT_CONFIG,
+        [fieldName]: '',
+      };
 
-        buildConfiguration(config);
+      buildConfiguration(config);
 
-        expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining(fieldName));
-      });
-    }
-  );
+      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining(fieldName));
+    });
+  });
 
   describe.each([{ fieldName: 'env' as const }, { fieldName: 'version' as const }])(
     'optional field validation: $fieldName',

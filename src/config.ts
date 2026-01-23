@@ -14,6 +14,7 @@ export interface InitConfiguration {
   proxy?: string;
   service: string;
   clientToken: string;
+  applicationId: string;
   env?: string;
   version?: string;
 }
@@ -21,6 +22,7 @@ export interface InitConfiguration {
 export interface Configuration {
   service: string;
   clientToken: string;
+  applicationId: string;
   env?: string;
   version?: string;
   intakeUrl: string;
@@ -57,9 +59,10 @@ function validateOptionalString(value: unknown): string | undefined {
 export function buildConfiguration(initConfig: InitConfiguration): Configuration | undefined {
   const service = validateRequiredString(initConfig.service, 'service');
   const clientToken = validateRequiredString(initConfig.clientToken, 'clientToken');
+  const applicationId = validateRequiredString(initConfig.applicationId, 'applicationId');
   const site = validateSite(initConfig.site);
 
-  if (service === undefined || clientToken === undefined || site === undefined) {
+  if (service === undefined || clientToken === undefined || applicationId === undefined || site === undefined) {
     return undefined;
   }
 
@@ -72,6 +75,7 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
   return {
     service,
     clientToken,
+    applicationId,
     env,
     version,
     intakeUrl,

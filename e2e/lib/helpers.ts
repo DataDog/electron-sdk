@@ -39,6 +39,7 @@ export const test = base.extend<TestFixtures>({
       proxy: `http://localhost:${intake.getPort()}/api/v2/rum`,
       clientToken: 'test-client-token',
       service: 'e2e-test-app',
+      applicationId: 'e2e-test-app-id',
       env: 'test',
       version: '1.0.0',
     };

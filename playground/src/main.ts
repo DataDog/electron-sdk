@@ -42,8 +42,9 @@ function createWindow() {
 ipcMain.handle('init-sdk', () => {
   console.log('Initializing SDK from main process (triggered by button)...');
   const result = init({
+    applicationId: '6efd3722-af0a-4070-994c-0e87076d4814',
+    clientToken: 'pub2a7307cdec74934cacb411a193f632f8',
     site: 'datad0g.com',
-    clientToken: 'playground-token',
     service: 'electron-playground',
     env: 'dev',
   });

@@ -19,6 +19,7 @@ export function createDummyViewEvent(config: Configuration): RumViewEvent {
   return {
     type: 'view',
     date: timestamp,
+    source: 'browser', // TODO: use electron RUM-13964
     service: config.service,
     session: {
       id: sessionId,
@@ -34,7 +35,7 @@ export function createDummyViewEvent(config: Configuration): RumViewEvent {
       resource: { count: 0 },
     },
     application: {
-      id: 'electron-app',
+      id: config.applicationId,
     },
     _dd: {
       format_version: 2,

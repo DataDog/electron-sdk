@@ -3,6 +3,15 @@ import { init } from './index';
 import type { InitConfiguration } from './config';
 
 describe('init', () => {
+  // Default valid config used as base for all tests
+  const DEFAULT_CONFIG: InitConfiguration = {
+    site: 'datadoghq.com',
+    proxy: 'http://localhost:3000',
+    clientToken: 'test-token',
+    service: 'test-service',
+    applicationId: 'test-app-id',
+  };
+
   let consoleErrorSpy: any;
 
   beforeEach(() => {
@@ -21,20 +30,14 @@ describe('init', () => {
 
   it('should return true', () => {
     const config = {
-      site: 'datadoghq.com',
-      proxy: 'http://localhost:3000',
-      clientToken: 'test-token',
-      service: 'test-service',
+      ...DEFAULT_CONFIG,
     };
     expect(init(config)).toBe(true);
   });
 
   it('should call fetch with correct parameters', async () => {
     const config = {
-      site: 'datadoghq.com',
-      proxy: 'http://localhost:3000',
-      clientToken: 'test-token',
-      service: 'test-service',
+      ...DEFAULT_CONFIG,
     };
 
     init(config);
@@ -58,10 +61,8 @@ describe('init', () => {
   describe('configuration validation', () => {
     it('returns false when a required property is empty', () => {
       const config = {
-        site: 'datadoghq.com',
-        proxy: 'http://localhost:3000',
+        ...DEFAULT_CONFIG,
         service: '',
-        clientToken: 'test-token',
       };
 
       expect(init(config)).toBe(false);
@@ -69,19 +70,17 @@ describe('init', () => {
 
     it('returns false when a required property is missing', () => {
       const config = {
-        site: 'datadoghq.com',
-        proxy: 'http://localhost:3000',
-        service: 'test-service',
-      } as InitConfiguration;
+        ...DEFAULT_CONFIG,
+        clientToken: undefined,
+      } as unknown as InitConfiguration;
 
       expect(init(config)).toBe(false);
     });
 
     it('returns true when an optional property is missing', () => {
       const config = {
-        site: 'datadoghq.com',
-        service: 'test-service',
-        clientToken: 'test-token',
+        ...DEFAULT_CONFIG,
+        proxy: undefined,
       };
 
       expect(init(config)).toBe(true);
@@ -89,10 +88,8 @@ describe('init', () => {
 
     it('logs configuration error message', () => {
       const config = {
-        site: 'datadoghq.com',
-        proxy: 'http://localhost:3000',
+        ...DEFAULT_CONFIG,
         service: '',
-        clientToken: 'test-token',
       };
 
       init(config);
