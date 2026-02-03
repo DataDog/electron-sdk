@@ -2,15 +2,21 @@ import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
 import { sendEvent } from './transport/http';
 import { createDummyViewEvent } from './domain/rum';
+import { Observable } from '@datadog/browser-core';
+import { startSessionManager } from './domain/sessionManager';
 
-export function init(configuration: InitConfiguration): boolean {
+export async function init(configuration: InitConfiguration): Promise<boolean> {
   const config = buildConfiguration(configuration);
 
   if (!config) {
     return false;
   }
 
-  const viewEvent = createDummyViewEvent(config);
+  // TODO: track and notify user activity
+  const activityObservable = new Observable<void>();
+  const sessionManager = await startSessionManager(activityObservable);
+
+  const viewEvent = createDummyViewEvent(config, sessionManager.getSession().id);
 
   sendEvent(config, viewEvent).catch((error) => {
     console.error('Failed to send RUM view event:', error);
