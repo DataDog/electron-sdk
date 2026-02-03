@@ -1,2 +1,2 @@
 #!/usr/bin/env sh
-yarn format && yarn lint
+yarn lint-staged

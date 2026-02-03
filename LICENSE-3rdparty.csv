@@ -16,6 +16,7 @@ dev,eslint-config-prettier,MIT,Copyright (c) 2017-2023 Simon Lydell and contribu
 dev,eslint-plugin-prettier,MIT,Copyright (c) 2017 Andres Suarez and Teddy Katz
 dev,husky,MIT,Copyright (c) 2021 typicode
 dev,json-schema-to-typescript,MIT,Copyright (c) 2017 Boris Cherny
+dev,lint-staged,MIT,Copyright (c) 2016 Andrey Okonetchnikov
 dev,playwright,Apache-2.0,Copyright Microsoft Corporation
 dev,prettier,MIT,Copyright James Long and contributors
 dev,rollup,MIT,Copyright (c) 2017 Rollup contributors (https://github.com/rollup/rollup/graphs/contributors)

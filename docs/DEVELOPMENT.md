@@ -18,15 +18,15 @@ When making changes that impact development workflows or architecture, update th
 
 ### Git Hooks
 
-The project uses [husky](https://typicode.github.io/husky/) for git hooks:
+The project uses [husky](https://typicode.github.io/husky/) and [lint-staged](https://github.com/lint-staged/lint-staged) for git hooks:
 
-- **pre-commit**: Automatically runs `yarn format && yarn lint` before each commit
+- **pre-commit**: Runs `yarn lint-staged` to format and lint only staged files
 
 Git hooks are installed automatically when running `yarn install` via the `prepare` script.
 
 ### Manual Checks
 
-Before committing changes, the pre-commit hook automatically runs format and lint. Additionally, run appropriate tests based on your changes:
+Before committing changes, the pre-commit hook automatically runs format and lint on staged files. Additionally, run appropriate tests based on your changes:
 
 - **Type check**: `yarn typecheck` - Verify TypeScript types
 - **Build**: `yarn build` - Verify the SDK builds correctly
