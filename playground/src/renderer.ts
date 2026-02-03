@@ -1,6 +1,7 @@
 // Type definition for the exposed API
 interface ElectronAPI {
-  initSDK: () => Promise<boolean>;
+  getSessionFile: () => Promise<string | null>;
+  clearSessionFile: () => Promise<void>;
 }
 
 declare global {
@@ -12,35 +13,56 @@ declare global {
 // This export makes this file a module, which is needed for global augmentation
 export {};
 
-const initBtn = document.getElementById('init-btn') as HTMLButtonElement;
-const resultDiv = document.getElementById('result') as HTMLDivElement;
+const sessionContent = document.getElementById('session-content') as HTMLPreElement;
+const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
 
-if (initBtn && resultDiv) {
-  initBtn.addEventListener('click', () => {
+async function refreshSessionDisplay() {
+  try {
+    const content = await window.electronAPI.getSessionFile();
+    if (content) {
+      // Try to pretty-print JSON
+      try {
+        const parsed = JSON.parse(content);
+        sessionContent.textContent = JSON.stringify(parsed, null, 2);
+      } catch {
+        // Not valid JSON, display as-is
+        sessionContent.textContent = content;
+      }
+      sessionContent.style.opacity = '1';
+    } else {
+      sessionContent.textContent = 'No session file found';
+      sessionContent.style.opacity = '0.6';
+    }
+  } catch (error) {
+    console.error('Error fetching session file:', error);
+    sessionContent.textContent = `Error: ${String(error)}`;
+    sessionContent.style.opacity = '0.6';
+  }
+}
+
+if (clearBtn && sessionContent) {
+  // Load session file content on page load
+  void refreshSessionDisplay();
+
+  // Handle clear button click
+  clearBtn.addEventListener('click', () => {
     void (async () => {
       try {
-        console.log('Button clicked - calling SDK init in main process...');
-        initBtn.disabled = true;
-        initBtn.textContent = 'Initializing...';
+        clearBtn.disabled = true;
+        clearBtn.textContent = 'Clearing...';
 
-        const result = await window.electronAPI.initSDK();
+        await window.electronAPI.clearSessionFile();
+        await refreshSessionDisplay();
 
-        resultDiv.textContent = `SDK initialized in main process: ${result}`;
-        resultDiv.style.background = result ? 'rgba(72, 187, 120, 0.3)' : 'rgba(245, 101, 101, 0.3)';
-
-        initBtn.textContent = 'Initialize SDK';
-        initBtn.disabled = false;
-
-        console.log('SDK init result from main process:', result);
+        clearBtn.textContent = 'Clear Session';
+        clearBtn.disabled = false;
       } catch (error) {
-        console.error('Error initializing SDK:', error);
-        resultDiv.textContent = `Error: ${String(error)}`;
-        resultDiv.style.background = 'rgba(245, 101, 101, 0.3)';
-        initBtn.textContent = 'Initialize SDK';
-        initBtn.disabled = false;
+        console.error('Error clearing session:', error);
+        clearBtn.textContent = 'Clear Session';
+        clearBtn.disabled = false;
       }
     })();
   });
 } else {
-  console.error('Button or result div not found');
+  console.error('Required elements not found');
 }
