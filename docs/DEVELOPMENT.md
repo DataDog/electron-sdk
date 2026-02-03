@@ -56,6 +56,50 @@ When adding automation scripts to the project:
    - ✅ CLI command: `scripts/cli build_fork` (build automation)
    - ❌ Standalone bash: `scripts/build-fork.sh` (should be in CLI instead)
 
+## Coding Guidelines
+
+### Code Documentation
+
+Update relevant code documentation (JSDoc comments, inline comments) when modifying function behavior. Keep documentation in sync with implementation.
+
+### File I/O
+
+Use async `fs/promises` APIs for file operations in production code:
+
+```typescript
+import * as fs from 'fs/promises';
+
+// Reading
+const data = await fs.readFile(filePath, 'utf8');
+
+// Writing
+await fs.writeFile(filePath, JSON.stringify(state));
+
+// Checking existence
+try {
+  await fs.access(filePath);
+} catch {
+  // File does not exist
+}
+
+// Deleting
+await fs.unlink(filePath);
+```
+
+**Note:** The playground uses sync APIs for simplicity, but SDK code should use async APIs.
+
+### Browser-Core Utilities
+
+Prefer utilities from `@datadog/browser-core` over custom implementations:
+
+- `generateUUID()` - UUID v4 generation
+- `Observable` - Pub/sub pattern
+- `ONE_HOUR`, `ONE_MINUTE`, `ONE_SECOND` - Time constants
+
+```typescript
+import { generateUUID, Observable, ONE_MINUTE } from '@datadog/browser-core';
+```
+
 ## Build System
 
 ### Dual Output (Rollup)
