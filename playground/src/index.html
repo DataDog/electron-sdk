@@ -3,6 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self'"
+    />
     <title>Electron SDK Playground</title>
     <style>
       body {
@@ -25,12 +29,19 @@
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
         text-align: center;
         max-width: 600px;
+        min-width: 400px;
       }
 
       h1 {
         margin-top: 0;
         font-size: 2.5em;
         font-weight: 300;
+      }
+
+      h2 {
+        font-size: 1.2em;
+        font-weight: 400;
+        margin-bottom: 15px;
       }
 
       button {
@@ -60,29 +71,23 @@
         cursor: not-allowed;
       }
 
-      #result {
+      .session-section {
         margin-top: 20px;
-        padding: 15px;
-        background: rgba(255, 255, 255, 0.2);
-        border-radius: 8px;
-        min-height: 40px;
-        font-family: 'Courier New', monospace;
-      }
-
-      .info {
-        background: rgba(255, 255, 255, 0.2);
-        padding: 15px;
-        border-radius: 8px;
-        margin-top: 20px;
-        font-size: 14px;
         text-align: left;
       }
 
-      .info code {
-        background: rgba(0, 0, 0, 0.2);
-        padding: 2px 6px;
-        border-radius: 4px;
+      #session-content {
+        background: rgba(0, 0, 0, 0.3);
+        padding: 15px;
+        border-radius: 8px;
         font-family: 'Courier New', monospace;
+        font-size: 14px;
+        white-space: pre-wrap;
+        word-break: break-all;
+        margin: 0;
+        min-height: 80px;
+        max-height: 200px;
+        overflow-y: auto;
       }
 
       .note {
@@ -94,23 +99,15 @@
   </head>
   <body>
     <div class="container">
-      <h1>🚀 Electron SDK Playground</h1>
+      <h1>Electron SDK Playground</h1>
       <p>Testing @datadog/electron-sdk</p>
 
-      <button id="init-btn">Initialize SDK</button>
-
-      <div id="result"></div>
-
-      <div class="info">
-        <strong>How it works:</strong>
-        <ul style="margin: 10px 0; padding-left: 20px">
-          <li>Click the button to initialize the SDK</li>
-          <li>Initialization happens in the <code>main process</code></li>
-          <li>Check the terminal output for SDK logs</li>
-        </ul>
+      <div class="session-section">
+        <h2>Session File Content:</h2>
+        <pre id="session-content">Loading...</pre>
       </div>
 
-      <p class="note">DevTools are open - check console for logs</p>
+      <button id="clear-btn">Clear Session</button>
     </div>
 
     <script type="module" src="renderer.js"></script>

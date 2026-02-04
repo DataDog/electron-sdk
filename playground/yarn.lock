@@ -5,9 +5,18 @@ __metadata:
   version: 8
   cacheKey: 10c0
 
+"@datadog/browser-core@npm:6.26.0":
+  version: 6.26.0
+  resolution: "@datadog/browser-core@npm:6.26.0"
+  checksum: 10c0/4fa9f83073198f5f61a32c0e6fa424b442f8bd0cab8ae3817a4ff65c84e9650530c3befa4604ff244a8d42cde5fe74dd7d425774b6469acadfcbd659e3d46264
+  languageName: node
+  linkType: hard
+
 "@datadog/electron-sdk@portal:..::locator=electron-sdk-playground%40workspace%3A.":
   version: 0.0.0-use.local
   resolution: "@datadog/electron-sdk@portal:..::locator=electron-sdk-playground%40workspace%3A."
+  dependencies:
+    "@datadog/browser-core": "npm:6.26.0"
   peerDependencies:
     electron: ">=30.0.0 <41"
   languageName: node
