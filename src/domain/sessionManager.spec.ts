@@ -244,4 +244,17 @@ describe('sessionManager', () => {
       expect(sessionManager.getSession().status).toBe('active');
     });
   });
+
+  describe('getSession', () => {
+    it('should not allow to mutate the current session', async () => {
+      mfs.access.mockRejectedValue(new Error('ENOENT'));
+
+      sessionManager = await startSessionManager(activityObservable);
+
+      const session = sessionManager.getSession();
+      session.id = 'new-id';
+
+      expect(sessionManager.getSession().id).not.toBe('new-id');
+    });
+  });
 });

@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { generateUUID, Observable, ONE_HOUR, ONE_MINUTE, type Subscription } from '@datadog/browser-core';
+import { deepClone, generateUUID, Observable, ONE_HOUR, ONE_MINUTE, type Subscription } from '@datadog/browser-core';
 
 export const SESSION_TIME_OUT_DELAY = 4 * ONE_HOUR;
 export const SESSION_EXPIRATION_DELAY = 15 * ONE_MINUTE;
@@ -136,7 +136,7 @@ export async function startSessionManager(activityObservable: Observable<void>):
 
   return {
     getSession(): Session {
-      return currentSession;
+      return deepClone(currentSession);
     },
     stop(): void {
       clearTimers();
