@@ -1,5 +1,5 @@
 import { app, BrowserWindow } from 'electron';
-import { join } from 'path';
+import { join } from 'node:path';
 import { init, type InitConfiguration } from '@datadog/electron-sdk';
 
 let mainWindow: BrowserWindow | null = null;

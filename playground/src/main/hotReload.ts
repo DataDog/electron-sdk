@@ -1,5 +1,5 @@
 import { app } from 'electron';
-import * as path from 'path';
+import * as path from 'node:path';
 
 export function setupHotReload(): void {
   // Watch playground files - delay startup to avoid initial compilation triggers
