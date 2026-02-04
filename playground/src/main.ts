@@ -68,10 +68,10 @@ ipcMain.handle('clear-session-file', () => {
   }
 });
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
   // Initialize SDK on app ready (before window creation)
   console.log('Initializing SDK from main process...');
-  const result = init({
+  const result = await init({
     applicationId: '6efd3722-af0a-4070-994c-0e87076d4814',
     clientToken: 'pub2a7307cdec74934cacb411a193f632f8',
     site: 'datad0g.com',
