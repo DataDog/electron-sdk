@@ -1,5 +1,5 @@
 import { test as base, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { join } from 'path';
+import { join } from 'node:path';
 import { Intake } from './intake';
 import type { InitConfiguration } from '@datadog/electron-sdk';
 

@@ -64,10 +64,10 @@ Update relevant code documentation (JSDoc comments, inline comments) when modify
 
 ### File I/O
 
-Use async `fs/promises` APIs for file operations in production code:
+Use async `node:fs/promises` APIs for file operations in production code:
 
 ```typescript
-import * as fs from 'fs/promises';
+import * as fs from 'node:fs/promises';
 
 // Reading
 const data = await fs.readFile(filePath, 'utf8');

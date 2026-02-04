@@ -1,8 +1,8 @@
 import { type MockInstance, vi } from 'vitest';
-import * as fs from 'fs/promises';
+import * as fs from 'node:fs/promises';
 
 export function mockFs() {
-  vi.mock('fs/promises', () => ({
+  vi.mock('node:fs/promises', () => ({
     access: vi.fn(),
     readFile: vi.fn(),
     writeFile: vi.fn(),

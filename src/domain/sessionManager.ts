@@ -1,6 +1,6 @@
 import { app } from 'electron';
-import * as fs from 'fs/promises';
-import * as path from 'path';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import { deepClone, generateUUID, Observable, ONE_HOUR, ONE_MINUTE, type Subscription } from '@datadog/browser-core';
 
 export const SESSION_TIME_OUT_DELAY = 4 * ONE_HOUR;

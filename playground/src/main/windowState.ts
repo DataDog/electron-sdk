@@ -1,6 +1,6 @@
 import { app, BrowserWindow } from 'electron';
-import * as path from 'path';
-import * as fs from 'fs';
+import * as path from 'node:path';
+import * as fs from 'node:fs';
 
 export interface WindowBounds {
   x: number;
