@@ -3,7 +3,7 @@ import { buildConfiguration } from './config';
 import { sendEvent } from './transport/http';
 import { createDummyViewEvent } from './domain/rum';
 import { Observable } from '@datadog/browser-core';
-import { startSessionManager } from './domain/sessionManager';
+import { SessionManager } from './domain/sessionManager';
 
 export async function init(configuration: InitConfiguration): Promise<boolean> {
   const config = buildConfiguration(configuration);
@@ -14,7 +14,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   // TODO(RUM-14303): track and notify user activity
   const activityObservable = new Observable<void>();
-  const sessionManager = await startSessionManager(activityObservable);
+  const sessionManager = await SessionManager.start(activityObservable);
 
   const viewEvent = createDummyViewEvent(config, sessionManager.getSession().id);
 

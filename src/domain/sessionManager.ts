@@ -7,11 +7,6 @@ export const SESSION_TIME_OUT_DELAY = 4 * ONE_HOUR;
 export const SESSION_EXPIRATION_DELAY = 15 * ONE_MINUTE;
 export const SESSION_FILE_NAME = '_dd_s';
 
-export interface SessionManager {
-  getSession(): Session;
-  stop(): void;
-}
-
 export interface Session {
   id: string;
   status: SessionStatus;
@@ -35,36 +30,54 @@ interface SessionState {
  * - after SESSION_EXPIRATION_DELAY without activity, expire the Session
  * - after SESSION_TIME_OUT_DELAY if the Session is still active, expire the Session
  * - on activity, if the Session is expired, create a new Session
- *
- * @param activityObservable emits on end user activity
  */
-export async function startSessionManager(activityObservable: Observable<void>): Promise<SessionManager> {
-  let currentSession: Session;
-  let inactivityTimeoutId: ReturnType<typeof setTimeout> | undefined;
-  let sessionTimeoutId: ReturnType<typeof setTimeout> | undefined;
-  let activitySubscription: Subscription | undefined;
+export class SessionManager {
+  private currentSession!: Session;
+  private inactivityTimeoutId: ReturnType<typeof setTimeout> | undefined;
+  private sessionTimeoutId: ReturnType<typeof setTimeout> | undefined;
+  private activitySubscription: Subscription | undefined;
 
-  async function initializeSession(): Promise<void> {
+  private constructor(private readonly activityObservable: Observable<void>) {}
+
+  static async start(activityObservable: Observable<void>): Promise<SessionManager> {
+    const manager = new SessionManager(activityObservable);
+    await manager.initializeSession();
+    return manager;
+  }
+
+  getSession(): Session {
+    return deepClone(this.currentSession);
+  }
+
+  stop(): void {
+    this.clearTimers();
+    if (this.activitySubscription) {
+      this.activitySubscription.unsubscribe();
+      this.activitySubscription = undefined;
+    }
+  }
+
+  private async initializeSession(): Promise<void> {
     const now = Date.now();
     const existingState = await loadSessionState();
 
     if (existingState && isSessionValid(existingState, now)) {
-      currentSession = { id: existingState.id, status: 'active' };
+      this.currentSession = { id: existingState.id, status: 'active' };
       existingState.lastActivity = now;
       await saveSessionState(existingState);
-      scheduleInactivityTimeout();
-      scheduleSessionTimeout(existingState.created);
+      this.scheduleInactivityTimeout();
+      this.scheduleSessionTimeout(existingState.created);
     } else {
-      await createNewSession();
+      await this.createNewSession();
     }
 
-    activitySubscription = activityObservable.subscribe(() => {
+    this.activitySubscription = this.activityObservable.subscribe(() => {
       // TODO(RUM-14244) monitor instead of catch
-      updateActivity().catch(() => {});
+      this.updateActivity().catch(() => {});
     });
   }
 
-  async function createNewSession(): Promise<void> {
+  private async createNewSession(): Promise<void> {
     const now = Date.now();
     const state: SessionState = {
       id: generateUUID(),
@@ -72,28 +85,28 @@ export async function startSessionManager(activityObservable: Observable<void>):
       lastActivity: now,
     };
 
-    currentSession = { id: state.id, status: 'active' };
+    this.currentSession = { id: state.id, status: 'active' };
     await saveSessionState(state);
 
-    scheduleInactivityTimeout();
-    scheduleSessionTimeout(state.created);
+    this.scheduleInactivityTimeout();
+    this.scheduleSessionTimeout(state.created);
   }
 
-  function expireSession(): void {
-    clearTimers();
-    currentSession.status = 'expired';
+  private expireSession(): void {
+    this.clearTimers();
+    this.currentSession.status = 'expired';
     // TODO(RUM-14244) monitor instead of catch
     deleteSessionFile().catch(() => {});
   }
 
-  async function updateActivity(): Promise<void> {
-    if (currentSession.status === 'expired') {
-      await createNewSession();
+  private async updateActivity(): Promise<void> {
+    if (this.currentSession.status === 'expired') {
+      await this.createNewSession();
       return;
     }
 
     const state = await loadSessionState();
-    if (!state || state.id !== currentSession.id) {
+    if (!state || state.id !== this.currentSession.id) {
       // TODO(RUM-14244) monitor error
       return;
     }
@@ -101,51 +114,36 @@ export async function startSessionManager(activityObservable: Observable<void>):
     state.lastActivity = Date.now();
     await saveSessionState(state);
 
-    scheduleInactivityTimeout();
+    this.scheduleInactivityTimeout();
   }
 
-  function scheduleInactivityTimeout(): void {
-    if (inactivityTimeoutId !== undefined) {
-      clearTimeout(inactivityTimeoutId);
+  private scheduleInactivityTimeout(): void {
+    if (this.inactivityTimeoutId !== undefined) {
+      clearTimeout(this.inactivityTimeoutId);
     }
-    inactivityTimeoutId = setTimeout(expireSession, SESSION_EXPIRATION_DELAY);
+    this.inactivityTimeoutId = setTimeout(() => this.expireSession(), SESSION_EXPIRATION_DELAY);
   }
 
-  function scheduleSessionTimeout(createdAt: number): void {
+  private scheduleSessionTimeout(createdAt: number): void {
     const now = Date.now();
     const remainingTime = SESSION_TIME_OUT_DELAY - (now - createdAt);
     if (remainingTime > 0) {
-      sessionTimeoutId = setTimeout(expireSession, remainingTime);
+      this.sessionTimeoutId = setTimeout(() => this.expireSession(), remainingTime);
     } else {
-      expireSession();
+      this.expireSession();
     }
   }
 
-  function clearTimers(): void {
-    if (inactivityTimeoutId !== undefined) {
-      clearTimeout(inactivityTimeoutId);
-      inactivityTimeoutId = undefined;
+  private clearTimers(): void {
+    if (this.inactivityTimeoutId !== undefined) {
+      clearTimeout(this.inactivityTimeoutId);
+      this.inactivityTimeoutId = undefined;
     }
-    if (sessionTimeoutId !== undefined) {
-      clearTimeout(sessionTimeoutId);
-      sessionTimeoutId = undefined;
+    if (this.sessionTimeoutId !== undefined) {
+      clearTimeout(this.sessionTimeoutId);
+      this.sessionTimeoutId = undefined;
     }
   }
-
-  await initializeSession();
-
-  return {
-    getSession(): Session {
-      return deepClone(currentSession);
-    },
-    stop(): void {
-      clearTimers();
-      if (activitySubscription) {
-        activitySubscription.unsubscribe();
-        activitySubscription = undefined;
-      }
-    },
-  };
 }
 
 function getSessionFilePath(): string {
