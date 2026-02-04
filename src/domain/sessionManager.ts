@@ -59,7 +59,7 @@ export async function startSessionManager(activityObservable: Observable<void>):
     }
 
     activitySubscription = activityObservable.subscribe(() => {
-      // TODO monitor instead of catch
+      // TODO(RUM-14244) monitor instead of catch
       updateActivity().catch(() => {});
     });
   }
@@ -82,7 +82,7 @@ export async function startSessionManager(activityObservable: Observable<void>):
   function expireSession(): void {
     clearTimers();
     currentSession.status = 'expired';
-    // TODO monitor instead of catch
+    // TODO(RUM-14244) monitor instead of catch
     deleteSessionFile().catch(() => {});
   }
 
@@ -94,7 +94,7 @@ export async function startSessionManager(activityObservable: Observable<void>):
 
     const state = await loadSessionState();
     if (!state || state.id !== currentSession.id) {
-      // TODO monitor error
+      // TODO(RUM-14244) monitor error
       return;
     }
 

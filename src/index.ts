@@ -12,7 +12,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
     return false;
   }
 
-  // TODO: track and notify user activity
+  // TODO(RUM-14303): track and notify user activity
   const activityObservable = new Observable<void>();
   const sessionManager = await startSessionManager(activityObservable);
 
