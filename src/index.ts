@@ -1,7 +1,7 @@
 import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
 import { Transport } from './transport/http';
-import { DummyMainView } from './domain/rum';
+import { DummyMainView } from './domain/rum/rum';
 import { Observable } from '@datadog/browser-core';
 import { SessionManager } from './domain/sessionManager';
 import { EventManager } from './event/EventManager';
@@ -28,4 +28,4 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 }
 
 export type { InitConfiguration } from './config';
-export type * from './rumEvent.types';
+export type * from './domain/rum/rumEvent.types';
