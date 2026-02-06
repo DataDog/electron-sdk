@@ -19,7 +19,7 @@ export interface LifecyleEvent {
 
 export type Event = RawEvent | ServerEvent | LifecyleEvent;
 
-export interface EventHandler<T> {
-  canHandle: (event: T) => boolean;
-  handle: (event: T, notify?: (data: T | T[]) => void) => void;
+export interface EventHandler<T extends Event> {
+  canHandle: (event: Event) => event is T;
+  handle: (event: T, notify: (event: Event | Event[]) => void) => void;
 }

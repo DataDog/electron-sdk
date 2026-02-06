@@ -1,4 +1,4 @@
-import type { ServerEvent, Event } from '../event/types';
+import type { ServerEvent } from '../event/types';
 import { EventKind } from '../event/constants';
 import { Configuration } from '../config';
 import { EventManager } from '../event/EventManager';
@@ -6,12 +6,12 @@ import { EventManager } from '../event/EventManager';
 export class Transport {
   constructor(
     private config: Configuration,
-    private eventManager: EventManager<Event>
+    private eventManager: EventManager
   ) {
-    this.eventManager.registerHandler({
-      canHandle: (event): event is ServerEvent => event.kind === EventKind.SERVER,
+    this.eventManager.registerHandler<ServerEvent>({
+      canHandle: (event) => event.kind === EventKind.SERVER,
       handle: (event) => {
-        sendEvent(this.config, event as ServerEvent).catch((error) => {
+        sendEvent(this.config, event).catch((error) => {
           console.error('Failed to send event:', error);
         });
       },

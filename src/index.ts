@@ -5,7 +5,6 @@ import { DummyMainView } from './domain/rum';
 import { Observable } from '@datadog/browser-core';
 import { SessionManager } from './domain/sessionManager';
 import { EventManager } from './event/EventManager';
-import type { Event } from './event/types';
 import { Assembly } from './domain/assembly';
 
 export async function init(configuration: InitConfiguration): Promise<boolean> {
@@ -15,7 +14,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
     return false;
   }
 
-  const eventManager = new EventManager<Event>();
+  const eventManager = new EventManager();
 
   // TODO(RUM-14303): track and notify user activity
   const activityObservable = new Observable<void>();

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EventManager } from './EventManager';
-import type { Event, EventHandler, RawEvent, ServerEvent } from './types';
+import type { EventHandler, RawEvent, ServerEvent } from './types';
 import { EventKind, EventSource, EventTrack } from './constants';
 
 function createRawEvent(overrides: Partial<RawEvent> = {}): RawEvent {
@@ -23,65 +23,90 @@ function createServerEvent(overrides: Partial<ServerEvent> = {}): ServerEvent {
 
 describe('EventManager', () => {
   it('calls handler.handle when canHandle returns true', () => {
-    const eventManager = new EventManager<Event>();
-    const handler: EventHandler<Event> = {
+    const eventManager = new EventManager();
+    const mockHandler = {
       canHandle: vi.fn().mockReturnValue(true),
       handle: vi.fn(),
-    };
+    } as unknown as EventHandler<RawEvent>;
 
-    eventManager.registerHandler(handler);
+    eventManager.registerHandler<RawEvent>(mockHandler);
     const event = createRawEvent();
     eventManager.notify(event);
 
-    expect(handler.canHandle).toHaveBeenCalledWith(event);
-    expect(handler.handle).toHaveBeenCalledWith(event, expect.any(Function));
+    expect(mockHandler.canHandle).toHaveBeenCalledWith(event);
+    expect(mockHandler.handle).toHaveBeenCalledWith(event, expect.any(Function));
   });
 
   it('skips handler when canHandle returns false', () => {
-    const eventManager = new EventManager<Event>();
-    const handler: EventHandler<Event> = {
-      canHandle: vi.fn().mockReturnValue(false),
-      handle: vi.fn(),
-    };
+    const eventManager = new EventManager();
+    const handle = vi.fn();
 
-    eventManager.registerHandler(handler);
+    eventManager.registerHandler<RawEvent>({
+      canHandle: (_event): _event is RawEvent => false,
+      handle,
+    });
     eventManager.notify(createRawEvent());
 
-    expect(handler.handle).not.toHaveBeenCalled();
+    expect(handle).not.toHaveBeenCalled();
   });
 
   it('processes array of events', () => {
-    const eventManager = new EventManager<Event>();
-    const handled: Event[] = [];
-    const handler: EventHandler<Event> = {
-      canHandle: () => true,
-      handle: (event) => handled.push(event),
-    };
+    const eventManager = new EventManager();
+    const handled: RawEvent[] = [];
 
-    eventManager.registerHandler(handler);
+    eventManager.registerHandler<RawEvent>({
+      canHandle: (event) => event.kind === EventKind.RAW,
+      handle: (event) => handled.push(event),
+    });
     eventManager.notify([createRawEvent({ data: { id: 1 } }), createRawEvent({ data: { id: 2 } })]);
 
     expect(handled).toHaveLength(2);
   });
 
   it('allows handler to emit new events via notify callback', () => {
-    const eventManager = new EventManager<Event>();
-    const collected: Event[] = [];
+    const eventManager = new EventManager();
+    const collected: ServerEvent[] = [];
 
-    const emitter: EventHandler<Event> = {
-      canHandle: (e) => e.kind === EventKind.RAW,
-      handle: (_event, notify) => notify?.(createServerEvent()),
-    };
-    const collector: EventHandler<Event> = {
-      canHandle: (e) => e.kind === EventKind.SERVER,
+    eventManager.registerHandler<RawEvent>({
+      canHandle: (event) => event.kind === EventKind.RAW,
+      handle: (_event, notify) => notify(createServerEvent()),
+    });
+    eventManager.registerHandler<ServerEvent>({
+      canHandle: (event) => event.kind === EventKind.SERVER,
       handle: (event) => collected.push(event),
-    };
+    });
 
-    eventManager.registerHandler(emitter);
-    eventManager.registerHandler(collector);
     eventManager.notify(createRawEvent());
 
     expect(collected).toHaveLength(1);
     expect(collected[0].kind).toBe(EventKind.SERVER);
+  });
+
+  it('provides correctly typed events to handlers without casting', () => {
+    const eventManager = new EventManager();
+    let receivedSource: (typeof EventSource)[keyof typeof EventSource] | undefined;
+    let receivedTrack: (typeof EventTrack)[keyof typeof EventTrack] | undefined;
+
+    eventManager.registerHandler<RawEvent>({
+      canHandle: (event) => event.kind === EventKind.RAW,
+      handle: (event) => {
+        // event is RawEvent - no cast needed, source is accessible
+        receivedSource = event.source;
+      },
+    });
+
+    eventManager.registerHandler<ServerEvent>({
+      canHandle: (event) => event.kind === EventKind.SERVER,
+      handle: (event) => {
+        // event is ServerEvent - no cast needed, track is accessible
+        receivedTrack = event.track;
+      },
+    });
+
+    eventManager.notify(createRawEvent({ source: EventSource.MAIN }));
+    eventManager.notify(createServerEvent({ track: EventTrack.LOGS }));
+
+    expect(receivedSource).toBe(EventSource.MAIN);
+    expect(receivedTrack).toBe(EventTrack.LOGS);
   });
 });
