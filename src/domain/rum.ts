@@ -1,5 +1,7 @@
 import type { Configuration } from '../config';
 import type { RumViewEvent } from '../rumEvent.types';
+import type { Event, EventHandler, RawEvent, ServerEvent } from '../event/types';
+import { EventKind, EventTrack } from '../event/constants';
 import { generateUUID } from '@datadog/browser-core';
 
 export function createDummyViewEvent(config: Configuration, sessionId: string): RumViewEvent {
@@ -30,6 +32,21 @@ export function createDummyViewEvent(config: Configuration, sessionId: string): 
     _dd: {
       format_version: 2,
       document_version: 1,
+    },
+  };
+}
+
+export function createServerEventHandler(): EventHandler<Event> {
+  return {
+    canHandle: (event): event is RawEvent => event.kind === EventKind.RAW,
+    handle: (event, notify) => {
+      const rawEvent = event as RawEvent;
+      const serverEvent: ServerEvent = {
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        data: rawEvent.data,
+      };
+      notify?.(serverEvent);
     },
   };
 }
