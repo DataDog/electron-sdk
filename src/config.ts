@@ -17,6 +17,7 @@ export interface InitConfiguration {
   applicationId: string;
   env?: string;
   version?: string;
+  telemetrySampleRate?: number;
 }
 
 export interface Configuration {
@@ -26,6 +27,7 @@ export interface Configuration {
   env?: string;
   version?: string;
   intakeUrl: string;
+  telemetrySampleRate: number;
 }
 
 function validateRequiredString(value: unknown, fieldName: string): string | undefined {
@@ -56,6 +58,17 @@ function validateOptionalString(value: unknown): string | undefined {
   return value.length > 0 ? value : undefined;
 }
 
+function validateTelemetrySampleRate(value: unknown): number {
+  if (value === undefined || value === null) {
+    return 100;
+  }
+  if (typeof value !== 'number' || value < 0 || value > 100) {
+    console.error("Configuration error: 'telemetrySampleRate' must be a number between 0 and 100");
+    return 100;
+  }
+  return value;
+}
+
 export function buildConfiguration(initConfig: InitConfiguration): Configuration | undefined {
   const service = validateRequiredString(initConfig.service, 'service');
   const clientToken = validateRequiredString(initConfig.clientToken, 'clientToken');
@@ -66,19 +79,16 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     return undefined;
   }
 
-  const env = validateOptionalString(initConfig.env);
-  const version = validateOptionalString(initConfig.version);
   const proxy = validateOptionalString(initConfig.proxy);
-
-  const intakeUrl = computeIntakeUrl(site, proxy);
 
   return {
     service,
     clientToken,
     applicationId,
-    env,
-    version,
-    intakeUrl,
+    env: validateOptionalString(initConfig.env),
+    version: validateOptionalString(initConfig.version),
+    intakeUrl: computeIntakeUrl(site, proxy),
+    telemetrySampleRate: validateTelemetrySampleRate(initConfig.telemetrySampleRate),
   };
 }
 
