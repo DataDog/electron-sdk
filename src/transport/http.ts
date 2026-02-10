@@ -1,7 +1,5 @@
-import type { ServerEvent } from '../event/types';
-import { EventKind } from '../event/constants';
+import { EventManager, EventKind, type ServerEvent } from '../event';
 import { Configuration } from '../config';
-import { EventManager } from '../event/EventManager';
 
 export class Transport {
   constructor(

@@ -3,7 +3,7 @@ import { buildConfiguration } from './config';
 import { Transport } from './transport/http';
 import { DummyMainView } from './domain/rum/rum';
 import { SessionManager } from './domain/sessionManager';
-import { EventManager } from './event/EventManager';
+import { EventManager } from './event';
 import { Assembly } from './domain/assembly';
 
 export async function init(configuration: InitConfiguration): Promise<boolean> {

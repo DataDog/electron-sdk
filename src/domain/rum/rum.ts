@@ -1,8 +1,7 @@
 import type { Configuration } from '../../config';
 import type { RumViewEvent } from './rumEvent.types';
-import { EventKind, EventSource } from '../../event/constants';
 import { generateUUID } from '@datadog/browser-core';
-import { EventManager } from '../../event/EventManager';
+import { EventManager, EventKind, EventSource } from '../../event';
 
 export class DummyMainView {
   constructor(

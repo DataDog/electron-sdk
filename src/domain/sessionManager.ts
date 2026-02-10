@@ -2,9 +2,7 @@ import { app } from 'electron';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { deepClone, generateUUID, ONE_HOUR, ONE_MINUTE, type Subscription } from '@datadog/browser-core';
-import { EventManager } from '../event/EventManager';
-import { EndUserActivityEvent } from '../event/types';
-import { EventKind, LifecycleKind } from '../event/constants';
+import { EventManager, EventKind, LifecycleKind, type EndUserActivityEvent } from '../event';
 
 export const SESSION_TIME_OUT_DELAY = 4 * ONE_HOUR;
 export const SESSION_EXPIRATION_DELAY = 15 * ONE_MINUTE;

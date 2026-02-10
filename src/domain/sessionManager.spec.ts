@@ -7,8 +7,7 @@ vi.mock('electron', () => ({
 
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { SessionManager, SESSION_EXPIRATION_DELAY, SESSION_TIME_OUT_DELAY, SESSION_FILE_NAME } from './sessionManager';
-import { EventManager } from '../event/EventManager';
-import { EventKind, LifecycleKind } from '../event/constants';
+import { EventManager, EventKind, LifecycleKind } from '../event';
 
 const mfs = mockFs();
 
