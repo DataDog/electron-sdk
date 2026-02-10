@@ -14,3 +14,7 @@ export const EventKind = {
   SERVER: 'server',
   LIFECYCLE: 'lifecyle',
 } as const;
+
+export const LifecycleKind = {
+  END_USER_ACTIVITY: 'end_user_activity',
+} as const;

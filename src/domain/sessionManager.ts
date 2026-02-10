@@ -1,7 +1,10 @@
 import { app } from 'electron';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { deepClone, generateUUID, Observable, ONE_HOUR, ONE_MINUTE, type Subscription } from '@datadog/browser-core';
+import { deepClone, generateUUID, ONE_HOUR, ONE_MINUTE, type Subscription } from '@datadog/browser-core';
+import { EventManager } from '../event/EventManager';
+import { EndUserActivityEvent } from '../event/types';
+import { EventKind, LifecycleKind } from '../event/constants';
 
 export const SESSION_TIME_OUT_DELAY = 4 * ONE_HOUR;
 export const SESSION_EXPIRATION_DELAY = 15 * ONE_MINUTE;
@@ -37,10 +40,10 @@ export class SessionManager {
   private sessionTimeoutId: ReturnType<typeof setTimeout> | undefined;
   private activitySubscription: Subscription | undefined;
 
-  private constructor(private readonly activityObservable: Observable<void>) {}
+  private constructor(private readonly eventManager: EventManager) {}
 
-  static async start(activityObservable: Observable<void>): Promise<SessionManager> {
-    const manager = new SessionManager(activityObservable);
+  static async start(eventManager: EventManager): Promise<SessionManager> {
+    const manager = new SessionManager(eventManager);
     await manager.initializeSession();
     return manager;
   }
@@ -71,9 +74,13 @@ export class SessionManager {
       await this.createNewSession();
     }
 
-    this.activitySubscription = this.activityObservable.subscribe(() => {
-      // TODO(RUM-14244) monitor instead of catch
-      this.updateActivity().catch(() => {});
+    this.activitySubscription = this.eventManager.registerHandler<EndUserActivityEvent>({
+      canHandle: (event): event is EndUserActivityEvent =>
+        event.kind === EventKind.LIFECYCLE && event.lifecycle === LifecycleKind.END_USER_ACTIVITY,
+      handle: () => {
+        // TODO(RUM-14244) monitor instead of catch
+        this.updateActivity().catch(() => {});
+      },
     });
   }
 
