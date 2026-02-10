@@ -1,4 +1,4 @@
-import { performDraw } from '@datadog/browser-core';
+import { performDraw, type Subscription } from '@datadog/browser-core';
 // These are internal browser-core exports, not part of the public API
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore TODO(RUM-14336) expose those APIs from browser-core
@@ -10,14 +10,18 @@ import {
 } from '@datadog/browser-core/cjs/tools/monitor';
 import type { Configuration } from '../../config';
 import type { TelemetryErrorEvent } from './telemetryEvent.types';
-import { EventKind, EventSource, EventManager } from '../../event';
+import { EventKind, EventSource, EventManager, SessionRenewEvent, LifecycleKind } from '../../event';
 
 export { monitor, callMonitored };
+
+const MAX_TELEMETRY_EVENTS_PER_SESSION = 100;
 
 let telemetryInstance: Telemetry | undefined;
 
 class Telemetry {
   private readonly isEnabled: boolean;
+  private eventCount = 0;
+  private sessionRenewSubscription: Subscription | undefined;
 
   constructor(
     private readonly eventManager: EventManager,
@@ -28,12 +32,21 @@ class Telemetry {
     startMonitorErrorCollection((error: unknown) => {
       this.addError(error);
     });
+
+    this.sessionRenewSubscription = eventManager.registerHandler<SessionRenewEvent>({
+      canHandle: (event): event is SessionRenewEvent =>
+        event.kind === EventKind.LIFECYCLE && event.lifecycle === LifecycleKind.SESSION_RENEW,
+      handle: () => {
+        this.eventCount = 0;
+      },
+    });
   }
 
   addError(error: unknown): void {
-    if (!this.isEnabled) {
+    if (!this.isEnabled || this.eventCount >= MAX_TELEMETRY_EVENTS_PER_SESSION) {
       return;
     }
+    this.eventCount++;
     const data = this.createErrorEvent(error);
     this.eventManager.notify({
       kind: EventKind.RAW,
@@ -44,6 +57,7 @@ class Telemetry {
 
   stop(): void {
     resetMonitor();
+    this.sessionRenewSubscription?.unsubscribe();
   }
 
   private createErrorEvent(error: unknown): TelemetryErrorEvent {

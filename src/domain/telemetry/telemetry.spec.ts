@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { TelemetryErrorEvent } from './telemetryEvent.types';
 import { addError, callMonitored, monitor, startTelemetry, stopTelemetry } from './telemetry';
 import { createTestConfiguration } from '../../mocks.specUtil';
-import { EventManager, RawEvent, EventKind } from '../../event';
+import { EventManager, RawEvent, EventKind, LifecycleKind } from '../../event';
 
 describe('telemetry', () => {
   let eventManager: EventManager;
@@ -114,6 +114,44 @@ describe('telemetry', () => {
       addError(new Error('should be sent'));
 
       expect(notifiedEvents).toHaveLength(1);
+    });
+  });
+
+  describe('event limitation', () => {
+    it('stops notifying after 100 events per session', () => {
+      const config = createTestConfiguration();
+      startTelemetry(eventManager, config);
+
+      for (let i = 0; i < 150; i++) {
+        addError(new Error(`error ${i}`));
+      }
+
+      expect(notifiedEvents).toHaveLength(100);
+    });
+
+    it('resets event count on session renewal', () => {
+      const config = createTestConfiguration();
+      startTelemetry(eventManager, config);
+
+      // Fill up the limit
+      for (let i = 0; i < 100; i++) {
+        addError(new Error(`error ${i}`));
+      }
+      expect(notifiedEvents).toHaveLength(100);
+
+      // This should be ignored (limit reached)
+      addError(new Error('should be ignored'));
+      expect(notifiedEvents).toHaveLength(100);
+
+      // Simulate session renewal
+      eventManager.notify({
+        kind: EventKind.LIFECYCLE,
+        lifecycle: LifecycleKind.SESSION_RENEW,
+      });
+
+      // Now we can send more events
+      addError(new Error('after renewal'));
+      expect(notifiedEvents).toHaveLength(101);
     });
   });
 
