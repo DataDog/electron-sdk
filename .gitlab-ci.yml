@@ -5,6 +5,7 @@ variables:
 stages:
   - docker
   - test
+  - notify
 
 default:
   tags: ['arch:amd64']
@@ -68,3 +69,29 @@ playground:
   script:
     - yarn
     - scripts/cli test_playground
+
+########################################################################################################################
+# Notify
+########################################################################################################################
+
+include: 'https://gitlab-templates.ddbuild.io/slack-notifier/v3-sdm/template.yml'
+
+# override slack-notifier-base to use a different image
+# fixes SDM query failures
+# use same image as dd-go
+.slack-notifier-base:
+  stage: notify
+  tags: ['arch:amd64']
+  image: registry.ddbuild.io/slack-notifier:v90381551-4a2e790-sdm-gbi-jammy@sha256:472488831d14f70401316c79cd1485ad387c05dcb0536767fe73a9ec0fed3315
+  script:
+    # If the pipeline was launched by a user, send pings to them (eg, creating a pipe on master
+    # without committing)
+    - if [[ $GITLAB_USER_LOGIN = "gitsync" || $GITLAB_USER_LOGIN = "codesync" || $GITLAB_USER_LOGIN = "ddci-service-account" ]]; then EMAIL=$(git show -s --format="%ae" HEAD); else EMAIL=$GITLAB_USER_EMAIL; fi
+    - SLACK_AUTHOR=$(echo $EMAIL | email2slackid || echo "")
+    - if [ -z "$SLACK_AUTHOR" ]; then echo "author not found or unsubscribed"; exit 0; fi
+
+    - BUILD_URL="$CI_PROJECT_URL/pipelines/$CI_PIPELINE_ID"
+
+notify-failure:
+  extends:
+    - .slack-notifier.on-failure
