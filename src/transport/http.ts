@@ -1,14 +1,32 @@
-import type { RumViewEvent } from '../rumEvent.types';
+import type { ServerEvent } from '../event/types';
+import { EventKind } from '../event/constants';
 import { Configuration } from '../config';
+import { EventManager } from '../event/EventManager';
 
-export async function sendEvent(config: Configuration, event: RumViewEvent): Promise<void> {
+export class Transport {
+  constructor(
+    private config: Configuration,
+    private eventManager: EventManager
+  ) {
+    this.eventManager.registerHandler<ServerEvent>({
+      canHandle: (event) => event.kind === EventKind.SERVER,
+      handle: (event) => {
+        sendEvent(this.config, event).catch((error) => {
+          console.error('Failed to send event:', error);
+        });
+      },
+    });
+  }
+}
+
+export async function sendEvent(config: Configuration, event: ServerEvent): Promise<void> {
   const response = await fetch(config.intakeUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'DD-API-KEY': config.clientToken,
     },
-    body: JSON.stringify(event),
+    body: JSON.stringify(event.data),
   });
 
   if (!response.ok) {
