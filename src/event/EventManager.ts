@@ -1,4 +1,4 @@
-import type { Event, EventHandler } from './types';
+import type { Event, EventHandler } from './event.types';
 
 /**
  * Manages event routing through registered handlers.

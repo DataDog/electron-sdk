@@ -1,3 +1,3 @@
 export { EventManager } from './EventManager';
-export * from './types';
-export * from './constants';
+export * from './event.types';
+export * from './event.constants';
