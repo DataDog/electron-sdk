@@ -86,8 +86,19 @@ export class Intake {
     });
   }
 
-  getEvents(): ReceivedEvent[] {
-    return this.events;
+  async getEventsByType(type: string, timeout: number = 5000): Promise<ReceivedEvent[]> {
+    const startTime = Date.now();
+    const pollInterval = 100;
+
+    while (Date.now() - startTime < timeout) {
+      const matchingEvents = this.events.filter((event) => (event.body as { type?: string }).type === type);
+      if (matchingEvents.length > 0) {
+        return matchingEvents;
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+    }
+
+    return this.events.filter((event) => (event.body as { type?: string }).type === type);
   }
 
   clear(): void {
