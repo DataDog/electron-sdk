@@ -2,6 +2,7 @@
 interface ElectronAPI {
   getSessionFile: () => Promise<string | null>;
   clearSessionFile: () => Promise<void>;
+  generateTelemetryError: () => Promise<void>;
 }
 
 declare global {
@@ -66,3 +67,9 @@ if (clearBtn && sessionContent) {
 } else {
   console.error('Required elements not found');
 }
+
+// Handle telemetry error button click
+const telemetryErrorButton = document.getElementById('generate-telemetry-error') as HTMLButtonElement;
+telemetryErrorButton.addEventListener('click', () => {
+  void window.electronAPI.generateTelemetryError();
+});
