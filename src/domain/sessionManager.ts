@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { deepClone, generateUUID, ONE_HOUR, ONE_MINUTE, type Subscription } from '@datadog/browser-core';
 import { EventManager, EventKind, LifecycleKind, type EndUserActivityEvent } from '../event';
+import { addError, setTimeout } from './telemetry/telemetry';
 
 export const SESSION_TIME_OUT_DELAY = 4 * ONE_HOUR;
 export const SESSION_EXPIRATION_DELAY = 15 * ONE_MINUTE;
@@ -76,8 +77,7 @@ export class SessionManager {
       canHandle: (event): event is EndUserActivityEvent =>
         event.kind === EventKind.LIFECYCLE && event.lifecycle === LifecycleKind.END_USER_ACTIVITY,
       handle: () => {
-        // TODO(RUM-14244) monitor instead of catch
-        this.updateActivity().catch(() => {});
+        this.updateActivity().catch(addError);
       },
     });
   }
@@ -100,8 +100,7 @@ export class SessionManager {
   private expireSession(): void {
     this.clearTimers();
     this.currentSession.status = 'expired';
-    // TODO(RUM-14244) monitor instead of catch
-    deleteSessionFile().catch(() => {});
+    deleteSessionFile().catch(addError);
   }
 
   private async updateActivity(): Promise<void> {
@@ -112,7 +111,7 @@ export class SessionManager {
 
     const state = await loadSessionState();
     if (!state || state.id !== this.currentSession.id) {
-      // TODO(RUM-14244) monitor error
+      addError(new Error('SessionManager: Invalid session state'));
       return;
     }
 
