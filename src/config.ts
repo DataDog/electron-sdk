@@ -1,3 +1,5 @@
+import { displayError } from './tools/display';
+
 const VALID_DATADOG_SITES = [
   'datadoghq.com',
   'datadoghq.eu',
@@ -30,7 +32,7 @@ export interface Configuration {
 
 function validateRequiredString(value: unknown, fieldName: string): string | undefined {
   if (typeof value !== 'string' || value.length === 0) {
-    console.error(`Configuration error: '${fieldName}' must be a non-empty string`);
+    displayError(`Configuration error: '${fieldName}' must be a non-empty string`);
     return undefined;
   }
   return value;
@@ -38,7 +40,7 @@ function validateRequiredString(value: unknown, fieldName: string): string | und
 
 function validateSite(value: unknown): string | undefined {
   if (typeof value !== 'string' || value.length === 0 || !VALID_DATADOG_SITES.includes(value as any)) {
-    console.error(`Configuration error: 'site' must be one of: ${VALID_DATADOG_SITES.join(', ')}`);
+    displayError(`Configuration error: 'site' must be one of: ${VALID_DATADOG_SITES.join(', ')}`);
     return undefined;
   }
   return value;

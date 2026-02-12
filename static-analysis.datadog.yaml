@@ -4,6 +4,7 @@ rulesets:
       no-console:
         ignore:
           - 'e2e/lib/**' # allow console.log from e2e tests framework
+          - '**/display.ts' # allow console.log from display.ts
   - typescript-code-style:
       rules:
         no-new:

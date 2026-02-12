@@ -1,6 +1,11 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { buildConfiguration } from './config';
 import type { InitConfiguration } from './config';
+
+import * as display from './tools/display';
+vi.mock('./tools/display', () => ({
+  displayError: vi.fn(),
+}));
 
 describe('buildConfiguration', () => {
   // Default valid config used as base for all tests
@@ -11,14 +16,8 @@ describe('buildConfiguration', () => {
     applicationId: 'test-app-id',
   };
 
-  let consoleErrorSpy: any;
-
-  beforeEach(() => {
-    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-  });
-
   afterEach(() => {
-    consoleErrorSpy.mockRestore();
+    vi.clearAllMocks();
   });
 
   describe.each([
@@ -47,7 +46,7 @@ describe('buildConfiguration', () => {
 
       buildConfiguration(config);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining(fieldName));
+      expect(display.displayError).toHaveBeenCalledWith(expect.stringContaining(fieldName));
     });
   });
 
@@ -155,7 +154,7 @@ describe('buildConfiguration', () => {
       } as unknown as InitConfiguration;
 
       expect(buildConfiguration(config)).toBeUndefined();
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect(display.displayError).toHaveBeenCalledWith(
         `Configuration error: 'site' must be one of: ${VALID_DATADOG_SITES.join(', ')}`
       );
     });
@@ -191,7 +190,7 @@ describe('buildConfiguration', () => {
 
       buildConfiguration(config);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith("Configuration error: 'service' must be a non-empty string");
+      expect(display.displayError).toHaveBeenCalledWith("Configuration error: 'service' must be a non-empty string");
     });
 
     it('logs error for empty clientToken', () => {
@@ -202,7 +201,9 @@ describe('buildConfiguration', () => {
 
       buildConfiguration(config);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith("Configuration error: 'clientToken' must be a non-empty string");
+      expect(display.displayError).toHaveBeenCalledWith(
+        "Configuration error: 'clientToken' must be a non-empty string"
+      );
     });
 
     it('includes field name in error message', () => {
@@ -213,7 +214,7 @@ describe('buildConfiguration', () => {
 
       buildConfiguration(config);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('service'));
+      expect(display.displayError).toHaveBeenCalledWith(expect.stringContaining('service'));
     });
 
     it('logs multiple errors when multiple fields are invalid', () => {
@@ -225,9 +226,11 @@ describe('buildConfiguration', () => {
 
       buildConfiguration(config);
 
-      expect(consoleErrorSpy).toHaveBeenCalledTimes(2);
-      expect(consoleErrorSpy).toHaveBeenCalledWith("Configuration error: 'service' must be a non-empty string");
-      expect(consoleErrorSpy).toHaveBeenCalledWith("Configuration error: 'clientToken' must be a non-empty string");
+      expect(display.displayError).toHaveBeenCalledTimes(2);
+      expect(display.displayError).toHaveBeenCalledWith("Configuration error: 'service' must be a non-empty string");
+      expect(display.displayError).toHaveBeenCalledWith(
+        "Configuration error: 'clientToken' must be a non-empty string"
+      );
     });
   });
 

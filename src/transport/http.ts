@@ -1,5 +1,6 @@
 import { EventManager, EventKind, type ServerEvent } from '../event';
 import { Configuration } from '../config';
+import { displayError } from '../tools/display';
 
 export class Transport {
   constructor(
@@ -10,7 +11,7 @@ export class Transport {
       canHandle: (event) => event.kind === EventKind.SERVER,
       handle: (event) => {
         sendEvent(this.config, event).catch((error) => {
-          console.error('Failed to send event:', error);
+          displayError('Failed to send event:', error);
         });
       },
     });

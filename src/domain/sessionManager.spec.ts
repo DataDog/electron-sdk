@@ -5,7 +5,12 @@ vi.mock('electron', () => ({
   },
 }));
 
-import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
+import * as display from '../tools/display';
+vi.mock('../tools/display', () => ({
+  displayError: vi.fn(),
+}));
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SessionManager, SESSION_EXPIRATION_DELAY, SESSION_TIME_OUT_DELAY, SESSION_FILE_NAME } from './sessionManager';
 import { EventManager, EventKind, LifecycleKind } from '../event';
 
@@ -13,18 +18,16 @@ const mfs = mockFs();
 
 describe('sessionManager', () => {
   let eventManager: EventManager;
-  let consoleErrorSpy: MockInstance;
   let sessionManager: SessionManager;
 
   beforeEach(() => {
     vi.useFakeTimers();
     eventManager = new EventManager();
-    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
     vi.useRealTimers();
-    consoleErrorSpy.mockRestore();
+    vi.clearAllMocks();
     mfs.reset();
     sessionManager.stop();
   });
@@ -233,7 +236,7 @@ describe('sessionManager', () => {
       // Session should still be created in memory
 
       expect(sessionManager.getSession().status).toBe('active');
-      expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to save session state:', expect.any(Error));
+      expect(display.displayError).toHaveBeenCalledWith('Failed to save session state:', expect.any(Error));
     });
 
     it('handles JSON parse errors gracefully', async () => {
