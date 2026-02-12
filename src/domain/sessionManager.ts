@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { deepClone, generateUUID, ONE_HOUR, ONE_MINUTE, type Subscription } from '@datadog/browser-core';
 import { EventManager, EventKind, LifecycleKind, type EndUserActivityEvent } from '../event';
+import type { FormatHooks } from './hooks';
 import { addError, setTimeout } from './telemetry/telemetry';
 import { displayError } from '../tools/display';
 
@@ -40,10 +41,13 @@ export class SessionManager {
   private sessionTimeoutId: ReturnType<typeof setTimeout> | undefined;
   private activitySubscription: Subscription | undefined;
 
-  private constructor(private readonly eventManager: EventManager) {}
+  private constructor(
+    private readonly eventManager: EventManager,
+    private readonly hooks: FormatHooks
+  ) {}
 
-  static async start(eventManager: EventManager): Promise<SessionManager> {
-    const manager = new SessionManager(eventManager);
+  static async start(eventManager: EventManager, hooks: FormatHooks): Promise<SessionManager> {
+    const manager = new SessionManager(eventManager, hooks);
     await manager.initializeSession();
     return manager;
   }
@@ -81,6 +85,8 @@ export class SessionManager {
         this.updateActivity().catch(addError);
       },
     });
+
+    this.registerHooks();
   }
 
   private async createNewSession(): Promise<void> {
@@ -148,6 +154,17 @@ export class SessionManager {
       clearTimeout(this.sessionTimeoutId);
       this.sessionTimeoutId = undefined;
     }
+  }
+
+  // TODO(RUM-14514): attach session that was active at the time of the event start
+  private registerHooks() {
+    this.hooks.registerRum(() => ({
+      session: { id: this.currentSession.id },
+    }));
+
+    this.hooks.registerTelemetry(() => ({
+      session: { id: this.currentSession.id },
+    }));
   }
 }
 
