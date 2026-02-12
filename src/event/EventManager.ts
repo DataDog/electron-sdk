@@ -15,15 +15,15 @@ export class EventManager {
     // Store as EventHandler<Event> - the type guard ensures safety at runtime
     this.handlers.push(handler as unknown as EventHandler<Event>);
     return {
-      unsubscribe: () => this.removeHandler(handler as unknown as EventHandler<Event>),
+      unsubscribe: () => this.removeHandler<T>(handler),
     };
   }
 
   /**
    * Unregisters a handler.
    */
-  removeHandler(handler: EventHandler<Event>) {
-    this.handlers = this.handlers.filter((h) => h !== handler);
+  removeHandler<T extends Event>(handler: EventHandler<T>) {
+    this.handlers = this.handlers.filter((h) => h !== (handler as unknown as EventHandler<Event>));
   }
 
   /**

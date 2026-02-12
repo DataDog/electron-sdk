@@ -110,15 +110,31 @@ describe('EventManager', () => {
     expect(receivedTrack).toBe(EventTrack.LOGS);
   });
 
-  it('should unregister a handler', () => {
+  it('should unregister a handler (through subscription)', () => {
     const eventManager = new EventManager();
     const mockHandler = {
       canHandle: vi.fn().mockReturnValue(true),
       handle: vi.fn(),
     } as unknown as EventHandler<RawEvent>;
 
-    const subscription = eventManager.registerHandler<RawEvent>(mockHandler);
+    const subscription = eventManager.registerHandler(mockHandler);
     subscription.unsubscribe();
+    const event = createRawEvent();
+    eventManager.notify(event);
+
+    expect(mockHandler.canHandle).not.toHaveBeenCalled();
+    expect(mockHandler.handle).not.toHaveBeenCalled();
+  });
+
+  it('should unregister a handler (through API)', () => {
+    const eventManager = new EventManager();
+    const mockHandler = {
+      canHandle: vi.fn().mockReturnValue(true),
+      handle: vi.fn(),
+    } as unknown as EventHandler<RawEvent>;
+
+    eventManager.registerHandler(mockHandler);
+    eventManager.removeHandler(mockHandler);
     const event = createRawEvent();
     eventManager.notify(event);
 
