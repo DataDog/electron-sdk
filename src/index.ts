@@ -5,6 +5,7 @@ import { DummyMainView } from './domain/rum/rum';
 import { SessionManager } from './domain/sessionManager';
 import { EventManager } from './event';
 import { Assembly } from './domain/assembly';
+import { createFormatHooks } from './domain/hooks';
 import { startTelemetry, callMonitored } from './domain/telemetry/telemetry';
 
 export async function init(configuration: InitConfiguration): Promise<boolean> {
@@ -15,11 +16,12 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   }
 
   const eventManager = new EventManager();
+  const hooks = createFormatHooks();
 
   startTelemetry(eventManager, config);
   const sessionManager = await SessionManager.start(eventManager);
 
-  new Assembly(eventManager);
+  new Assembly(eventManager, hooks);
   new Transport(config, eventManager);
   new DummyMainView(config, sessionManager.getSession().id, eventManager);
 
