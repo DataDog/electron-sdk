@@ -1,0 +1,15 @@
+rulesets:
+  - typescript-best-practices:
+    rules:
+      no-console:
+        ignore:
+          - 'e2e/lib/**' # allow console.log from e2e tests framework
+  - typescript-code-style:
+      rules:
+        no-new:
+          ignore:
+            - 'src/index.ts' # allow new for SDK initialization
+
+ignore:
+  - '**/rumEvent.types.ts' # generated
+  - '**/telemetryEvent.types.ts' # generated
