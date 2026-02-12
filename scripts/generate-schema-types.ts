@@ -2,18 +2,19 @@ import { compile } from 'json-schema-to-typescript';
 import { execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { printLog } from './lib/executionUtils.ts';
 
 const SCHEMA_PATH = 'rum-events-format/schemas/rum-events-browser-schema.json';
 const OUTPUT_PATH = 'src/domain/rum/rumEvent.types.ts';
 
 async function generateTypes() {
-  console.log('Reading schema from:', SCHEMA_PATH);
+  printLog('Reading schema from:', SCHEMA_PATH);
 
   // Read the JSON schema
   const schemaContent = fs.readFileSync(SCHEMA_PATH, 'utf-8');
   const schema = JSON.parse(schemaContent);
 
-  console.log('Generating TypeScript types...');
+  printLog('Generating TypeScript types...');
 
   // Generate TypeScript types
   const ts = await compile(schema, 'RumEvent', {
@@ -37,14 +38,14 @@ async function generateTypes() {
   });
 
   // Write to output file
-  console.log('Writing types to:', OUTPUT_PATH);
+  printLog('Writing types to:', OUTPUT_PATH);
   fs.writeFileSync(OUTPUT_PATH, ts);
 
   // Format the generated file with prettier to match project formatting rules
-  console.log('Formatting with prettier...');
+  printLog('Formatting with prettier...');
   execSync(`prettier --write ${OUTPUT_PATH}`, { stdio: 'inherit' });
 
-  console.log('✓ Type generation complete!');
+  printLog('✓ Type generation complete!');
 }
 
 generateTypes().catch((error) => {
