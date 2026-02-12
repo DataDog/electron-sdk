@@ -5,6 +5,7 @@ import { DummyMainView } from './domain/rum/rum';
 import { SessionManager } from './domain/sessionManager';
 import { EventManager } from './event';
 import { Assembly } from './domain/assembly';
+import { registerCommonContext } from './domain/commonContext';
 import { createFormatHooks } from './domain/hooks';
 import { startTelemetry, callMonitored } from './domain/telemetry/telemetry';
 
@@ -18,6 +19,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   const eventManager = new EventManager();
   const hooks = createFormatHooks();
 
+  registerCommonContext(config, hooks);
   startTelemetry(eventManager, config);
   const sessionManager = await SessionManager.start(eventManager);
 
