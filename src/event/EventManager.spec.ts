@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EventManager } from './EventManager';
-import type { EventHandler, RawEvent, ServerEvent } from './types';
-import { EventKind, EventSource, EventTrack } from './constants';
+import type { EventHandler, RawEvent, ServerEvent } from './event.types';
+import { EventKind, EventSource, EventTrack } from './event.constants';
 
 function createRawEvent(overrides: Partial<RawEvent> = {}): RawEvent {
   return {
@@ -108,5 +108,37 @@ describe('EventManager', () => {
 
     expect(receivedSource).toBe(EventSource.MAIN);
     expect(receivedTrack).toBe(EventTrack.LOGS);
+  });
+
+  it('should unregister a handler (through subscription)', () => {
+    const eventManager = new EventManager();
+    const mockHandler = {
+      canHandle: vi.fn().mockReturnValue(true),
+      handle: vi.fn(),
+    } as unknown as EventHandler<RawEvent>;
+
+    const subscription = eventManager.registerHandler(mockHandler);
+    subscription.unsubscribe();
+    const event = createRawEvent();
+    eventManager.notify(event);
+
+    expect(mockHandler.canHandle).not.toHaveBeenCalled();
+    expect(mockHandler.handle).not.toHaveBeenCalled();
+  });
+
+  it('should unregister a handler (through API)', () => {
+    const eventManager = new EventManager();
+    const mockHandler = {
+      canHandle: vi.fn().mockReturnValue(true),
+      handle: vi.fn(),
+    } as unknown as EventHandler<RawEvent>;
+
+    eventManager.registerHandler(mockHandler);
+    eventManager.removeHandler(mockHandler);
+    const event = createRawEvent();
+    eventManager.notify(event);
+
+    expect(mockHandler.canHandle).not.toHaveBeenCalled();
+    expect(mockHandler.handle).not.toHaveBeenCalled();
   });
 });

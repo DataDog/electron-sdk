@@ -1,4 +1,4 @@
-import type { EventKind, EventSource, EventTrack } from './constants';
+import { EventKind, EventSource, EventTrack, LifecycleKind } from './event.constants';
 
 export interface RawEvent {
   kind: typeof EventKind.RAW;
@@ -12,12 +12,13 @@ export interface ServerEvent {
   data: unknown;
 }
 
-export interface LifecyleEvent {
+export interface EndUserActivityEvent {
   kind: typeof EventKind.LIFECYCLE;
-  data: unknown;
+  lifecycle: typeof LifecycleKind.END_USER_ACTIVITY;
 }
 
-export type Event = RawEvent | ServerEvent | LifecyleEvent;
+export type LifecycleEvent = EndUserActivityEvent;
+export type Event = RawEvent | ServerEvent | LifecycleEvent;
 
 export interface EventHandler<T extends Event> {
   canHandle: (event: Event) => event is T;

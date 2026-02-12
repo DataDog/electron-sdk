@@ -148,6 +148,10 @@ export type RumActionEvent = CommonProperties &
            */
           readonly selector?: string;
           /**
+           * Mobile-only: a globally unique and stable identifier for this UI element, computed as the hash of the element's path (32 lowercase hex characters). Used to correlate actions with mobile session replay wireframes.
+           */
+          readonly permanent_id?: string;
+          /**
            * Width of the target element (in pixels)
            */
           readonly width?: number;
@@ -1471,7 +1475,8 @@ export interface CommonProperties {
     | 'react-native'
     | 'roku'
     | 'unity'
-    | 'kotlin-multiplatform';
+    | 'kotlin-multiplatform'
+    | 'electron';
   /**
    * View properties
    */
@@ -1812,7 +1817,8 @@ export interface ViewContainerSchema {
       | 'react-native'
       | 'roku'
       | 'unity'
-      | 'kotlin-multiplatform';
+      | 'kotlin-multiplatform'
+      | 'electron';
     [k: string]: unknown;
   };
   [k: string]: unknown;
@@ -2022,6 +2028,24 @@ export interface ViewPerformanceData {
      * URL of the largest contentful paint element
      */
     resource_url?: string;
+    /**
+     * Sub-parts of the LCP
+     */
+    sub_parts?: {
+      /**
+       * Time between first_byte and the loading start of the resource associated with the LCP
+       */
+      readonly load_delay: number;
+      /**
+       * Time to takes to load the resource attached to the LCP
+       */
+      readonly load_time: number;
+      /**
+       * Time between the LCP resource finishes loading and the LCP element is fully rendered
+       */
+      readonly render_delay: number;
+      [k: string]: unknown;
+    };
     [k: string]: unknown;
   };
   /**

@@ -1,6 +1,4 @@
-import { EventManager } from '../event/EventManager';
-import type { RawEvent, ServerEvent } from '../event/types';
-import { EventKind, EventTrack } from '../event/constants';
+import { EventManager, EventKind, EventTrack, type RawEvent, type ServerEvent } from '../event';
 
 export class Assembly {
   constructor(private eventManager: EventManager) {

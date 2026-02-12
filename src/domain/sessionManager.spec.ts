@@ -6,19 +6,19 @@ vi.mock('electron', () => ({
 }));
 
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
-import { Observable } from '@datadog/browser-core';
 import { SessionManager, SESSION_EXPIRATION_DELAY, SESSION_TIME_OUT_DELAY, SESSION_FILE_NAME } from './sessionManager';
+import { EventManager, EventKind, LifecycleKind } from '../event';
 
 const mfs = mockFs();
 
 describe('sessionManager', () => {
-  let activityObservable: Observable<void>;
+  let eventManager: EventManager;
   let consoleErrorSpy: MockInstance;
   let sessionManager: SessionManager;
 
   beforeEach(() => {
     vi.useFakeTimers();
-    activityObservable = new Observable<void>();
+    eventManager = new EventManager();
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
@@ -33,7 +33,7 @@ describe('sessionManager', () => {
     it('creates new session when no file exists', async () => {
       mfs.access.mockRejectedValue(new Error('ENOENT'));
 
-      sessionManager = await SessionManager.start(activityObservable);
+      sessionManager = await SessionManager.start(eventManager);
 
       expect(sessionManager.getSession().id).toMatch(/^[0-9a-f-]+$/);
       expect(sessionManager.getSession().status).toBe('active');
@@ -54,7 +54,7 @@ describe('sessionManager', () => {
 
       mfs.readFile.mockResolvedValue(JSON.stringify(existingState));
 
-      sessionManager = await SessionManager.start(activityObservable);
+      sessionManager = await SessionManager.start(eventManager);
 
       expect(sessionManager.getSession().id).toBe('existing-session-id');
       expect(sessionManager.getSession().status).toBe('active');
@@ -70,7 +70,7 @@ describe('sessionManager', () => {
 
       mfs.readFile.mockResolvedValue(JSON.stringify(existingState));
 
-      sessionManager = await SessionManager.start(activityObservable);
+      sessionManager = await SessionManager.start(eventManager);
 
       expect(sessionManager.getSession().id).not.toBe('expired-session-id');
       expect(sessionManager.getSession().status).toBe('active');
@@ -86,7 +86,7 @@ describe('sessionManager', () => {
 
       mfs.readFile.mockResolvedValue(JSON.stringify(existingState));
 
-      sessionManager = await SessionManager.start(activityObservable);
+      sessionManager = await SessionManager.start(eventManager);
 
       expect(sessionManager.getSession().id).not.toBe('timed-out-session-id');
       expect(sessionManager.getSession().status).toBe('active');
@@ -97,7 +97,7 @@ describe('sessionManager', () => {
     it('expires session after inactivity delay', async () => {
       mfs.access.mockRejectedValue(new Error('ENOENT'));
 
-      sessionManager = await SessionManager.start(activityObservable);
+      sessionManager = await SessionManager.start(eventManager);
 
       expect(sessionManager.getSession().status).toBe('active');
 
@@ -111,7 +111,7 @@ describe('sessionManager', () => {
       const now = Date.now();
       mfs.access.mockRejectedValue(new Error('ENOENT'));
 
-      sessionManager = await SessionManager.start(activityObservable);
+      sessionManager = await SessionManager.start(eventManager);
 
       const sessionId = sessionManager.getSession().id;
 
@@ -128,7 +128,10 @@ describe('sessionManager', () => {
         })
       );
 
-      activityObservable.notify();
+      eventManager.notify({
+        kind: EventKind.LIFECYCLE,
+        lifecycle: LifecycleKind.END_USER_ACTIVITY,
+      });
       await vi.advanceTimersByTimeAsync(0);
 
       // Advance time again - should not expire yet because timer was reset
@@ -142,7 +145,7 @@ describe('sessionManager', () => {
       const startTime = Date.now();
       mfs.access.mockRejectedValue(new Error('ENOENT'));
 
-      sessionManager = await SessionManager.start(activityObservable);
+      sessionManager = await SessionManager.start(eventManager);
 
       const sessionId = sessionManager.getSession().id;
       expect(sessionId).toBeDefined();
@@ -165,7 +168,10 @@ describe('sessionManager', () => {
               lastActivity: Date.now(),
             })
           );
-          activityObservable.notify();
+          eventManager.notify({
+            kind: EventKind.LIFECYCLE,
+            lifecycle: LifecycleKind.END_USER_ACTIVITY,
+          });
           await vi.advanceTimersByTimeAsync(0);
         }
       }
@@ -183,7 +189,7 @@ describe('sessionManager', () => {
     it('creates new session on activity when expired', async () => {
       mfs.access.mockRejectedValue(new Error('ENOENT'));
 
-      sessionManager = await SessionManager.start(activityObservable);
+      sessionManager = await SessionManager.start(eventManager);
 
       const originalSessionId = sessionManager.getSession().id;
       expect(sessionManager.getSession().status).toBe('active');
@@ -194,7 +200,10 @@ describe('sessionManager', () => {
       expect(sessionManager.getSession().id).toBe(originalSessionId);
 
       // Trigger activity on expired session
-      activityObservable.notify();
+      eventManager.notify({
+        kind: EventKind.LIFECYCLE,
+        lifecycle: LifecycleKind.END_USER_ACTIVITY,
+      });
       await vi.advanceTimersByTimeAsync(0);
 
       // Should have a new session with active status
@@ -208,7 +217,7 @@ describe('sessionManager', () => {
       mfs.access.mockResolvedValue(undefined);
       mfs.readFile.mockRejectedValue(new Error('Read error'));
 
-      sessionManager = await SessionManager.start(activityObservable);
+      sessionManager = await SessionManager.start(eventManager);
 
       // Should create a new session despite read error
 
@@ -219,7 +228,7 @@ describe('sessionManager', () => {
       mfs.access.mockRejectedValue(new Error('ENOENT'));
       mfs.writeFile.mockRejectedValue(new Error('Write error'));
 
-      sessionManager = await SessionManager.start(activityObservable);
+      sessionManager = await SessionManager.start(eventManager);
 
       // Session should still be created in memory
 
@@ -231,7 +240,7 @@ describe('sessionManager', () => {
       mfs.access.mockResolvedValue(undefined);
       mfs.readFile.mockResolvedValue('invalid json');
 
-      sessionManager = await SessionManager.start(activityObservable);
+      sessionManager = await SessionManager.start(eventManager);
 
       // Should create a new session despite parse error
 
@@ -243,7 +252,7 @@ describe('sessionManager', () => {
     it('should not allow to mutate the current session', async () => {
       mfs.access.mockRejectedValue(new Error('ENOENT'));
 
-      sessionManager = await SessionManager.start(activityObservable);
+      sessionManager = await SessionManager.start(eventManager);
 
       const session = sessionManager.getSession();
       session.id = 'new-id';

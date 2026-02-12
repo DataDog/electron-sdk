@@ -12,5 +12,9 @@ export const EventTrack = {
 export const EventKind = {
   RAW: 'raw',
   SERVER: 'server',
-  LIFECYCLE: 'lifecyle',
+  LIFECYCLE: 'lifecycle',
+} as const;
+
+export const LifecycleKind = {
+  END_USER_ACTIVITY: 'end_user_activity',
 } as const;

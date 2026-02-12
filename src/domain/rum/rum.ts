@@ -1,8 +1,7 @@
-import type { Configuration } from '../config';
-import type { RumViewEvent } from '../rumEvent.types';
-import { EventKind, EventSource } from '../event/constants';
+import type { Configuration } from '../../config';
+import type { RumViewEvent } from './rumEvent.types';
 import { generateUUID } from '@datadog/browser-core';
-import { EventManager } from '../event/EventManager';
+import { EventManager, EventKind, EventSource } from '../../event';
 
 export class DummyMainView {
   constructor(
@@ -22,7 +21,7 @@ function createDummyViewEvent(config: Configuration, sessionId: string): RumView
   return {
     type: 'view',
     date: timestamp,
-    source: 'browser', // TODO: use electron RUM-13964
+    source: 'electron',
     service: config.service,
     session: {
       id: sessionId,

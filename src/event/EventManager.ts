@@ -1,4 +1,4 @@
-import type { Event, EventHandler } from './types';
+import type { Event, EventHandler } from './event.types';
 
 /**
  * Manages event routing through registered handlers.
@@ -14,6 +14,16 @@ export class EventManager {
   registerHandler<T extends Event>(handler: EventHandler<T>) {
     // Store as EventHandler<Event> - the type guard ensures safety at runtime
     this.handlers.push(handler as unknown as EventHandler<Event>);
+    return {
+      unsubscribe: () => this.removeHandler<T>(handler),
+    };
+  }
+
+  /**
+   * Unregisters a handler.
+   */
+  removeHandler<T extends Event>(handler: EventHandler<T>) {
+    this.handlers = this.handlers.filter((h) => h !== (handler as unknown as EventHandler<Event>));
   }
 
   /**

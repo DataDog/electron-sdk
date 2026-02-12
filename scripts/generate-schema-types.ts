@@ -4,7 +4,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 const SCHEMA_PATH = 'rum-events-format/schemas/rum-events-browser-schema.json';
-const OUTPUT_PATH = 'src/rumEvent.types.ts';
+const OUTPUT_PATH = 'src/domain/rum/rumEvent.types.ts';
 
 async function generateTypes() {
   console.log('Reading schema from:', SCHEMA_PATH);
