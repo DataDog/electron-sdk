@@ -1,12 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EventManager } from './EventManager';
 import type { EventHandler, RawEvent, ServerEvent } from './event.types';
-import { EventKind, EventSource, EventTrack } from './event.constants';
+import { EventFormat, EventKind, EventSource, EventTrack } from './event.constants';
 
 function createRawEvent(overrides: Partial<RawEvent> = {}): RawEvent {
   return {
     kind: EventKind.RAW,
     source: EventSource.RENDERER,
+    format: EventFormat.RUM,
     data: {},
     ...overrides,
   };

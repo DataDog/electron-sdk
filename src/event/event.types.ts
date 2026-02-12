@@ -1,8 +1,9 @@
-import { EventKind, EventSource, EventTrack, LifecycleKind } from './event.constants';
+import { EventFormat, EventKind, EventSource, EventTrack, LifecycleKind } from './event.constants';
 
 export interface RawEvent {
   kind: typeof EventKind.RAW;
   source: (typeof EventSource)[keyof typeof EventSource];
+  format: (typeof EventFormat)[keyof typeof EventFormat];
   data: unknown;
 }
 

@@ -10,7 +10,7 @@ import {
 } from '@datadog/browser-core/cjs/tools/monitor';
 import type { Configuration } from '../../config';
 import type { TelemetryErrorEvent } from './telemetryEvent.types';
-import { EventKind, EventSource, EventManager, SessionRenewEvent, LifecycleKind } from '../../event';
+import { EventKind, EventSource, EventManager, SessionRenewEvent, LifecycleKind, EventFormat } from '../../event';
 
 export { monitor, callMonitored };
 
@@ -51,6 +51,7 @@ class Telemetry {
     this.eventManager.notify({
       kind: EventKind.RAW,
       source: EventSource.MAIN,
+      format: EventFormat.TELEMETRY,
       data,
     });
   }

@@ -1,7 +1,7 @@
 import type { Configuration } from '../../config';
 import type { RumViewEvent } from './rumEvent.types';
 import { generateUUID } from '@datadog/browser-core';
-import { EventManager, EventKind, EventSource } from '../../event';
+import { EventManager, EventKind, EventSource, EventFormat } from '../../event';
 
 export class DummyMainView {
   constructor(
@@ -10,7 +10,12 @@ export class DummyMainView {
     private eventManager: EventManager
   ) {
     const viewEvent = createDummyViewEvent(this.config, this.sessionId);
-    this.eventManager.notify({ kind: EventKind.RAW, source: EventSource.MAIN, data: viewEvent });
+    this.eventManager.notify({
+      kind: EventKind.RAW,
+      source: EventSource.MAIN,
+      format: EventFormat.RUM,
+      data: viewEvent,
+    });
   }
 }
 
