@@ -78,7 +78,9 @@ export class SessionManager {
         event.kind === EventKind.LIFECYCLE && event.lifecycle === LifecycleKind.END_USER_ACTIVITY,
       handle: () => {
         // TODO(RUM-14244) monitor instead of catch
-        this.updateActivity().catch(() => {});
+        this.updateActivity().catch(() => {
+          /* empty */
+        });
       },
     });
   }
@@ -102,7 +104,9 @@ export class SessionManager {
     this.clearTimers();
     this.currentSession.status = 'expired';
     // TODO(RUM-14244) monitor instead of catch
-    deleteSessionFile().catch(() => {});
+    deleteSessionFile().catch(() => {
+      /* empty */
+    });
   }
 
   private async updateActivity(): Promise<void> {

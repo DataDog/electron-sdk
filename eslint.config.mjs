@@ -9,10 +9,19 @@ const forceBarrelImports = require('eslint-plugin-force-barrel-imports');
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/node_modules/**', 'coverage/**', '*.mjs', 'rum-events-format/**'],
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      'coverage/**',
+      '*.mjs',
+      'rum-events-format/**',
+      '**/rumEvent.types.ts',
+      '**/telemetryEvent.types.ts',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
+  ...tseslint.configs.stylistic,
   {
     languageOptions: {
       parserOptions: {
@@ -31,19 +40,19 @@ export default tseslint.config(
       },
     },
     rules: {
+      'unicorn/prefer-node-protocol': 'error',
+      'force-barrel-imports/force-barrel-imports': 'error',
+    },
+  },
+  // Release some rules outside of source code
+  {
+    files: ['e2e/**/*.ts', 'playground/**/*.ts', 'scripts/**/*.ts'],
+    rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-argument': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
-      'unicorn/prefer-node-protocol': 'error',
-      'force-barrel-imports/force-barrel-imports': 'error',
-    },
-  },
-  // Disable barrel imports rule for e2e and playground (separate projects with their own structure)
-  {
-    files: ['e2e/**/*.ts', 'playground/**/*.ts'],
-    rules: {
       'force-barrel-imports/force-barrel-imports': 'off',
     },
   },

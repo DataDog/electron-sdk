@@ -39,7 +39,7 @@ function validateRequiredString(value: unknown, fieldName: string): string | und
 }
 
 function validateSite(value: unknown): string | undefined {
-  if (typeof value !== 'string' || value.length === 0 || !VALID_DATADOG_SITES.includes(value as any)) {
+  if (typeof value !== 'string' || value.length === 0 || !(VALID_DATADOG_SITES as readonly string[]).includes(value)) {
     displayError(`Configuration error: 'site' must be one of: ${VALID_DATADOG_SITES.join(', ')}`);
     return undefined;
   }
