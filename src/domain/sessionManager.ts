@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { deepClone, generateUUID, ONE_HOUR, ONE_MINUTE, type Subscription } from '@datadog/browser-core';
 import { EventManager, EventKind, LifecycleKind, type EndUserActivityEvent } from '../event';
 import type { FormatHooks } from './hooks';
-import { addError, setTimeout } from './telemetry/telemetry';
+import { addError, setTimeout } from './telemetry';
 import { displayError } from '../tools/display';
 
 export const SESSION_TIME_OUT_DELAY = 4 * ONE_HOUR;

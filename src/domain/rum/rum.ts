@@ -1,5 +1,6 @@
 import { generateUUID } from '@datadog/browser-core';
-import { EventManager, EventKind, EventSource, EventFormat } from '../../event';
+import { EventFormat, EventKind, EventManager, EventSource } from '../../event';
+import { RawRumView } from './rawRumData.types';
 
 export class DummyMainView {
   constructor(private eventManager: EventManager) {
@@ -12,7 +13,7 @@ export class DummyMainView {
   }
 }
 
-function createDummyViewEvent() {
+function createDummyViewEvent(): RawRumView {
   return {
     type: 'view',
     view: {

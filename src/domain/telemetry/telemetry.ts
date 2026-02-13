@@ -10,6 +10,7 @@ import {
 } from '@datadog/browser-core/cjs/tools/monitor';
 import type { Configuration } from '../../config';
 import { EventKind, EventSource, EventManager, SessionRenewEvent, LifecycleKind, EventFormat } from '../../event';
+import { RawTelemetryError } from './rawTelemetryData.types';
 
 export { monitor, callMonitored };
 
@@ -60,7 +61,7 @@ class Telemetry {
     this.sessionRenewSubscription?.unsubscribe();
   }
 
-  private createErrorEvent(error: unknown) {
+  private createErrorEvent(error: unknown): RawTelemetryError {
     const { message, stack, kind } = formatError(error);
     return {
       type: 'telemetry',

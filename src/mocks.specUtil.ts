@@ -1,6 +1,8 @@
 import { type MockInstance, vi } from 'vitest';
 import * as fs from 'node:fs/promises';
 import type { Configuration } from './config';
+import { RawRumView } from './domain/rum';
+import { mergeInto, RecursivePartial } from '@datadog/browser-core';
 
 export function mockFs() {
   vi.mock('node:fs/promises', () => ({
@@ -32,4 +34,22 @@ export function createTestConfiguration(overrides: Partial<Configuration> = {}):
     telemetrySampleRate: 100,
     ...overrides,
   };
+}
+export function createRawRumView(overrides?: RecursivePartial<RawRumView>): RawRumView {
+  return mergeInto(
+    {
+      type: 'view' as const,
+      view: {
+        id: '1',
+        name: 'name',
+        url: 'url',
+        time_spent: 0,
+        action: { count: 0 },
+        error: { count: 0 },
+        resource: { count: 0 },
+      },
+      _dd: { document_version: 1 },
+    },
+    overrides
+  );
 }

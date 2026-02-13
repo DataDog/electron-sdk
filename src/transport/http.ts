@@ -1,6 +1,6 @@
 import { EventManager, EventKind, type ServerEvent } from '../event';
 import { Configuration } from '../config';
-import { addError } from '../domain/telemetry/telemetry';
+import { addError } from '../domain/telemetry';
 
 export class Transport {
   constructor(

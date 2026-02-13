@@ -2,16 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { addError, callMonitored, monitor, startTelemetry, stopTelemetry } from './telemetry';
 import { createTestConfiguration } from '../../mocks.specUtil';
 import { EventManager, RawEvent, EventKind, LifecycleKind } from '../../event';
-
-interface RawTelemetryData {
-  type: 'telemetry';
-  telemetry: {
-    type: 'log';
-    status: 'error';
-    message: string;
-    error?: { stack?: string; kind?: string };
-  };
-}
+import { RawTelemetryData } from './rawTelemetryData.types';
 
 describe('telemetry', () => {
   let eventManager: EventManager;
