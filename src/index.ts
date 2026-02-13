@@ -21,11 +21,11 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   registerCommonContext(config, hooks);
   startTelemetry(eventManager, config);
-  const sessionManager = await SessionManager.start(eventManager, hooks);
+  await SessionManager.start(eventManager, hooks);
 
   new Assembly(eventManager, hooks);
   new Transport(config, eventManager);
-  new DummyMainView(config, sessionManager.getSession().id, eventManager);
+  new DummyMainView(eventManager);
 
   return true;
 }
