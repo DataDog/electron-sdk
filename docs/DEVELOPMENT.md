@@ -1,18 +1,6 @@
 # Development Guide
 
-Key architectural decisions for developers and AI agents working on this project.
-
-## Documentation Policy
-
-When making changes that impact development workflows or architecture, update the relevant section in this document. This includes:
-
-- Build system changes
-- New directory structures or conventions
-- Testing infrastructure updates
-- Dependency management processes
-- Module system or TypeScript configuration changes
-
-**Keep it concise**: Document the essential information only. Prefer command examples and brief explanations over lengthy descriptions. Skip obvious details and implementation rationale unless critical for understanding.
+Development workflow, coding conventions, and build configuration.
 
 ## Development Workflow
 
@@ -32,29 +20,6 @@ Before committing changes, the pre-commit hook automatically runs format and lin
 - **Build**: `yarn build` - Verify the SDK builds correctly
 - **Unit tests**: `yarn test:unit` - For SDK code changes
 - **E2E tests**: `yarn test:e2e:init && yarn test:e2e` - For integration testing
-
-## Script Guidelines
-
-### Script Preferences
-
-When adding automation scripts to the project:
-
-1. **Prefer Node.js scripts** over bash scripts for:
-   - Complex logic and error handling
-   - Cross-platform compatibility
-   - TypeScript integration
-   - JSON/data processing
-
-2. **Bash scripts belong in `scripts/cli`**:
-   - All bash scripts should be implemented as commands in `scripts/cli`
-   - Use `cmd_<name>` function pattern for new commands
-   - Accessible via `scripts/cli <command>` or `yarn` scripts
-   - Example: `scripts/cli build_fork` or `yarn postinstall`
-
-3. **Examples**:
-   - ✅ Node.js: `scripts/generate-schema-types.ts` (complex JSON processing)
-   - ✅ CLI command: `scripts/cli build_fork` (build automation)
-   - ❌ Standalone bash: `scripts/build-fork.sh` (should be in CLI instead)
 
 ## Coding Guidelines
 
@@ -99,6 +64,11 @@ Prefer utilities from `@datadog/browser-core` over custom implementations:
 ```typescript
 import { generateUUID, Observable, ONE_MINUTE } from '@datadog/browser-core';
 ```
+
+### Import Conventions
+
+- **`node:` protocol** for Node.js builtins (enforced by `unicorn/prefer-node-protocol`)
+- **Barrel imports** when an `index.ts` exists (enforced by `force-barrel-imports`)
 
 ## Build System
 
@@ -177,17 +147,3 @@ Two watchers handle different reload scenarios:
 Grace periods prevent reload loops during initial TypeScript compilation.
 
 No watching of HTML changes for now to avoid extra complexity.
-
-## E2E Testing
-
-### Directory Structure
-
-- **e2e/app/**: Minimal Electron app used as test fixture (main, preload, renderer)
-- **e2e/lib/**: Shared test utilities
-  - `helpers.ts`: Playwright fixtures for app launch/cleanup
-  - `intake.ts`: Local HTTP server that captures RUM events sent by the SDK for testing
-- **e2e/scenarios/**: Test files using Playwright
-
-Tests import custom `test` and `expect` from `lib/helpers.ts` for automatic app lifecycle management.
-
-The intake server runs on a dynamic port (OS-assigned) to avoid conflicts and integrates via Playwright fixture for automatic lifecycle management.
