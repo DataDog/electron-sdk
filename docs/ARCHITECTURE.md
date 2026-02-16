@@ -18,9 +18,9 @@ The `EventManager` provides a handler-based pipeline for processing events.
 
 ### Event Kinds
 
-- **`RawEvent`** — Emitted by domain code (e.g., `DummyMainView`), contains event-specific data and a source (`MAIN` | `RENDERER`).
+- **`RawEvent`** — Emitted by domain code, contains event-specific data, a source (`MAIN` | `RENDERER`), and a format (`RUM` | `TELEMETRY`).
 - **`ServerEvent`** — Ready for transport, tagged with a track (`RUM` | `LOGS`).
-- **`LifecycleEvent`** — Internal signals (e.g., `END_USER_ACTIVITY`), not sent to intake.
+- **`LifecycleEvent`** — Internal signals (e.g., `END_USER_ACTIVITY`, `SESSION_RENEW`), not sent to intake.
 
 ### Handler Pattern
 
@@ -31,3 +31,29 @@ RawEvent → [Assembly handler] → ServerEvent → [Transport handler] → HTTP
 ```
 
 See `src/event/` and `src/domain/assembly.ts`.
+
+## Assembly and Format Hooks
+
+The `Assembly` handler transforms `RawEvent` into `ServerEvent` by enriching raw data with contextual properties via format hooks.
+
+### Format Hooks
+
+`createFormatHooks()` creates per-format hook pairs (`registerRum`/`triggerRum`, `registerTelemetry`/`triggerTelemetry`). Each hook callback can return:
+
+- **Partial data** — merged into the event via `combine()`
+- **`DISCARDED`** — drops the event entirely
+- **`SKIPPED`** — this callback has nothing to contribute
+
+Hooks are used by different parts of the SDK to attach their context (e.g., `registerCommonContext` adds `session`, `application`, `service`; `sessionManager` adds `session.id`).
+
+See `src/domain/hooks/` and `src/domain/commonContext.ts`.
+
+## SDK Telemetry
+
+Internal observability for the SDK itself. Captures SDK errors and sends them as telemetry events.
+
+- **Sampling**: controlled by `telemetrySampleRate` config (default: 100), evaluated once per session via `performDraw()`.
+- **Rate limiting**: max 100 telemetry events per session, counter resets on `SESSION_RENEW`.
+- **Error collection**: `startMonitorErrorCollection` captures uncaught errors; `monitor()`/`callMonitored()` wrappers catch errors in callbacks.
+
+See `src/domain/telemetry/`.
