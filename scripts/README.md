@@ -1,5 +1,17 @@
 # Scripts
 
+## Directory Structure
+
+```
+scripts/
+├── *.ts              # Top-level scripts (entry points)
+├── lib/              # Shared utilities
+│   ├── command.ts    # Shell-injection-safe command runner
+│   ├── executionUtils.ts  # runMain, printLog, printError
+│   └── filesUtils.ts     # findPackageJsonFiles
+└── cli               # Bash commands (cmd_<name> pattern)
+```
+
 ## Preferences
 
 When adding automation scripts to the project:
@@ -20,3 +32,28 @@ When adding automation scripts to the project:
    - ✅ Node.js: `scripts/generate-schema-types.ts` (complex JSON processing)
    - ✅ CLI command: `scripts/cli build_fork` (build automation)
    - ❌ Standalone bash: `scripts/build-fork.sh` (should be in CLI instead)
+
+## Basic TypeScript Scripts Structure
+
+All scripts follow this pattern:
+
+```typescript
+import { printLog, runMain } from './lib/executionUtils.ts';
+import { command } from './lib/command.ts';
+
+runMain(async () => {
+  printLog('Starting task...');
+
+  // Script logic here
+  command`yarn build`.run();
+
+  printLog('Task completed.');
+});
+```
+
+**Key conventions:**
+
+- Use `runMain()` wrapper for proper async handling and error reporting
+- Use `printLog()` for console output
+- Use `command` template literal for shell commands
+- Import with `.ts` extension (required for Node.js ESM)
