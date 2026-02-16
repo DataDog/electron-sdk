@@ -2,6 +2,34 @@
 
 SDK design patterns and event pipeline.
 
+## Overview
+
+```mermaid
+flowchart LR
+    subgraph Sources
+        RUM[RUM domain]
+        TEL[Telemetry]
+    end
+
+    subgraph Assembly
+        HOOKS{Format Hooks}
+        COMBINE[combine]
+    end
+
+    subgraph "Hook Providers"
+        CC[commonContext]
+        SM[sessionManager]
+    end
+
+    RUM -- RawRumEvent --> COMBINE
+    TEL -- RawTelemetryEvent --> COMBINE
+    CC -. "application.id, service, ..." .-> HOOKS
+    SM -. "session.id" .-> HOOKS
+    HOOKS --> COMBINE
+    COMBINE -- ServerEvent --> TRP[Transport]
+    TRP --> INT[HTTP intake]
+```
+
 ## Two-Tier Configuration
 
 `InitConfiguration` (user API) → `buildConfiguration()` → `Configuration` (internal, validated).
@@ -24,11 +52,7 @@ The `EventManager` provides a handler-based pipeline for processing events.
 
 ### Handler Pattern
 
-Handlers register on `EventManager` with `canHandle` (type guard) and `handle` (processing + optional `notify` callback to emit derived events):
-
-```
-RawEvent → [Assembly handler] → ServerEvent → [Transport handler] → HTTP intake
-```
+Handlers register on `EventManager` with `canHandle` (type guard) and `handle` (processing + optional `notify` callback to emit derived events).
 
 See `src/event/` and `src/domain/assembly.ts`.
 
