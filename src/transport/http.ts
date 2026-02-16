@@ -1,6 +1,6 @@
 import { EventManager, EventKind, type ServerEvent } from '../event';
 import { Configuration } from '../config';
-import { displayError } from '../tools/display';
+import { addError } from '../domain/telemetry/telemetry';
 
 export class Transport {
   constructor(
@@ -10,9 +10,7 @@ export class Transport {
     this.eventManager.registerHandler<ServerEvent>({
       canHandle: (event) => event.kind === EventKind.SERVER,
       handle: (event) => {
-        sendEvent(this.config, event).catch((error) => {
-          displayError('Failed to send event:', error);
-        });
+        sendEvent(this.config, event).catch(addError);
       },
     });
   }

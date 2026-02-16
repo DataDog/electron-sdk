@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import { init } from '@datadog/electron-sdk';
+import { init, _generateTelemetryError } from '@datadog/electron-sdk';
 import { loadWindowState, saveWindowState } from './main/windowState';
 import { setupHotReload } from './main/hotReload';
 
@@ -66,6 +66,11 @@ ipcMain.handle('clear-session-file', () => {
   } catch (error) {
     console.error('Error deleting session file:', error);
   }
+});
+
+// IPC handler to generate telemetry error
+ipcMain.handle('generateTelemetryError', () => {
+  _generateTelemetryError();
 });
 
 void app.whenReady().then(async () => {

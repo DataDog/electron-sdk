@@ -17,7 +17,12 @@ export interface EndUserActivityEvent {
   lifecycle: typeof LifecycleKind.END_USER_ACTIVITY;
 }
 
-export type LifecycleEvent = EndUserActivityEvent;
+export interface SessionRenewEvent {
+  kind: typeof EventKind.LIFECYCLE;
+  lifecycle: typeof LifecycleKind.SESSION_RENEW;
+}
+
+export type LifecycleEvent = EndUserActivityEvent | SessionRenewEvent;
 export type Event = RawEvent | ServerEvent | LifecycleEvent;
 
 export interface EventHandler<T extends Event> {

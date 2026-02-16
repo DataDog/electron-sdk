@@ -42,6 +42,7 @@ export const test = base.extend<TestFixtures>({
       applicationId: 'e2e-test-app-id',
       env: 'test',
       version: '1.0.0',
+      telemetrySampleRate: 100,
     };
     env.DD_SDK_CONFIG = JSON.stringify(config);
 
@@ -55,13 +56,16 @@ export const test = base.extend<TestFixtures>({
     await electronApp.close();
   },
 
-  window: async ({ electronApp }, use) => {
-    const window = await electronApp.firstWindow();
-    window.on('console', (msg) => console.log('Browser console:', msg.text()));
-    await window.waitForLoadState('load');
-    await window.waitForTimeout(500);
-    await use(window);
-  },
+  window: [
+    async ({ electronApp }, use) => {
+      const window = await electronApp.firstWindow();
+      window.on('console', (msg) => console.log('Browser console:', msg.text()));
+      await window.waitForLoadState('load');
+      await window.waitForTimeout(500);
+      await use(window);
+    },
+    { auto: true },
+  ],
 });
 
 export { expect } from '@playwright/test';
