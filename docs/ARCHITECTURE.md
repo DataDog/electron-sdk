@@ -30,16 +30,6 @@ flowchart LR
     TRP --> INT[HTTP intake]
 ```
 
-## Two-Tier Configuration
-
-`InitConfiguration` (user API) → `buildConfiguration()` → `Configuration` (internal, validated).
-
-- **Required fields** (e.g. `clientToken`): validation returns `undefined` to signal initialization should abort — no exceptions thrown.
-- **Optional fields** (e.g. `env`): invalid values silently fall back to `undefined`.
-- **Derived fields** (e.g. `intakeUrl`): computed from validated inputs during `buildConfiguration()`.
-
-See `src/config.ts`.
-
 ## Event Pipeline
 
 The `EventManager` provides a handler-based pipeline for processing events.
@@ -81,3 +71,13 @@ Internal observability for the SDK itself. Captures SDK errors and sends them as
 - **Error collection**: `startMonitorErrorCollection` captures uncaught errors; `monitor()`/`callMonitored()` wrappers catch errors in callbacks.
 
 See `src/domain/telemetry/`.
+
+## Two-Tier Configuration
+
+`InitConfiguration` (user API) → `buildConfiguration()` → `Configuration` (internal, validated).
+
+- **Required fields** (e.g. `clientToken`): validation returns `undefined` to signal initialization should abort — no exceptions thrown.
+- **Optional fields** (e.g. `env`): invalid values silently fall back to `undefined`.
+- **Derived fields** (e.g. `intakeUrl`): computed from validated inputs during `buildConfiguration()`.
+
+See `src/config.ts`.
