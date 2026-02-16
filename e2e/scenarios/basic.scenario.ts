@@ -6,10 +6,8 @@ test('SDK initialization with default config', async ({ window }) => {
   await expect(statusDiv).toContainText('SDK initialized');
 });
 
-test('SDK sends RUM view event to intake', async ({ window, intake }) => {
-  await window.waitForTimeout(1000);
-
-  const events = intake.getEvents();
+test('SDK sends RUM view event to intake', async ({ intake }) => {
+  const events = await intake.getEventsByType('view');
   expect(events).toHaveLength(1);
 
   const event = events[0];

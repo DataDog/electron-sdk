@@ -1,6 +1,8 @@
 declare global {
   interface Window {
-    electronAPI: Record<string, never>;
+    electronAPI: {
+      generateTelemetryError: () => Promise<void>;
+    };
   }
 }
 

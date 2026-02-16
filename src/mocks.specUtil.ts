@@ -1,5 +1,6 @@
 import { type MockInstance, vi } from 'vitest';
 import * as fs from 'node:fs/promises';
+import type { Configuration } from './config';
 
 export function mockFs() {
   vi.mock('node:fs/promises', () => ({
@@ -21,4 +22,14 @@ export function mockFs() {
     },
   };
   return mocks;
+}
+export function createTestConfiguration(overrides: Partial<Configuration> = {}): Configuration {
+  return {
+    service: 'test-service',
+    clientToken: 'test-token',
+    applicationId: 'test-app-id',
+    intakeUrl: 'https://test-intake.com',
+    telemetrySampleRate: 100,
+    ...overrides,
+  };
 }

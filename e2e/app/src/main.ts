@@ -1,14 +1,19 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import { join } from 'node:path';
-import { init, type InitConfiguration } from '@datadog/electron-sdk';
+import { init, _generateTelemetryError, type InitConfiguration } from '@datadog/electron-sdk';
 
 let mainWindow: BrowserWindow | null = null;
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
   const config = getConfiguration();
   console.log('Initializing SDK with config:', config);
-  const initialized = init(config);
+  const initialized = await init(config);
   console.log('SDK initialized:', initialized);
+
+  ipcMain.handle('generateTelemetryError', () => {
+    _generateTelemetryError();
+  });
+
   createWindow();
 });
 

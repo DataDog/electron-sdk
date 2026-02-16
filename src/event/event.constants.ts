@@ -17,4 +17,5 @@ export const EventKind = {
 
 export const LifecycleKind = {
   END_USER_ACTIVITY: 'end_user_activity',
+  SESSION_RENEW: 'session_renew',
 } as const;

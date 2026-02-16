@@ -231,6 +231,52 @@ describe('buildConfiguration', () => {
     });
   });
 
+  describe('telemetrySampleRate validation', () => {
+    it('defaults to 20 when not provided', () => {
+      const config = { ...DEFAULT_CONFIG };
+
+      const result = buildConfiguration(config);
+
+      expect(result?.telemetrySampleRate).toBe(20);
+    });
+
+    it.each([0, 50, 100])('accepts valid value: %d', (value) => {
+      const config = { ...DEFAULT_CONFIG, telemetrySampleRate: value };
+
+      const result = buildConfiguration(config);
+
+      expect(result?.telemetrySampleRate).toBe(value);
+    });
+
+    it.each([
+      { value: -1, description: 'negative number' },
+      { value: 101, description: 'greater than 100' },
+      { value: 'fifty', description: 'non-number string' },
+      { value: {}, description: 'object' },
+    ])('logs error and uses default when $description', ({ value }) => {
+      const config = { ...DEFAULT_CONFIG, telemetrySampleRate: value } as unknown as InitConfiguration;
+
+      const result = buildConfiguration(config);
+
+      expect(result?.telemetrySampleRate).toBe(20);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "Configuration error: 'telemetrySampleRate' must be a number between 0 and 100"
+      );
+    });
+
+    it.each([
+      { value: null, description: 'null' },
+      { value: undefined, description: 'undefined' },
+    ])('defaults to 20 when $description (no error)', ({ value }) => {
+      const config = { ...DEFAULT_CONFIG, telemetrySampleRate: value } as unknown as InitConfiguration;
+
+      const result = buildConfiguration(config);
+
+      expect(result?.telemetrySampleRate).toBe(20);
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+    });
+  });
+
   describe('intakeUrl computation', () => {
     it('uses proxy when provided (proxy takes precedence)', () => {
       const config = {
