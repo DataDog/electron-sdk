@@ -82,7 +82,7 @@ __metadata:
   resolution: "@datadog/electron-sdk@workspace:."
   dependencies:
     "@datadog/browser-core": "npm:6.26.0"
-    "@eslint/js": "npm:9.39.2"
+    "@eslint/js": "npm:10.0.0"
     "@playwright/test": "npm:1.55.1"
     "@rollup/plugin-commonjs": "npm:28.0.2"
     "@rollup/plugin-node-resolve": "npm:16.0.0"
@@ -405,6 +405,13 @@ __metadata:
     minimatch: "npm:^3.1.2"
     strip-json-comments: "npm:^3.1.1"
   checksum: 10c0/532c7acc7ddd042724c28b1f020bd7bf148fcd4653bb44c8314168b5f772508c842ce4ee070299cac51c5c5757d2124bdcfcef5551c8c58ff9986e3e17f2260d
+  languageName: node
+  linkType: hard
+
+"@eslint/js@npm:10.0.0":
+  version: 10.0.0
+  resolution: "@eslint/js@npm:10.0.0"
+  checksum: 10c0/4e209a56b9813d5a198f48bbf012e8f9c5103b0e2abd09a47a8915f06954921be6aad2ed0e1d0940b81aa750c3d5f141fc81581b022a74318c08d37c3db79a1e
   languageName: node
   linkType: hard
 
