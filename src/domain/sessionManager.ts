@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { deepClone, generateUUID, ONE_HOUR, ONE_MINUTE, type Subscription } from '@datadog/browser-core';
 import { EventManager, EventKind, LifecycleKind, type EndUserActivityEvent } from '../event';
 import { addError, setTimeout } from './telemetry/telemetry';
+import { displayError } from '../tools/display';
 
 export const SESSION_TIME_OUT_DELAY = 4 * ONE_HOUR;
 export const SESSION_EXPIRATION_DELAY = 15 * ONE_MINUTE;
@@ -176,7 +177,7 @@ async function saveSessionState(state: SessionState): Promise<void> {
     const filePath = getSessionFilePath();
     await fs.writeFile(filePath, JSON.stringify(state), 'utf-8');
   } catch (error) {
-    console.error('Failed to save session state:', error);
+    displayError('Failed to save session state:', error);
   }
 }
 

@@ -2,6 +2,7 @@ import { compile } from 'json-schema-to-typescript';
 import { execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { printLog } from './lib/executionUtils.ts';
 
 interface SchemaConfig {
   schemaPath: string;
@@ -23,13 +24,13 @@ const SCHEMAS: SchemaConfig[] = [
 ];
 
 async function generateTypesForSchema(config: SchemaConfig) {
-  console.log(`Reading schema from: ${config.schemaPath}`);
+  printLog(`Reading schema from: ${config.schemaPath}`);
 
   // Read the JSON schema
   const schemaContent = fs.readFileSync(config.schemaPath, 'utf-8');
   const schema = JSON.parse(schemaContent);
 
-  console.log(`Generating TypeScript types for ${config.typeName}...`);
+  printLog(`Generating TypeScript types for ${config.typeName}...`);
 
   // Generate TypeScript types
   const ts = await compile(schema, config.typeName, {
@@ -53,11 +54,11 @@ async function generateTypesForSchema(config: SchemaConfig) {
   });
 
   // Write to output file
-  console.log(`Writing types to: ${config.outputPath}`);
+  printLog(`Writing types to: ${config.outputPath}`);
   fs.writeFileSync(config.outputPath, ts);
 
   // Format the generated file with prettier to match project formatting rules
-  console.log('Formatting with prettier...');
+  printLog('Formatting with prettier...');
   execSync(`prettier --write ${config.outputPath}`, { stdio: 'inherit' });
 }
 
@@ -65,7 +66,7 @@ async function generateTypes() {
   for (const config of SCHEMAS) {
     await generateTypesForSchema(config);
   }
-  console.log('✓ Type generation complete!');
+  printLog('✓ Type generation complete!');
 }
 
 generateTypes().catch((error) => {

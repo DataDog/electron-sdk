@@ -1,3 +1,5 @@
+import { displayError } from './tools/display';
+
 const VALID_DATADOG_SITES = [
   'datadoghq.com',
   'datadoghq.eu',
@@ -32,15 +34,15 @@ export interface Configuration {
 
 function validateRequiredString(value: unknown, fieldName: string): string | undefined {
   if (typeof value !== 'string' || value.length === 0) {
-    console.error(`Configuration error: '${fieldName}' must be a non-empty string`);
+    displayError(`Configuration error: '${fieldName}' must be a non-empty string`);
     return undefined;
   }
   return value;
 }
 
 function validateSite(value: unknown): string | undefined {
-  if (typeof value !== 'string' || value.length === 0 || !VALID_DATADOG_SITES.includes(value as any)) {
-    console.error(`Configuration error: 'site' must be one of: ${VALID_DATADOG_SITES.join(', ')}`);
+  if (typeof value !== 'string' || value.length === 0 || !(VALID_DATADOG_SITES as readonly string[]).includes(value)) {
+    displayError(`Configuration error: 'site' must be one of: ${VALID_DATADOG_SITES.join(', ')}`);
     return undefined;
   }
   return value;
@@ -63,7 +65,7 @@ function validateTelemetrySampleRate(value: unknown): number {
     return 20;
   }
   if (typeof value !== 'number' || value < 0 || value > 100) {
-    console.error("Configuration error: 'telemetrySampleRate' must be a number between 0 and 100");
+    displayError("Configuration error: 'telemetrySampleRate' must be a number between 0 and 100");
     return 20;
   }
   return value;

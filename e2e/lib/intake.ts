@@ -9,9 +9,9 @@ interface ReceivedEvent {
 export class Intake {
   private server: http.Server | null = null;
   private events: ReceivedEvent[] = [];
-  private port: number = 0;
+  private port = 0;
 
-  async start(port: number = 0): Promise<number> {
+  async start(port = 0): Promise<number> {
     return new Promise((resolve, reject) => {
       this.server = http.createServer((req, res) => {
         if (req.method === 'POST' && req.url === '/api/v2/rum') {
@@ -86,7 +86,7 @@ export class Intake {
     });
   }
 
-  async getEventsByType(type: string, timeout: number = 5000): Promise<ReceivedEvent[]> {
+  async getEventsByType(type: string, timeout = 5000): Promise<ReceivedEvent[]> {
     const startTime = Date.now();
     const pollInterval = 100;
 
