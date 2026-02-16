@@ -232,12 +232,12 @@ describe('buildConfiguration', () => {
   });
 
   describe('telemetrySampleRate validation', () => {
-    it('defaults to 100 when not provided', () => {
+    it('defaults to 20 when not provided', () => {
       const config = { ...DEFAULT_CONFIG };
 
       const result = buildConfiguration(config);
 
-      expect(result?.telemetrySampleRate).toBe(100);
+      expect(result?.telemetrySampleRate).toBe(20);
     });
 
     it.each([0, 50, 100])('accepts valid value: %d', (value) => {
@@ -258,7 +258,7 @@ describe('buildConfiguration', () => {
 
       const result = buildConfiguration(config);
 
-      expect(result?.telemetrySampleRate).toBe(100);
+      expect(result?.telemetrySampleRate).toBe(20);
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         "Configuration error: 'telemetrySampleRate' must be a number between 0 and 100"
       );
@@ -267,12 +267,12 @@ describe('buildConfiguration', () => {
     it.each([
       { value: null, description: 'null' },
       { value: undefined, description: 'undefined' },
-    ])('defaults to 100 when $description (no error)', ({ value }) => {
+    ])('defaults to 20 when $description (no error)', ({ value }) => {
       const config = { ...DEFAULT_CONFIG, telemetrySampleRate: value } as unknown as InitConfiguration;
 
       const result = buildConfiguration(config);
 
-      expect(result?.telemetrySampleRate).toBe(100);
+      expect(result?.telemetrySampleRate).toBe(20);
       expect(consoleErrorSpy).not.toHaveBeenCalled();
     });
   });

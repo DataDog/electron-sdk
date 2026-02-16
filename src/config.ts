@@ -60,11 +60,11 @@ function validateOptionalString(value: unknown): string | undefined {
 
 function validateTelemetrySampleRate(value: unknown): number {
   if (value === undefined || value === null) {
-    return 100;
+    return 20;
   }
   if (typeof value !== 'number' || value < 0 || value > 100) {
     console.error("Configuration error: 'telemetrySampleRate' must be a number between 0 and 100");
-    return 100;
+    return 20;
   }
   return value;
 }
