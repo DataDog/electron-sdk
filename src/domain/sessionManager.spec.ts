@@ -269,6 +269,21 @@ describe('sessionManager', () => {
     });
   });
 
+  describe('expire', () => {
+    it('sets session status to expired and clears timers', async () => {
+      mockNoSessionFile();
+
+      sessionManager = await SessionManager.start(eventManager, hooks);
+
+      expect(sessionManager.getSession().status).toBe('active');
+
+      sessionManager.expire();
+
+      expect(sessionManager.getSession().status).toBe('expired');
+      expect(mfs.unlink).toHaveBeenCalled();
+    });
+  });
+
   describe('getSession', () => {
     it('should not allow to mutate the current session', async () => {
       mockNoSessionFile();

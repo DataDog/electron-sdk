@@ -7,6 +7,11 @@ import { EventManager } from './event';
 import { Assembly, registerCommonContext, createFormatHooks } from './assembly';
 import { startTelemetry, callMonitored } from './domain/telemetry';
 
+let sessionManager: SessionManager | undefined;
+
+/**
+ * Initialize the Electron SDK
+ */
 export async function init(configuration: InitConfiguration): Promise<boolean> {
   const config = buildConfiguration(configuration);
 
@@ -19,13 +24,20 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   registerCommonContext(config, hooks);
   startTelemetry(eventManager, config);
-  await SessionManager.start(eventManager, hooks);
+  sessionManager = await SessionManager.start(eventManager, hooks);
 
   new Assembly(eventManager, hooks);
   new Transport(config, eventManager);
   new DummyMainView(eventManager);
 
   return true;
+}
+
+/**
+ * Stop the current session
+ */
+export function stopSession(): void {
+  sessionManager?.expire();
 }
 
 /*

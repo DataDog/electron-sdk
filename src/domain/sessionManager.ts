@@ -56,6 +56,10 @@ export class SessionManager {
     return deepClone(this.currentSession);
   }
 
+  expire(): void {
+    this.expireSession();
+  }
+
   stop(): void {
     this.clearTimers();
     if (this.activitySubscription) {
