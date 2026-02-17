@@ -12,19 +12,29 @@ vi.mock('../tools/display', () => ({
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SessionManager, SESSION_EXPIRATION_DELAY, SESSION_TIME_OUT_DELAY, SESSION_FILE_NAME } from './sessionManager';
-import { EventManager, EventKind, LifecycleKind } from '../event';
+import { EventManager, EventKind, LifecycleKind, type LifecycleEvent } from '../event';
 import { createFormatHooks, type FormatHooks } from '../assembly';
 
 const mfs = mockFs();
+
+function mockNoSessionFile() {
+  mfs.access.mockRejectedValue(new Error('ENOENT'));
+}
 
 describe('sessionManager', () => {
   let eventManager: EventManager;
   let hooks: FormatHooks;
   let sessionManager: SessionManager;
+  let lifecycleEvents: string[];
 
   beforeEach(() => {
     vi.useFakeTimers();
     eventManager = new EventManager();
+    lifecycleEvents = [];
+    eventManager.registerHandler<LifecycleEvent>({
+      canHandle: (event): event is LifecycleEvent => event.kind === EventKind.LIFECYCLE,
+      handle: (event) => lifecycleEvents.push(event.lifecycle),
+    });
     hooks = createFormatHooks();
   });
 
@@ -37,7 +47,7 @@ describe('sessionManager', () => {
 
   describe('session creation', () => {
     it('creates new session when no file exists', async () => {
-      mfs.access.mockRejectedValue(new Error('ENOENT'));
+      mockNoSessionFile();
 
       sessionManager = await SessionManager.start(eventManager, hooks);
 
@@ -48,6 +58,9 @@ describe('sessionManager', () => {
         expect.any(String),
         'utf-8'
       );
+
+      // no session renew event on initial session creation
+      expect(lifecycleEvents).not.toContain(LifecycleKind.SESSION_RENEW);
     });
 
     it('resumes valid existing session', async () => {
@@ -101,7 +114,7 @@ describe('sessionManager', () => {
 
   describe('session expiration', () => {
     it('expires session after inactivity delay', async () => {
-      mfs.access.mockRejectedValue(new Error('ENOENT'));
+      mockNoSessionFile();
 
       sessionManager = await SessionManager.start(eventManager, hooks);
 
@@ -115,7 +128,7 @@ describe('sessionManager', () => {
 
     it('resets inactivity timer on activity', async () => {
       const now = Date.now();
-      mfs.access.mockRejectedValue(new Error('ENOENT'));
+      mockNoSessionFile();
 
       sessionManager = await SessionManager.start(eventManager, hooks);
 
@@ -149,7 +162,7 @@ describe('sessionManager', () => {
 
     it('expires session after session timeout regardless of activity', async () => {
       const startTime = Date.now();
-      mfs.access.mockRejectedValue(new Error('ENOENT'));
+      mockNoSessionFile();
 
       sessionManager = await SessionManager.start(eventManager, hooks);
 
@@ -193,7 +206,7 @@ describe('sessionManager', () => {
     });
 
     it('creates new session on activity when expired', async () => {
-      mfs.access.mockRejectedValue(new Error('ENOENT'));
+      mockNoSessionFile();
 
       sessionManager = await SessionManager.start(eventManager, hooks);
 
@@ -215,6 +228,8 @@ describe('sessionManager', () => {
       // Should have a new session with active status
       expect(sessionManager.getSession().status).toBe('active');
       expect(sessionManager.getSession().id).not.toBe(originalSessionId);
+
+      expect(lifecycleEvents).toContain(LifecycleKind.SESSION_RENEW);
     });
   });
 
@@ -231,7 +246,7 @@ describe('sessionManager', () => {
     });
 
     it('handles file write errors gracefully', async () => {
-      mfs.access.mockRejectedValue(new Error('ENOENT'));
+      mockNoSessionFile();
       mfs.writeFile.mockRejectedValue(new Error('Write error'));
 
       sessionManager = await SessionManager.start(eventManager, hooks);
@@ -256,7 +271,7 @@ describe('sessionManager', () => {
 
   describe('getSession', () => {
     it('should not allow to mutate the current session', async () => {
-      mfs.access.mockRejectedValue(new Error('ENOENT'));
+      mockNoSessionFile();
 
       sessionManager = await SessionManager.start(eventManager, hooks);
 

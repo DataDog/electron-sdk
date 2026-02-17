@@ -113,6 +113,7 @@ export class SessionManager {
   private async updateActivity(): Promise<void> {
     if (this.currentSession.status === 'expired') {
       await this.createNewSession();
+      this.eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
       return;
     }
 
