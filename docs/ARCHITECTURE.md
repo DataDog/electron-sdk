@@ -1,13 +1,13 @@
 # Architecture
 
-SDK design patterns and event pipeline.
+Describes general patterns with examples — detailed component documentation lives as JSDoc on the classes themselves (e.g., `SessionManager`, `ViewCollection`).
 
 ## Overview
 
 ```mermaid
 flowchart LR
     subgraph Sources
-        RUM[RUM domain]
+        RUM[RUM collection]
         TEL[Telemetry]
     end
 
@@ -66,9 +66,9 @@ See `src/domain/hooks/` and `src/domain/commonContext.ts`.
 
 Internal observability for the SDK itself. Captures SDK errors and sends them as telemetry events.
 
-- **Sampling**: controlled by `telemetrySampleRate` config (default: 100), evaluated once per session via `performDraw()`.
-- **Rate limiting**: max 100 telemetry events per session, counter resets on `SESSION_RENEW`.
-- **Error collection**: `startMonitorErrorCollection` captures uncaught errors; `monitor()`/`callMonitored()` wrappers catch errors in callbacks.
+- **Sampling**: controlled by `telemetrySampleRate` config, evaluated once per session.
+- **Rate limiting**: capped per session, counter resets on `SESSION_RENEW`.
+- **Error collection**: wrappers catch uncaught errors and errors in callbacks, emitting them as telemetry events.
 
 See `src/domain/telemetry/`.
 
