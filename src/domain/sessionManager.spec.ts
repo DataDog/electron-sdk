@@ -124,6 +124,7 @@ describe('sessionManager', () => {
 
       expect(sessionManager.getSession().status).toBe('expired');
       expect(mfs.unlink).toHaveBeenCalled();
+      expect(lifecycleEvents).toContain(LifecycleKind.SESSION_EXPIRED);
     });
 
     it('resets inactivity timer on activity', async () => {
@@ -203,6 +204,7 @@ describe('sessionManager', () => {
 
       // Session should be expired due to session timeout
       expect(sessionManager.getSession().status).toBe('expired');
+      expect(lifecycleEvents).toContain(LifecycleKind.SESSION_EXPIRED);
     });
 
     it('creates new session on activity when expired', async () => {
@@ -281,6 +283,7 @@ describe('sessionManager', () => {
 
       expect(sessionManager.getSession().status).toBe('expired');
       expect(mfs.unlink).toHaveBeenCalled();
+      expect(lifecycleEvents).toContain(LifecycleKind.SESSION_EXPIRED);
     });
   });
 

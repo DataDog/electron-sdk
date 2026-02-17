@@ -112,6 +112,7 @@ export class SessionManager {
     this.clearTimers();
     this.currentSession.status = 'expired';
     deleteSessionFile().catch(addError);
+    this.eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
   }
 
   private async updateActivity(): Promise<void> {
