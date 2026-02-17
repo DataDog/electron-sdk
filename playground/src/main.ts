@@ -1,15 +1,11 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import { init, _generateTelemetryError } from '@datadog/electron-sdk';
+import { init, _generateTelemetryError, _generateActivity, stopSession } from '@datadog/electron-sdk';
 import { loadWindowState, saveWindowState } from './main/windowState';
 import { setupHotReload } from './main/hotReload';
 
 let mainWindow: BrowserWindow | null = null;
-
-function getSessionFilePath(): string {
-  return path.join(app.getPath('userData'), '_dd_s');
-}
 
 function createWindow() {
   const savedState = loadWindowState();
@@ -42,7 +38,7 @@ function createWindow() {
 
 // IPC handler to get session file content
 ipcMain.handle('get-session-file', () => {
-  const sessionFilePath = getSessionFilePath();
+  const sessionFilePath = path.join(app.getPath('userData'), '_dd_s');
   try {
     if (fs.existsSync(sessionFilePath)) {
       const content = fs.readFileSync(sessionFilePath, 'utf-8');
@@ -55,17 +51,14 @@ ipcMain.handle('get-session-file', () => {
   }
 });
 
-// IPC handler to clear session file
-ipcMain.handle('clear-session-file', () => {
-  const sessionFilePath = getSessionFilePath();
-  try {
-    if (fs.existsSync(sessionFilePath)) {
-      fs.unlinkSync(sessionFilePath);
-      console.log('Session file deleted:', sessionFilePath);
-    }
-  } catch (error) {
-    console.error('Error deleting session file:', error);
-  }
+// IPC handler to stop session
+ipcMain.handle('stop-session', () => {
+  stopSession();
+});
+
+// IPC handler to generate activity
+ipcMain.handle('generate-activity', () => {
+  _generateActivity();
 });
 
 // IPC handler to generate telemetry error
