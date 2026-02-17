@@ -1,6 +1,12 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { join } from 'node:path';
-import { init, _generateTelemetryError, type InitConfiguration } from '@datadog/electron-sdk';
+import {
+  init,
+  _generateTelemetryError,
+  _generateActivity,
+  stopSession,
+  type InitConfiguration,
+} from '@datadog/electron-sdk';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -10,8 +16,18 @@ void app.whenReady().then(async () => {
   const initialized = await init(config);
   console.log('SDK initialized:', initialized);
 
-  ipcMain.handle('generateTelemetryError', () => {
-    _generateTelemetryError();
+  ipcMain.handle('generateTelemetryErrors', (_event, count: number) => {
+    for (let i = 0; i < count; i++) {
+      _generateTelemetryError();
+    }
+  });
+
+  ipcMain.handle('stopSession', () => {
+    stopSession();
+  });
+
+  ipcMain.handle('generateActivity', () => {
+    _generateActivity();
   });
 
   createWindow();

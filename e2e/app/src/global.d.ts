@@ -1,7 +1,9 @@
 declare global {
   interface Window {
     electronAPI: {
-      generateTelemetryError: () => Promise<void>;
+      generateTelemetryErrors: (count: number) => Promise<void>;
+      stopSession: () => Promise<void>;
+      generateActivity: () => Promise<void>;
     };
   }
 }

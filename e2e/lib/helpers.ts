@@ -1,6 +1,7 @@
 import { test as base, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import { join } from 'node:path';
 import { Intake } from './intake';
+import { AppPage } from './appPage';
 import type { InitConfiguration } from '@datadog/electron-sdk';
 
 // Get electron executable path from the app's node_modules
@@ -10,6 +11,7 @@ const electronPath = require(join(__dirname, '../app/node_modules/electron')) as
 export interface TestFixtures {
   electronApp: ElectronApplication;
   window: Page;
+  app: AppPage;
   intake: Intake;
 }
 
@@ -66,6 +68,10 @@ export const test = base.extend<TestFixtures>({
     },
     { auto: true },
   ],
+
+  app: async ({ window }, use) => {
+    await use(new AppPage(window));
+  },
 });
 
 export { expect } from '@playwright/test';

@@ -87,17 +87,26 @@ export class Intake {
   }
 
   async getEventsByType(type: string, timeout = 5000): Promise<ReceivedEvent[]> {
+    // return as soon as we have one event
+    return this.waitForEventCount(type, 1, timeout);
+  }
+
+  async waitForEventCount(type: string, count: number, timeout = 5000): Promise<ReceivedEvent[]> {
     const startTime = Date.now();
     const pollInterval = 100;
 
     while (Date.now() - startTime < timeout) {
-      const matchingEvents = this.events.filter((event) => (event.body as { type?: string }).type === type);
-      if (matchingEvents.length > 0) {
+      const matchingEvents = this.filterEventsByType(type);
+      if (matchingEvents.length >= count) {
         return matchingEvents;
       }
       await new Promise((resolve) => setTimeout(resolve, pollInterval));
     }
 
+    return this.filterEventsByType(type);
+  }
+
+  private filterEventsByType(type: string): ReceivedEvent[] {
     return this.events.filter((event) => (event.body as { type?: string }).type === type);
   }
 
