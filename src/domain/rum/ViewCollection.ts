@@ -2,6 +2,7 @@ import {
   elapsed,
   generateUUID,
   ONE_MINUTE,
+  ONE_SECOND,
   Subscription,
   TimeStamp,
   timeStampNow,
@@ -18,10 +19,12 @@ import {
   ServerRumEvent,
 } from '../../event';
 import type { FormatHooks } from '../../assembly';
-import { setInterval } from '../telemetry';
+import { setInterval, throttle } from '../telemetry';
 import type { RawRumView } from './rawRumData.types';
 
 export const SESSION_KEEP_ALIVE_INTERVAL = 5 * ONE_MINUTE;
+// throttle view updates to avoid bursts
+export const VIEW_UPDATE_THROTTLE_DELAY = 3 * ONE_SECOND;
 
 interface ViewState {
   id: string;
@@ -39,11 +42,13 @@ interface ViewState {
  * - keep session alive by regularly send view updates
  * - on SESSION_EXPIRED, emit a final inactive view update
  * - on SESSION_RENEW, create a new view
- * - on RUM server event (action, error, resource), increment view counters
+ * - on RUM server event (action, error, resource), increment view counters (throttled)
  */
 export class ViewCollection {
   private currentView!: ViewState;
   private keepAliveIntervalId: ReturnType<typeof setInterval> | undefined;
+  private scheduleViewUpdate: () => void;
+  private cancelScheduledViewUpdate: () => void;
   private lifecycleSubscription: Subscription;
   private serverEventSubscription: Subscription;
 
@@ -51,6 +56,10 @@ export class ViewCollection {
     private readonly eventManager: EventManager,
     private readonly hooks: FormatHooks
   ) {
+    const { throttled, cancel } = throttle(() => this.emitViewUpdate(), VIEW_UPDATE_THROTTLE_DELAY);
+    this.scheduleViewUpdate = throttled;
+    this.cancelScheduledViewUpdate = cancel;
+
     this.createNewView();
     this.registerHooks();
 
@@ -72,6 +81,7 @@ export class ViewCollection {
   }
 
   stop(): void {
+    this.cancelScheduledViewUpdate();
     this.stopSessionKeepAlive();
     this.lifecycleSubscription.unsubscribe();
     this.serverEventSubscription.unsubscribe();
@@ -115,6 +125,7 @@ export class ViewCollection {
   }
 
   private onSessionExpired(): void {
+    this.cancelScheduledViewUpdate();
     this.stopSessionKeepAlive();
     this.currentView.isActive = false;
     this.currentView.documentVersion++;
@@ -122,6 +133,7 @@ export class ViewCollection {
   }
 
   private onSessionRenew(): void {
+    this.cancelScheduledViewUpdate();
     this.createNewView();
   }
 
@@ -130,7 +142,7 @@ export class ViewCollection {
     if (type === 'action' || type === 'error' || type === 'resource') {
       this.currentView.counters[type].count++;
       this.currentView.documentVersion++;
-      this.emitViewUpdate();
+      this.scheduleViewUpdate();
     }
   }
 

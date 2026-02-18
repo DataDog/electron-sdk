@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ViewCollection, SESSION_KEEP_ALIVE_INTERVAL } from './ViewCollection';
+import { ViewCollection, SESSION_KEEP_ALIVE_INTERVAL, VIEW_UPDATE_THROTTLE_DELAY } from './ViewCollection';
 import { EventManager, EventKind, EventFormat, EventTrack, LifecycleKind, type RawRumEvent } from '../../event';
 import { createFormatHooks, type FormatHooks } from '../../assembly';
 import { createServerRumEvent, createServerRumView } from '../../mocks.specUtil';
@@ -178,6 +178,93 @@ describe('ViewCollection', () => {
 
       // Only the initial event, nothing else
       expect(rawRumEvents).toHaveLength(1);
+    });
+  });
+
+  describe('throttled view updates', () => {
+    function notifyServerRumEvent(type: 'action' | 'error' | 'resource') {
+      eventManager.notify({ kind: EventKind.SERVER, track: EventTrack.RUM, data: createServerRumEvent(type) });
+    }
+
+    it('collapses a burst into a leading and a trailing update', () => {
+      viewCollection = new ViewCollection(eventManager, hooks);
+
+      notifyServerRumEvent('resource');
+      notifyServerRumEvent('resource');
+      notifyServerRumEvent('resource');
+
+      // initial + leading only, no intermediate updates
+      expect(rawRumEvents).toHaveLength(2);
+
+      vi.advanceTimersByTime(VIEW_UPDATE_THROTTLE_DELAY);
+
+      // trailing fires with final accumulated state
+      expect(rawRumEvents).toHaveLength(3);
+    });
+
+    it('trailing update contains final accumulated counters and document_version', () => {
+      viewCollection = new ViewCollection(eventManager, hooks);
+
+      notifyServerRumEvent('resource');
+      notifyServerRumEvent('error');
+      notifyServerRumEvent('action');
+
+      vi.advanceTimersByTime(VIEW_UPDATE_THROTTLE_DELAY);
+
+      const trailing = rawRumEvents[rawRumEvents.length - 1].data;
+      expect(trailing.view.resource.count).toBe(1);
+      expect(trailing.view.error.count).toBe(1);
+      expect(trailing.view.action.count).toBe(1);
+      // initial=1, leading=2 (first resource), trailing=4 (after error+action increments)
+      expect(trailing._dd.document_version).toBe(4);
+    });
+
+    it('session expired cancels pending trailing update', () => {
+      viewCollection = new ViewCollection(eventManager, hooks);
+
+      notifyServerRumEvent('resource');
+      notifyServerRumEvent('resource');
+
+      // initial + leading
+      expect(rawRumEvents).toHaveLength(2);
+
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+
+      vi.advanceTimersByTime(VIEW_UPDATE_THROTTLE_DELAY);
+
+      // initial + leading + expired final — no stale trailing
+      expect(rawRumEvents).toHaveLength(3);
+      expect(rawRumEvents[2].data.view.is_active).toBe(false);
+    });
+
+    it('session renew cancels pending trailing update', () => {
+      viewCollection = new ViewCollection(eventManager, hooks);
+      const originalViewId = rawRumEvents[0].data.view.id;
+
+      notifyServerRumEvent('resource');
+      notifyServerRumEvent('resource');
+
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+
+      vi.advanceTimersByTime(VIEW_UPDATE_THROTTLE_DELAY);
+
+      // initial + leading + renew initial — no old-view trailing
+      expect(rawRumEvents).toHaveLength(3);
+      expect(rawRumEvents[2].data.view.id).not.toBe(originalViewId);
+    });
+
+    it('stop cancels pending trailing update', () => {
+      viewCollection = new ViewCollection(eventManager, hooks);
+
+      notifyServerRumEvent('resource');
+      notifyServerRumEvent('resource');
+
+      viewCollection.stop();
+
+      vi.advanceTimersByTime(VIEW_UPDATE_THROTTLE_DELAY);
+
+      // initial + leading — no trailing after stop
+      expect(rawRumEvents).toHaveLength(2);
     });
   });
 });
