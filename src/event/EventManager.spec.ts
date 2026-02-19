@@ -4,7 +4,7 @@ import type { EventHandler, RawEvent, RawRumEvent, ServerEvent } from './event.t
 import { EventFormat, EventKind, EventSource, EventTrack } from './event.constants';
 import { createRawRumView } from '../mocks.specUtil';
 import { RecursivePartial } from '@datadog/browser-core';
-import { RumEvent } from '../domain/rum';
+import { RawRumView, RumEvent } from '../domain/rum';
 
 function createRawRumEvent(overrides?: RecursivePartial<RawRumEvent>): RawRumEvent {
   return {
@@ -12,7 +12,7 @@ function createRawRumEvent(overrides?: RecursivePartial<RawRumEvent>): RawRumEve
     source: EventSource.RENDERER,
     format: EventFormat.RUM,
     ...overrides,
-    data: createRawRumView(overrides?.data),
+    data: createRawRumView(overrides?.data as RecursivePartial<RawRumView>),
   };
 }
 

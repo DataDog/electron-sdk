@@ -60,5 +60,5 @@ export function _generateTelemetryError() {
 }
 
 export type { InitConfiguration } from './config';
-export type { RumViewEvent } from './domain/rum';
+export type { RumErrorEvent, RumViewEvent } from './domain/rum';
 export type { TelemetryErrorEvent } from './domain/telemetry';

@@ -3,6 +3,7 @@ import { ViewCollection, SESSION_KEEP_ALIVE_INTERVAL, VIEW_UPDATE_THROTTLE_DELAY
 import { EventManager, EventKind, EventFormat, EventTrack, LifecycleKind, type RawRumEvent } from '../../event';
 import { createFormatHooks, type FormatHooks } from '../../assembly';
 import { createServerRumEvent, createServerRumView } from '../../mocks.specUtil';
+import { RawRumView } from './rawRumData.types';
 
 describe('ViewCollection', () => {
   let eventManager: EventManager;
@@ -32,7 +33,7 @@ describe('ViewCollection', () => {
       viewCollection = new ViewCollection(eventManager, hooks);
 
       expect(rawRumEvents).toHaveLength(1);
-      const data = rawRumEvents[0].data;
+      const data = rawRumEvents[0].data as RawRumView;
       expect(data.type).toBe('view');
       expect(data._dd.document_version).toBe(1);
       expect(data.view.is_active).toBe(true);
@@ -46,21 +47,21 @@ describe('ViewCollection', () => {
     it('injects view attributes into RUM hooks', () => {
       viewCollection = new ViewCollection(eventManager, hooks);
 
-      const initialViewAttributes = rawRumEvents[0].data.view;
+      const initialView = (rawRumEvents[0].data as RawRumView).view;
       const result = hooks.triggerRum({ eventType: 'view', startTime: 0 });
 
       expect(result).toEqual({
-        view: { id: initialViewAttributes.id, name: initialViewAttributes.name, url: initialViewAttributes.url },
+        view: { id: initialView.id, name: initialView.name, url: initialView.url },
       });
     });
 
     it('injects view attributes into telemetry hooks', () => {
       viewCollection = new ViewCollection(eventManager, hooks);
 
-      const initialViewAttributes = rawRumEvents[0].data.view;
+      const initialView = (rawRumEvents[0].data as RawRumView).view;
       const result = hooks.triggerTelemetry({ startTime: 0 });
 
-      expect(result).toEqual({ view: { id: initialViewAttributes.id } });
+      expect(result).toEqual({ view: { id: initialView.id } });
     });
   });
 
@@ -71,7 +72,7 @@ describe('ViewCollection', () => {
       vi.advanceTimersByTime(SESSION_KEEP_ALIVE_INTERVAL);
 
       expect(rawRumEvents).toHaveLength(2);
-      const data = rawRumEvents[1].data;
+      const data = rawRumEvents[1].data as RawRumView;
       expect(data._dd.document_version).toBe(2);
       expect(data.view.time_spent).toBe(SESSION_KEEP_ALIVE_INTERVAL * 1e6); // duration in ns
       expect(data.view.is_active).toBe(true);
@@ -85,7 +86,7 @@ describe('ViewCollection', () => {
       eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
 
       expect(rawRumEvents).toHaveLength(2);
-      const data = rawRumEvents[1].data;
+      const data = rawRumEvents[1].data as RawRumView;
       expect(data.view.is_active).toBe(false);
       expect(data._dd.document_version).toBe(2);
     });
@@ -104,12 +105,12 @@ describe('ViewCollection', () => {
   describe('session renew', () => {
     it('creates a new view with reset state', () => {
       viewCollection = new ViewCollection(eventManager, hooks);
-      const originalViewId = rawRumEvents[0].data.view.id;
+      const originalViewId = (rawRumEvents[0].data as RawRumView).view.id;
 
       eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
 
       expect(rawRumEvents).toHaveLength(2);
-      const data = rawRumEvents[1].data;
+      const data = rawRumEvents[1].data as RawRumView;
       expect(data.view.id).not.toBe(originalViewId);
       expect(data.view.is_active).toBe(true);
       expect(data._dd.document_version).toBe(1);
@@ -120,12 +121,12 @@ describe('ViewCollection', () => {
 
     it('updates view.id in hooks', () => {
       viewCollection = new ViewCollection(eventManager, hooks);
-      const originalViewId = rawRumEvents[0].data.view.id;
+      const originalViewId = (rawRumEvents[0].data as RawRumView).view.id;
 
       eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
 
       const result = hooks.triggerRum({ eventType: 'view', startTime: 0 });
-      const newViewId = rawRumEvents[1].data.view.id;
+      const newViewId = (rawRumEvents[1].data as RawRumView).view.id;
       expect(result).toMatchObject({ view: { id: newViewId } });
       expect(newViewId).not.toBe(originalViewId);
     });
@@ -139,7 +140,7 @@ describe('ViewCollection', () => {
 
       // initial + expired final + renew initial + periodic update
       expect(rawRumEvents).toHaveLength(4);
-      expect(rawRumEvents[3].data._dd.document_version).toBe(2);
+      expect((rawRumEvents[3].data as RawRumView)._dd.document_version).toBe(2);
     });
   });
 
@@ -152,7 +153,7 @@ describe('ViewCollection', () => {
         eventManager.notify({ kind: EventKind.SERVER, track: EventTrack.RUM, data: createServerRumEvent(type) });
 
         expect(rawRumEvents).toHaveLength(2);
-        const data = rawRumEvents[1].data;
+        const data = rawRumEvents[1].data as RawRumView;
         expect(data.view[type].count).toBe(1);
         expect(data._dd.document_version).toBe(2);
       }
@@ -211,7 +212,7 @@ describe('ViewCollection', () => {
 
       vi.advanceTimersByTime(VIEW_UPDATE_THROTTLE_DELAY);
 
-      const trailing = rawRumEvents[rawRumEvents.length - 1].data;
+      const trailing = rawRumEvents[rawRumEvents.length - 1].data as RawRumView;
       expect(trailing.view.resource.count).toBe(1);
       expect(trailing.view.error.count).toBe(1);
       expect(trailing.view.action.count).toBe(1);
@@ -234,12 +235,12 @@ describe('ViewCollection', () => {
 
       // initial + leading + expired final — no stale trailing
       expect(rawRumEvents).toHaveLength(3);
-      expect(rawRumEvents[2].data.view.is_active).toBe(false);
+      expect((rawRumEvents[2].data as RawRumView).view.is_active).toBe(false);
     });
 
     it('session renew cancels pending trailing update', () => {
       viewCollection = new ViewCollection(eventManager, hooks);
-      const originalViewId = rawRumEvents[0].data.view.id;
+      const originalViewId = (rawRumEvents[0].data as RawRumView).view.id;
 
       notifyServerRumEvent('resource');
       notifyServerRumEvent('resource');
@@ -250,7 +251,7 @@ describe('ViewCollection', () => {
 
       // initial + leading + renew initial — no old-view trailing
       expect(rawRumEvents).toHaveLength(3);
-      expect(rawRumEvents[2].data.view.id).not.toBe(originalViewId);
+      expect((rawRumEvents[2].data as RawRumView).view.id).not.toBe(originalViewId);
     });
 
     it('stop cancels pending trailing update', () => {
