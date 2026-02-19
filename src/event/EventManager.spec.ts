@@ -4,6 +4,7 @@ import type { EventHandler, RawEvent, RawRumEvent, ServerEvent } from './event.t
 import { EventFormat, EventKind, EventSource, EventTrack } from './event.constants';
 import { createRawRumView } from '../mocks.specUtil';
 import { RecursivePartial } from '@datadog/browser-core';
+import { RumEvent } from '../domain/rum';
 
 function createRawRumEvent(overrides?: RecursivePartial<RawRumEvent>): RawRumEvent {
   return {
@@ -19,9 +20,9 @@ function createServerEvent(overrides: Partial<ServerEvent> = {}): ServerEvent {
   return {
     kind: EventKind.SERVER,
     track: EventTrack.RUM,
-    data: {},
+    data: {} as RumEvent,
     ...overrides,
-  };
+  } as ServerEvent;
 }
 
 describe('EventManager', () => {

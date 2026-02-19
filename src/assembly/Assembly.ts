@@ -1,6 +1,8 @@
-import { combine, DISCARDED } from '@datadog/browser-core';
-import { EventManager, EventFormat, EventKind, EventTrack, type RawEvent, type ServerEvent } from '../event';
-import type { FormatHooks, RumEventType } from './hooks';
+import { combine, DISCARDED, type RecursivePartial } from '@datadog/browser-core';
+import { EventFormat, EventKind, EventManager, EventTrack, type RawEvent, ServerEvent } from '../event';
+import type { FormatHooks } from './hooks';
+import { RumEvent } from '../domain/rum';
+import { TelemetryEvent } from '../domain/telemetry';
 
 export class Assembly {
   constructor(
@@ -10,29 +12,46 @@ export class Assembly {
     this.eventManager.registerHandler<RawEvent>({
       canHandle: (event) => event.kind === EventKind.RAW,
       handle: (event, notify) => {
-        const startTime = Date.now();
-        let hookResult;
-
-        if (event.format === EventFormat.TELEMETRY) {
-          hookResult = this.hooks.triggerTelemetry({ startTime });
-        } else {
-          hookResult = this.hooks.triggerRum({
-            eventType: (event.data as { type: RumEventType }).type,
-            startTime,
-          });
+        const result = this.assembleToServerEvent(event);
+        if (result !== DISCARDED) {
+          notify(result);
         }
-
-        if (hookResult === DISCARDED) {
-          return;
-        }
-
-        const serverEvent: ServerEvent = {
-          kind: EventKind.SERVER,
-          track: EventTrack.RUM,
-          data: hookResult ? combine(event.data, hookResult) : event.data,
-        };
-        notify(serverEvent);
       },
     });
   }
+
+  private assembleToServerEvent(event: RawEvent): ServerEvent | DISCARDED {
+    const startTime = Date.now();
+
+    if (event.format === EventFormat.RUM) {
+      const hookResult = this.hooks.triggerRum({
+        eventType: event.data.type,
+        startTime,
+      });
+      if (hookResult !== DISCARDED) {
+        return {
+          kind: EventKind.SERVER,
+          track: EventTrack.RUM,
+          data: assembleData<RumEvent>(event.data, hookResult),
+        };
+      }
+    }
+
+    if (event.format === EventFormat.TELEMETRY) {
+      const hookResult = this.hooks.triggerTelemetry({ startTime });
+      if (hookResult !== DISCARDED) {
+        return {
+          kind: EventKind.SERVER,
+          track: EventTrack.RUM,
+          data: assembleData<TelemetryEvent>(event.data, hookResult),
+        };
+      }
+    }
+
+    return DISCARDED;
+  }
+}
+
+function assembleData<T>(rawData: unknown, hookResult: RecursivePartial<T> | undefined): T {
+  return (hookResult ? combine(rawData, hookResult) : rawData) as T;
 }
