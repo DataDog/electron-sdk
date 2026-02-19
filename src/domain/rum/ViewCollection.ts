@@ -1,5 +1,22 @@
-import { elapsed, generateUUID, ONE_MINUTE, TimeStamp, timeStampNow, toServerDuration } from '@datadog/browser-core';
-import { EventFormat, EventKind, EventManager, EventSource, LifecycleKind, type LifecycleEvent } from '../../event';
+import {
+  elapsed,
+  generateUUID,
+  ONE_MINUTE,
+  Subscription,
+  TimeStamp,
+  timeStampNow,
+  toServerDuration,
+} from '@datadog/browser-core';
+import {
+  EventFormat,
+  EventKind,
+  EventManager,
+  EventSource,
+  EventTrack,
+  type LifecycleEvent,
+  LifecycleKind,
+  ServerRumEvent,
+} from '../../event';
 import type { FormatHooks } from '../../assembly';
 import { setInterval } from '../telemetry';
 import type { RawRumView } from './rawRumData.types';
@@ -22,11 +39,13 @@ interface ViewState {
  * - keep session alive by regularly send view updates
  * - on SESSION_EXPIRED, emit a final inactive view update
  * - on SESSION_RENEW, create a new view
+ * - on RUM server event (action, error, resource), increment view counters
  */
 export class ViewCollection {
   private currentView!: ViewState;
   private keepAliveIntervalId: ReturnType<typeof setInterval> | undefined;
-  private lifecycleSubscription: { unsubscribe: () => void };
+  private lifecycleSubscription: Subscription;
+  private serverEventSubscription: Subscription;
 
   constructor(
     private readonly eventManager: EventManager,
@@ -45,11 +64,17 @@ export class ViewCollection {
         }
       },
     });
+
+    this.serverEventSubscription = this.eventManager.registerHandler<ServerRumEvent>({
+      canHandle: (event): event is ServerRumEvent => event.kind === EventKind.SERVER && event.track === EventTrack.RUM,
+      handle: (event) => this.onServerRumEvent(event),
+    });
   }
 
   stop(): void {
     this.stopSessionKeepAlive();
     this.lifecycleSubscription.unsubscribe();
+    this.serverEventSubscription.unsubscribe();
   }
 
   private createNewView(): void {
@@ -98,6 +123,15 @@ export class ViewCollection {
 
   private onSessionRenew(): void {
     this.createNewView();
+  }
+
+  private onServerRumEvent(event: ServerRumEvent): void {
+    const type = event.data.type;
+    if (type === 'action' || type === 'error' || type === 'resource') {
+      this.currentView.counters[type].count++;
+      this.currentView.documentVersion++;
+      this.emitViewUpdate();
+    }
   }
 
   private keepSessionAlive(): void {

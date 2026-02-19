@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ViewCollection, SESSION_KEEP_ALIVE_INTERVAL } from './ViewCollection';
-import { EventManager, EventKind, EventFormat, LifecycleKind, type RawRumEvent } from '../../event';
+import { EventManager, EventKind, EventFormat, EventTrack, LifecycleKind, type RawRumEvent } from '../../event';
 import { createFormatHooks, type FormatHooks } from '../../assembly';
+import { createServerRumEvent, createServerRumView } from '../../mocks.specUtil';
 
 describe('ViewCollection', () => {
   let eventManager: EventManager;
@@ -139,6 +140,31 @@ describe('ViewCollection', () => {
       // initial + expired final + renew initial + periodic update
       expect(rawRumEvents).toHaveLength(4);
       expect(rawRumEvents[3].data._dd.document_version).toBe(2);
+    });
+  });
+
+  describe('event counters', () => {
+    it.each(['action', 'error', 'resource'] as const)(
+      'increments %s counter on corresponding ServerRumEvent',
+      (type) => {
+        viewCollection = new ViewCollection(eventManager, hooks);
+
+        eventManager.notify({ kind: EventKind.SERVER, track: EventTrack.RUM, data: createServerRumEvent(type) });
+
+        expect(rawRumEvents).toHaveLength(2);
+        const data = rawRumEvents[1].data;
+        expect(data.view[type].count).toBe(1);
+        expect(data._dd.document_version).toBe(2);
+      }
+    );
+
+    it('does not count view type ServerEvents', () => {
+      viewCollection = new ViewCollection(eventManager, hooks);
+
+      eventManager.notify({ kind: EventKind.SERVER, track: EventTrack.RUM, data: createServerRumView() });
+
+      // Only the initial event, no update
+      expect(rawRumEvents).toHaveLength(1);
     });
   });
 
