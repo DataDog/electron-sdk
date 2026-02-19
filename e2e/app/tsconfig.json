@@ -9,6 +9,5 @@
     "composite": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/renderer.ts"],
-  "references": [{ "path": "./tsconfig.renderer.json" }]
+  "exclude": ["node_modules", "dist", "src/renderer.ts"]
 }
