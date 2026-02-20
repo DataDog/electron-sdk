@@ -17,7 +17,7 @@
     "json-schemas:generate": "scripts/cli generate_schemas",
     "build": "rollup -c",
     "build:watch": "rollup -c --watch",
-    "typecheck": "tsc -b",
+    "typecheck": "tsc -b --noEmit",
     "dev:init": "cd playground && yarn install",
     "dev": "scripts/cli dev",
     "test": "vitest",
