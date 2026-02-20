@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ViewCollection } from './view';
-import { EventManager, EventKind, EventFormat, type RawRumEvent } from '../../event';
+import { ViewCollection, SESSION_KEEP_ALIVE_INTERVAL } from './view';
+import { EventManager, EventKind, EventFormat, LifecycleKind, type RawRumEvent } from '../../event';
 import { createFormatHooks, type FormatHooks } from '../../assembly';
 
 describe('ViewCollection', () => {
@@ -38,6 +38,120 @@ describe('ViewCollection', () => {
       expect(data.view.action.count).toBe(0);
       expect(data.view.error.count).toBe(0);
       expect(data.view.resource.count).toBe(0);
+    });
+  });
+
+  describe('hook registration', () => {
+    it('injects view attributes into RUM hooks', () => {
+      viewCollection = new ViewCollection(eventManager, hooks);
+
+      const initialViewAttributes = rawRumEvents[0].data.view;
+      const result = hooks.triggerRum({ eventType: 'view', startTime: 0 });
+
+      expect(result).toEqual({
+        view: { id: initialViewAttributes.id, name: initialViewAttributes.name, url: initialViewAttributes.url },
+      });
+    });
+
+    it('injects view attributes into telemetry hooks', () => {
+      viewCollection = new ViewCollection(eventManager, hooks);
+
+      const initialViewAttributes = rawRumEvents[0].data.view;
+      const result = hooks.triggerTelemetry({ startTime: 0 });
+
+      expect(result).toEqual({ view: { id: initialViewAttributes.id } });
+    });
+  });
+
+  describe('session keep alive', () => {
+    it('increments document_version and updates time_spent regularly', () => {
+      viewCollection = new ViewCollection(eventManager, hooks);
+
+      vi.advanceTimersByTime(SESSION_KEEP_ALIVE_INTERVAL);
+
+      expect(rawRumEvents).toHaveLength(2);
+      const data = rawRumEvents[1].data;
+      expect(data._dd.document_version).toBe(2);
+      expect(data.view.time_spent).toBe(SESSION_KEEP_ALIVE_INTERVAL * 1e6); // duration in ns
+      expect(data.view.is_active).toBe(true);
+    });
+  });
+
+  describe('session expired', () => {
+    it('emits final view update with is_active false', () => {
+      viewCollection = new ViewCollection(eventManager, hooks);
+
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+
+      expect(rawRumEvents).toHaveLength(2);
+      const data = rawRumEvents[1].data;
+      expect(data.view.is_active).toBe(false);
+      expect(data._dd.document_version).toBe(2);
+    });
+
+    it('stops periodic updates after expiration', () => {
+      viewCollection = new ViewCollection(eventManager, hooks);
+
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+      vi.advanceTimersByTime(SESSION_KEEP_ALIVE_INTERVAL);
+
+      // Only initial + final, no periodic update
+      expect(rawRumEvents).toHaveLength(2);
+    });
+  });
+
+  describe('session renew', () => {
+    it('creates a new view with reset state', () => {
+      viewCollection = new ViewCollection(eventManager, hooks);
+      const originalViewId = rawRumEvents[0].data.view.id;
+
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+
+      expect(rawRumEvents).toHaveLength(2);
+      const data = rawRumEvents[1].data;
+      expect(data.view.id).not.toBe(originalViewId);
+      expect(data.view.is_active).toBe(true);
+      expect(data._dd.document_version).toBe(1);
+      expect(data.view.action.count).toBe(0);
+      expect(data.view.error.count).toBe(0);
+      expect(data.view.resource.count).toBe(0);
+    });
+
+    it('updates view.id in hooks', () => {
+      viewCollection = new ViewCollection(eventManager, hooks);
+      const originalViewId = rawRumEvents[0].data.view.id;
+
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+
+      const result = hooks.triggerRum({ eventType: 'view', startTime: 0 });
+      const newViewId = rawRumEvents[1].data.view.id;
+      expect(result).toMatchObject({ view: { id: newViewId } });
+      expect(newViewId).not.toBe(originalViewId);
+    });
+
+    it('restarts periodic updates', () => {
+      viewCollection = new ViewCollection(eventManager, hooks);
+
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+      vi.advanceTimersByTime(SESSION_KEEP_ALIVE_INTERVAL);
+
+      // initial + expired final + renew initial + periodic update
+      expect(rawRumEvents).toHaveLength(4);
+      expect(rawRumEvents[3].data._dd.document_version).toBe(2);
+    });
+  });
+
+  describe('stop', () => {
+    it('clears periodic timer and unsubscribes lifecycle handlers', () => {
+      viewCollection = new ViewCollection(eventManager, hooks);
+      viewCollection.stop();
+
+      vi.advanceTimersByTime(SESSION_KEEP_ALIVE_INTERVAL);
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+
+      // Only the initial event, nothing else
+      expect(rawRumEvents).toHaveLength(1);
     });
   });
 });

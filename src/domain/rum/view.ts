@@ -1,7 +1,10 @@
-import { elapsed, generateUUID, TimeStamp, timeStampNow, toServerDuration } from '@datadog/browser-core';
-import { EventFormat, EventKind, EventManager, EventSource } from '../../event';
+import { elapsed, generateUUID, ONE_MINUTE, TimeStamp, timeStampNow, toServerDuration } from '@datadog/browser-core';
+import { EventFormat, EventKind, EventManager, EventSource, LifecycleKind, type LifecycleEvent } from '../../event';
 import type { FormatHooks } from '../../assembly';
+import { setInterval } from '../telemetry';
 import type { RawRumView } from './rawRumData.types';
+
+export const SESSION_KEEP_ALIVE_INTERVAL = 5 * ONE_MINUTE;
 
 interface ViewState {
   id: string;
@@ -16,9 +19,14 @@ interface ViewState {
 /**
  * Track the main view lifecycle
  * - on creation, emit an initial view event
+ * - keep session alive by regularly send view updates
+ * - on SESSION_EXPIRED, emit a final inactive view update
+ * - on SESSION_RENEW, create a new view
  */
 export class ViewCollection {
   private currentView!: ViewState;
+  private keepAliveIntervalId: ReturnType<typeof setInterval> | undefined;
+  private lifecycleSubscription: { unsubscribe: () => void };
 
   constructor(
     private readonly eventManager: EventManager,
@@ -26,10 +34,22 @@ export class ViewCollection {
   ) {
     this.createNewView();
     this.registerHooks();
+
+    this.lifecycleSubscription = this.eventManager.registerHandler<LifecycleEvent>({
+      canHandle: (event): event is LifecycleEvent => event.kind === EventKind.LIFECYCLE,
+      handle: (event) => {
+        if (event.lifecycle === LifecycleKind.SESSION_EXPIRED) {
+          this.onSessionExpired();
+        } else if (event.lifecycle === LifecycleKind.SESSION_RENEW) {
+          this.onSessionRenew();
+        }
+      },
+    });
   }
 
   stop(): void {
-    /* implemented in subsequent step */
+    this.stopSessionKeepAlive();
+    this.lifecycleSubscription.unsubscribe();
   }
 
   private createNewView(): void {
@@ -44,6 +64,7 @@ export class ViewCollection {
     };
 
     this.emitViewUpdate();
+    this.keepSessionAlive();
   }
 
   private emitViewUpdate(): void {
@@ -66,6 +87,33 @@ export class ViewCollection {
       format: EventFormat.RUM,
       data: viewEvent,
     });
+  }
+
+  private onSessionExpired(): void {
+    this.stopSessionKeepAlive();
+    this.currentView.isActive = false;
+    this.currentView.documentVersion++;
+    this.emitViewUpdate();
+  }
+
+  private onSessionRenew(): void {
+    this.createNewView();
+  }
+
+  private keepSessionAlive(): void {
+    this.stopSessionKeepAlive();
+    this.keepAliveIntervalId = setInterval(() => {
+      this.currentView.documentVersion++;
+      this.emitViewUpdate();
+      this.keepSessionAlive();
+    }, SESSION_KEEP_ALIVE_INTERVAL);
+  }
+
+  private stopSessionKeepAlive(): void {
+    if (this.keepAliveIntervalId !== undefined) {
+      clearInterval(this.keepAliveIntervalId);
+      this.keepAliveIntervalId = undefined;
+    }
   }
 
   private registerHooks(): void {
