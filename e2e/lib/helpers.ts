@@ -4,13 +4,6 @@ import { Intake } from './intake';
 import { AppPage } from './appPage';
 import type { InitConfiguration } from '@datadog/electron-sdk';
 
-// declare exposed IPC methods called directly in tests
-export interface ElectronAppWindow {
-  electronAPI: {
-    generateTelemetryErrors: (count: number) => Promise<void>;
-  };
-}
-
 // Get electron executable path from the app's node_modules
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const electronPath = require(join(__dirname, '../app/node_modules/electron')) as string;
