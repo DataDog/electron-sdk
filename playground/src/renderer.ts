@@ -4,6 +4,8 @@ interface ElectronAPI {
   stopSession: () => Promise<void>;
   generateActivity: () => Promise<void>;
   generateTelemetryError: () => Promise<void>;
+  generateUncaughtException: () => Promise<void>;
+  generateUnhandledRejection: () => Promise<void>;
 }
 
 declare global {
@@ -83,4 +85,16 @@ activityButton.addEventListener('click', () => {
 const telemetryErrorButton = document.getElementById('generate-telemetry-error') as HTMLButtonElement;
 telemetryErrorButton.addEventListener('click', () => {
   void window.electronAPI.generateTelemetryError().then(() => refreshSessionDisplay());
+});
+
+// Handle uncaught exception button click
+const uncaughtExceptionButton = document.getElementById('generate-uncaught-exception') as HTMLButtonElement;
+uncaughtExceptionButton.addEventListener('click', () => {
+  void window.electronAPI.generateUncaughtException().then(() => refreshSessionDisplay());
+});
+
+// Handle unhandled rejection button click
+const unhandledRejectionButton = document.getElementById('generate-unhandled-rejection') as HTMLButtonElement;
+unhandledRejectionButton.addEventListener('click', () => {
+  void window.electronAPI.generateUnhandledRejection().then(() => refreshSessionDisplay());
 });

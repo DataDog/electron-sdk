@@ -66,6 +66,18 @@ ipcMain.handle('generateTelemetryError', () => {
   _generateTelemetryError();
 });
 
+// IPC handler to generate uncaught exception
+ipcMain.handle('generateUncaughtException', () => {
+  setTimeout(() => {
+    throw new Error('test uncaught exception');
+  });
+});
+
+// IPC handler to generate unhandled rejection
+ipcMain.handle('generateUnhandledRejection', () => {
+  void Promise.reject(new Error('test unhandled rejection'));
+});
+
 void app.whenReady().then(async () => {
   // Initialize SDK on app ready (before window creation)
   console.log('Initializing SDK from main process...');
