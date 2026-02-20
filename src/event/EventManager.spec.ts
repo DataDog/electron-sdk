@@ -1,14 +1,17 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EventManager } from './EventManager';
-import type { EventHandler, RawEvent, ServerEvent } from './event.types';
-import { EventKind, EventSource, EventTrack } from './event.constants';
+import type { EventHandler, RawEvent, RawRumEvent, ServerEvent } from './event.types';
+import { EventFormat, EventKind, EventSource, EventTrack } from './event.constants';
+import { createRawRumView } from '../mocks.specUtil';
+import { RecursivePartial } from '@datadog/browser-core';
 
-function createRawEvent(overrides: Partial<RawEvent> = {}): RawEvent {
+function createRawRumEvent(overrides?: RecursivePartial<RawRumEvent>): RawRumEvent {
   return {
     kind: EventKind.RAW,
     source: EventSource.RENDERER,
-    data: {},
+    format: EventFormat.RUM,
     ...overrides,
+    data: createRawRumView(overrides?.data),
   };
 }
 
@@ -30,7 +33,7 @@ describe('EventManager', () => {
     } as unknown as EventHandler<RawEvent>;
 
     eventManager.registerHandler<RawEvent>(mockHandler);
-    const event = createRawEvent();
+    const event = createRawRumEvent();
     eventManager.notify(event);
 
     expect(mockHandler.canHandle).toHaveBeenCalledWith(event);
@@ -45,7 +48,7 @@ describe('EventManager', () => {
       canHandle: (_event): _event is RawEvent => false,
       handle,
     });
-    eventManager.notify(createRawEvent());
+    eventManager.notify(createRawRumEvent());
 
     expect(handle).not.toHaveBeenCalled();
   });
@@ -58,7 +61,10 @@ describe('EventManager', () => {
       canHandle: (event) => event.kind === EventKind.RAW,
       handle: (event) => handled.push(event),
     });
-    eventManager.notify([createRawEvent({ data: { id: 1 } }), createRawEvent({ data: { id: 2 } })]);
+    eventManager.notify([
+      createRawRumEvent({ data: { view: { id: '1' } } }),
+      createRawRumEvent({ data: { view: { id: '2' } } }),
+    ]);
 
     expect(handled).toHaveLength(2);
   });
@@ -76,7 +82,7 @@ describe('EventManager', () => {
       handle: (event) => collected.push(event),
     });
 
-    eventManager.notify(createRawEvent());
+    eventManager.notify(createRawRumEvent());
 
     expect(collected).toHaveLength(1);
     expect(collected[0].kind).toBe(EventKind.SERVER);
@@ -103,7 +109,7 @@ describe('EventManager', () => {
       },
     });
 
-    eventManager.notify(createRawEvent({ source: EventSource.MAIN }));
+    eventManager.notify(createRawRumEvent({ source: EventSource.MAIN }));
     eventManager.notify(createServerEvent({ track: EventTrack.LOGS }));
 
     expect(receivedSource).toBe(EventSource.MAIN);
@@ -119,7 +125,7 @@ describe('EventManager', () => {
 
     const subscription = eventManager.registerHandler(mockHandler);
     subscription.unsubscribe();
-    const event = createRawEvent();
+    const event = createRawRumEvent();
     eventManager.notify(event);
 
     expect(mockHandler.canHandle).not.toHaveBeenCalled();
@@ -135,7 +141,7 @@ describe('EventManager', () => {
 
     eventManager.registerHandler(mockHandler);
     eventManager.removeHandler(mockHandler);
-    const event = createRawEvent();
+    const event = createRawRumEvent();
     eventManager.notify(event);
 
     expect(mockHandler.canHandle).not.toHaveBeenCalled();

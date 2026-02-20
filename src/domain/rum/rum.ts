@@ -1,34 +1,23 @@
-import type { Configuration } from '../../config';
-import type { RumViewEvent } from './rumEvent.types';
 import { generateUUID } from '@datadog/browser-core';
-import { EventManager, EventKind, EventSource } from '../../event';
+import { EventFormat, EventKind, EventManager, EventSource } from '../../event';
+import { RawRumView } from './rawRumData.types';
 
 export class DummyMainView {
-  constructor(
-    private config: Configuration,
-    private sessionId: string,
-    private eventManager: EventManager
-  ) {
-    const viewEvent = createDummyViewEvent(this.config, this.sessionId);
-    this.eventManager.notify({ kind: EventKind.RAW, source: EventSource.MAIN, data: viewEvent });
+  constructor(private eventManager: EventManager) {
+    this.eventManager.notify({
+      kind: EventKind.RAW,
+      source: EventSource.MAIN,
+      format: EventFormat.RUM,
+      data: createDummyViewEvent(),
+    });
   }
 }
 
-function createDummyViewEvent(config: Configuration, sessionId: string): RumViewEvent {
-  const viewId = generateUUID();
-  const timestamp = Date.now();
-
+function createDummyViewEvent(): RawRumView {
   return {
     type: 'view',
-    date: timestamp,
-    source: 'electron',
-    service: config.service,
-    session: {
-      id: sessionId,
-      type: 'user',
-    },
     view: {
-      id: viewId,
+      id: generateUUID(),
       name: 'dummy-view',
       url: 'electron://app',
       time_spent: 0,
@@ -36,12 +25,6 @@ function createDummyViewEvent(config: Configuration, sessionId: string): RumView
       error: { count: 0 },
       resource: { count: 0 },
     },
-    application: {
-      id: config.applicationId,
-    },
-    _dd: {
-      format_version: 2,
-      document_version: 1,
-    },
+    _dd: { document_version: 1 },
   };
 }

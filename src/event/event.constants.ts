@@ -9,6 +9,11 @@ export const EventTrack = {
   SPANS: 'spans',
 } as const;
 
+export const EventFormat = {
+  RUM: 'rum',
+  TELEMETRY: 'telemetry',
+} as const;
+
 export const EventKind = {
   RAW: 'raw',
   SERVER: 'server',

@@ -1,11 +1,11 @@
 import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
 import { Transport } from './transport/http';
-import { DummyMainView } from './domain/rum/rum';
+import { DummyMainView } from './domain/rum';
 import { SessionManager } from './domain/sessionManager';
 import { EventManager } from './event';
-import { Assembly } from './domain/assembly';
-import { startTelemetry, callMonitored } from './domain/telemetry/telemetry';
+import { Assembly, registerCommonContext, createFormatHooks } from './assembly';
+import { startTelemetry, callMonitored } from './domain/telemetry';
 
 export async function init(configuration: InitConfiguration): Promise<boolean> {
   const config = buildConfiguration(configuration);
@@ -15,13 +15,15 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   }
 
   const eventManager = new EventManager();
+  const hooks = createFormatHooks();
 
+  registerCommonContext(config, hooks);
   startTelemetry(eventManager, config);
-  const sessionManager = await SessionManager.start(eventManager);
+  await SessionManager.start(eventManager, hooks);
 
-  new Assembly(eventManager);
+  new Assembly(eventManager, hooks);
   new Transport(config, eventManager);
-  new DummyMainView(config, sessionManager.getSession().id, eventManager);
+  new DummyMainView(eventManager);
 
   return true;
 }
@@ -37,5 +39,5 @@ export function _generateTelemetryError() {
 }
 
 export type { InitConfiguration } from './config';
-export type * from './domain/rum/rumEvent.types';
-export type * from './domain/telemetry/telemetryEvent.types';
+export type { RumViewEvent } from './domain/rum';
+export type { TelemetryErrorEvent } from './domain/telemetry';

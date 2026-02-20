@@ -9,8 +9,8 @@ import {
   callMonitored,
 } from '@datadog/browser-core/cjs/tools/monitor';
 import type { Configuration } from '../../config';
-import type { TelemetryErrorEvent } from './telemetryEvent.types';
-import { EventKind, EventSource, EventManager, SessionRenewEvent, LifecycleKind } from '../../event';
+import { EventKind, EventSource, EventManager, SessionRenewEvent, LifecycleKind, EventFormat } from '../../event';
+import { RawTelemetryError } from './rawTelemetryData.types';
 
 export { monitor, callMonitored };
 
@@ -25,7 +25,7 @@ class Telemetry {
 
   constructor(
     private readonly eventManager: EventManager,
-    private readonly configuration: Configuration
+    configuration: Configuration
   ) {
     this.isEnabled = performDraw(configuration.telemetrySampleRate);
 
@@ -51,6 +51,7 @@ class Telemetry {
     this.eventManager.notify({
       kind: EventKind.RAW,
       source: EventSource.MAIN,
+      format: EventFormat.TELEMETRY,
       data,
     });
   }
@@ -60,16 +61,10 @@ class Telemetry {
     this.sessionRenewSubscription?.unsubscribe();
   }
 
-  private createErrorEvent(error: unknown): TelemetryErrorEvent {
+  private createErrorEvent(error: unknown): RawTelemetryError {
     const { message, stack, kind } = formatError(error);
     return {
-      _dd: { format_version: 2 },
       type: 'telemetry',
-      date: Date.now(),
-      service: 'electron-sdk',
-      source: 'electron',
-      version: '0.0.0', // TODO(RUM-14340) use sdk version
-      application: { id: this.configuration.applicationId },
       telemetry: {
         type: 'log',
         status: 'error',

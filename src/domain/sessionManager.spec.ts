@@ -13,16 +13,19 @@ vi.mock('../tools/display', () => ({
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SessionManager, SESSION_EXPIRATION_DELAY, SESSION_TIME_OUT_DELAY, SESSION_FILE_NAME } from './sessionManager';
 import { EventManager, EventKind, LifecycleKind } from '../event';
+import { createFormatHooks, type FormatHooks } from '../assembly';
 
 const mfs = mockFs();
 
 describe('sessionManager', () => {
   let eventManager: EventManager;
+  let hooks: FormatHooks;
   let sessionManager: SessionManager;
 
   beforeEach(() => {
     vi.useFakeTimers();
     eventManager = new EventManager();
+    hooks = createFormatHooks();
   });
 
   afterEach(() => {
@@ -36,7 +39,7 @@ describe('sessionManager', () => {
     it('creates new session when no file exists', async () => {
       mfs.access.mockRejectedValue(new Error('ENOENT'));
 
-      sessionManager = await SessionManager.start(eventManager);
+      sessionManager = await SessionManager.start(eventManager, hooks);
 
       expect(sessionManager.getSession().id).toMatch(/^[0-9a-f-]+$/);
       expect(sessionManager.getSession().status).toBe('active');
@@ -57,7 +60,7 @@ describe('sessionManager', () => {
 
       mfs.readFile.mockResolvedValue(JSON.stringify(existingState));
 
-      sessionManager = await SessionManager.start(eventManager);
+      sessionManager = await SessionManager.start(eventManager, hooks);
 
       expect(sessionManager.getSession().id).toBe('existing-session-id');
       expect(sessionManager.getSession().status).toBe('active');
@@ -73,7 +76,7 @@ describe('sessionManager', () => {
 
       mfs.readFile.mockResolvedValue(JSON.stringify(existingState));
 
-      sessionManager = await SessionManager.start(eventManager);
+      sessionManager = await SessionManager.start(eventManager, hooks);
 
       expect(sessionManager.getSession().id).not.toBe('expired-session-id');
       expect(sessionManager.getSession().status).toBe('active');
@@ -89,7 +92,7 @@ describe('sessionManager', () => {
 
       mfs.readFile.mockResolvedValue(JSON.stringify(existingState));
 
-      sessionManager = await SessionManager.start(eventManager);
+      sessionManager = await SessionManager.start(eventManager, hooks);
 
       expect(sessionManager.getSession().id).not.toBe('timed-out-session-id');
       expect(sessionManager.getSession().status).toBe('active');
@@ -100,7 +103,7 @@ describe('sessionManager', () => {
     it('expires session after inactivity delay', async () => {
       mfs.access.mockRejectedValue(new Error('ENOENT'));
 
-      sessionManager = await SessionManager.start(eventManager);
+      sessionManager = await SessionManager.start(eventManager, hooks);
 
       expect(sessionManager.getSession().status).toBe('active');
 
@@ -114,7 +117,7 @@ describe('sessionManager', () => {
       const now = Date.now();
       mfs.access.mockRejectedValue(new Error('ENOENT'));
 
-      sessionManager = await SessionManager.start(eventManager);
+      sessionManager = await SessionManager.start(eventManager, hooks);
 
       const sessionId = sessionManager.getSession().id;
 
@@ -148,7 +151,7 @@ describe('sessionManager', () => {
       const startTime = Date.now();
       mfs.access.mockRejectedValue(new Error('ENOENT'));
 
-      sessionManager = await SessionManager.start(eventManager);
+      sessionManager = await SessionManager.start(eventManager, hooks);
 
       const sessionId = sessionManager.getSession().id;
       expect(sessionId).toBeDefined();
@@ -192,7 +195,7 @@ describe('sessionManager', () => {
     it('creates new session on activity when expired', async () => {
       mfs.access.mockRejectedValue(new Error('ENOENT'));
 
-      sessionManager = await SessionManager.start(eventManager);
+      sessionManager = await SessionManager.start(eventManager, hooks);
 
       const originalSessionId = sessionManager.getSession().id;
       expect(sessionManager.getSession().status).toBe('active');
@@ -220,7 +223,7 @@ describe('sessionManager', () => {
       mfs.access.mockResolvedValue(undefined);
       mfs.readFile.mockRejectedValue(new Error('Read error'));
 
-      sessionManager = await SessionManager.start(eventManager);
+      sessionManager = await SessionManager.start(eventManager, hooks);
 
       // Should create a new session despite read error
 
@@ -231,7 +234,7 @@ describe('sessionManager', () => {
       mfs.access.mockRejectedValue(new Error('ENOENT'));
       mfs.writeFile.mockRejectedValue(new Error('Write error'));
 
-      sessionManager = await SessionManager.start(eventManager);
+      sessionManager = await SessionManager.start(eventManager, hooks);
 
       // Session should still be created in memory
 
@@ -243,7 +246,7 @@ describe('sessionManager', () => {
       mfs.access.mockResolvedValue(undefined);
       mfs.readFile.mockResolvedValue('invalid json');
 
-      sessionManager = await SessionManager.start(eventManager);
+      sessionManager = await SessionManager.start(eventManager, hooks);
 
       // Should create a new session despite parse error
 
@@ -255,7 +258,7 @@ describe('sessionManager', () => {
     it('should not allow to mutate the current session', async () => {
       mfs.access.mockRejectedValue(new Error('ENOENT'));
 
-      sessionManager = await SessionManager.start(eventManager);
+      sessionManager = await SessionManager.start(eventManager, hooks);
 
       const session = sessionManager.getSession();
       session.id = 'new-id';
