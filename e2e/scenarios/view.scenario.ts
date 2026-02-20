@@ -40,3 +40,14 @@ test('emits an inactive view on session expiry and a new active view on session 
   expect(newView.view.is_active).toBe(true);
   expect(newView._dd.document_version).toBe(1);
 });
+
+test('increments view error count after an uncaught exception', async ({ app, intake }) => {
+  await app.generateUncaughtException();
+
+  await intake.getEventsByType('error');
+  const viewEvents = await intake.waitForEventCount('view', 2);
+  const updatedView = viewEvents[1].body as RumViewEvent;
+
+  expect(updatedView.view.error.count).toBe(1);
+  expect(updatedView._dd.document_version).toBeGreaterThan(1);
+});
