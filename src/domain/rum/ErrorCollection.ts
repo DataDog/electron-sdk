@@ -6,6 +6,7 @@ import { monitor } from '../telemetry';
 /**
  * Collect RUM error events for:
  * - uncaught exception
+ * - unhandled rejection
  */
 export class ErrorCollection {
   private errorListener: (error: Error) => void;
@@ -13,10 +14,12 @@ export class ErrorCollection {
   constructor(private readonly eventManager: EventManager) {
     this.errorListener = monitor((error: unknown) => this.emitError(error));
     process.on('uncaughtException', this.errorListener);
+    process.on('unhandledRejection', this.errorListener);
   }
 
   stop(): void {
     process.off('uncaughtException', this.errorListener);
+    process.off('unhandledRejection', this.errorListener);
   }
 
   private emitError(error: unknown): void {

@@ -51,4 +51,30 @@ describe('ErrorCollection', () => {
       expect(data.error.type).toBeUndefined();
     });
   });
+
+  describe('unhandledRejection', () => {
+    it('emits an error event with correct fields from an Error rejection', () => {
+      errorCollection = new ErrorCollection(eventManager);
+
+      process.emit('unhandledRejection', new Error('test rejection'), Promise.resolve());
+
+      expect(rawRumEvents).toHaveLength(1);
+      const data = rawRumEvents[0].data as RawRumError;
+      expect(data.error.message).toBe('test rejection');
+      expect(data.error.source).toBe('source');
+      expect(data.error.handling).toBe('unhandled');
+      expect(data.error.stack).toBeDefined();
+    });
+
+    it('emits an error event with fallback message from a non-Error rejection', () => {
+      errorCollection = new ErrorCollection(eventManager);
+
+      process.emit('unhandledRejection', 'string rejection', Promise.resolve());
+
+      expect(rawRumEvents).toHaveLength(1);
+      const data = rawRumEvents[0].data as RawRumError;
+      expect(data.error.message).toBe('Uncaught "string rejection"');
+      expect(data.error.stack).toBeUndefined();
+    });
+  });
 });
