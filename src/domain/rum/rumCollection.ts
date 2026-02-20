@@ -1,6 +1,6 @@
 import { EventManager } from '../../event';
 import type { FormatHooks } from '../../assembly';
-import { ViewCollection } from './view';
+import { ViewCollection } from './viewCollection';
 
 export class RumCollection {
   private viewCollection: ViewCollection;
