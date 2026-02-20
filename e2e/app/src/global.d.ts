@@ -4,6 +4,8 @@ declare global {
       generateTelemetryErrors: (count: number) => Promise<void>;
       stopSession: () => Promise<void>;
       generateActivity: () => Promise<void>;
+      generateUncaughtException: () => Promise<void>;
+      generateUnhandledRejection: () => Promise<void>;
     };
   }
 }

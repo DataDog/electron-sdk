@@ -36,4 +36,12 @@ export class AppPage {
       count
     );
   }
+
+  async generateUncaughtException() {
+    await this.page.locator('#generate-uncaught-exception').click();
+  }
+
+  async generateUnhandledRejection() {
+    await this.page.locator('#generate-unhandled-rejection').click();
+  }
 }

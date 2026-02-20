@@ -30,6 +30,16 @@ void app.whenReady().then(async () => {
     _generateActivity();
   });
 
+  ipcMain.handle('generateUncaughtException', () => {
+    setTimeout(() => {
+      throw new Error('test uncaught exception');
+    });
+  });
+
+  ipcMain.handle('generateUnhandledRejection', () => {
+    void Promise.reject(new Error('test unhandled rejection'));
+  });
+
   createWindow();
 });
 

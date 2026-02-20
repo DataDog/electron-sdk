@@ -22,3 +22,17 @@ generateActivityButton.addEventListener('click', () => {
     statusDiv.textContent = 'Activity generated';
   });
 });
+
+const uncaughtExceptionButton = document.getElementById('generate-uncaught-exception') as HTMLButtonElement;
+uncaughtExceptionButton.addEventListener('click', () => {
+  void window.electronAPI.generateUncaughtException().then(() => {
+    statusDiv.textContent = 'Uncaught exception generated';
+  });
+});
+
+const unhandledRejectionButton = document.getElementById('generate-unhandled-rejection') as HTMLButtonElement;
+unhandledRejectionButton.addEventListener('click', () => {
+  void window.electronAPI.generateUnhandledRejection().then(() => {
+    statusDiv.textContent = 'Unhandled rejection generated';
+  });
+});
