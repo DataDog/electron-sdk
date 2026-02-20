@@ -4,9 +4,7 @@ import { Transport } from './transport/http';
 import { DummyMainView } from './domain/rum';
 import { SessionManager } from './domain/sessionManager';
 import { EventManager } from './event';
-import { Assembly } from './domain/assembly';
-import { registerCommonContext } from './domain/commonContext';
-import { createFormatHooks } from './domain/hooks';
+import { Assembly, registerCommonContext, createFormatHooks } from './assembly';
 import { startTelemetry, callMonitored } from './domain/telemetry';
 
 export async function init(configuration: InitConfiguration): Promise<boolean> {

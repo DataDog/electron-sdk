@@ -13,7 +13,7 @@ vi.mock('../tools/display', () => ({
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SessionManager, SESSION_EXPIRATION_DELAY, SESSION_TIME_OUT_DELAY, SESSION_FILE_NAME } from './sessionManager';
 import { EventManager, EventKind, LifecycleKind } from '../event';
-import { createFormatHooks, type FormatHooks } from './hooks';
+import { createFormatHooks, type FormatHooks } from '../assembly';
 
 const mfs = mockFs();
 

@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { deepClone, generateUUID, ONE_HOUR, ONE_MINUTE, type Subscription } from '@datadog/browser-core';
 import { EventManager, EventKind, LifecycleKind, type EndUserActivityEvent } from '../event';
-import type { FormatHooks } from './hooks';
+import type { FormatHooks } from '../assembly';
 import { addError, setTimeout } from './telemetry';
 import { displayError } from '../tools/display';
 

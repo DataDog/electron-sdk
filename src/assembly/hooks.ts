@@ -1,6 +1,6 @@
 import { combine, DISCARDED, SKIPPED, type RecursivePartial } from '@datadog/browser-core';
-import type { RumEvent } from '../rum';
-import type { TelemetryEvent } from '../telemetry';
+import type { RumEvent } from '../domain/rum';
+import type { TelemetryEvent } from '../domain/telemetry';
 
 export type RumEventType = RumEvent['type'];
 
