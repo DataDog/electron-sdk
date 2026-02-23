@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { addError, callMonitored, monitor, startTelemetry, stopTelemetry } from './telemetry';
+import { addError, callMonitored, monitor, startTelemetry, stopTelemetry } from './Telemetry';
 import { createTestConfiguration } from '../../mocks.specUtil';
 import { EventManager, RawEvent, EventKind, LifecycleKind } from '../../event';
 import { RawTelemetryData } from './rawTelemetryData.types';

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ViewCollection, SESSION_KEEP_ALIVE_INTERVAL } from './viewCollection';
+import { ViewCollection, SESSION_KEEP_ALIVE_INTERVAL } from './ViewCollection';
 import { EventManager, EventKind, EventFormat, LifecycleKind, type RawRumEvent } from '../../event';
 import { createFormatHooks, type FormatHooks } from '../../assembly';
 

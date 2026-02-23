@@ -2,7 +2,7 @@ import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
 import { Transport } from './transport/http';
 import { RumCollection } from './domain/rum';
-import { SessionManager } from './domain/sessionManager';
+import { SessionManager } from './domain/SessionManager';
 import { EventManager, EventKind, LifecycleKind } from './event';
 import { Assembly, registerCommonContext, createFormatHooks } from './assembly';
 import { startTelemetry, callMonitored } from './domain/telemetry';

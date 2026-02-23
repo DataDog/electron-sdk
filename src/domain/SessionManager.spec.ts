@@ -11,7 +11,7 @@ vi.mock('../tools/display', () => ({
 }));
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { SessionManager, SESSION_EXPIRATION_DELAY, SESSION_TIME_OUT_DELAY, SESSION_FILE_NAME } from './sessionManager';
+import { SessionManager, SESSION_EXPIRATION_DELAY, SESSION_TIME_OUT_DELAY, SESSION_FILE_NAME } from './SessionManager';
 import { EventManager, EventKind, LifecycleKind, type LifecycleEvent } from '../event';
 import { createFormatHooks, type FormatHooks } from '../assembly';
 
