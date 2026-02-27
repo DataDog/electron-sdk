@@ -32,6 +32,14 @@ The SDK builds both CommonJS and ES modules for maximum compatibility:
 - **ESM**: `dist/index.mjs` - For modern bundlers
 - **Types**: `dist/index.d.ts` - Single TypeScript definition file
 
+### Build-Time Constants
+
+`@rollup/plugin-replace` injects constants at build time. They are declared in `src/globals.d.ts` and replaced with actual values during the Rollup build.
+
+- **`__SDK_VERSION__`** — SDK version from `package.json`, used in telemetry events and RUM `ddtags`.
+
+For unit tests, these constants are defined via Vitest's `define` option in `vitest.config.mjs`.
+
 ## Dependency Management
 
 ### Adding Dependencies
