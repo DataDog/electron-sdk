@@ -2,12 +2,14 @@ export const EventSource = {
   RENDERER: 'renderer',
   MAIN: 'main-process',
 } as const;
+export type EventSource = (typeof EventSource)[keyof typeof EventSource];
 
 export const EventTrack = {
   LOGS: 'logs',
   RUM: 'rum',
   SPANS: 'spans',
 } as const;
+export type EventTrack = (typeof EventTrack)[keyof typeof EventTrack];
 
 export const EventFormat = {
   RUM: 'rum',

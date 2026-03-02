@@ -1,10 +1,30 @@
-import { elapsed, generateUUID, ONE_MINUTE, TimeStamp, timeStampNow, toServerDuration } from '@datadog/browser-core';
-import { EventFormat, EventKind, EventManager, EventSource, LifecycleKind, type LifecycleEvent } from '../../event';
+import {
+  elapsed,
+  generateUUID,
+  ONE_MINUTE,
+  ONE_SECOND,
+  Subscription,
+  TimeStamp,
+  timeStampNow,
+  toServerDuration,
+} from '@datadog/browser-core';
+import {
+  EventFormat,
+  EventKind,
+  EventManager,
+  EventSource,
+  EventTrack,
+  type LifecycleEvent,
+  LifecycleKind,
+  ServerRumEvent,
+} from '../../event';
 import type { FormatHooks } from '../../assembly';
-import { setInterval } from '../telemetry';
+import { setInterval, throttle } from '../telemetry';
 import type { RawRumView } from './rawRumData.types';
 
 export const SESSION_KEEP_ALIVE_INTERVAL = 5 * ONE_MINUTE;
+// throttle view updates to avoid bursts
+export const VIEW_UPDATE_THROTTLE_DELAY = 3 * ONE_SECOND;
 
 interface ViewState {
   id: string;
@@ -22,16 +42,24 @@ interface ViewState {
  * - keep session alive by regularly send view updates
  * - on SESSION_EXPIRED, emit a final inactive view update
  * - on SESSION_RENEW, create a new view
+ * - on RUM server event (action, error, resource), increment view counters (throttled)
  */
 export class ViewCollection {
   private currentView!: ViewState;
   private keepAliveIntervalId: ReturnType<typeof setInterval> | undefined;
-  private lifecycleSubscription: { unsubscribe: () => void };
+  private scheduleViewUpdate: () => void;
+  private cancelScheduledViewUpdate: () => void;
+  private lifecycleSubscription: Subscription;
+  private serverEventSubscription: Subscription;
 
   constructor(
     private readonly eventManager: EventManager,
     private readonly hooks: FormatHooks
   ) {
+    const { throttled, cancel } = throttle(() => this.emitViewUpdate(), VIEW_UPDATE_THROTTLE_DELAY);
+    this.scheduleViewUpdate = throttled;
+    this.cancelScheduledViewUpdate = cancel;
+
     this.createNewView();
     this.registerHooks();
 
@@ -45,11 +73,18 @@ export class ViewCollection {
         }
       },
     });
+
+    this.serverEventSubscription = this.eventManager.registerHandler<ServerRumEvent>({
+      canHandle: (event): event is ServerRumEvent => event.kind === EventKind.SERVER && event.track === EventTrack.RUM,
+      handle: (event) => this.onServerRumEvent(event),
+    });
   }
 
   stop(): void {
+    this.cancelScheduledViewUpdate();
     this.stopSessionKeepAlive();
     this.lifecycleSubscription.unsubscribe();
+    this.serverEventSubscription.unsubscribe();
   }
 
   private createNewView(): void {
@@ -90,6 +125,7 @@ export class ViewCollection {
   }
 
   private onSessionExpired(): void {
+    this.cancelScheduledViewUpdate();
     this.stopSessionKeepAlive();
     this.currentView.isActive = false;
     this.currentView.documentVersion++;
@@ -97,7 +133,17 @@ export class ViewCollection {
   }
 
   private onSessionRenew(): void {
+    this.cancelScheduledViewUpdate();
     this.createNewView();
+  }
+
+  private onServerRumEvent(event: ServerRumEvent): void {
+    const type = event.data.type;
+    if (type === 'action' || type === 'error' || type === 'resource') {
+      this.currentView.counters[type].count++;
+      this.currentView.documentVersion++;
+      this.scheduleViewUpdate();
+    }
   }
 
   private keepSessionAlive(): void {

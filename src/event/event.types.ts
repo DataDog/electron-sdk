@@ -1,26 +1,40 @@
 import { EventFormat, EventKind, EventSource, EventTrack, LifecycleKind } from './event.constants';
-import { RawTelemetryData } from '../domain/telemetry';
-import { RawRumData } from '../domain/rum';
+import { RawTelemetryData, TelemetryEvent } from '../domain/telemetry';
+import { RawRumData, RumEvent } from '../domain/rum';
 
 export type RawEvent = RawRumEvent | RawTelemetryEvent;
 
 export interface RawRumEvent {
   kind: typeof EventKind.RAW;
-  source: (typeof EventSource)[keyof typeof EventSource];
+  source: EventSource;
   format: typeof EventFormat.RUM;
   data: RawRumData;
 }
 
 export interface RawTelemetryEvent {
   kind: typeof EventKind.RAW;
-  source: (typeof EventSource)[keyof typeof EventSource];
+  source: EventSource;
   format: typeof EventFormat.TELEMETRY;
   data: RawTelemetryData;
 }
 
-export interface ServerEvent {
+export type ServerEvent = ServerRumEvent | ServerTelemetryEvent | ServerLogsEvent;
+
+export interface ServerRumEvent {
   kind: typeof EventKind.SERVER;
-  track: (typeof EventTrack)[keyof typeof EventTrack];
+  track: typeof EventTrack.RUM;
+  data: RumEvent;
+}
+
+export interface ServerTelemetryEvent {
+  kind: typeof EventKind.SERVER;
+  track: typeof EventTrack.RUM;
+  data: TelemetryEvent;
+}
+
+export interface ServerLogsEvent {
+  kind: typeof EventKind.SERVER;
+  track: typeof EventTrack.LOGS;
   data: unknown;
 }
 
