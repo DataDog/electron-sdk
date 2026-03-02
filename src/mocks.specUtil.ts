@@ -1,32 +1,35 @@
-import { type MockInstance, vi } from 'vitest';
+import { type MockInstance } from 'vitest';
 import * as fs from 'node:fs/promises';
 import type { Configuration } from './config';
 import { RawRumView, RumActionEvent, RumErrorEvent, RumEvent, RumResourceEvent, RumViewEvent } from './domain/rum';
 import { combine, mergeInto, RecursivePartial, ServerDuration } from '@datadog/browser-core';
 
 export function mockFs() {
-  vi.mock('node:fs/promises', () => ({
-    access: vi.fn(),
-    readFile: vi.fn(),
-    writeFile: vi.fn(),
-    unlink: vi.fn(),
-  }));
   const mocks = {
     access: fs.access as unknown as MockInstance,
     readFile: fs.readFile as unknown as MockInstance,
+    readdir: fs.readdir as unknown as MockInstance,
     writeFile: fs.writeFile as unknown as MockInstance,
+    appendFile: fs.appendFile as unknown as MockInstance,
     unlink: fs.unlink as unknown as MockInstance,
+    mkdir: fs.mkdir as unknown as MockInstance,
+    rename: fs.rename as unknown as MockInstance,
     reset: () => {
       mocks.access.mockReset();
       mocks.readFile.mockReset();
+      mocks.readdir.mockReset();
       mocks.writeFile.mockReset();
+      mocks.appendFile.mockReset();
       mocks.unlink.mockReset();
+      mocks.mkdir.mockReset();
+      mocks.rename.mockReset();
     },
   };
   return mocks;
 }
 export function createTestConfiguration(overrides: Partial<Configuration> = {}): Configuration {
   return {
+    site: 'datadoghq.com',
     service: 'test-service',
     clientToken: 'test-token',
     applicationId: 'test-app-id',
