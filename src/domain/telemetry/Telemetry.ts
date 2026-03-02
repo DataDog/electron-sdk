@@ -87,6 +87,10 @@ export function setTimeout(callback: () => void, delay?: number): ReturnType<typ
   return global.setTimeout(monitor(callback), delay);
 }
 
+export function setInterval(callback: () => void, delay?: number): ReturnType<typeof global.setInterval> {
+  return global.setInterval(monitor(callback), delay);
+}
+
 export function stopTelemetry(): void {
   telemetryInstance?.stop();
   telemetryInstance = undefined;

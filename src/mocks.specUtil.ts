@@ -2,7 +2,7 @@ import { type MockInstance, vi } from 'vitest';
 import * as fs from 'node:fs/promises';
 import type { Configuration } from './config';
 import { RawRumView } from './domain/rum';
-import { mergeInto, RecursivePartial } from '@datadog/browser-core';
+import { mergeInto, RecursivePartial, ServerDuration } from '@datadog/browser-core';
 
 export function mockFs() {
   vi.mock('node:fs/promises', () => ({
@@ -43,7 +43,8 @@ export function createRawRumView(overrides?: RecursivePartial<RawRumView>): RawR
         id: '1',
         name: 'name',
         url: 'url',
-        time_spent: 0,
+        time_spent: 0 as ServerDuration,
+        is_active: true,
         action: { count: 0 },
         error: { count: 0 },
         resource: { count: 0 },

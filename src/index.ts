@@ -1,8 +1,8 @@
 import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
 import { Transport } from './transport/http';
-import { DummyMainView } from './domain/rum';
-import { SessionManager } from './domain/sessionManager';
+import { RumCollection } from './domain/rum';
+import { SessionManager } from './domain/SessionManager';
 import { EventManager, EventKind, LifecycleKind } from './event';
 import { Assembly, registerCommonContext, createFormatHooks } from './assembly';
 import { startTelemetry, callMonitored } from './domain/telemetry';
@@ -29,7 +29,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   new Assembly(eventManager, hooks);
   new Transport(config, eventManager);
-  new DummyMainView(eventManager);
+  new RumCollection(eventManager, hooks);
 
   return true;
 }
