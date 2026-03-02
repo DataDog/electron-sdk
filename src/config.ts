@@ -11,6 +11,21 @@ const VALID_DATADOG_SITES = [
   'datad0g.com', // Internal staging site
 ] as const;
 
+export const BatchSizes = {
+  SMALL: 16 * 1024,
+  MEDIUM: 512 * 1024,
+  LARGE: 4 * 1024 * 1024,
+} as const;
+
+export const BatchUploadFrequencies = {
+  RARE: 30 * 1000,
+  NORMAL: 10 * 1000,
+  FREQUENT: 5 * 1000,
+} as const;
+
+export type BatchSize = 'SMALL' | 'MEDIUM' | 'LARGE';
+export type UploadFrequency = 'RARE' | 'NORMAL' | 'FREQUENT';
+
 export interface InitConfiguration {
   site: string;
   proxy?: string;
@@ -20,16 +35,22 @@ export interface InitConfiguration {
   env?: string;
   version?: string;
   telemetrySampleRate?: number;
+  batchSize?: BatchSize;
+  uploadFrequency?: UploadFrequency;
 }
 
 export interface Configuration {
+  site: string;
   service: string;
   clientToken: string;
   applicationId: string;
   env?: string;
   version?: string;
+  proxy?: string;
   intakeUrl: string;
   telemetrySampleRate: number;
+  batchSize?: BatchSize;
+  uploadFrequency?: UploadFrequency;
 }
 
 function validateRequiredString(value: unknown, fieldName: string): string | undefined {
@@ -84,11 +105,13 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
   const proxy = validateOptionalString(initConfig.proxy);
 
   return {
+    site,
     service,
     clientToken,
     applicationId,
     env: validateOptionalString(initConfig.env),
     version: validateOptionalString(initConfig.version),
+    proxy,
     intakeUrl: computeIntakeUrl(site, proxy),
     telemetrySampleRate: validateTelemetrySampleRate(initConfig.telemetrySampleRate),
   };
@@ -100,7 +123,10 @@ function computeIntakeUrl(site: string, proxy?: string): string {
     return proxy;
   }
 
-  // Generate intake URL from site
+  return computeIntakeUrlForTrack(site, 'rum');
+}
+
+export function computeIntakeUrlForTrack(site: string, trackType: string): string {
   // For sites with subdomains (e.g., us3.datadoghq.com), replace the first dot with a dash
   const parts = site.split('.');
   let intakeSite: string;
@@ -115,5 +141,5 @@ function computeIntakeUrl(site: string, proxy?: string): string {
     intakeSite = site;
   }
 
-  return `https://browser-intake-${intakeSite}/api/v2/rum`;
+  return `https://browser-intake-${intakeSite}/api/v2/${trackType}`;
 }
