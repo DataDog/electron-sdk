@@ -56,6 +56,10 @@ export class SessionManager {
     return deepClone(this.currentSession);
   }
 
+  expire(): void {
+    this.expireSession();
+  }
+
   stop(): void {
     this.clearTimers();
     if (this.activitySubscription) {
@@ -113,6 +117,7 @@ export class SessionManager {
   private async updateActivity(): Promise<void> {
     if (this.currentSession.status === 'expired') {
       await this.createNewSession();
+      this.eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
       return;
     }
 

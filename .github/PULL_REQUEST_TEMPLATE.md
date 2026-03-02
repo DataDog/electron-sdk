@@ -17,5 +17,6 @@
 - [ ] Tested locally (playground)
 - [ ] Added unit tests for this change.
 - [ ] Added e2e/integration tests for this change.
+- [ ] Updated related documentation.
 
 <!-- Also, please read the contribution guidelines: https://github.com/DataDog/electron-sdk/blob/main/CONTRIBUTING.md -->

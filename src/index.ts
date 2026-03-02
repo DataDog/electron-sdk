@@ -3,10 +3,16 @@ import { buildConfiguration } from './config';
 import { Transport } from './transport/http';
 import { DummyMainView } from './domain/rum';
 import { SessionManager } from './domain/sessionManager';
-import { EventManager } from './event';
+import { EventManager, EventKind, LifecycleKind } from './event';
 import { Assembly, registerCommonContext, createFormatHooks } from './assembly';
 import { startTelemetry, callMonitored } from './domain/telemetry';
 
+let sessionManager: SessionManager | undefined;
+let eventManager: EventManager | undefined;
+
+/**
+ * Initialize the Electron SDK
+ */
 export async function init(configuration: InitConfiguration): Promise<boolean> {
   const config = buildConfiguration(configuration);
 
@@ -14,18 +20,33 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
     return false;
   }
 
-  const eventManager = new EventManager();
+  eventManager = new EventManager();
   const hooks = createFormatHooks();
 
   registerCommonContext(config, hooks);
   startTelemetry(eventManager, config);
-  await SessionManager.start(eventManager, hooks);
+  sessionManager = await SessionManager.start(eventManager, hooks);
 
   new Assembly(eventManager, hooks);
   new Transport(config, eventManager);
   new DummyMainView(eventManager);
 
   return true;
+}
+
+/**
+ * Stop the current session
+ */
+export function stopSession(): void {
+  sessionManager?.expire();
+}
+
+/**
+ * Internal API to simulate end-user activity
+ * TODO(RUM-14303) replace usages with real user activity
+ */
+export function _generateActivity(): void {
+  eventManager?.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.END_USER_ACTIVITY });
 }
 
 /*

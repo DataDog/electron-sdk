@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  generateTelemetryError: () => ipcRenderer.invoke('generateTelemetryError'),
+  generateTelemetryErrors: (count: number) => ipcRenderer.invoke('generateTelemetryErrors', count),
+  stopSession: () => ipcRenderer.invoke('stopSession'),
+  generateActivity: () => ipcRenderer.invoke('generateActivity'),
 });

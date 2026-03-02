@@ -1,7 +1,8 @@
 // Type definition for the exposed API
 interface ElectronAPI {
   getSessionFile: () => Promise<string | null>;
-  clearSessionFile: () => Promise<void>;
+  stopSession: () => Promise<void>;
+  generateActivity: () => Promise<void>;
   generateTelemetryError: () => Promise<void>;
 }
 
@@ -15,9 +16,13 @@ declare global {
 export {};
 
 const sessionContent = document.getElementById('session-content') as HTMLPreElement;
-const clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
+const stopBtn = document.getElementById('stop-btn') as HTMLButtonElement;
+
+const DISK_SETTLE_DELAY = 100;
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function refreshSessionDisplay() {
+  await delay(DISK_SETTLE_DELAY);
   try {
     const content = await window.electronAPI.getSessionFile();
     if (content) {
@@ -41,26 +46,26 @@ async function refreshSessionDisplay() {
   }
 }
 
-if (clearBtn && sessionContent) {
+if (stopBtn && sessionContent) {
   // Load session file content on page load
   void refreshSessionDisplay();
 
-  // Handle clear button click
-  clearBtn.addEventListener('click', () => {
+  // Handle stop session button click
+  stopBtn.addEventListener('click', () => {
     void (async () => {
       try {
-        clearBtn.disabled = true;
-        clearBtn.textContent = 'Clearing...';
+        stopBtn.disabled = true;
+        stopBtn.textContent = 'Stopping...';
 
-        await window.electronAPI.clearSessionFile();
+        await window.electronAPI.stopSession();
         await refreshSessionDisplay();
 
-        clearBtn.textContent = 'Clear Session';
-        clearBtn.disabled = false;
+        stopBtn.textContent = 'Stop Session';
+        stopBtn.disabled = false;
       } catch (error) {
-        console.error('Error clearing session:', error);
-        clearBtn.textContent = 'Clear Session';
-        clearBtn.disabled = false;
+        console.error('Error stopping session:', error);
+        stopBtn.textContent = 'Stop Session';
+        stopBtn.disabled = false;
       }
     })();
   });
@@ -68,8 +73,14 @@ if (clearBtn && sessionContent) {
   console.error('Required elements not found');
 }
 
+// Handle generate activity button click
+const activityButton = document.getElementById('generate-activity') as HTMLButtonElement;
+activityButton.addEventListener('click', () => {
+  void window.electronAPI.generateActivity().then(() => refreshSessionDisplay());
+});
+
 // Handle telemetry error button click
 const telemetryErrorButton = document.getElementById('generate-telemetry-error') as HTMLButtonElement;
 telemetryErrorButton.addEventListener('click', () => {
-  void window.electronAPI.generateTelemetryError();
+  void window.electronAPI.generateTelemetryError().then(() => refreshSessionDisplay());
 });
