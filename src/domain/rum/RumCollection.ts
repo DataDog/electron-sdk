@@ -1,7 +1,8 @@
-import { EventManager } from '../../event';
+import { EventManager, EventTrack } from '../../event';
 import type { FormatHooks } from '../../assembly';
 import { ErrorCollection } from './ErrorCollection';
 import { ViewCollection } from './ViewCollection';
+import { Domain, TrackType } from '../../transport';
 
 export class RumCollection {
   private viewCollection: ViewCollection;
