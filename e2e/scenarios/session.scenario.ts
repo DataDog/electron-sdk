@@ -10,7 +10,6 @@ test('new session id is generated when renewing a session', async ({ app, intake
   expect(firstSessionId).toMatch(/^[0-9a-f-]+$/);
 
   await app.renewSession();
-  await app.flushTransport();
   await app.generateTelemetryError();
   await app.flushTransport();
 
