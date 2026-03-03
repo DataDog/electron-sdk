@@ -1,4 +1,4 @@
-import { combine, DISCARDED, SKIPPED, type RecursivePartial } from '@datadog/browser-core';
+import { combine, DISCARDED, SKIPPED, type RecursivePartial, type TimeStamp } from '@datadog/browser-core';
 import type { RumEvent } from '../domain/rum';
 import type { TelemetryEvent } from '../domain/telemetry';
 
@@ -6,11 +6,11 @@ export type RumEventType = RumEvent['type'];
 
 export interface RumAssembleParams {
   eventType: RumEventType;
-  startTime: number;
+  startTime: TimeStamp;
 }
 
 export interface TelemetryAssembleParams {
-  startTime: number;
+  startTime: TimeStamp;
 }
 
 type AssembleCallback<Params, Result> = (params: Params) => Result | typeof DISCARDED | typeof SKIPPED;

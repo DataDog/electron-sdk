@@ -1,9 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { type TimeStamp } from '@datadog/browser-core';
 import { ViewCollection, SESSION_KEEP_ALIVE_INTERVAL, VIEW_UPDATE_THROTTLE_DELAY } from './ViewCollection';
 import { EventManager, EventKind, EventFormat, EventTrack, LifecycleKind, type RawRumEvent } from '../../event';
 import { createFormatHooks, type FormatHooks } from '../../assembly';
 import { createServerRumEvent, createServerRumView } from '../../mocks.specUtil';
 import { RawRumView } from './rawRumData.types';
+
+const T0 = 0 as TimeStamp;
 
 describe('ViewCollection', () => {
   let eventManager: EventManager;
@@ -48,7 +51,7 @@ describe('ViewCollection', () => {
       viewCollection = new ViewCollection(eventManager, hooks);
 
       const initialView = (rawRumEvents[0].data as RawRumView).view;
-      const result = hooks.triggerRum({ eventType: 'view', startTime: 0 });
+      const result = hooks.triggerRum({ eventType: 'view', startTime: T0 });
 
       expect(result).toEqual({
         view: { id: initialView.id, name: initialView.name, url: initialView.url },
@@ -59,7 +62,7 @@ describe('ViewCollection', () => {
       viewCollection = new ViewCollection(eventManager, hooks);
 
       const initialView = (rawRumEvents[0].data as RawRumView).view;
-      const result = hooks.triggerTelemetry({ startTime: 0 });
+      const result = hooks.triggerTelemetry({ startTime: T0 });
 
       expect(result).toEqual({ view: { id: initialView.id } });
     });
@@ -125,7 +128,7 @@ describe('ViewCollection', () => {
 
       eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
 
-      const result = hooks.triggerRum({ eventType: 'view', startTime: 0 });
+      const result = hooks.triggerRum({ eventType: 'view', startTime: T0 });
       const newViewId = (rawRumEvents[1].data as RawRumView).view.id;
       expect(result).toMatchObject({ view: { id: newViewId } });
       expect(newViewId).not.toBe(originalViewId);

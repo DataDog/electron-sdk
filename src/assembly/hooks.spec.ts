@@ -1,12 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { DISCARDED, SKIPPED } from '@datadog/browser-core';
+import { DISCARDED, SKIPPED, type TimeStamp } from '@datadog/browser-core';
 import { createFormatHooks } from './hooks';
+
+const T0 = 0 as TimeStamp;
+const T42 = 42 as TimeStamp;
+const T100 = 100 as TimeStamp;
 
 describe('createFormatHooks', () => {
   describe('triggerRum', () => {
     it('returns undefined when no callbacks are registered', () => {
       const hooks = createFormatHooks();
-      const result = hooks.triggerRum({ eventType: 'view', startTime: 0 });
+      const result = hooks.triggerRum({ eventType: 'view', startTime: T0 });
       expect(result).toBeUndefined();
     });
 
@@ -14,7 +18,7 @@ describe('createFormatHooks', () => {
       const hooks = createFormatHooks();
       hooks.registerRum(() => ({ session: { id: 'session-1' } }));
 
-      const result = hooks.triggerRum({ eventType: 'view', startTime: 100 });
+      const result = hooks.triggerRum({ eventType: 'view', startTime: T100 });
       expect(result).toEqual({ session: { id: 'session-1' } });
     });
 
@@ -23,7 +27,7 @@ describe('createFormatHooks', () => {
       hooks.registerRum(() => ({ session: { id: 'session-1' } }));
       hooks.registerRum(() => ({ date: 123, source: 'electron' }));
 
-      const result = hooks.triggerRum({ eventType: 'view', startTime: 0 });
+      const result = hooks.triggerRum({ eventType: 'view', startTime: T0 });
       expect(result).toEqual({ session: { id: 'session-1' }, date: 123, source: 'electron' });
     });
 
@@ -32,7 +36,7 @@ describe('createFormatHooks', () => {
       hooks.registerRum(() => ({ _dd: { format_version: 2 } }));
       hooks.registerRum(() => ({ _dd: { document_version: 1 } }));
 
-      const result = hooks.triggerRum({ eventType: 'view', startTime: 0 });
+      const result = hooks.triggerRum({ eventType: 'view', startTime: T0 });
       expect(result).toEqual({ _dd: { format_version: 2, document_version: 1 } });
     });
 
@@ -40,7 +44,7 @@ describe('createFormatHooks', () => {
       const hooks = createFormatHooks();
       hooks.registerRum((params) => ({ date: params.startTime }));
 
-      const result = hooks.triggerRum({ eventType: 'view', startTime: 42 });
+      const result = hooks.triggerRum({ eventType: 'view', startTime: T42 });
       expect(result).toEqual({ date: 42 });
     });
 
@@ -49,7 +53,7 @@ describe('createFormatHooks', () => {
       hooks.registerRum(() => ({ session: { id: 'session-1' } }));
       hooks.registerRum(() => DISCARDED);
 
-      const result = hooks.triggerRum({ eventType: 'view', startTime: 0 });
+      const result = hooks.triggerRum({ eventType: 'view', startTime: T0 });
       expect(result).toBe(DISCARDED);
     });
 
@@ -58,7 +62,7 @@ describe('createFormatHooks', () => {
       hooks.registerRum(() => SKIPPED);
       hooks.registerRum(() => ({ session: { id: 'session-1' } }));
 
-      const result = hooks.triggerRum({ eventType: 'view', startTime: 0 });
+      const result = hooks.triggerRum({ eventType: 'view', startTime: T0 });
       expect(result).toEqual({ session: { id: 'session-1' } });
     });
 
@@ -69,7 +73,7 @@ describe('createFormatHooks', () => {
 
       unregister();
 
-      const result = hooks.triggerRum({ eventType: 'view', startTime: 0 });
+      const result = hooks.triggerRum({ eventType: 'view', startTime: T0 });
       expect(result).toEqual({ session: { id: 'session-1' } });
     });
   });
@@ -77,7 +81,7 @@ describe('createFormatHooks', () => {
   describe('triggerTelemetry', () => {
     it('returns undefined when no callbacks are registered', () => {
       const hooks = createFormatHooks();
-      const result = hooks.triggerTelemetry({ startTime: 0 });
+      const result = hooks.triggerTelemetry({ startTime: T0 });
       expect(result).toBeUndefined();
     });
 
@@ -86,7 +90,7 @@ describe('createFormatHooks', () => {
       hooks.registerTelemetry(() => ({ session: { id: 'session-1' } }));
       hooks.registerTelemetry(() => ({ date: 123, source: 'electron' }));
 
-      const result = hooks.triggerTelemetry({ startTime: 0 });
+      const result = hooks.triggerTelemetry({ startTime: T0 });
       expect(result).toEqual({ session: { id: 'session-1' }, date: 123, source: 'electron' });
     });
   });
@@ -97,8 +101,8 @@ describe('createFormatHooks', () => {
       hooks.registerRum(() => ({ date: 111 }));
       hooks.registerTelemetry(() => ({ date: 222 }));
 
-      expect(hooks.triggerRum({ eventType: 'view', startTime: 0 })).toEqual({ date: 111 });
-      expect(hooks.triggerTelemetry({ startTime: 0 })).toEqual({ date: 222 });
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toEqual({ date: 111 });
+      expect(hooks.triggerTelemetry({ startTime: T0 })).toEqual({ date: 222 });
     });
   });
 });
