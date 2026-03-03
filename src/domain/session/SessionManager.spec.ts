@@ -1,19 +1,22 @@
-import { mockFs } from '../mocks.specUtil';
+import { mockFs } from '../../mocks.specUtil';
 vi.mock('electron', () => ({
   app: {
     getPath: vi.fn(() => '/mock/user/data'),
   },
 }));
 
-import * as display from '../tools/display';
-vi.mock('../tools/display', () => ({
+import * as display from '../../tools/display';
+vi.mock('../../tools/display', () => ({
   displayError: vi.fn(),
 }));
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { type TimeStamp } from '@datadog/browser-core';
 import { SessionManager, SESSION_EXPIRATION_DELAY, SESSION_TIME_OUT_DELAY, SESSION_FILE_NAME } from './SessionManager';
-import { EventManager, EventKind, LifecycleKind, type LifecycleEvent } from '../event';
-import { createFormatHooks, type FormatHooks } from '../assembly';
+
+const T0 = 0 as TimeStamp;
+import { EventManager, EventKind, LifecycleKind, type LifecycleEvent } from '../../event';
+import { createFormatHooks, type FormatHooks } from '../../assembly';
 
 const mfs = mockFs();
 
@@ -284,6 +287,26 @@ describe('sessionManager', () => {
       expect(sessionManager.getSession().status).toBe('expired');
       expect(mfs.unlink).toHaveBeenCalled();
       expect(lifecycleEvents).toContain(LifecycleKind.SESSION_EXPIRED);
+    });
+  });
+
+  describe('hook registration', () => {
+    it('RUM hook returns session id immediately after start()', async () => {
+      mockNoSessionFile();
+
+      sessionManager = await SessionManager.start(eventManager, hooks);
+
+      const result = hooks.triggerRum({ eventType: 'view', startTime: T0 });
+      expect(result).toMatchObject({ session: { id: sessionManager.getSession().id } });
+    });
+
+    it('telemetry hook returns session id immediately after start()', async () => {
+      mockNoSessionFile();
+
+      sessionManager = await SessionManager.start(eventManager, hooks);
+
+      const result = hooks.triggerTelemetry({ startTime: T0 });
+      expect(result).toMatchObject({ session: { id: sessionManager.getSession().id } });
     });
   });
 

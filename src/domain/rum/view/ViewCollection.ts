@@ -17,10 +17,11 @@ import {
   type LifecycleEvent,
   LifecycleKind,
   ServerRumEvent,
-} from '../../event';
-import type { FormatHooks } from '../../assembly';
-import { setInterval, throttle } from '../telemetry';
-import type { RawRumView } from './rawRumData.types';
+} from '../../../event';
+import type { FormatHooks } from '../../../assembly';
+import { setInterval, throttle } from '../../telemetry';
+import type { RawRumView } from '../rawRumData.types';
+import { ViewContext } from './ViewContext';
 
 export const SESSION_KEEP_ALIVE_INTERVAL = 5 * ONE_MINUTE;
 // throttle view updates to avoid bursts
@@ -28,8 +29,6 @@ export const VIEW_UPDATE_THROTTLE_DELAY = 3 * ONE_SECOND;
 
 interface ViewState {
   id: string;
-  name: string;
-  url: string;
   startTime: TimeStamp;
   documentVersion: number;
   isActive: boolean;
@@ -46,6 +45,7 @@ interface ViewState {
  */
 export class ViewCollection {
   private currentView!: ViewState;
+  private viewContext: ViewContext;
   private keepAliveIntervalId: ReturnType<typeof setInterval> | undefined;
   private scheduleViewUpdate: () => void;
   private cancelScheduledViewUpdate: () => void;
@@ -60,8 +60,8 @@ export class ViewCollection {
     this.scheduleViewUpdate = throttled;
     this.cancelScheduledViewUpdate = cancel;
 
+    this.viewContext = new ViewContext(this.hooks);
     this.createNewView();
-    this.registerHooks();
 
     this.lifecycleSubscription = this.eventManager.registerHandler<LifecycleEvent>({
       canHandle: (event): event is LifecycleEvent => event.kind === EventKind.LIFECYCLE,
@@ -88,16 +88,16 @@ export class ViewCollection {
   }
 
   private createNewView(): void {
+    const viewId = generateUUID();
     this.currentView = {
-      id: generateUUID(),
-      name: 'main process', // TODO(RUM-14657) improve name / url
-      url: 'electron://main-process',
+      id: viewId,
       startTime: timeStampNow(),
       documentVersion: 1,
       isActive: true,
       counters: { action: { count: 0 }, error: { count: 0 }, resource: { count: 0 } },
     };
 
+    this.viewContext.add(viewId);
     this.emitViewUpdate();
     this.keepSessionAlive();
   }
@@ -107,8 +107,6 @@ export class ViewCollection {
       type: 'view',
       view: {
         id: this.currentView.id,
-        name: this.currentView.name,
-        url: this.currentView.url,
         time_spent: toServerDuration(elapsed(this.currentView.startTime, timeStampNow())),
         is_active: this.currentView.isActive,
         ...this.currentView.counters,
@@ -129,7 +127,10 @@ export class ViewCollection {
     this.stopSessionKeepAlive();
     this.currentView.isActive = false;
     this.currentView.documentVersion++;
+    // emitViewUpdate must come before viewContext.close(): the final event must be assembled
+    // with the current view context still available to the hook.
     this.emitViewUpdate();
+    this.viewContext.close();
   }
 
   private onSessionRenew(): void {
@@ -160,15 +161,5 @@ export class ViewCollection {
       clearInterval(this.keepAliveIntervalId);
       this.keepAliveIntervalId = undefined;
     }
-  }
-
-  private registerHooks(): void {
-    this.hooks.registerRum(() => ({
-      view: { id: this.currentView.id, name: this.currentView.name, url: this.currentView.url },
-    }));
-
-    this.hooks.registerTelemetry(() => ({
-      view: { id: this.currentView.id },
-    }));
   }
 }
