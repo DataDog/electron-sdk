@@ -4,6 +4,7 @@ import type { Page } from '@playwright/test';
 interface ElectronAppWindow {
   electronAPI: {
     generateTelemetryErrors: (count: number) => Promise<void>;
+    flushTransport: () => Promise<void>;
   };
 }
 
@@ -47,5 +48,9 @@ export class AppPage {
 
   async generateManualError() {
     await this.page.locator('#generate-manual-error').click();
+  }
+
+  async flushTransport() {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.flushTransport());
   }
 }

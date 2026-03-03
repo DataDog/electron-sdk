@@ -34,11 +34,15 @@ export class Intake {
                 }
               }
 
-              this.events.push({
-                timestamp: Date.now(),
-                body: parsedBody,
-                headers,
-              });
+              // BatchConsumer sends events as a JSON array — unpack each as an individual event
+              const items = Array.isArray(parsedBody) ? (parsedBody as unknown[]) : [parsedBody];
+              for (const item of items) {
+                this.events.push({
+                  timestamp: Date.now(),
+                  body: item,
+                  headers,
+                });
+              }
 
               res.writeHead(202, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ status: 'accepted' }));

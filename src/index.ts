@@ -4,7 +4,6 @@ import { buildConfiguration } from './config';
 import { RumCollection } from './domain/rum';
 import { SessionManager } from './domain/SessionManager';
 import { EventManager, EventKind, LifecycleKind } from './event';
-import { Assembly, registerCommonContext, createFormatHooks } from './assembly';
 import { startTelemetry, callMonitored } from './domain/telemetry';
 import type { ErrorOptions } from './domain/rum';
 import { Transport } from './transport';

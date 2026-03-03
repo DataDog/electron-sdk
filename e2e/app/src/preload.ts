@@ -7,4 +7,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   generateUncaughtException: () => ipcRenderer.invoke('generateUncaughtException'),
   generateUnhandledRejection: () => ipcRenderer.invoke('generateUnhandledRejection'),
   generateManualError: () => ipcRenderer.invoke('generateManualError'),
+  flushTransport: () => ipcRenderer.invoke('flushTransport'),
 });
