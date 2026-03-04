@@ -34,6 +34,7 @@ describe('sessionManager', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
+    mfs.writeFile.mockResolvedValue(undefined);
     eventManager = new EventManager();
     lifecycleEvents = [];
     eventManager.registerHandler<LifecycleEvent>({

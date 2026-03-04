@@ -4,12 +4,15 @@ import { ErrorCollection } from './ErrorCollection';
 import { ViewCollection } from './view';
 
 export class RumCollection {
-  private viewCollection: ViewCollection;
-  private errorCollection: ErrorCollection;
+  private constructor(
+    private readonly viewCollection: ViewCollection,
+    private readonly errorCollection: ErrorCollection
+  ) {}
 
-  constructor(eventManager: EventManager, hooks: FormatHooks) {
-    this.viewCollection = new ViewCollection(eventManager, hooks);
-    this.errorCollection = new ErrorCollection(eventManager);
+  static async start(eventManager: EventManager, hooks: FormatHooks): Promise<RumCollection> {
+    const viewCollection = await ViewCollection.start(eventManager, hooks);
+    const errorCollection = new ErrorCollection(eventManager);
+    return new RumCollection(viewCollection, errorCollection);
   }
 
   getApi() {

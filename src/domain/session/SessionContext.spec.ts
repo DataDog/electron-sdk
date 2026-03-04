@@ -1,7 +1,19 @@
+import { mockFs } from '../../mocks.specUtil';
+
+vi.mock('electron', () => ({
+  app: { getPath: vi.fn(() => '/mock/user/data') },
+}));
+
+vi.mock('../../tools/display', () => ({
+  displayError: vi.fn(),
+}));
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { DISCARDED, type TimeStamp } from '@datadog/browser-core';
 import { createFormatHooks } from '../../assembly';
 import { SessionContext } from './SessionContext';
+
+const mfs = mockFs();
 
 // Fake time starts at T0 = 0 so that timeStampNow() aligns with T0
 const T0 = 0 as TimeStamp;
@@ -11,32 +23,36 @@ describe('SessionContext', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
+    mfs.readFile.mockRejectedValue(new Error('ENOENT'));
+    mfs.writeFile.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.clearAllMocks();
+    mfs.reset();
   });
 
   describe('before add()', () => {
-    it('RUM hook returns DISCARDED', () => {
+    it('RUM hook returns DISCARDED', async () => {
       const hooks = createFormatHooks();
-      new SessionContext(hooks, EXPIRE_DELAY);
+      await SessionContext.init(hooks, EXPIRE_DELAY);
 
       expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toBe(DISCARDED);
     });
 
-    it('telemetry hook returns SKIPPED (undefined)', () => {
+    it('telemetry hook returns SKIPPED (undefined)', async () => {
       const hooks = createFormatHooks();
-      new SessionContext(hooks, EXPIRE_DELAY);
+      await SessionContext.init(hooks, EXPIRE_DELAY);
 
       expect(hooks.triggerTelemetry({ startTime: T0 })).toBeUndefined();
     });
   });
 
   describe('after add()', () => {
-    it('RUM hook returns the session id', () => {
+    it('RUM hook returns the session id', async () => {
       const hooks = createFormatHooks();
-      const context = new SessionContext(hooks, EXPIRE_DELAY);
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
       context.add('session-abc');
 
@@ -45,9 +61,9 @@ describe('SessionContext', () => {
       });
     });
 
-    it('telemetry hook returns the session id', () => {
+    it('telemetry hook returns the session id', async () => {
       const hooks = createFormatHooks();
-      const context = new SessionContext(hooks, EXPIRE_DELAY);
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
       context.add('session-abc');
 
@@ -56,9 +72,9 @@ describe('SessionContext', () => {
       });
     });
 
-    it('reflects the latest add()', () => {
+    it('reflects the latest add()', async () => {
       const hooks = createFormatHooks();
-      const context = new SessionContext(hooks, EXPIRE_DELAY);
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
       context.add('session-first'); // at T0
       vi.advanceTimersByTime(10); // advance to T10
@@ -71,9 +87,9 @@ describe('SessionContext', () => {
   });
 
   describe('after close()', () => {
-    it('RUM hook still attributes events during the session period (crash attribution)', () => {
+    it('RUM hook still attributes events during the session period (crash attribution)', async () => {
       const hooks = createFormatHooks();
-      const context = new SessionContext(hooks, EXPIRE_DELAY);
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
       context.add('session-abc'); // at T0 = 0
       vi.advanceTimersByTime(10); // time is now 10
@@ -85,9 +101,9 @@ describe('SessionContext', () => {
       });
     });
 
-    it('RUM hook returns DISCARDED for events before the session started', () => {
+    it('RUM hook returns DISCARDED for events before the session started', async () => {
       const hooks = createFormatHooks();
-      const context = new SessionContext(hooks, EXPIRE_DELAY);
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
       vi.advanceTimersByTime(10); // advance to T10
       context.add('session-abc'); // session started at T10
@@ -97,9 +113,9 @@ describe('SessionContext', () => {
       expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toBe(DISCARDED);
     });
 
-    it('telemetry hook still attributes events during the session period', () => {
+    it('telemetry hook still attributes events during the session period', async () => {
       const hooks = createFormatHooks();
-      const context = new SessionContext(hooks, EXPIRE_DELAY);
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
       context.add('session-abc'); // at T0 = 0
       vi.advanceTimersByTime(10);

@@ -50,7 +50,7 @@ export class SessionManager {
 
   static async start(eventManager: EventManager, hooks: FormatHooks): Promise<SessionManager> {
     const manager = new SessionManager(eventManager, hooks);
-    await manager.initializeSession();
+    await manager.init();
     return manager;
   }
 
@@ -70,11 +70,11 @@ export class SessionManager {
     }
   }
 
-  private async initializeSession(): Promise<void> {
+  private async init(): Promise<void> {
     const now = Date.now();
     const existingState = await loadSessionState();
 
-    this.sessionContext = new SessionContext(this.hooks);
+    this.sessionContext = await SessionContext.init(this.hooks);
 
     if (existingState && isSessionValid(existingState, now)) {
       this.currentSession = { id: existingState.id, status: 'active' };

@@ -45,22 +45,30 @@ interface ViewState {
  */
 export class ViewCollection {
   private currentView!: ViewState;
-  private viewContext: ViewContext;
+  private viewContext!: ViewContext;
   private keepAliveIntervalId: ReturnType<typeof setInterval> | undefined;
-  private scheduleViewUpdate: () => void;
-  private cancelScheduledViewUpdate: () => void;
-  private lifecycleSubscription: Subscription;
-  private serverEventSubscription: Subscription;
+  private scheduleViewUpdate!: () => void;
+  private cancelScheduledViewUpdate!: () => void;
+  private lifecycleSubscription!: Subscription;
+  private serverEventSubscription!: Subscription;
 
   constructor(
     private readonly eventManager: EventManager,
     private readonly hooks: FormatHooks
-  ) {
+  ) {}
+
+  static async start(eventManager: EventManager, hooks: FormatHooks): Promise<ViewCollection> {
+    const collection = new ViewCollection(eventManager, hooks);
+    await collection.init();
+    return collection;
+  }
+
+  private async init(): Promise<void> {
     const { throttled, cancel } = throttle(() => this.emitViewUpdate(), VIEW_UPDATE_THROTTLE_DELAY);
     this.scheduleViewUpdate = throttled;
     this.cancelScheduledViewUpdate = cancel;
 
-    this.viewContext = new ViewContext(this.hooks);
+    this.viewContext = await ViewContext.init(this.hooks);
     this.createNewView();
 
     this.lifecycleSubscription = this.eventManager.registerHandler<LifecycleEvent>({

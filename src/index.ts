@@ -31,7 +31,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   new Assembly(eventManager, hooks);
   new Transport(config, eventManager);
-  const rum = new RumCollection(eventManager, hooks);
+  const rum = await RumCollection.start(eventManager, hooks);
   rumApi = rum.getApi();
 
   return true;
@@ -72,3 +72,5 @@ export function _generateTelemetryError() {
 export type { InitConfiguration } from './config';
 export type { RumErrorEvent, RumViewEvent } from './domain/rum';
 export type { TelemetryErrorEvent } from './domain/telemetry';
+
+export { SESSION_TIME_OUT_DELAY } from './domain/session';
