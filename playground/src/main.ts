@@ -78,6 +78,11 @@ ipcMain.handle('generateUnhandledRejection', () => {
   void Promise.reject(new Error('test unhandled rejection'));
 });
 
+// IPC handler to crash the main process
+ipcMain.handle('crash', () => {
+  process.crash();
+});
+
 void app.whenReady().then(async () => {
   // Initialize SDK on app ready (before window creation)
   console.log('Initializing SDK from main process...');

@@ -8,4 +8,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   generateTelemetryError: () => ipcRenderer.invoke('generateTelemetryError'),
   generateUncaughtException: () => ipcRenderer.invoke('generateUncaughtException'),
   generateUnhandledRejection: () => ipcRenderer.invoke('generateUnhandledRejection'),
+  crash: () => ipcRenderer.invoke('crash'),
 });
