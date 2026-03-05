@@ -1,6 +1,6 @@
 import { EventManager } from '../../event';
 import type { FormatHooks } from '../../assembly';
-import { ErrorCollection } from './ErrorCollection';
+import { ErrorCollection } from './error';
 import { ViewCollection } from './view';
 
 export class RumCollection {

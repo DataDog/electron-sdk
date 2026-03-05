@@ -26,5 +26,28 @@ export interface RawRumError extends RecursivePartial<RumErrorEvent> {
     handling: 'unhandled' | 'handled';
     stack?: string;
     type?: string;
+    is_crash?: true;
+    was_truncated?: boolean;
+    category?: 'Exception';
+    source_type?: RumErrorEvent['error']['source_type'];
+    meta?: {
+      code_type?: string;
+      process?: string;
+      exception_type?: string;
+      path?: string;
+    };
+    threads?: {
+      name: string;
+      crashed: boolean;
+      stack: string;
+    }[];
+    binary_images?: {
+      uuid: string;
+      name: string;
+      is_system: boolean;
+      load_address?: string;
+      max_address?: string;
+      arch?: string;
+    }[];
   };
 }
