@@ -194,7 +194,7 @@ export type TelemetryConfigurationEvent = CommonTelemetryProperties & {
       /**
        * Configure the storage strategy for persisting sessions
        */
-      session_persistence?: 'local-storage' | 'cookie';
+      session_persistence?: 'local-storage' | 'cookie' | 'memory';
       /**
        * Whether contexts are stored in local storage
        */
@@ -534,7 +534,8 @@ export type TelemetryCommonFeaturesUsage =
   | ClearAccount
   | AddFeatureFlagEvaluation
   | AddOperationStepVital
-  | GraphQLRequest;
+  | GraphQLRequest
+  | AddViewLoadingTime;
 /**
  * Schema of browser specific features usage
  */
@@ -542,11 +543,15 @@ export type TelemetryBrowserFeaturesUsage =
   | StartSessionReplayRecording
   | StartDurationVital
   | StopDurationVital
-  | AddDurationVital;
+  | AddDurationVital
+  | StartAction
+  | StopAction
+  | StartResource
+  | StopResource;
 /**
  * Schema of mobile specific features usage
  */
-export type TelemetryMobileFeaturesUsage = AddViewLoadingTime | TrackWebView;
+export type TelemetryMobileFeaturesUsage = TrackWebView | AndroidNetworkInstrumentation;
 
 /**
  * Schema of common properties of Telemetry events
@@ -585,7 +590,8 @@ export interface CommonTelemetryProperties {
     | 'react-native'
     | 'unity'
     | 'kotlin-multiplatform'
-    | 'electron';
+    | 'electron'
+    | 'rum-cpp';
   /**
    * The version of the SDK generating the telemetry event
    */
@@ -888,6 +894,25 @@ export interface GraphQLRequest {
   feature: 'graphql-request';
   [k: string]: unknown;
 }
+export interface AddViewLoadingTime {
+  /**
+   * addViewLoadingTime API
+   */
+  feature: 'addViewLoadingTime';
+  /**
+   * Whether the view is not available
+   */
+  no_view?: boolean;
+  /**
+   * Whether the available view is not active
+   */
+  no_active_view?: boolean;
+  /**
+   * Whether this call overwrote a previously set loading time
+   */
+  overwritten?: boolean;
+  [k: string]: unknown;
+}
 export interface StartSessionReplayRecording {
   /**
    * startSessionReplayRecording API
@@ -920,23 +945,32 @@ export interface AddDurationVital {
   feature: 'add-duration-vital';
   [k: string]: unknown;
 }
-export interface AddViewLoadingTime {
+export interface StartAction {
   /**
-   * addViewLoadingTime API
+   * startAction API
    */
-  feature: 'addViewLoadingTime';
+  feature: 'start-action';
+  [k: string]: unknown;
+}
+export interface StopAction {
   /**
-   * Whether the view is not available
+   * stopAction API
    */
-  no_view: boolean;
+  feature: 'stop-action';
+  [k: string]: unknown;
+}
+export interface StartResource {
   /**
-   * Whether the available view is not active
+   * startResource API
    */
-  no_active_view: boolean;
+  feature: 'start-resource';
+  [k: string]: unknown;
+}
+export interface StopResource {
   /**
-   * Whether the loading time was overwritten
+   * stopResource API
    */
-  overwritten: boolean;
+  feature: 'stop-resource';
   [k: string]: unknown;
 }
 export interface TrackWebView {
@@ -944,5 +978,16 @@ export interface TrackWebView {
    * trackWebView API
    */
   feature: 'trackWebView';
+  [k: string]: unknown;
+}
+export interface AndroidNetworkInstrumentation {
+  /**
+   * Android network instrumentation
+   */
+  feature: 'androidNetworkInstrumentation';
+  /**
+   * The network instrumentation API used
+   */
+  type: 'CRONET' | 'OKHTTP';
   [k: string]: unknown;
 }
