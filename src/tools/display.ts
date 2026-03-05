@@ -6,3 +6,10 @@ const PREFIX = '[Datadog electron-sdk]';
 export function displayError(...args: unknown[]) {
   console.error(PREFIX, ...args);
 }
+
+/**
+ * Display an info in the console with the SDK prefix
+ */
+export function displayInfo(...args: unknown[]) {
+  console.info(PREFIX, ...args);
+}
