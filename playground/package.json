@@ -14,10 +14,10 @@
     "@datadog/electron-sdk": "portal:.."
   },
   "devDependencies": {
-    "@types/node": "24.10.11",
+    "@types/node": "24.10.15",
     "chokidar": "5.0.0",
     "concurrently": "9.2.1",
-    "electron": "40.2.1",
+    "electron": "40.6.1",
     "electron-reloader": "1.2.3",
     "typescript": "5.9.3"
   }
