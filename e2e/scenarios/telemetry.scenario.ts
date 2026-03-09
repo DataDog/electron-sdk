@@ -12,6 +12,7 @@ test('SDK sends telemetry error event to intake', async ({ app, intake }) => {
     type: 'telemetry',
     service: 'electron-sdk',
     source: 'electron',
+    version: expect.stringMatching(/^\d+\.\d+\.\d+$/),
   });
 
   expect(event.telemetry.status).toBe('error');

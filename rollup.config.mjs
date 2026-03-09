@@ -1,7 +1,9 @@
 import typescript from '@rollup/plugin-typescript';
 import { nodeResolve } from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
+import replace from '@rollup/plugin-replace';
 import dts from 'rollup-plugin-dts';
+import pkg from './package.json' with { type: 'json' };
 
 const config = [
   // ESM and CJS builds
@@ -21,6 +23,7 @@ const config = [
     ],
     external: ['electron'],
     plugins: [
+      replace({ preventAssignment: true, __SDK_VERSION__: JSON.stringify(pkg.version) }),
       nodeResolve(),
       commonjs(),
       typescript({

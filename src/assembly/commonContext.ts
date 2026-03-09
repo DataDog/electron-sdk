@@ -12,6 +12,7 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
     version: configuration.version,
     application: { id: configuration.applicationId },
     session: { type: 'user' },
+    ddtags: `sdk_version:${__SDK_VERSION__}`,
     _dd: { format_version: 2 },
   }));
 
@@ -19,7 +20,7 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
     date: Date.now(),
     source: 'electron',
     service: 'electron-sdk',
-    version: '0.0.0', // TODO(RUM-14340) use sdk version
+    version: __SDK_VERSION__,
     application: { id: configuration.applicationId },
     _dd: { format_version: 2 },
   }));
