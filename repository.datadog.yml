@@ -5,3 +5,4 @@ rules:
   - require: commit-signatures
     excluded_emails:
       - 'noreply@anthropic.com' # Claude bot
+      - 'team-workspaces@datadoghq.com' # DataDog Workspaces Bot
