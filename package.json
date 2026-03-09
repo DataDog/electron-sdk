@@ -45,7 +45,7 @@
     "@vitest/ui": "4.0.18",
     "concurrently": "9.2.1",
     "electron": "40.2.1",
-    "eslint": "9.39.3",
+    "eslint": "10.0.2",
     "eslint-config-prettier": "10.1.8",
     "eslint-import-resolver-typescript": "4.4.4",
     "eslint-plugin-force-barrel-imports": "1.0.0",
