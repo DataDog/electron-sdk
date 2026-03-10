@@ -53,5 +53,5 @@ export class Assembly {
 }
 
 function assembleData<T>(rawData: unknown, hookResult: RecursivePartial<T> | undefined): T {
-  return (hookResult ? combine(rawData, hookResult) : rawData) as T;
+  return (hookResult ? combine(hookResult, rawData) : rawData) as T;
 }
