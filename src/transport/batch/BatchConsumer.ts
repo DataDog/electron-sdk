@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { getUserAgent } from '../userAgent';
 
 export interface ConsumerConfig {
   trackPath: string;
@@ -87,6 +88,7 @@ export class BatchConsumer {
         headers: {
           'Content-Type': 'application/json',
           'DD-API-KEY': this.clientToken,
+          'User-Agent': await getUserAgent(),
         },
         body,
       });
