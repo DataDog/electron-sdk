@@ -66,13 +66,35 @@ ipcMain.handle('generateTelemetryError', () => {
   _generateTelemetryError();
 });
 
+// IPC handler to generate uncaught exception
+ipcMain.handle('generateUncaughtException', () => {
+  setTimeout(() => {
+    throw new Error('test uncaught exception');
+  });
+});
+
+// IPC handler to generate unhandled rejection
+ipcMain.handle('generateUnhandledRejection', () => {
+  void Promise.reject(new Error('test unhandled rejection'));
+});
+
 void app.whenReady().then(async () => {
   // Initialize SDK on app ready (before window creation)
   console.log('Initializing SDK from main process...');
+  const CONF = {
+    staging: {
+      applicationId: '6efd3722-af0a-4070-994c-0e87076d4814',
+      clientToken: 'pub2a7307cdec74934cacb411a193f632f8',
+      site: 'datad0g.com',
+    },
+    prod: {
+      applicationId: '75581b33-6cfb-4a61-985c-8d309adfe5f6',
+      clientToken: 'pubf39340763f9ff434d09ac1bee2eae5c9',
+      site: 'datadoghq.com',
+    },
+  };
   const result = await init({
-    applicationId: '6efd3722-af0a-4070-994c-0e87076d4814',
-    clientToken: 'pub2a7307cdec74934cacb411a193f632f8',
-    site: 'datad0g.com',
+    ...CONF.staging,
     service: 'electron-playground',
     env: 'dev',
   });

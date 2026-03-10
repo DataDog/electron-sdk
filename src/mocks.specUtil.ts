@@ -52,7 +52,7 @@ export function createRawRumView(overrides?: RecursivePartial<RawRumView>): RawR
       _dd: { document_version: 1 },
     },
     overrides
-  );
+  ) as RawRumView;
 }
 
 export function createServerRumEvent<T extends RumEvent>(type: RumEvent['type'], overrides?: RecursivePartial<T>): T {
