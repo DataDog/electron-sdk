@@ -12,6 +12,12 @@ export class RumCollection {
     this.errorCollection = new ErrorCollection(eventManager);
   }
 
+  getApi() {
+    return {
+      ...this.errorCollection.getApi(),
+    };
+  }
+
   stop(): void {
     this.viewCollection.stop();
     this.errorCollection.stop();

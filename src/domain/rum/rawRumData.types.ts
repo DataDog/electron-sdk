@@ -20,11 +20,12 @@ export interface RawRumView extends RecursivePartial<RumViewEvent> {
 
 export interface RawRumError extends RecursivePartial<RumErrorEvent> {
   type: 'error';
+  context?: Record<string, unknown>;
   error: {
     id: string;
     message: string;
-    source: 'source';
-    handling: 'unhandled';
+    source: 'source' | 'custom';
+    handling: 'unhandled' | 'handled';
     stack?: string;
     type?: string;
   };

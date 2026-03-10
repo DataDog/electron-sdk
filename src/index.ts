@@ -6,9 +6,11 @@ import { SessionManager } from './domain/SessionManager';
 import { EventManager, EventKind, LifecycleKind } from './event';
 import { Assembly, registerCommonContext, createFormatHooks } from './assembly';
 import { startTelemetry, callMonitored } from './domain/telemetry';
+import type { ErrorOptions } from './domain/rum';
 
 let sessionManager: SessionManager | undefined;
 let eventManager: EventManager | undefined;
+let rumApi: ReturnType<RumCollection['getApi']> | undefined;
 
 /**
  * Initialize the Electron SDK
@@ -29,7 +31,8 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   new Assembly(eventManager, hooks);
   new Transport(config, eventManager);
-  new RumCollection(eventManager, hooks);
+  const rum = new RumCollection(eventManager, hooks);
+  rumApi = rum.getApi();
 
   return true;
 }
@@ -38,7 +41,14 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
  * Stop the current session
  */
 export function stopSession(): void {
-  sessionManager?.expire();
+  callMonitored(() => sessionManager?.expire());
+}
+
+/**
+ * Report a manually handled error
+ */
+export function addError(error: unknown, options?: ErrorOptions): void {
+  callMonitored(() => rumApi?.addError(error, options));
 }
 
 /**
@@ -46,7 +56,7 @@ export function stopSession(): void {
  * TODO(RUM-14303) replace usages with real user activity
  */
 export function _generateActivity(): void {
-  eventManager?.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.END_USER_ACTIVITY });
+  callMonitored(() => eventManager?.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.END_USER_ACTIVITY }));
 }
 
 /*
