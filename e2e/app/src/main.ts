@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import { join } from 'node:path';
 import {
   init,
+  addError,
   _generateTelemetryError,
   _generateActivity,
   stopSession,
@@ -38,6 +39,10 @@ void app.whenReady().then(async () => {
 
   ipcMain.handle('generateUnhandledRejection', () => {
     void Promise.reject(new Error('test unhandled rejection'));
+  });
+
+  ipcMain.handle('generateManualError', () => {
+    addError(new Error('test manual error'), { context: { foo: 'bar' } });
   });
 
   createWindow();

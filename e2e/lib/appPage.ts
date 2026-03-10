@@ -44,4 +44,8 @@ export class AppPage {
   async generateUnhandledRejection() {
     await this.page.locator('#generate-unhandled-rejection').click();
   }
+
+  async generateManualError() {
+    await this.page.locator('#generate-manual-error').click();
+  }
 }

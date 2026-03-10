@@ -6,4 +6,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   generateActivity: () => ipcRenderer.invoke('generateActivity'),
   generateUncaughtException: () => ipcRenderer.invoke('generateUncaughtException'),
   generateUnhandledRejection: () => ipcRenderer.invoke('generateUnhandledRejection'),
+  generateManualError: () => ipcRenderer.invoke('generateManualError'),
 });
