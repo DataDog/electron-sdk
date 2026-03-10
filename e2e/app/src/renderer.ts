@@ -36,10 +36,3 @@ unhandledRejectionButton.addEventListener('click', () => {
     statusDiv.textContent = 'Unhandled rejection generated';
   });
 });
-
-const manualErrorButton = document.getElementById('generate-manual-error') as HTMLButtonElement;
-manualErrorButton.addEventListener('click', () => {
-  void window.electronAPI.generateManualError().then(() => {
-    statusDiv.textContent = 'Manual error generated';
-  });
-});

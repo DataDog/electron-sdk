@@ -4,6 +4,7 @@ import type { Page } from '@playwright/test';
 interface ElectronAppWindow {
   electronAPI: {
     generateTelemetryErrors: (count: number) => Promise<void>;
+    generateManualError: (startTime?: number) => Promise<void>;
   };
 }
 
@@ -45,7 +46,10 @@ export class AppPage {
     await this.page.locator('#generate-unhandled-rejection').click();
   }
 
-  async generateManualError() {
-    await this.page.locator('#generate-manual-error').click();
+  async generateManualError(startTime?: number) {
+    await this.page.evaluate(
+      (ts) => (globalThis as unknown as ElectronAppWindow).electronAPI.generateManualError(ts),
+      startTime
+    );
   }
 }

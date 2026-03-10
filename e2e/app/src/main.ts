@@ -41,8 +41,8 @@ void app.whenReady().then(async () => {
     void Promise.reject(new Error('test unhandled rejection'));
   });
 
-  ipcMain.handle('generateManualError', () => {
-    addError(new Error('test manual error'), { context: { foo: 'bar' } });
+  ipcMain.handle('generateManualError', (_event, startTime?: number) => {
+    addError(new Error('test manual error'), { context: { foo: 'bar' }, startTime });
   });
 
   createWindow();
