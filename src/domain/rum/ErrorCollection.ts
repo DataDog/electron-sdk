@@ -1,4 +1,4 @@
-import { generateUUID } from '@datadog/browser-core';
+import { generateUUID, jsonStringify } from '@datadog/browser-core';
 import { EventFormat, EventKind, EventManager, EventSource } from '../../event';
 import type { RawRumError } from './rawRumData.types';
 import { monitor } from '../telemetry';
@@ -50,5 +50,5 @@ function formatError(error: unknown): { message: string; stack?: string; kind?: 
   if (error instanceof Error) {
     return { message: error.message, stack: error.stack, kind: error.name };
   }
-  return { message: `Uncaught ${JSON.stringify(error)}` };
+  return { message: `Uncaught ${jsonStringify(error)}` };
 }
