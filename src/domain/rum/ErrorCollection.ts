@@ -9,7 +9,7 @@ import { monitor } from '../telemetry';
  * - unhandled rejection
  */
 export class ErrorCollection {
-  private errorListener: (error: Error) => void;
+  private readonly errorListener: (error: unknown) => void;
 
   constructor(private readonly eventManager: EventManager) {
     this.errorListener = monitor((error: unknown) => this.emitError(error));
