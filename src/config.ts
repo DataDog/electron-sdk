@@ -1,3 +1,4 @@
+import { ONE_KIBI_BYTE, ONE_MEBI_BYTE, ONE_SECOND } from '@datadog/browser-core';
 import { displayError } from './tools/display';
 
 const VALID_DATADOG_SITES = [
@@ -12,15 +13,15 @@ const VALID_DATADOG_SITES = [
 ] as const;
 
 export const BatchSizes = {
-  SMALL: 16 * 1024,
-  MEDIUM: 512 * 1024,
-  LARGE: 4 * 1024 * 1024,
+  SMALL: 16 * ONE_KIBI_BYTE,
+  MEDIUM: 512 * ONE_KIBI_BYTE,
+  LARGE: 4 * ONE_MEBI_BYTE,
 } as const;
 
 export const BatchUploadFrequencies = {
-  RARE: 30 * 1000,
-  NORMAL: 10 * 1000,
-  FREQUENT: 5 * 1000,
+  RARE: 30 * ONE_SECOND,
+  NORMAL: 10 * ONE_SECOND,
+  FREQUENT: 5 * ONE_SECOND,
 } as const;
 
 export type BatchSize = 'SMALL' | 'MEDIUM' | 'LARGE';
@@ -47,7 +48,6 @@ export interface Configuration {
   env?: string;
   version?: string;
   proxy?: string;
-  intakeUrl: string;
   telemetrySampleRate: number;
   batchSize?: BatchSize;
   uploadFrequency?: UploadFrequency;
@@ -112,34 +112,6 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     env: validateOptionalString(initConfig.env),
     version: validateOptionalString(initConfig.version),
     proxy,
-    intakeUrl: computeIntakeUrl(site, proxy),
     telemetrySampleRate: validateTelemetrySampleRate(initConfig.telemetrySampleRate),
   };
-}
-
-function computeIntakeUrl(site: string, proxy?: string): string {
-  // Proxy takes precedence - allows users to override the intake URL
-  if (proxy) {
-    return proxy;
-  }
-
-  return computeIntakeUrlForTrack(site, 'rum');
-}
-
-export function computeIntakeUrlForTrack(site: string, trackType: string): string {
-  // For sites with subdomains (e.g., us3.datadoghq.com), replace the first dot with a dash
-  const parts = site.split('.');
-  let intakeSite: string;
-
-  if (parts.length > 2) {
-    // Has subdomain (e.g., us3.datadoghq.com -> us3-datadoghq.com)
-    const subdomain = parts[0];
-    const rest = parts.slice(1).join('.');
-    intakeSite = `${subdomain}-${rest}`;
-  } else {
-    // No subdomain (e.g., datadoghq.com, ddog-gov.com)
-    intakeSite = site;
-  }
-
-  return `https://browser-intake-${intakeSite}/api/v2/${trackType}`;
 }

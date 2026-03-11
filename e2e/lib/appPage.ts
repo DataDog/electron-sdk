@@ -3,8 +3,6 @@ import type { Page } from '@playwright/test';
 // declare exposed IPC methods called directly in tests
 interface ElectronAppWindow {
   electronAPI: {
-    stopSession: () => Promise<void>;
-    generateActivity: () => Promise<void>;
     generateTelemetryErrors: (count: number) => Promise<void>;
     flushTransport: () => Promise<void>;
   };
@@ -22,11 +20,11 @@ export class AppPage {
   }
 
   async stopSession() {
-    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.stopSession());
+    await this.page.locator('#stop-session').click();
   }
 
   async generateActivity() {
-    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.generateActivity());
+    await this.page.locator('#generate-activity').click();
   }
 
   async generateTelemetryError() {

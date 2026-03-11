@@ -21,13 +21,23 @@ flowchart LR
         SM[sessionManager]
     end
 
+    subgraph Transport
+        BM[BatchManager]
+        BP[BatchProducer]
+        BC[BatchConsumer]
+    end
+
     RUM -- RawRumEvent --> COMBINE
     TEL -- RawTelemetryEvent --> COMBINE
     CC -. "application.id, service, ..." .-> HOOKS
     SM -. "session.id" .-> HOOKS
     HOOKS --> COMBINE
-    COMBINE -- ServerEvent --> TRP[Transport]
-    TRP --> INT[HTTP intake]
+    COMBINE -- ServerEvent --> BM
+    BM --> BP
+    BM --> BC
+    BP -. "write" .-> DISK[Disk]
+    BC -. "read" .-> DISK[Disk]
+    BC -. "send" .-> INT[HTTP intake]
 ```
 
 ## Event Pipeline
@@ -78,6 +88,5 @@ See `src/domain/telemetry/`.
 
 - **Required fields** (e.g. `clientToken`): validation returns `undefined` to signal initialization should abort — no exceptions thrown.
 - **Optional fields** (e.g. `env`): invalid values silently fall back to `undefined`.
-- **Derived fields** (e.g. `intakeUrl`): computed from validated inputs during `buildConfiguration()`.
 
 See `src/config.ts`.

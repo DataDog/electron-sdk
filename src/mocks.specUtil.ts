@@ -33,7 +33,6 @@ export function createTestConfiguration(overrides: Partial<Configuration> = {}):
     service: 'test-service',
     clientToken: 'test-token',
     applicationId: 'test-app-id',
-    intakeUrl: 'https://test-intake.com',
     telemetrySampleRate: 100,
     ...overrides,
   };

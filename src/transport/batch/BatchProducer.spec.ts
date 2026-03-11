@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import path from 'node:path';
 import { BatchProducer } from './BatchProducer';
-import type { ProducerConfig } from '../transport.types';
+import type { ProducerConfig } from './BatchProducer';
 import { mockFs } from '../../mocks.specUtil';
 
 vi.mock('node:fs/promises');
@@ -36,12 +36,11 @@ describe('BatchProducer', () => {
     vi.restoreAllMocks();
   });
 
-  describe('init()', () => {
+  describe('create()', () => {
     it('creates track directory when missing', async () => {
       fsMocks.access.mockRejectedValueOnce(new Error('ENOENT'));
 
-      const producer = new BatchProducer(config);
-      await producer.init();
+      await BatchProducer.create(config);
 
       expect(fsMocks.mkdir).toHaveBeenCalledWith(config.trackPath, { recursive: true });
     });
@@ -49,8 +48,7 @@ describe('BatchProducer', () => {
     it('does not create directory when it exists', async () => {
       fsMocks.access.mockResolvedValueOnce(undefined);
 
-      const producer = new BatchProducer(config);
-      await producer.init();
+      await BatchProducer.create(config);
 
       expect(fsMocks.mkdir).not.toHaveBeenCalled();
     });
@@ -58,8 +56,7 @@ describe('BatchProducer', () => {
 
   describe('post() + write queue', () => {
     it('serializes each post as JSON + newline and appends to the same .tmp file until rotation', async () => {
-      const producer = new BatchProducer(config);
-      await producer.init();
+      const producer = await BatchProducer.create(config);
 
       producer.post({ a: 1 });
       producer.post({ b: 2 });
@@ -73,8 +70,7 @@ describe('BatchProducer', () => {
     });
 
     it('writes posts in call order', async () => {
-      const producer = new BatchProducer(config);
-      await producer.init();
+      const producer = await BatchProducer.create(config);
 
       producer.post({ order: 1 });
       producer.post({ order: 2 });
@@ -92,8 +88,7 @@ describe('BatchProducer', () => {
     it('swallows appendFile errors and keeps queue processing subsequent posts', async () => {
       fsMocks.appendFile.mockRejectedValueOnce(new Error('write failed')).mockResolvedValueOnce(undefined);
 
-      const producer = new BatchProducer(config);
-      await producer.init();
+      const producer = await BatchProducer.create(config);
 
       producer.post({ bad: true });
       producer.post({ good: true });
@@ -105,8 +100,7 @@ describe('BatchProducer', () => {
 
   describe('rotation behavior', () => {
     it('flush() renames current batch from .tmp to .log', async () => {
-      const producer = new BatchProducer(config);
-      await producer.init();
+      const producer = await BatchProducer.create(config);
 
       producer.post({ event: 'test' });
       await producer.flush();
@@ -118,8 +112,7 @@ describe('BatchProducer', () => {
     });
 
     it('flush() does nothing if no data was ever written', async () => {
-      const producer = new BatchProducer(config);
-      await producer.init();
+      const producer = await BatchProducer.create(config);
 
       await producer.flush();
 
@@ -130,8 +123,7 @@ describe('BatchProducer', () => {
     it('rotates due to size limit BEFORE appending when current batch already has data', async () => {
       const small = makeConfig({ batchSize: 20 });
 
-      const producer = new BatchProducer(small);
-      await producer.init();
+      const producer = await BatchProducer.create(small);
 
       const { dateNow } = await import('@datadog/browser-core');
       vi.mocked(dateNow)
@@ -161,8 +153,7 @@ describe('BatchProducer', () => {
 
       fsMocks.rename.mockRejectedValueOnce(new Error('rename failed'));
 
-      const producer = new BatchProducer(config);
-      await producer.init();
+      const producer = await BatchProducer.create(config);
 
       producer.post({ first: true });
       await producer.flush();
@@ -181,12 +172,11 @@ describe('BatchProducer', () => {
 
   describe('directory handling', () => {
     it('calls mkdir recursively when directory is missing during a write', async () => {
-      // init() consumes one ensureTrackDirectory call and we want the failure to happen during writeData().
-      // So we make init succeed and then fail for the subsequent access.
+      // create() consumes one ensureTrackDirectory call and we want the failure to happen during writeData().
+      // So we make create succeed and then fail for the subsequent access.
       fsMocks.access.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('ENOENT'));
 
-      const producer = new BatchProducer(config);
-      await producer.init();
+      const producer = await BatchProducer.create(config);
 
       producer.post({ event: 'test' });
       await producer.flush();
@@ -195,8 +185,7 @@ describe('BatchProducer', () => {
     });
 
     it('does not mkdir when access succeeds during a write', async () => {
-      const producer = new BatchProducer(config);
-      await producer.init();
+      const producer = await BatchProducer.create(config);
 
       producer.post({ event: 'test' });
       await producer.flush();

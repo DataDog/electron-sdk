@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BatchConsumer } from './BatchConsumer';
-import type { ConsumerConfig } from '../transport.types';
+import type { ConsumerConfig } from './BatchConsumer';
 import path from 'node:path';
 import { mockFs } from '../../mocks.specUtil';
 

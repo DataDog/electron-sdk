@@ -1,44 +1,47 @@
 import { app } from 'electron';
 
 import { BatchSizes, BatchUploadFrequencies, type Configuration } from '../config';
-import { EventKind, type EventManager, type ServerEvent } from '../event';
+import { EventKind, EventTrack, type EventManager, type ServerEvent } from '../event';
 import { BatchManager } from './batch';
-import type { Domain, TrackType } from './transport.types';
 
 /**
  * Orchestrates event transport by routing server events from registered domains
  * through dedicated {@link BatchManager} instances for disk-buffered delivery.
  */
 export class Transport {
-  private domains = new Map<string, Domain>();
+  private tracks: EventTrack[] = [EventTrack.RUM];
   private batchManagers: BatchManager[] = [];
   private basePath: string;
 
-  constructor(
+  private constructor(
     private readonly config: Configuration,
-    private readonly eventManager: EventManager,
-    domains: Domain[] = [],
-    customPath?: string
+    private readonly eventManager: EventManager
   ) {
-    this.basePath = customPath ?? app.getPath('userData');
+    this.basePath = app.getPath('userData');
+  }
 
-    for (const domain of domains) {
-      this.register(domain);
+  /** Creates and fully initializes a Transport instance. */
+  static async create(config: Configuration, eventManager: EventManager) {
+    const transport = new Transport(config, eventManager);
+    for (const track of transport.tracks) {
+      await transport.setupTrackBatching(track);
     }
+
+    return transport;
   }
 
   /**
    * Creates a {@link BatchManager} configured with the resolved batch size,
    * upload frequency, and storage path for the given track type.
    */
-  private createBatchManager(trackType: TrackType) {
+  private async createBatchManager(trackType: EventTrack) {
     const path = this.basePath;
     const batchSize = this.config.batchSize ? BatchSizes[this.config.batchSize] : BatchSizes.MEDIUM;
     const uploadFrequency = this.config.uploadFrequency
       ? BatchUploadFrequencies[this.config.uploadFrequency]
       : BatchUploadFrequencies.NORMAL;
 
-    const manager = new BatchManager(this.config, {
+    const manager = await BatchManager.create(this.config, {
       path,
       trackType,
       batchSize,
@@ -50,37 +53,18 @@ export class Transport {
   }
 
   /**
-   * Wires a domain into the event pipeline by creating its batch manager
-   * and registering an event handler that forwards matching server events.
+   * Create a batch manager for a specific track
+   * and register an event handler that forwards matching server events.
    */
-  private async setupDomainBatching(domain: Domain) {
-    const batchManager = this.createBatchManager(domain.trackType);
+  private async setupTrackBatching(track: EventTrack) {
+    const batchManager = await this.createBatchManager(track);
 
     this.eventManager.registerHandler<ServerEvent>({
-      canHandle: (event): event is ServerEvent => event.kind === EventKind.SERVER && event.track === domain.trackType,
+      canHandle: (event): event is ServerEvent => event.kind === EventKind.SERVER && event.track === track,
       handle: (event) => {
         batchManager.post(event.data);
       },
     });
-
-    await batchManager.init();
-  }
-
-  /** Registers a domain for transport. Duplicate track types are ignored. */
-  register(domain: Domain) {
-    if (this.domains.has(domain.trackType)) {
-      return;
-    }
-
-    this.domains.set(domain.trackType, domain);
-  }
-
-  /** Initializes batch managers and event handlers for all registered domains. */
-  async init() {
-    for (const domain of this.domains.values()) {
-      await this.setupDomainBatching(domain);
-      domain.init();
-    }
   }
 
   /** Flushes all batch managers, rotating pending data and triggering uploads. */

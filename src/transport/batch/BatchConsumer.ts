@@ -1,6 +1,11 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { ConsumerConfig } from '../transport.types';
+
+export interface ConsumerConfig {
+  trackPath: string;
+  intakeUrl: string;
+  clientToken: string;
+}
 
 /**
  * Reads rotated `.log` batch files from disk, parses their newline-delimited JSON

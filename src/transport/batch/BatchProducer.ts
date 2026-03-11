@@ -1,7 +1,11 @@
 import { dateNow } from '@datadog/browser-core';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { ProducerConfig } from '../transport.types';
+
+export interface ProducerConfig {
+  trackPath: string;
+  batchSize: number;
+}
 
 /**
  * Writes serialized event data to `.tmp` batch files on disk.
@@ -15,14 +19,19 @@ export class BatchProducer {
   private currentBatchSize = 0;
   private writeQueue: Promise<void> = Promise.resolve();
 
-  constructor(config: ProducerConfig) {
+  private constructor(config: ProducerConfig) {
     this.trackPath = config.trackPath;
     this.batchSize = config.batchSize;
   }
 
-  /** Ensures the track directory exists on disk. */
-  async init(): Promise<void> {
-    await this.ensureTrackDirectory();
+  /** Creates and fully initializes a BatchProducer instance. */
+  static async create(config: ProducerConfig) {
+    const producer = new BatchProducer(config);
+    await producer.ensureTrackDirectoryExists();
+    // rotate any leftover data so we start from a clean state
+    await producer.flush();
+
+    return producer;
   }
 
   /** Enqueues data to be appended to the current batch file. Writes are serialized. */
@@ -41,7 +50,7 @@ export class BatchProducer {
   }
 
   /** Creates the track directory if it does not already exist. */
-  private async ensureTrackDirectory() {
+  private async ensureTrackDirectoryExists() {
     try {
       await fs.access(this.trackPath);
     } catch {
@@ -84,7 +93,7 @@ export class BatchProducer {
 
   /** Serializes data as a JSON line and appends it to the current batch file, rotating first if the size limit would be exceeded. */
   private async writeData(data: unknown) {
-    await this.ensureTrackDirectory();
+    await this.ensureTrackDirectoryExists();
 
     const serialized = `${JSON.stringify(data)}\n`;
     const dataSize = Buffer.byteLength(serialized, 'utf8');

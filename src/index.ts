@@ -31,8 +31,10 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   sessionManager = await SessionManager.start(eventManager, hooks);
 
   new Assembly(eventManager, hooks);
-  new Transport(config, eventManager);
+
+  transport = await Transport.create(config, eventManager);
   const rum = new RumCollection(eventManager, hooks);
+
   rumApi = rum.getApi();
 
   return true;
