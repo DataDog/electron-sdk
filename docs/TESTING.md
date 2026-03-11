@@ -6,7 +6,8 @@ Unit and E2E testing strategy and infrastructure.
 
 ### Strategy
 
-- Mock the fetch API, not internal packages. Avoid real HTTP calls in tests.
+- Mock network and disk access (fetch API, `node:fs`) to avoid real I/O in tests.
+- Transitive dependency mocks are acceptable to only test orchestration. Consider integration / e2e test to exercise real code path.
 - Co-locate specs with source files (`src/**/*.spec.ts`).
 
 ## E2E Testing
