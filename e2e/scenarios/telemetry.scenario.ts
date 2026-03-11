@@ -3,6 +3,7 @@ import type { TelemetryErrorEvent } from '@datadog/electron-sdk';
 
 test('SDK sends telemetry error event to intake', async ({ app, intake }) => {
   await app.generateTelemetryError();
+  await app.flushTransport();
 
   const telemetryEvents = await intake.getEventsByType('telemetry');
   expect(telemetryEvents).toHaveLength(1);
@@ -26,12 +27,14 @@ test('SDK sends telemetry error event to intake', async ({ app, intake }) => {
 test('telemetry events are limited per session and reset on session renewal', async ({ app, intake }) => {
   // only 100 should be sent (MAX_TELEMETRY_EVENTS_PER_SESSION)
   await app.generateTelemetryErrors(110);
+  await app.flushTransport();
 
   const telemetryEvents = await intake.waitForEventCount('telemetry', 100);
   expect(telemetryEvents).toHaveLength(100);
 
   await app.renewSession();
   await app.generateTelemetryError();
+  await app.flushTransport();
 
   const allTelemetryEvents = await intake.waitForEventCount('telemetry', 101);
   expect(allTelemetryEvents).toHaveLength(101);

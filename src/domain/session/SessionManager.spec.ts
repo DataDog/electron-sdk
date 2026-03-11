@@ -1,4 +1,5 @@
 import { mockFs } from '../../mocks.specUtil';
+vi.mock('node:fs/promises');
 vi.mock('electron', () => ({
   app: {
     getPath: vi.fn(() => '/mock/user/data'),

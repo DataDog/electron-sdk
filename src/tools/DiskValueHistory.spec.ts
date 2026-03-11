@@ -10,6 +10,7 @@ import type { TimeStamp } from '@datadog/browser-core';
 import { DiskValueHistory } from './DiskValueHistory';
 import { TimeStampHistoryEntry } from './TimeStampValueHistory';
 
+vi.mock('node:fs/promises');
 const mfs = mockFs();
 
 const FILE_PATH = '/test/history.json';

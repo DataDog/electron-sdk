@@ -1,3 +1,4 @@
+import { ONE_KIBI_BYTE, ONE_MEBI_BYTE, ONE_SECOND } from '@datadog/browser-core';
 import { displayError } from './tools/display';
 
 const VALID_DATADOG_SITES = [
@@ -11,6 +12,21 @@ const VALID_DATADOG_SITES = [
   'datad0g.com', // Internal staging site
 ] as const;
 
+export const BatchSizes = {
+  SMALL: 16 * ONE_KIBI_BYTE,
+  MEDIUM: 512 * ONE_KIBI_BYTE,
+  LARGE: 4 * ONE_MEBI_BYTE,
+} as const;
+
+export const BatchUploadFrequencies = {
+  RARE: 30 * ONE_SECOND,
+  NORMAL: 10 * ONE_SECOND,
+  FREQUENT: 5 * ONE_SECOND,
+} as const;
+
+export type BatchSize = 'SMALL' | 'MEDIUM' | 'LARGE';
+export type UploadFrequency = 'RARE' | 'NORMAL' | 'FREQUENT';
+
 export interface InitConfiguration {
   site: string;
   proxy?: string;
@@ -20,16 +36,21 @@ export interface InitConfiguration {
   env?: string;
   version?: string;
   telemetrySampleRate?: number;
+  batchSize?: BatchSize;
+  uploadFrequency?: UploadFrequency;
 }
 
 export interface Configuration {
+  site: string;
   service: string;
   clientToken: string;
   applicationId: string;
   env?: string;
   version?: string;
-  intakeUrl: string;
+  proxy?: string;
   telemetrySampleRate: number;
+  batchSize?: BatchSize;
+  uploadFrequency?: UploadFrequency;
 }
 
 function validateRequiredString(value: unknown, fieldName: string): string | undefined {
@@ -84,36 +105,13 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
   const proxy = validateOptionalString(initConfig.proxy);
 
   return {
+    site,
     service,
     clientToken,
     applicationId,
     env: validateOptionalString(initConfig.env),
     version: validateOptionalString(initConfig.version),
-    intakeUrl: computeIntakeUrl(site, proxy),
+    proxy,
     telemetrySampleRate: validateTelemetrySampleRate(initConfig.telemetrySampleRate),
   };
-}
-
-function computeIntakeUrl(site: string, proxy?: string): string {
-  // Proxy takes precedence - allows users to override the intake URL
-  if (proxy) {
-    return proxy;
-  }
-
-  // Generate intake URL from site
-  // For sites with subdomains (e.g., us3.datadoghq.com), replace the first dot with a dash
-  const parts = site.split('.');
-  let intakeSite: string;
-
-  if (parts.length > 2) {
-    // Has subdomain (e.g., us3.datadoghq.com -> us3-datadoghq.com)
-    const subdomain = parts[0];
-    const rest = parts.slice(1).join('.');
-    intakeSite = `${subdomain}-${rest}`;
-  } else {
-    // No subdomain (e.g., datadoghq.com, ddog-gov.com)
-    intakeSite = site;
-  }
-
-  return `https://browser-intake-${intakeSite}/api/v2/rum`;
 }

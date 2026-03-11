@@ -1,7 +1,8 @@
 import { test, expect } from '../lib/helpers';
 import type { RumViewEvent } from '@datadog/electron-sdk';
 
-test('emits an initial active view event on SDK init', async ({ intake }) => {
+test('emits an initial active view event on SDK init', async ({ app, intake }) => {
+  await app.flushTransport();
   const events = await intake.getEventsByType('view');
   expect(events).toHaveLength(1);
 
@@ -20,10 +21,12 @@ test('emits an initial active view event on SDK init', async ({ intake }) => {
 });
 
 test('emits an inactive view on session expiry and a new active view on session renewal', async ({ app, intake }) => {
+  await app.flushTransport();
   const initialEvents = await intake.getEventsByType('view');
   const initialViewId = (initialEvents[0].body as RumViewEvent).view.id;
 
   await app.stopSession();
+  await app.flushTransport();
 
   const eventsAfterStop = await intake.waitForEventCount('view', 2);
   const inactiveView = eventsAfterStop[1].body as RumViewEvent;
@@ -33,6 +36,7 @@ test('emits an inactive view on session expiry and a new active view on session 
   expect(inactiveView._dd.document_version).toBe(2);
 
   await app.generateActivity();
+  await app.flushTransport();
 
   const eventsAfterRenewal = await intake.waitForEventCount('view', 3);
   const newView = eventsAfterRenewal[2].body as RumViewEvent;

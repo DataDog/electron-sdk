@@ -18,6 +18,7 @@ import { createFormatHooks, type FormatHooks } from '../../../assembly';
 import { createServerRumEvent, createServerRumView } from '../../../mocks.specUtil';
 import { RawRumView } from '../rawRumData.types';
 
+vi.mock('node:fs/promises');
 const mfs = mockFs();
 
 const T0 = 0 as TimeStamp;

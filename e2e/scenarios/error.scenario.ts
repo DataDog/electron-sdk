@@ -2,10 +2,12 @@ import { test, expect } from '../lib/helpers';
 import type { RumErrorEvent, RumViewEvent } from '@datadog/electron-sdk';
 
 test('emits an error event on uncaught exception', async ({ app, intake }) => {
+  await app.flushTransport();
   const viewEvents = await intake.getEventsByType('view');
   const view = viewEvents[0].body as RumViewEvent;
 
   await app.generateUncaughtException();
+  await app.flushTransport();
 
   const errorEvents = await intake.getEventsByType('error');
   expect(errorEvents).toHaveLength(1);
@@ -23,10 +25,12 @@ test('emits an error event on uncaught exception', async ({ app, intake }) => {
 });
 
 test('emits an error event on manual addError call', async ({ app, intake }) => {
+  await app.flushTransport();
   const viewEvents = await intake.getEventsByType('view');
   const view = viewEvents[0].body as RumViewEvent;
 
   await app.generateManualError();
+  await app.flushTransport();
 
   const errorEvents = await intake.getEventsByType('error');
   expect(errorEvents).toHaveLength(1);
@@ -45,10 +49,12 @@ test('emits an error event on manual addError call', async ({ app, intake }) => 
 });
 
 test('emits an error event on unhandled rejection', async ({ app, intake }) => {
+  await app.flushTransport();
   const viewEvents = await intake.getEventsByType('view');
   const view = viewEvents[0].body as RumViewEvent;
 
   await app.generateUnhandledRejection();
+  await app.flushTransport();
 
   const errorEvents = await intake.getEventsByType('error');
   expect(errorEvents).toHaveLength(1);

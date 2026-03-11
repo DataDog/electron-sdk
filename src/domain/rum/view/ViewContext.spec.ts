@@ -13,6 +13,7 @@ import { DISCARDED, type TimeStamp } from '@datadog/browser-core';
 import { createFormatHooks } from '../../../assembly';
 import { ViewContext } from './ViewContext';
 
+vi.mock('node:fs/promises');
 const mfs = mockFs();
 
 // Fake time starts at T0 = 0 so that timeStampNow() aligns with T0
