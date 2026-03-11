@@ -32,38 +32,14 @@ export const test = base.extend<TestFixtures>({
   ],
 
   electronApp: async ({ intake }, use) => {
-    const env: Record<string, string> = {
-      ...process.env,
-    } as Record<string, string>;
-
-    const config: InitConfiguration = {
-      site: 'datadoghq.com',
-      proxy: `http://localhost:${intake.getPort()}/api/v2/rum`,
-      clientToken: 'test-client-token',
-      service: 'e2e-test-app',
-      applicationId: 'e2e-test-app-id',
-      env: 'test',
-      version: '1.0.0',
-      telemetrySampleRate: 100,
-    };
-    env.DD_SDK_CONFIG = JSON.stringify(config);
-
-    const electronApp = await electron.launch({
-      executablePath: electronPath,
-      args: [join(__dirname, '../app/dist/main.js')],
-      env,
-    });
-
+    const electronApp = await launchApp(intake);
     await use(electronApp);
     await electronApp.close();
   },
 
   window: [
     async ({ electronApp }, use) => {
-      const window = await electronApp.firstWindow();
-      window.on('console', (msg) => console.log('Browser console:', msg.text()));
-      await window.waitForLoadState('load');
-      await window.waitForTimeout(500);
+      const { window } = await waitForWindowLoaded(electronApp);
       await use(window);
     },
     { auto: true },
@@ -73,5 +49,45 @@ export const test = base.extend<TestFixtures>({
     await use(new AppPage(window));
   },
 });
+
+async function launchApp(intake: Intake): Promise<ElectronApplication> {
+  const env: Record<string, string> = {
+    ...process.env,
+  } as Record<string, string>;
+
+  const config: InitConfiguration = {
+    site: 'datadoghq.com',
+    proxy: `http://localhost:${intake.getPort()}/api/v2/rum`,
+    clientToken: 'test-client-token',
+    service: 'e2e-test-app',
+    applicationId: 'e2e-test-app-id',
+    env: 'test',
+    version: '1.0.0',
+    telemetrySampleRate: 100,
+  };
+  env.DD_SDK_CONFIG = JSON.stringify(config);
+
+  return electron.launch({
+    executablePath: electronPath,
+    args: [join(__dirname, '../app/dist/main.js')],
+    env,
+  });
+}
+
+async function waitForWindowLoaded(electronApp: ElectronApplication): Promise<{ window: Page }> {
+  const window = await electronApp.firstWindow();
+  window.on('console', (msg) => console.log('Browser console:', msg.text()));
+  await window.waitForLoadState('load');
+  await window.waitForTimeout(500);
+  return { window };
+}
+
+export async function launchAppManually(
+  intake: Intake
+): Promise<{ electronApp: ElectronApplication; window: Page; app: AppPage }> {
+  const electronApp = await launchApp(intake);
+  const { window } = await waitForWindowLoaded(electronApp);
+  return { electronApp, window, app: new AppPage(window) };
+}
 
 export { expect } from '@playwright/test';

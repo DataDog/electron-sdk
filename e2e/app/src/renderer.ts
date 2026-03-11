@@ -36,3 +36,8 @@ unhandledRejectionButton.addEventListener('click', () => {
     statusDiv.textContent = 'Unhandled rejection generated';
   });
 });
+
+const crashButton = document.getElementById('crash') as HTMLButtonElement;
+crashButton.addEventListener('click', () => {
+  void window.electronAPI.crash();
+});
