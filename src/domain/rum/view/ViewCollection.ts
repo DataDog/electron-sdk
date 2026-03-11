@@ -97,6 +97,7 @@ export class ViewCollection {
       counters: { action: { count: 0 }, error: { count: 0 }, resource: { count: 0 } },
     };
 
+    this.viewContext.close(); // close previous view if any (ensures non-overlapping history entries)
     this.viewContext.add(viewId);
     this.emitViewUpdate();
     this.keepSessionAlive();
@@ -119,6 +120,7 @@ export class ViewCollection {
       source: EventSource.MAIN,
       format: EventFormat.RUM,
       data: viewEvent,
+      startTime: this.currentView.startTime,
     });
   }
 
@@ -127,8 +129,6 @@ export class ViewCollection {
     this.stopSessionKeepAlive();
     this.currentView.isActive = false;
     this.currentView.documentVersion++;
-    // emitViewUpdate must come before viewContext.close(): the final event must be assembled
-    // with the current view context still available to the hook.
     this.emitViewUpdate();
     this.viewContext.close();
   }

@@ -12,7 +12,8 @@ vi.mock('../../tools/display', () => ({
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { type TimeStamp } from '@datadog/browser-core';
-import { SessionManager, SESSION_EXPIRATION_DELAY, SESSION_TIME_OUT_DELAY, SESSION_FILE_NAME } from './SessionManager';
+import { SessionManager, SESSION_EXPIRATION_DELAY, SESSION_FILE_NAME } from './SessionManager';
+import { SESSION_TIME_OUT_DELAY } from './session.constants';
 
 const T0 = 0 as TimeStamp;
 import { EventManager, EventKind, LifecycleKind, type LifecycleEvent } from '../../event';
@@ -32,6 +33,7 @@ describe('sessionManager', () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.setSystemTime(0);
     eventManager = new EventManager();
     lifecycleEvents = [];
     eventManager.registerHandler<LifecycleEvent>({

@@ -13,6 +13,7 @@ function createRawRumEvent(overrides?: RecursivePartial<RawRumEvent>): RawRumEve
     format: EventFormat.RUM,
     ...overrides,
     data: createRawRumView(overrides?.data as RecursivePartial<RawRumView>),
+    startTime: undefined,
   };
 }
 

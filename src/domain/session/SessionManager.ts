@@ -1,14 +1,14 @@
 import { app } from 'electron';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { deepClone, generateUUID, ONE_HOUR, ONE_MINUTE, type Subscription } from '@datadog/browser-core';
-import { EventManager, EventKind, LifecycleKind, type EndUserActivityEvent } from '../../event';
+import { deepClone, generateUUID, ONE_MINUTE, type Subscription } from '@datadog/browser-core';
+import { type EndUserActivityEvent, EventKind, EventManager, LifecycleKind } from '../../event';
 import type { FormatHooks } from '../../assembly';
 import { addError, setTimeout } from '../telemetry';
 import { displayError } from '../../tools/display';
 import { SessionContext } from './SessionContext';
+import { SESSION_TIME_OUT_DELAY } from './session.constants';
 
-export const SESSION_TIME_OUT_DELAY = 4 * ONE_HOUR;
 export const SESSION_EXPIRATION_DELAY = 15 * ONE_MINUTE;
 export const SESSION_FILE_NAME = '_dd_s';
 
@@ -115,6 +115,7 @@ export class SessionManager {
   private expireSession(): void {
     this.clearTimers();
     this.currentSession.status = 'expired';
+    this.sessionContext.close();
     deleteSessionFile().catch(addError);
     this.eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
   }

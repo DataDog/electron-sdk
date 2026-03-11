@@ -1,6 +1,7 @@
 import { EventFormat, EventKind, EventSource, EventTrack, LifecycleKind } from './event.constants';
 import { RawTelemetryData, TelemetryEvent } from '../domain/telemetry';
 import { RawRumData, RumEvent } from '../domain/rum';
+import type { TimeStamp } from '@datadog/browser-core';
 
 export type RawEvent = RawRumEvent | RawTelemetryEvent;
 
@@ -9,6 +10,7 @@ export interface RawRumEvent {
   source: EventSource;
   format: typeof EventFormat.RUM;
   data: RawRumData;
+  startTime?: TimeStamp;
 }
 
 export interface RawTelemetryEvent {
@@ -16,6 +18,7 @@ export interface RawTelemetryEvent {
   source: EventSource;
   format: typeof EventFormat.TELEMETRY;
   data: RawTelemetryData;
+  startTime?: TimeStamp;
 }
 
 export type ServerEvent = ServerRumEvent | ServerTelemetryEvent | ServerLogsEvent;

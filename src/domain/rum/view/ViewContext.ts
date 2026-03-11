@@ -1,36 +1,32 @@
-import { DISCARDED, SKIPPED } from '@datadog/browser-core';
+import { DISCARDED, SKIPPED, timeStampNow } from '@datadog/browser-core';
 import type { FormatHooks } from '../../../assembly';
-
-export interface ViewContextData {
-  id: string;
-  name: string;
-  url: string;
-}
+import { TimeStampValueHistory } from '../../../tools/TimeStampValueHistory';
+import { SESSION_TIME_OUT_DELAY } from '../../session';
 
 export class ViewContext {
-  private currentView: ViewContextData | undefined;
+  private readonly history;
 
-  constructor(hooks: FormatHooks) {
-    hooks.registerRum(() => {
-      if (this.currentView === undefined) return DISCARDED;
-      return { view: { id: this.currentView.id, name: this.currentView.name, url: this.currentView.url } };
+  constructor(hooks: FormatHooks, expireDelay = SESSION_TIME_OUT_DELAY) {
+    this.history = new TimeStampValueHistory<string>({ expireDelay });
+
+    hooks.registerRum((params) => {
+      const id = this.history.find(params.startTime);
+      if (id === undefined) return DISCARDED;
+      return { view: { id, name: 'main process', url: 'electron://main-process' } }; // TODO(RUM-14657) improve name / url
     });
 
-    hooks.registerTelemetry(() => {
-      if (this.currentView === undefined) return SKIPPED;
-      return { view: { id: this.currentView.id } };
+    hooks.registerTelemetry((params) => {
+      const id = this.history.find(params.startTime);
+      if (id === undefined) return SKIPPED;
+      return { view: { id } };
     });
   }
 
   add(id: string): void {
-    this.currentView = {
-      id,
-      name: 'main process', // TODO(RUM-14657) improve name / url
-      url: 'electron://main-process',
-    };
+    this.history.add(id, timeStampNow());
   }
 
   close(): void {
-    this.currentView = undefined;
+    this.history.closeActive(timeStampNow());
   }
 }

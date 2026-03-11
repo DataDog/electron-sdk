@@ -21,7 +21,7 @@ export class Assembly {
   }
 
   private assembleToServerEvent(event: RawEvent): ServerEvent | DISCARDED {
-    const startTime = timeStampNow();
+    const startTime = event.startTime ?? timeStampNow();
 
     if (event.format === EventFormat.RUM) {
       const hookResult = this.hooks.triggerRum({

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { DISCARDED, type TimeStamp } from '@datadog/browser-core';
+import { type TimeStamp } from '@datadog/browser-core';
 import { ViewCollection, SESSION_KEEP_ALIVE_INTERVAL, VIEW_UPDATE_THROTTLE_DELAY } from './ViewCollection';
 import { EventManager, EventKind, EventFormat, EventTrack, LifecycleKind, type RawRumEvent } from '../../../event';
 import { createFormatHooks, type FormatHooks } from '../../../assembly';
@@ -7,6 +7,7 @@ import { createServerRumEvent, createServerRumView } from '../../../mocks.specUt
 import { RawRumView } from '../rawRumData.types';
 
 const T0 = 0 as TimeStamp;
+const T10 = 10 as TimeStamp;
 
 describe('ViewCollection', () => {
   let eventManager: EventManager;
@@ -16,6 +17,7 @@ describe('ViewCollection', () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.setSystemTime(0);
     eventManager = new EventManager();
     hooks = createFormatHooks();
     rawRumEvents = [];
@@ -94,20 +96,6 @@ describe('ViewCollection', () => {
       expect(data._dd.document_version).toBe(2);
     });
 
-    it('final event carries the view id and hook returns SKIPPED afterward', () => {
-      viewCollection = new ViewCollection(eventManager, hooks);
-      const viewId = (rawRumEvents[0].data as RawRumView).view.id;
-
-      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
-
-      // final emitted event still has the view id
-      expect((rawRumEvents[1].data as RawRumView).view.id).toBe(viewId);
-
-      // hook is cleared after session expiry — returns DISCARDED/SKIPPED
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toBe(DISCARDED);
-      expect(hooks.triggerTelemetry({ startTime: T0 })).toBeUndefined();
-    });
-
     it('stops periodic updates after expiration', () => {
       viewCollection = new ViewCollection(eventManager, hooks);
 
@@ -146,6 +134,23 @@ describe('ViewCollection', () => {
       const newViewId = (rawRumEvents[1].data as RawRumView).view.id;
       expect(result).toMatchObject({ view: { id: newViewId } });
       expect(newViewId).not.toBe(originalViewId);
+    });
+
+    it('attributes events with old startTime to the previous view', () => {
+      viewCollection = new ViewCollection(eventManager, hooks);
+      const originalViewId = (rawRumEvents[0].data as RawRumView).view.id;
+
+      vi.advanceTimersByTime(10); // move to T10
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+
+      const newViewId = (rawRumEvents[rawRumEvents.length - 1].data as RawRumView).view.id;
+      expect(newViewId).not.toBe(originalViewId);
+
+      // event started at T0 (before renewal at T10) → attributed to original view
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toMatchObject({ view: { id: originalViewId } });
+      // event started at T10 → attributed to new view
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T10 })).toMatchObject({ view: { id: newViewId } });
     });
 
     it('restarts periodic updates', () => {
