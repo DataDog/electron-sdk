@@ -5,6 +5,7 @@ import {
   addError,
   _generateTelemetryError,
   _generateActivity,
+  _flushTransport,
   stopSession,
   type InitConfiguration,
 } from '@datadog/electron-sdk';
@@ -43,6 +44,10 @@ void app.whenReady().then(async () => {
 
   ipcMain.handle('generateManualError', () => {
     addError(new Error('test manual error'), { context: { foo: 'bar' } });
+  });
+
+  ipcMain.handle('flushTransport', async () => {
+    await _flushTransport();
   });
 
   createWindow();

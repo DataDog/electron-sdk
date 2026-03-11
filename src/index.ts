@@ -1,15 +1,16 @@
+import { Assembly, createFormatHooks, registerCommonContext } from './assembly';
 import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
-import { Transport } from './transport/http';
 import { RumCollection } from './domain/rum';
 import { SessionManager } from './domain/SessionManager';
 import { EventManager, EventKind, LifecycleKind } from './event';
-import { Assembly, registerCommonContext, createFormatHooks } from './assembly';
 import { startTelemetry, callMonitored } from './domain/telemetry';
 import type { ErrorOptions } from './domain/rum';
+import { Transport } from './transport';
 
 let sessionManager: SessionManager | undefined;
 let eventManager: EventManager | undefined;
+let transport: Transport | undefined;
 let rumApi: ReturnType<RumCollection['getApi']> | undefined;
 
 /**
@@ -30,8 +31,10 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   sessionManager = await SessionManager.start(eventManager, hooks);
 
   new Assembly(eventManager, hooks);
-  new Transport(config, eventManager);
+
+  transport = await Transport.create(config, eventManager);
   const rum = new RumCollection(eventManager, hooks);
+
   rumApi = rum.getApi();
 
   return true;
@@ -63,6 +66,14 @@ export function _generateActivity(): void {
  * Internal API to test monitoring
  * TODO replace with the usage of another API when available
  */
+
+/**
+ * Internal API to flush all pending batches to the intake
+ */
+export async function _flushTransport(): Promise<void> {
+  await transport?.flush();
+}
+
 export function _generateTelemetryError() {
   return callMonitored(() => {
     throw new Error('expected error');

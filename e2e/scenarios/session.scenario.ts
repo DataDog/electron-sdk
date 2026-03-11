@@ -3,6 +3,7 @@ import type { TelemetryErrorEvent } from '@datadog/electron-sdk';
 
 test('new session id is generated when renewing a session', async ({ app, intake }) => {
   await app.generateTelemetryError();
+  await app.flushTransport();
 
   const firstEvents = await intake.getEventsByType('telemetry');
   const firstSessionId = (firstEvents[0].body as TelemetryErrorEvent).session?.id;
@@ -10,6 +11,7 @@ test('new session id is generated when renewing a session', async ({ app, intake
 
   await app.renewSession();
   await app.generateTelemetryError();
+  await app.flushTransport();
 
   const allEvents = await intake.waitForEventCount('telemetry', 2);
   const secondSessionId = (allEvents[1].body as TelemetryErrorEvent).session?.id;

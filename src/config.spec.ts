@@ -93,7 +93,6 @@ describe('buildConfiguration', () => {
       expect(result).toBeDefined();
       expect(result?.service).toBe('test-service');
       expect(result?.clientToken).toBe('test-token');
-      expect(result?.intakeUrl).toBeDefined();
     });
 
     it('builds config with all fields', () => {
@@ -110,7 +109,6 @@ describe('buildConfiguration', () => {
       expect(result?.clientToken).toBe('test-token');
       expect(result?.env).toBe('production');
       expect(result?.version).toBe('1.0.0');
-      expect(result?.intakeUrl).toBeDefined();
     });
 
     it('builds config with some optional fields', () => {
@@ -168,7 +166,7 @@ describe('buildConfiguration', () => {
       { site: 'ap2.datadoghq.com', expectedUrl: 'https://browser-intake-ap2-datadoghq.com/api/v2/rum' },
       { site: 'ddog-gov.com', expectedUrl: 'https://browser-intake-ddog-gov.com/api/v2/rum' },
       { site: 'datad0g.com', expectedUrl: 'https://browser-intake-datad0g.com/api/v2/rum' },
-    ])('accepts valid site: $site', ({ site, expectedUrl }) => {
+    ])('accepts valid site: $site', ({ site }) => {
       const config = {
         ...DEFAULT_CONFIG,
         site,
@@ -177,7 +175,7 @@ describe('buildConfiguration', () => {
       const result = buildConfiguration(config);
 
       expect(result).toBeDefined();
-      expect(result?.intakeUrl).toBe(expectedUrl);
+      expect(result?.site).toBe(site);
     });
   });
 
@@ -277,31 +275,6 @@ describe('buildConfiguration', () => {
 
       expect(result?.telemetrySampleRate).toBe(20);
       expect(display.displayError).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('intakeUrl computation', () => {
-    it('uses proxy when provided (proxy takes precedence)', () => {
-      const config = {
-        ...DEFAULT_CONFIG,
-        site: 'datadoghq.com',
-        proxy: 'http://localhost:3000',
-      };
-
-      const result = buildConfiguration(config);
-
-      expect(result?.intakeUrl).toBe('http://localhost:3000');
-    });
-
-    it('generates intakeUrl from site when proxy is not provided', () => {
-      const config = {
-        ...DEFAULT_CONFIG,
-        site: 'datadoghq.eu',
-      };
-
-      const result = buildConfiguration(config);
-
-      expect(result?.intakeUrl).toBe('https://browser-intake-datadoghq.eu/api/v2/rum');
     });
   });
 });
