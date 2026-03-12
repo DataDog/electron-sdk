@@ -2,10 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BatchConsumer } from './BatchConsumer';
 import type { ConsumerConfig } from './BatchConsumer';
 import path from 'node:path';
+import { getUserAgent } from '../userAgent';
 import { mockFs } from '../../mocks.specUtil';
 
 vi.mock('node:fs/promises');
+vi.mock('../userAgent');
 const fsMocks = mockFs();
+
+const TEST_USER_AGENT = 'TestApp/1.0.0 (test) Electron/0 Chrome/0 Node/0';
 
 describe('BatchConsumer', () => {
   const config: ConsumerConfig = {
@@ -18,10 +22,35 @@ describe('BatchConsumer', () => {
 
   beforeEach(() => {
     fsMocks.reset();
+    vi.mocked(getUserAgent).mockReset().mockResolvedValue(TEST_USER_AGENT);
     consumer = new BatchConsumer(config);
 
     global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     fsMocks.access.mockResolvedValue(undefined);
+  });
+
+  describe('request headers', () => {
+    it('should include user agent and client token', async () => {
+      fsMocks.readdir.mockResolvedValue(['test.log']);
+      fsMocks.readFile.mockResolvedValue('{"event":"data"}');
+
+      await consumer.upload();
+
+      const fetchMock = vi.mocked(fetch);
+      const headers = fetchMock.mock.calls[0][1]?.headers as Record<string, string>;
+      expect(headers['User-Agent']).toBe(TEST_USER_AGENT);
+      expect(headers['DD-API-KEY']).toBe(config.clientToken);
+    });
+
+    it('should call getUserAgent only once across multiple uploads', async () => {
+      fsMocks.readdir.mockResolvedValue(['a.log', 'b.log']);
+      fsMocks.readFile.mockResolvedValue('{"event":"data"}');
+
+      await consumer.upload();
+      await consumer.upload();
+
+      expect(getUserAgent).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('upload lifecycle', () => {
