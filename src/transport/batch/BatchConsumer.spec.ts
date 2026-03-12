@@ -22,7 +22,7 @@ describe('BatchConsumer', () => {
 
   beforeEach(() => {
     fsMocks.reset();
-    vi.mocked(getUserAgent).mockResolvedValue(TEST_USER_AGENT);
+    vi.mocked(getUserAgent).mockReset().mockResolvedValue(TEST_USER_AGENT);
     consumer = new BatchConsumer(config);
 
     global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
@@ -40,6 +40,16 @@ describe('BatchConsumer', () => {
       const headers = fetchMock.mock.calls[0][1]?.headers as Record<string, string>;
       expect(headers['User-Agent']).toBe(TEST_USER_AGENT);
       expect(headers['DD-API-KEY']).toBe(config.clientToken);
+    });
+
+    it('should call getUserAgent only once across multiple uploads', async () => {
+      fsMocks.readdir.mockResolvedValue(['a.log', 'b.log']);
+      fsMocks.readFile.mockResolvedValue('{"event":"data"}');
+
+      await consumer.upload();
+      await consumer.upload();
+
+      expect(getUserAgent).toHaveBeenCalledTimes(1);
     });
   });
 

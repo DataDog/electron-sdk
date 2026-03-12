@@ -17,6 +17,7 @@ export class BatchConsumer {
   private trackPath: string;
   private intakeUrl: string;
   private clientToken: string;
+  private userAgent: string | undefined;
 
   constructor(config: ConsumerConfig) {
     this.trackPath = config.trackPath;
@@ -26,6 +27,10 @@ export class BatchConsumer {
 
   /** Uploads all pending `.log` files to the intake endpoint. */
   async upload() {
+    if (!this.userAgent) {
+      this.userAgent = await getUserAgent();
+    }
+
     const logFiles = await this.getLogFiles();
 
     for (const logFile of logFiles) {
@@ -88,7 +93,7 @@ export class BatchConsumer {
         headers: {
           'Content-Type': 'application/json',
           'DD-API-KEY': this.clientToken,
-          'User-Agent': await getUserAgent(),
+          'User-Agent': this.userAgent!,
         },
         body,
       });

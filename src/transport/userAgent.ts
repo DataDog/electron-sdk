@@ -4,28 +4,21 @@ import { app } from 'electron';
 import { addError } from '../domain/telemetry';
 import { ONE_SECOND } from '@datadog/browser-core';
 
-let cachedUserAgent: Promise<string> | undefined;
-
 /**
  * Returns a User-Agent string for HTTP requests to Datadog intake.
  *
  * Format: `AppName/Version (OS details) Electron/X Chrome/X Node/X`
- *
- * The result is computed once and cached for subsequent calls.
  */
 export function getUserAgent(): Promise<string> {
-  if (!cachedUserAgent) {
-    cachedUserAgent = getOSUserAgentPart().then((osPart) =>
-      [
-        `${app.getName()}/${app.getVersion()}`,
-        `(${osPart})`,
-        `Electron/${process.versions.electron}`,
-        `Chrome/${process.versions.chrome}`,
-        `Node/${process.versions.node}`,
-      ].join(' ')
-    );
-  }
-  return cachedUserAgent;
+  return getOSUserAgentPart().then((osPart) =>
+    [
+      `${app.getName()}/${app.getVersion()}`,
+      `(${osPart})`,
+      `Electron/${process.versions.electron}`,
+      `Chrome/${process.versions.chrome}`,
+      `Node/${process.versions.node}`,
+    ].join(' ')
+  );
 }
 
 function getOSUserAgentPart(): Promise<string> {
@@ -65,9 +58,4 @@ function getOSUserAgentPart(): Promise<string> {
   }
 
   return Promise.resolve(`${platform}; ${arch}`);
-}
-
-/** Reset cached user agent (for testing) */
-export function resetUserAgentCache(): void {
-  cachedUserAgent = undefined;
 }

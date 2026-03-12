@@ -25,7 +25,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { execFile } from 'node:child_process';
 import os from 'node:os';
 import { addError } from '../domain/telemetry';
-import { getUserAgent, resetUserAgentCache } from './userAgent';
+import { getUserAgent } from './userAgent';
 
 const mockExecFile = execFile as unknown as ReturnType<typeof vi.fn>;
 const mockPlatform = os.platform as unknown as ReturnType<typeof vi.fn>;
@@ -50,7 +50,6 @@ function mockExecFileError() {
 
 describe('getUserAgent', () => {
   beforeEach(() => {
-    resetUserAgentCache();
     mockExecFile.mockReset();
     mockPlatform.mockReset();
     mockArch.mockReset();
@@ -139,16 +138,5 @@ describe('getUserAgent', () => {
     const ua = await getUserAgent();
 
     expect(ua).toContain('(freebsd; x64)');
-  });
-
-  it('caches the result across calls', async () => {
-    mockPlatform.mockReturnValue('linux');
-    mockArch.mockReturnValue('x64');
-
-    const first = await getUserAgent();
-    const second = await getUserAgent();
-
-    expect(first).toBe(second);
-    expect(mockPlatform).toHaveBeenCalledTimes(1);
   });
 });
