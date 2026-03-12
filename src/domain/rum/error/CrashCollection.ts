@@ -3,10 +3,13 @@ import * as fs from 'node:fs/promises';
 import { generateUUID, setTimeout, type TimeStamp } from '@datadog/browser-core';
 import { app, crashReporter } from 'electron';
 import { EventFormat, EventKind, EventManager, EventSource } from '../../../event';
+// TODO: static import causes WASM compilation at module scope. A dynamic import() inside
+// processCrashFiles would defer this cost. Needs measuring to determine if worth the complexity.
 import { processMinidump, type CrashReport } from '../../../wasm';
 import type { RawRumError } from '../rawRumData.types';
 import type { RumErrorEvent } from '../rumEvent.types';
 import { displayError, displayInfo } from '../../../tools/display';
+import { addError } from '../../telemetry';
 
 /**
  * Collect RUM error events for native crashes.
@@ -50,12 +53,13 @@ export class CrashCollection {
           kind: EventKind.RAW,
           source: EventSource.MAIN,
           format: EventFormat.RUM,
-          data: buildCrashErrorEvent(crashReport),
+          data: buildCrashErrorEvent(crashReport, crashTime),
           startTime: crashTime,
         });
 
         await fs.unlink(filePath);
       } catch (error) {
+        addError(error);
         displayError('Failed to process crash dump:', filePath, error);
       }
     }
@@ -89,11 +93,12 @@ function calculateMaxAddress(baseAddress: string | undefined, size: number | und
   return formatAddress64(`0x${maxAddressBigInt.toString(16)}`);
 }
 
-function buildCrashErrorEvent(crashReport: CrashReport): RawRumError {
+function buildCrashErrorEvent(crashReport: CrashReport, crashTime: TimeStamp): RawRumError {
   const threads = formatThreads(crashReport);
   const crashedThread = threads.find((t) => t.crashed);
 
   return {
+    date: crashTime,
     type: 'error',
     error: {
       id: generateUUID(),

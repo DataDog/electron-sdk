@@ -138,6 +138,7 @@ describe('CrashCollection', () => {
     expect(event.startTime).toBe(crashTime);
 
     const data = event.data as RawRumError;
+    expect(data.date).toBe(crashTime);
     expect(data.type).toBe('error');
     expect(data.error.is_crash).toBe(true);
     expect(data.error.category).toBe('Exception');
