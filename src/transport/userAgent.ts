@@ -1,6 +1,8 @@
 import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { app } from 'electron';
+import { addError } from '../domain/telemetry';
+import { ONE_SECOND } from '@datadog/browser-core';
 
 let cachedUserAgent: Promise<string> | undefined;
 
@@ -32,8 +34,10 @@ function getOSUserAgentPart(): Promise<string> {
 
   if (platform === 'darwin') {
     return new Promise((resolve) => {
-      execFile('sw_vers', ['-productVersion'], { encoding: 'utf8' }, (error, stdout) => {
+      // Timeout prevents sw_vers from blocking the upload path if it hangs
+      execFile('sw_vers', ['-productVersion'], { encoding: 'utf8', timeout: ONE_SECOND }, (error, stdout) => {
         if (error) {
+          addError(error);
           resolve(`${platform}; ${arch}`);
           return;
         }

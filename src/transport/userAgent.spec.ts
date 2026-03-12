@@ -17,9 +17,14 @@ vi.mock('node:os', () => ({
   },
 }));
 
+vi.mock('../domain/telemetry', () => ({
+  addError: vi.fn(),
+}));
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { execFile } from 'node:child_process';
 import os from 'node:os';
+import { addError } from '../domain/telemetry';
 import { getUserAgent, resetUserAgentCache } from './userAgent';
 
 const mockExecFile = execFile as unknown as ReturnType<typeof vi.fn>;
@@ -50,6 +55,7 @@ describe('getUserAgent', () => {
     mockPlatform.mockReset();
     mockArch.mockReset();
     mockRelease.mockReset();
+    vi.mocked(addError).mockReset();
     vi.stubGlobal('process', {
       ...process,
       versions: { ...process.versions, electron: '30.0.0', chrome: '124.0.0', node: '20.14.0' },
@@ -76,7 +82,7 @@ describe('getUserAgent', () => {
     expect(ua).toContain('Mac OS X 15_3_0');
   });
 
-  it('falls back on macOS sw_vers error', async () => {
+  it('falls back and reports telemetry on macOS sw_vers error', async () => {
     mockPlatform.mockReturnValue('darwin');
     mockArch.mockReturnValue('arm64');
     mockExecFileError();
@@ -84,6 +90,8 @@ describe('getUserAgent', () => {
     const ua = await getUserAgent();
 
     expect(ua).toContain('(darwin; arm64)');
+    expect(addError).toHaveBeenCalledOnce();
+    expect(addError).toHaveBeenCalledWith(expect.any(Error));
   });
 
   it('returns correct format on Windows', async () => {
