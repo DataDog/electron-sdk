@@ -104,6 +104,16 @@ describe('getUserAgent', () => {
     expect(ua).toBe('TestApp/1.2.3 (Windows NT 10.0; Win64; x64) Electron/30.0.0 Chrome/124.0.0 Node/20.14.0');
   });
 
+  it('reports ARM64 on Windows arm64', async () => {
+    mockPlatform.mockReturnValue('win32');
+    mockArch.mockReturnValue('arm64');
+    mockRelease.mockReturnValue('10.0.22621');
+
+    const ua = await getUserAgent();
+
+    expect(ua).toContain('Windows NT 10.0; ARM64');
+  });
+
   it('returns correct format on Linux', async () => {
     mockPlatform.mockReturnValue('linux');
     mockArch.mockReturnValue('x64');

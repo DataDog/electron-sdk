@@ -55,7 +55,7 @@ function getOSUserAgentPart(): Promise<string> {
 
   if (platform === 'win32') {
     const ntVersion = os.release().split('.').slice(0, 2).join('.');
-    const archUA = arch === 'x64' || arch === 'arm64' ? 'Win64; x64' : arch;
+    const archUA = arch === 'x64' ? 'Win64; x64' : arch === 'arm64' ? 'ARM64' : arch;
     return Promise.resolve(`Windows NT ${ntVersion}; ${archUA}`);
   }
 
