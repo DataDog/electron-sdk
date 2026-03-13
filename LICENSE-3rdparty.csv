@@ -14,9 +14,6 @@ dev,electron,MIT,Copyright Electron contributors / GitHub Inc.
 dev,electron-reloader,MIT,Copyright Sindre Sorhus
 dev,eslint,MIT,Copyright OpenJS Foundation and other contributors
 dev,eslint-config-prettier,MIT,Copyright (c) 2017-2023 Simon Lydell and contributors
-dev,eslint-import-resolver-typescript,ISC,Copyright Alex Gorbatchev
-dev,eslint-plugin-force-barrel-imports,ISC,Copyright Andrey Starostin
-dev,eslint-plugin-import,MIT,Copyright Ben Mosher
 dev,eslint-plugin-prettier,MIT,Copyright (c) 2017 Andres Suarez and Teddy Katz
 dev,eslint-plugin-unicorn,MIT,Copyright (c) Sindre Sorhus
 dev,husky,MIT,Copyright (c) 2021 typicode
