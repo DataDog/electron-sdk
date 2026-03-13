@@ -228,21 +228,21 @@ __metadata:
   resolution: "e2e-test-app@workspace:."
   dependencies:
     "@datadog/electron-sdk": "portal:../.."
-    electron: "npm:40.6.1"
+    electron: "npm:41.0.2"
     typescript: "npm:5.9.3"
   languageName: unknown
   linkType: soft
 
-"electron@npm:40.6.1":
-  version: 40.6.1
-  resolution: "electron@npm:40.6.1"
+"electron@npm:41.0.2":
+  version: 41.0.2
+  resolution: "electron@npm:41.0.2"
   dependencies:
     "@electron/get": "npm:^2.0.0"
     "@types/node": "npm:^24.9.0"
     extract-zip: "npm:^2.0.1"
   bin:
     electron: cli.js
-  checksum: 10c0/e8f1cc92d3bd93d8bb2b83cc238dd6957f69f12ddb62d1a50459eb24650be765d840abc2bb29e766ba564fb3f0fee057b757e4656d668b2aba128bece8179a29
+  checksum: 10c0/2aabd5d72e339e1c839cb75491e1f1154120dd2c16039c515db4cc26cb85d05006d8ebb251c8d5b5b811527e2135afe5fe68e1e95831e821b6e38d957ca9c808
   languageName: node
   linkType: hard
 
