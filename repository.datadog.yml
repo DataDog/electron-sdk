@@ -6,3 +6,9 @@ rules:
     excluded_emails:
       - 'noreply@anthropic.com' # Claude bot
       - 'team-workspaces@datadoghq.com' # DataDog Workspaces Bot
+---
+schema-version: v2
+kind: adms
+auto-version-updates:
+  disabled:
+    reason: Renovate will be more suited for our needs
