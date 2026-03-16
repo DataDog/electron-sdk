@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self'"
+      content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self' https://httpbin.org"
     />
     <title>Electron SDK Playground</title>
     <style>
@@ -15,7 +15,8 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        height: 100vh;
+        min-height: 100vh;
+        height: 100%;
         margin: 0;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
@@ -95,6 +96,72 @@
         font-size: 14px;
         opacity: 0.8;
       }
+
+      .button-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: center;
+        margin: 15px 0;
+      }
+
+      .button-group button {
+        margin: 0;
+        padding: 10px 20px;
+        font-size: 14px;
+      }
+
+      .button-group button.accent {
+        background: #667eea;
+        color: white;
+        border: 2px solid white;
+      }
+
+      .section-label {
+        font-size: 0.9em;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        opacity: 0.7;
+        margin: 20px 0 8px;
+      }
+
+      #ipc-log {
+        background: rgba(0, 0, 0, 0.3);
+        padding: 10px;
+        border-radius: 8px;
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+        text-align: left;
+        max-height: 200px;
+        overflow-y: auto;
+        min-height: 40px;
+      }
+
+      .log-entry {
+        padding: 2px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      .log-time {
+        opacity: 0.5;
+      }
+      .log-channel {
+        color: #a8d8ea;
+        font-weight: bold;
+      }
+      .log-duration {
+        color: #ffd166;
+      }
+      .log-preview {
+        opacity: 0.6;
+        font-size: 11px;
+      }
+      .log-pending .log-channel {
+        color: #ffd166;
+      }
+      .log-error .log-channel {
+        color: #ef476f;
+      }
     </style>
   </head>
   <body>
@@ -107,12 +174,26 @@
         <pre id="session-content">Loading...</pre>
       </div>
 
-      <button id="stop-btn">Stop Session</button>
-      <button id="generate-activity">Generate Activity</button>
-      <button id="generate-telemetry-error">Generate Telemetry Error</button>
-      <button id="generate-uncaught-exception">Generate Uncaught Exception</button>
-      <button id="generate-unhandled-rejection">Generate Unhandled Rejection</button>
-      <button id="crash-btn">Crash</button>
+      <div class="section-label">SDK Actions</div>
+      <div class="button-group">
+        <button id="stop-btn">Stop Session</button>
+        <button id="generate-activity">Generate Activity</button>
+        <button id="generate-telemetry-error">Generate Telemetry Error</button>
+        <button id="generate-uncaught-exception">Generate Uncaught Exception</button>
+        <button id="generate-unhandled-rejection">Generate Unhandled Rejection</button>
+        <button id="crash-btn">Crash</button>
+      </div>
+
+      <div class="section-label">Fetch</div>
+      <div class="button-group">
+        <button id="demo-renderer-fetch">Renderer Fetch</button>
+        <button id="main-fetch">Main Fetch</button>
+      </div>
+
+      <div class="session-section">
+        <h2>IPC Activity Log:</h2>
+        <div id="ipc-log"></div>
+      </div>
     </div>
 
     <script type="module" src="renderer.js"></script>

@@ -1,11 +1,16 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import { init, _generateTelemetryError, _generateActivity, stopSession } from '@datadog/electron-sdk';
+import * as https from 'node:https';
+import { init, stopSession, _generateActivity, _generateTelemetryError } from '@datadog/electron-sdk';
 import { loadWindowState, saveWindowState } from './main/windowState';
 import { setupHotReload } from './main/hotReload';
 
 let mainWindow: BrowserWindow | null = null;
+
+function getSessionFilePath(): string {
+  return path.join(app.getPath('userData'), '_dd_s');
+}
 
 function createWindow() {
   const savedState = loadWindowState();
@@ -38,7 +43,7 @@ function createWindow() {
 
 // IPC handler to get session file content
 ipcMain.handle('get-session-file', () => {
-  const sessionFilePath = path.join(app.getPath('userData'), '_dd_s');
+  const sessionFilePath = getSessionFilePath();
   try {
     if (fs.existsSync(sessionFilePath)) {
       const content = fs.readFileSync(sessionFilePath, 'utf-8');
@@ -51,17 +56,14 @@ ipcMain.handle('get-session-file', () => {
   }
 });
 
-// IPC handler to stop session
 ipcMain.handle('stop-session', () => {
   stopSession();
 });
 
-// IPC handler to generate activity
 ipcMain.handle('generate-activity', () => {
   _generateActivity();
 });
 
-// IPC handler to generate telemetry error
 ipcMain.handle('generateTelemetryError', () => {
   _generateTelemetryError();
 });
@@ -76,6 +78,23 @@ ipcMain.handle('generateUncaughtException', () => {
 // IPC handler to generate unhandled rejection
 ipcMain.handle('generateUnhandledRejection', () => {
   void Promise.reject(new Error('test unhandled rejection'));
+});
+// --- IPC demo handlers (each one becomes a captured IPC resource) ---
+
+ipcMain.handle('main:fetch-api', async () => {
+  const data = await new Promise<string>((resolve, reject) => {
+    https
+      .get('https://httpbin.org/json', (res) => {
+        let body = '';
+        res.on('data', (chunk: Buffer) => {
+          body += chunk.toString();
+        });
+        res.on('end', () => resolve(body));
+        res.on('error', reject);
+      })
+      .on('error', reject);
+  });
+  return JSON.parse(data) as unknown;
 });
 
 // IPC handler to crash the main process
