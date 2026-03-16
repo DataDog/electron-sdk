@@ -232,6 +232,97 @@ describe('buildConfiguration', () => {
     });
   });
 
+  describe('defaultPrivacyLevel validation', () => {
+    it('defaults to mask when not provided', () => {
+      const config = { ...DEFAULT_CONFIG };
+
+      const result = buildConfiguration(config);
+
+      expect(result?.defaultPrivacyLevel).toBe('mask');
+    });
+
+    it.each(['mask', 'allow', 'mask-user-input'] as const)('accepts valid value: %s', (value) => {
+      const config = { ...DEFAULT_CONFIG, defaultPrivacyLevel: value };
+
+      const result = buildConfiguration(config);
+
+      expect(result?.defaultPrivacyLevel).toBe(value);
+    });
+
+    it.each([
+      { value: 'invalid', description: 'invalid string' },
+      { value: 123, description: 'number' },
+      { value: {}, description: 'object' },
+    ])('logs error and uses default when $description', ({ value }) => {
+      const config = { ...DEFAULT_CONFIG, defaultPrivacyLevel: value } as unknown as InitConfiguration;
+
+      const result = buildConfiguration(config);
+
+      expect(result?.defaultPrivacyLevel).toBe('mask');
+      expect(display.displayError).toHaveBeenCalledWith(
+        "Configuration error: 'defaultPrivacyLevel' must be one of: mask, allow, mask-user-input"
+      );
+    });
+
+    it.each([
+      { value: null, description: 'null' },
+      { value: undefined, description: 'undefined' },
+    ])('defaults to mask when $description (no error)', ({ value }) => {
+      const config = { ...DEFAULT_CONFIG, defaultPrivacyLevel: value } as unknown as InitConfiguration;
+
+      const result = buildConfiguration(config);
+
+      expect(result?.defaultPrivacyLevel).toBe('mask');
+      expect(display.displayError).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('allowedWebViewHosts validation', () => {
+    it('defaults to empty array when not provided', () => {
+      const config = { ...DEFAULT_CONFIG };
+
+      const result = buildConfiguration(config);
+
+      expect(result?.allowedWebViewHosts).toEqual([]);
+    });
+
+    it('accepts valid array of strings', () => {
+      const config = { ...DEFAULT_CONFIG, allowedWebViewHosts: ['example.com', 'other.com'] };
+
+      const result = buildConfiguration(config);
+
+      expect(result?.allowedWebViewHosts).toEqual(['example.com', 'other.com']);
+    });
+
+    it.each([
+      { value: 'not-an-array', description: 'string' },
+      { value: 123, description: 'number' },
+      { value: [123, 456], description: 'array of non-strings' },
+      { value: ['valid', 123], description: 'mixed array' },
+    ])('logs error and uses default when $description', ({ value }) => {
+      const config = { ...DEFAULT_CONFIG, allowedWebViewHosts: value } as unknown as InitConfiguration;
+
+      const result = buildConfiguration(config);
+
+      expect(result?.allowedWebViewHosts).toEqual([]);
+      expect(display.displayError).toHaveBeenCalledWith(
+        "Configuration error: 'allowedWebViewHosts' must be an array of strings"
+      );
+    });
+
+    it.each([
+      { value: null, description: 'null' },
+      { value: undefined, description: 'undefined' },
+    ])('defaults to empty array when $description (no error)', ({ value }) => {
+      const config = { ...DEFAULT_CONFIG, allowedWebViewHosts: value } as unknown as InitConfiguration;
+
+      const result = buildConfiguration(config);
+
+      expect(result?.allowedWebViewHosts).toEqual([]);
+      expect(display.displayError).not.toHaveBeenCalled();
+    });
+  });
+
   describe('telemetrySampleRate validation', () => {
     it('defaults to 20 when not provided', () => {
       const config = { ...DEFAULT_CONFIG };

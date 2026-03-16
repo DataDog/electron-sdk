@@ -36,6 +36,8 @@ export function createTestConfiguration(overrides: Partial<Configuration> = {}):
     clientToken: 'test-token',
     applicationId: 'test-app-id',
     telemetrySampleRate: 100,
+    defaultPrivacyLevel: 'mask',
+    allowedWebViewHosts: [],
     ...overrides,
   };
 }

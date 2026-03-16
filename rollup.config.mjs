@@ -5,8 +5,19 @@ import replace from '@rollup/plugin-replace';
 import dts from 'rollup-plugin-dts';
 import pkg from './package.json' with { type: 'json' };
 
+const sharedPlugins = [
+  replace({ preventAssignment: true, __SDK_VERSION__: JSON.stringify(pkg.version) }),
+  nodeResolve(),
+  commonjs(),
+  typescript({
+    tsconfig: './tsconfig.build.json',
+    declaration: false,
+    declarationMap: false,
+  }),
+];
+
 const config = [
-  // ESM and CJS builds
+  // Main process: ESM and CJS builds
   {
     input: 'src/index.ts',
     output: [
@@ -26,18 +37,22 @@ const config = [
       },
     ],
     external: ['electron'],
-    plugins: [
-      replace({ preventAssignment: true, __SDK_VERSION__: JSON.stringify(pkg.version) }),
-      nodeResolve(),
-      commonjs(),
-      typescript({
-        tsconfig: './tsconfig.build.json',
-        declaration: false, // We'll generate declarations separately
-        declarationMap: false,
-      }),
-    ],
+    plugins: sharedPlugins,
   },
-  // TypeScript declarations
+  // Auto-instrument preload: self-contained CJS script injected via session.registerPreloadScript()
+  {
+    input: 'src/entries/preload.ts',
+    output: [
+      {
+        file: 'dist/preload-auto.cjs',
+        format: 'cjs',
+        sourcemap: true,
+      },
+    ],
+    external: ['electron'],
+    plugins: sharedPlugins,
+  },
+  // TypeScript declarations: main
   {
     input: 'src/index.ts',
     output: {

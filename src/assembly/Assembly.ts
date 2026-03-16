@@ -1,9 +1,27 @@
 import { combine, DISCARDED, timeStampNow, type RecursivePartial } from '@datadog/browser-core';
-import { EventFormat, EventKind, EventManager, EventTrack, type RawEvent, ServerEvent } from '../event';
+import { EventFormat, EventKind, EventManager, EventSource, EventTrack, type RawEvent, ServerEvent } from '../event';
+import type { RawRumEvent } from '../event';
 import type { FormatHooks } from './hooks';
 import { RumEvent } from '../domain/rum';
 import { TelemetryEvent } from '../domain/telemetry';
 
+interface MainProcessAttributes {
+  session?: { id?: string };
+  application?: { id?: string };
+}
+
+/**
+ * Transforms RawEvents into ServerEvents by enriching them with contextual
+ * attributes (session, application, view, etc.) via format hooks.
+ *
+ * Handles two sources differently:
+ * - **Main-process events**: fully assembled by combining raw data with all
+ *   registered hook results (commonContext, session, view).
+ * - **Renderer events**: arrive pre-assembled by `@datadog/browser-rum` in
+ *   the renderer process. Only `session.id` and `application.id` are
+ *   overridden from the main process; the renderer's own view, source,
+ *   service, and other attributes are preserved.
+ */
 export class Assembly {
   constructor(
     private eventManager: EventManager,
@@ -20,7 +38,49 @@ export class Assembly {
     });
   }
 
+  /** Route to the appropriate assembly strategy based on event source. */
   private assembleToServerEvent(event: RawEvent): ServerEvent | DISCARDED {
+    if (event.format === EventFormat.RUM && event.source === EventSource.RENDERER) {
+      return this.assembleRendererRumEvent(event);
+    }
+
+    return this.assembleMainProcessEvent(event);
+  }
+
+  /**
+   * Renderer RUM events arrive already assembled by `@datadog/browser-rum`.
+   * Only `session.id` and `application.id` are overridden from the main
+   * process hooks, preserving the renderer's own view, source, and other
+   * attributes.
+   */
+  private assembleRendererRumEvent(event: RawRumEvent): ServerEvent | DISCARDED {
+    const hookResult = this.hooks.triggerRum({
+      eventType: event.data.type,
+      startTime: event.startTime ?? timeStampNow(),
+    });
+
+    if (hookResult === DISCARDED) {
+      return DISCARDED;
+    }
+
+    const { session, application } = (hookResult ?? {}) as MainProcessAttributes;
+
+    return {
+      kind: EventKind.SERVER,
+      track: EventTrack.RUM,
+      data: combine(event.data, {
+        session: { id: session?.id },
+        application: { id: application?.id },
+      }) as RumEvent,
+    };
+  }
+
+  /**
+   * Main-process events are assembled by combining raw data with the full
+   * hook chain (commonContext, session, view), producing a complete
+   * ServerEvent ready for transport.
+   */
+  private assembleMainProcessEvent(event: RawEvent): ServerEvent | DISCARDED {
     const startTime = event.startTime ?? timeStampNow();
 
     if (event.format === EventFormat.RUM) {

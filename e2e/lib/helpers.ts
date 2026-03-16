@@ -64,6 +64,8 @@ async function launchApp(intake: Intake): Promise<ElectronApplication> {
     env: 'test',
     version: '1.0.0',
     telemetrySampleRate: 100,
+    defaultPrivacyLevel: 'mask',
+    allowedWebViewHosts: [],
   };
   env.DD_SDK_CONFIG = JSON.stringify(config);
 

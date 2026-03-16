@@ -1,4 +1,4 @@
-import { ONE_KIBI_BYTE, ONE_MEBI_BYTE, ONE_SECOND } from '@datadog/browser-core';
+import { ONE_KIBI_BYTE, ONE_MEBI_BYTE, ONE_SECOND, DefaultPrivacyLevel } from '@datadog/browser-core';
 import { displayError } from './tools/display';
 
 const VALID_DATADOG_SITES = [
@@ -38,6 +38,8 @@ export interface InitConfiguration {
   telemetrySampleRate?: number;
   batchSize?: BatchSize;
   uploadFrequency?: UploadFrequency;
+  defaultPrivacyLevel?: DefaultPrivacyLevel;
+  allowedWebViewHosts?: string[];
 }
 
 export interface Configuration {
@@ -51,6 +53,8 @@ export interface Configuration {
   telemetrySampleRate: number;
   batchSize?: BatchSize;
   uploadFrequency?: UploadFrequency;
+  defaultPrivacyLevel: DefaultPrivacyLevel;
+  allowedWebViewHosts: string[];
 }
 
 function validateRequiredString(value: unknown, fieldName: string): string | undefined {
@@ -92,6 +96,34 @@ function validateTelemetrySampleRate(value: unknown): number {
   return value;
 }
 
+const VALID_PRIVACY_LEVELS: readonly DefaultPrivacyLevel[] = [
+  DefaultPrivacyLevel.MASK,
+  DefaultPrivacyLevel.ALLOW,
+  DefaultPrivacyLevel.MASK_USER_INPUT,
+];
+
+function validateDefaultPrivacyLevel(value: unknown): DefaultPrivacyLevel {
+  if (value === undefined || value === null) {
+    return DefaultPrivacyLevel.MASK;
+  }
+  if (typeof value !== 'string' || !(VALID_PRIVACY_LEVELS as readonly string[]).includes(value)) {
+    displayError(`Configuration error: 'defaultPrivacyLevel' must be one of: ${VALID_PRIVACY_LEVELS.join(', ')}`);
+    return DefaultPrivacyLevel.MASK;
+  }
+  return value as DefaultPrivacyLevel;
+}
+
+function validateAllowedWebViewHosts(value: unknown): string[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
+    displayError("Configuration error: 'allowedWebViewHosts' must be an array of strings");
+    return [];
+  }
+  return value;
+}
+
 export function buildConfiguration(initConfig: InitConfiguration): Configuration | undefined {
   const service = validateRequiredString(initConfig.service, 'service');
   const clientToken = validateRequiredString(initConfig.clientToken, 'clientToken');
@@ -113,5 +145,7 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     version: validateOptionalString(initConfig.version),
     proxy,
     telemetrySampleRate: validateTelemetrySampleRate(initConfig.telemetrySampleRate),
+    defaultPrivacyLevel: validateDefaultPrivacyLevel(initConfig.defaultPrivacyLevel),
+    allowedWebViewHosts: validateAllowedWebViewHosts(initConfig.allowedWebViewHosts),
   };
 }

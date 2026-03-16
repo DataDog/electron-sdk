@@ -39,6 +39,15 @@ await init({
 - **Sessions** — Session-based event grouping
 - **RUM Views** — One view per main process instance
 - **RUM Errors** — Capture Node errors and crashes in main process
+- **Renderer Bridge** — Capture RUM events from renderer processes via the browser SDK
+
+### Renderer Process Support
+
+The SDK automatically registers a preload script that exposes a `DatadogEventBridge` to every renderer process. When `@datadog/browser-rum` is initialized in a renderer, it detects the bridge and routes events through IPC to the main process instead of posting directly to the intake.
+
+Both `contextIsolation: true` (default) and `contextIsolation: false` are supported.
+
+> **Note:** Only the automatic preload mode is currently supported. Manual bridge setup is not yet available.
 
 ## API
 
@@ -62,14 +71,16 @@ try {
 
 ### Configuration Options
 
-| Option                | Type                               | Required | Default | Description                                                                                                                        |
-| --------------------- | ---------------------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `clientToken`         | `string`                           | Yes      | —       | Datadog client token                                                                                                               |
-| `applicationId`       | `string`                           | Yes      | —       | RUM application ID                                                                                                                 |
-| `site`                | `string`                           | Yes      | —       | Datadog site (e.g. `datadoghq.com`, `datadoghq.eu`, `us3.datadoghq.com`, `us5.datadoghq.com`, `ap1.datadoghq.com`, `ddog-gov.com`) |
-| `service`             | `string`                           | Yes      | —       | Service name                                                                                                                       |
-| `env`                 | `string`                           | No       | —       | Application environment                                                                                                            |
-| `version`             | `string`                           | No       | —       | Application version                                                                                                                |
-| `telemetrySampleRate` | `number`                           | No       | `20`    | Telemetry sample rate (0–100)                                                                                                      |
-| `batchSize`           | `'SMALL' \| 'MEDIUM' \| 'LARGE'`   | No       | —       | Batch size for event uploads                                                                                                       |
-| `uploadFrequency`     | `'RARE' \| 'NORMAL' \| 'FREQUENT'` | No       | —       | Upload frequency for event batches                                                                                                 |
+| Option                | Type                                     | Required | Default  | Description                                                                                                                        |
+| --------------------- | ---------------------------------------- | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `clientToken`         | `string`                                 | Yes      | —        | Datadog client token                                                                                                               |
+| `applicationId`       | `string`                                 | Yes      | —        | RUM application ID                                                                                                                 |
+| `site`                | `string`                                 | Yes      | —        | Datadog site (e.g. `datadoghq.com`, `datadoghq.eu`, `us3.datadoghq.com`, `us5.datadoghq.com`, `ap1.datadoghq.com`, `ddog-gov.com`) |
+| `service`             | `string`                                 | Yes      | —        | Service name                                                                                                                       |
+| `env`                 | `string`                                 | No       | —        | Application environment                                                                                                            |
+| `version`             | `string`                                 | No       | —        | Application version                                                                                                                |
+| `telemetrySampleRate` | `number`                                 | No       | `20`     | Telemetry sample rate (0–100)                                                                                                      |
+| `batchSize`           | `'SMALL' \| 'MEDIUM' \| 'LARGE'`         | No       | —        | Batch size for event uploads                                                                                                       |
+| `uploadFrequency`     | `'RARE' \| 'NORMAL' \| 'FREQUENT'`       | No       | —        | Upload frequency for event batches                                                                                                 |
+| `defaultPrivacyLevel` | `'mask' \| 'allow' \| 'mask-user-input'` | No       | `'mask'` | Default privacy level for renderer session replay                                                                                  |
+| `allowedWebViewHosts` | `string[]`                               | No       | `[]`     | Hostnames allowed for the renderer bridge                                                                                          |
