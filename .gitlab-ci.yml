@@ -15,13 +15,14 @@ build-container-image:
   stage: docker
   image: 'registry.ddbuild.io/images/docker:27.3.1'
   when: manual
-  script: |-
-    docker buildx build \
-      --platform=linux/amd64 \
-      --label target=build \
-      --tag registry.ddbuild.io/${CI_IMAGE_REPO}:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA} \
-      --push \
-      .
+  id_tokens:
+    DDSIGN_ID_TOKEN:
+      aud: image-integrity
+  script:
+    - METADATA_FILE=$(mktemp)
+    - CI_IMAGE_TAG="v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}"
+    - docker buildx build --platform=linux/amd64 --label target=build --tag registry.ddbuild.io/${CI_IMAGE_REPO}:${CI_IMAGE_TAG} --push --metadata-file ${METADATA_FILE} .
+    - ddsign sign registry.ddbuild.io/${CI_IMAGE_REPO}:${CI_IMAGE_TAG} --docker-metadata-file ${METADATA_FILE}
 
 format:
   stage: test
