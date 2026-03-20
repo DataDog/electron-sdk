@@ -1,6 +1,6 @@
 variables:
   CI_IMAGE_REPO: 'ci/${CI_PROJECT_NAME}'
-  CI_IMAGE: 'registry.ddbuild.io/${CI_IMAGE_REPO}:v92227822-b865eafd@sha256:77f721529e0a47c2296a492d60d8486f14083bf5f70f5b4bd456a5f2d1a47fd8' # https://gitlab.ddbuild.io/DataDog/electron-sdk/-/jobs/1369349129
+  CI_IMAGE: 'registry.ddbuild.io/ci/electron-sdk:v103674365-cf44b708@sha256:5fb8205e60fd28eba344fee63b60f98e4a8b2a11085ac5f46966489c007b89b5' # https://gitlab.ddbuild.io/DataDog/electron-sdk/-/jobs/1524560887
 
 stages:
   - docker
@@ -15,13 +15,14 @@ build-container-image:
   stage: docker
   image: 'registry.ddbuild.io/images/docker:27.3.1'
   when: manual
-  script: |-
-    docker buildx build \
-      --platform=linux/amd64 \
-      --label target=build \
-      --tag registry.ddbuild.io/${CI_IMAGE_REPO}:v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA} \
-      --push \
-      .
+  id_tokens:
+    DDSIGN_ID_TOKEN:
+      aud: image-integrity
+  script:
+    - METADATA_FILE=$(mktemp)
+    - CI_IMAGE_TAG="v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}"
+    - docker buildx build --platform=linux/amd64 --label target=build --tag registry.ddbuild.io/${CI_IMAGE_REPO}:${CI_IMAGE_TAG} --push --metadata-file ${METADATA_FILE} .
+    - ddsign sign registry.ddbuild.io/${CI_IMAGE_REPO}:${CI_IMAGE_TAG} --docker-metadata-file ${METADATA_FILE}
 
 format:
   stage: test
