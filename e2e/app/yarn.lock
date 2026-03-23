@@ -18,7 +18,7 @@ __metadata:
   dependencies:
     "@datadog/browser-core": "npm:6.26.0"
   peerDependencies:
-    electron: 40.2.1
+    electron: ">=39"
   languageName: node
   linkType: soft
 

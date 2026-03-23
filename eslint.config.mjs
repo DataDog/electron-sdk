@@ -1,11 +1,8 @@
-import { createRequire } from 'node:module';
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import prettier from 'eslint-plugin-prettier/recommended';
 import unicorn from 'eslint-plugin-unicorn';
-
-const require = createRequire(import.meta.url);
-const forceBarrelImports = require('eslint-plugin-force-barrel-imports');
+import noInternalModules from './eslint-local-rules/no-internal-modules.mjs';
 
 export default tseslint.config(
   {
@@ -13,7 +10,8 @@ export default tseslint.config(
       '**/dist/**',
       '**/node_modules/**',
       'coverage/**',
-      '*.mjs',
+      '.claude/**',
+      '**/*.mjs',
       'rum-events-format/**',
       '**/rumEvent.types.ts',
       '**/telemetryEvent.types.ts',
@@ -32,17 +30,11 @@ export default tseslint.config(
     },
     plugins: {
       unicorn,
-      'force-barrel-imports': forceBarrelImports,
-    },
-    settings: {
-      'import/resolver': {
-        typescript: true,
-        node: true,
-      },
+      local: { rules: { 'no-internal-modules': noInternalModules } },
     },
     rules: {
       'unicorn/prefer-node-protocol': 'error',
-      'force-barrel-imports/force-barrel-imports': 'error',
+      'local/no-internal-modules': 'error',
     },
   },
   // Release some rules outside of source code
@@ -54,7 +46,7 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-argument': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
-      'force-barrel-imports/force-barrel-imports': 'off',
+      'local/no-internal-modules': 'off',
     },
   },
   prettier

@@ -46,11 +46,8 @@
     "@vitest/ui": "4.0.18",
     "concurrently": "9.2.1",
     "electron": "40.2.1",
-    "eslint": "9.39.3",
+    "eslint": "10.0.2",
     "eslint-config-prettier": "10.1.8",
-    "eslint-import-resolver-typescript": "4.4.4",
-    "eslint-plugin-force-barrel-imports": "1.0.0",
-    "eslint-plugin-import": "2.32.0",
     "eslint-plugin-prettier": "5.5.5",
     "eslint-plugin-unicorn": "63.0.0",
     "husky": "9.1.7",
@@ -62,11 +59,11 @@
     "rollup-plugin-dts": "6.3.0",
     "tslib": "2.8.1",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.53.1",
+    "typescript-eslint": "8.57.0",
     "vitest": "4.0.18"
   },
   "peerDependencies": {
-    "electron": "40.2.1"
+    "electron": ">=39"
   },
   "repository": {
     "type": "git",
