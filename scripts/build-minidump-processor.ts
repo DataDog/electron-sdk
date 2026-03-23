@@ -7,12 +7,13 @@ const ROOT_DIR = path.resolve(import.meta.dirname, '..');
 const CRATE_DIR = path.join(ROOT_DIR, 'minidump-processor');
 const PKG_DIR = path.join(CRATE_DIR, 'pkg');
 const WASM_PATH = path.join(PKG_DIR, 'minidump_bg.wasm');
-const MINIDUMP_JS_PATH = path.join(PKG_DIR, 'minidump.js');
+const BASE64_JS_PATH = path.join(PKG_DIR, 'minidump_bg.wasm.base64.js');
+const BASE64_DTS_PATH = path.join(PKG_DIR, 'minidump_bg.wasm.base64.d.ts');
 
 runMain(() => {
   printLog('Building minidump-processor WASM...');
 
-  execSync('wasm-pack build . --target nodejs --release --out-name minidump', {
+  execSync('wasm-pack build . --target web --release --out-name minidump', {
     cwd: CRATE_DIR,
     stdio: 'inherit',
   });
@@ -31,19 +32,14 @@ runMain(() => {
 
   printLog(`  WASM size: ${formatSize(wasmBytes.length)} → base64: ${formatSize(base64.length)}`);
 
-  // Replace the readFileSync loader in minidump.js with an inline base64 decode.
+  // Export WASM binary as a base64 JS module.
   // This makes the built SDK self-contained: no .wasm file needs to be distributed.
-  const minidumpJs = fs.readFileSync(MINIDUMP_JS_PATH, 'utf-8');
-  const patchedJs = minidumpJs.replace(
-    /const wasmPath = `\$\{__dirname\}\/minidump_bg\.wasm`;\nconst wasmBytes = require\('fs'\)\.readFileSync\(wasmPath\);/,
-    `const wasmBytes = Buffer.from('${base64}', 'base64');`
-  );
+  // The wrapper in src/wasm/index.ts uses init(buffer) to load it at runtime.
+  fs.writeFileSync(BASE64_JS_PATH, `export const WASM_BASE64 = '${base64}';\n`);
+  fs.writeFileSync(BASE64_DTS_PATH, `export declare const WASM_BASE64: string;\n`);
 
-  if (patchedJs === minidumpJs) {
-    throw new Error('Failed to patch minidump.js: readFileSync loader block not found');
-  }
-
-  fs.writeFileSync(MINIDUMP_JS_PATH, patchedJs, 'utf-8');
+  // Remove the .wasm file — it's now embedded in the base64 module
+  fs.rmSync(WASM_PATH);
 
   printLog(`Build complete. Artifacts in minidump-processor/pkg/`);
 });

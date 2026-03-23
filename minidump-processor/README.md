@@ -25,9 +25,12 @@ yarn build:wasm
 
 Effects:
 
-- Runs `wasm-pack build`,
-- Embeds the WASM binary as base64 directly in `pkg/minidump.js`,
+- Runs `wasm-pack build --target web`,
+- Exports the WASM binary as a base64 module (`pkg/minidump_bg.wasm.base64.js`),
+- Removes the raw `.wasm` file (no longer needed at runtime),
 - Regenerates `pkg/`
+
+The `--target web` build produces an `init(input)` function that accepts a `BufferSource`. The wrapper in `src/wasm/index.ts` calls `init()` with the decoded base64 buffer on first use, making the SDK self-contained without patching generated code.
 
 Commit the updated `pkg/` directory.
 

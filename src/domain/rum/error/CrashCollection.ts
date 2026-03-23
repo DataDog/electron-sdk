@@ -3,8 +3,6 @@ import * as fs from 'node:fs/promises';
 import { generateUUID, type TimeStamp } from '@datadog/browser-core';
 import { app, crashReporter } from 'electron';
 import { EventFormat, EventKind, EventManager, EventSource } from '../../../event';
-// TODO: static import causes WASM compilation at module scope. A dynamic import() inside
-// processCrashFiles would defer this cost. Needs measuring to determine if worth the complexity.
 import { processMinidump, type CrashReport } from '../../../wasm';
 import type { RawRumError } from '../rawRumData.types';
 import type { RumErrorEvent } from '../rumEvent.types';
