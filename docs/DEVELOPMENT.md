@@ -40,6 +40,33 @@ The SDK builds both CommonJS and ES modules for maximum compatibility:
 
 For unit tests, these constants are defined via Vitest's `define` option in `vitest.config.mjs`.
 
+## Commit messages and Pull Request titles
+
+Messages should be concise but explanatory. We are using a convention inspired by [gitmoji][1], to
+label our Commit messages and Pull Request titles:
+
+### User-facing changes
+
+- 💥 **Breaking change** - Breaking API changes
+- ✨ **New feature** - New public API, behavior, event, property
+- 🐛 **Bug fix** - Fix bugs, regressions, crashes
+- ⚡️ **Performance** - Improve performance, reduce bundle size
+- 📝 **Documentation** - User-facing documentation
+- ⚗️ **Experimental** - New public feature behind a feature flag
+
+### Internal changes
+
+- 👷 **Build/CI** - Dependencies, tooling, deployment, CI config
+- ♻️ **Refactor** - Code restructuring, architectural changes
+- 🎨 **Code structure** - Improve code structure, formatting
+- ✅ **Tests** - Add/fix/improve tests
+- 🔧 **Configuration** - Config files, project setup
+- 🔥 **Removal** - Remove code, features, deprecated items
+- 👌 **Code review** - Address code review feedback
+- 🚨 **Linting** - Add/fix linter rules
+- 🧹 **Cleanup** - Minor cleanup, housekeeping
+- 🔊 **Logging** - Add/modify debug logs, telemetry
+
 ## Dependency Management
 
 ### Adding Dependencies
@@ -107,3 +134,50 @@ Two watchers handle different reload scenarios:
 Grace periods prevent reload loops during initial TypeScript compilation.
 
 No watching of HTML changes for now to avoid extra complexity.
+
+## Releasing
+
+### Prerequisites
+
+- [`gh` CLI](https://cli.github.com/) installed and authenticated (`gh auth login`)
+- `$EDITOR` environment variable set (e.g. `export EDITOR=vim` in your shell profile)
+- npm Trusted Publisher configured on npmjs.com
+
+### Release flow
+
+#### 1. Prepare the release (run locally)
+
+```sh
+node scripts/prepare-release.ts
+```
+
+The script will:
+
+1. Validate prerequisites (`$EDITOR`, `gh` auth, clean working tree)
+2. Sync with main and install latest deps
+3. Prompt you to choose a version bump (patch / minor / major / custom)
+4. Generate a changelog draft and open it in `$EDITOR` for review
+5. Create a `release/vX.Y.Z` branch, commit, push, and open a GitHub PR
+
+**Dry-run mode** (validates all checks and previews changelog without git changes):
+
+```sh
+node scripts/prepare-release.ts --dry-run
+```
+
+#### 2. Review the PR
+
+- Review the generated changelog in the PR
+- Edit `CHANGELOG.md` if needed
+- Merge when ready
+
+#### 3. Trigger the publish workflow
+
+After the PR is merged:
+
+1. A git tag `vX.Y.Z` is automatically created by CI.
+2. A Slack message in `#rum-electron-sdk-ops` will include a link to the GitHub Actions publish workflow.
+
+Open the workflow link, click **Run workflow**, and select the tag `vX.Y.Z` in the ref dropdown.
+
+[1]: https://gitmoji.carloscuesta.me/
