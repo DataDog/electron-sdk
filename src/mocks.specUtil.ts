@@ -19,7 +19,6 @@ export function mockFs() {
       mocks.access.mockReset();
       mocks.readFile.mockReset();
       mocks.readdir.mockReset();
-      mocks.readdir.mockReset();
       mocks.stat.mockReset();
       mocks.writeFile.mockReset();
       mocks.appendFile.mockReset();
