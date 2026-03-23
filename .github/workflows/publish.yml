@@ -1,0 +1,65 @@
+name: Publish
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write # create GitHub release
+  id-token: write # npm Trusted Publishers OIDC
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version from package.json
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Validate release commit
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=format:%s)
+          EXPECTED="v${{ steps.version.outputs.version }}"
+          if [ "$COMMIT_MSG" != "$EXPECTED" ]; then
+            echo "❌ Current commit is not a release commit."
+            echo "   Expected: '$EXPECTED'"
+            echo "   Got:      '$COMMIT_MSG'"
+            echo ""
+            echo "Trigger this workflow using the release tag (provided in the Slack notification)."
+            exit 1
+          fi
+          echo "✅ Release commit validated: $EXPECTED"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '25'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build
+        run: yarn build
+
+      - name: Publish to npm (OIDC Trusted Publishers)
+        run: npm publish --access public --provenance
+
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          awk "/^## \[${VERSION}\]/{found=1} found && /^## / && !/^## \[${VERSION}\]/{exit} found{print}" CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "⚠️ No changelog section found for v${VERSION}"
+            echo "## [${VERSION}]" > release-notes.md
+          fi
+
+      - name: Create GitHub Release
+        run: |
+          gh release create "v${{ steps.version.outputs.version }}" \
+            --title "v${{ steps.version.outputs.version }}" \
+            --notes-file release-notes.md
+        env:
+          GH_TOKEN: ${{ github.token }}
