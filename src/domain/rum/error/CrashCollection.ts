@@ -1,6 +1,6 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
-import { generateUUID, setTimeout, type TimeStamp } from '@datadog/browser-core';
+import { generateUUID, type TimeStamp } from '@datadog/browser-core';
 import { app, crashReporter } from 'electron';
 import { EventFormat, EventKind, EventManager, EventSource } from '../../../event';
 // TODO: static import causes WASM compilation at module scope. A dynamic import() inside
@@ -9,7 +9,7 @@ import { processMinidump, type CrashReport } from '../../../wasm';
 import type { RawRumError } from '../rawRumData.types';
 import type { RumErrorEvent } from '../rumEvent.types';
 import { displayError, displayInfo } from '../../../tools/display';
-import { addError } from '../../telemetry';
+import { addError, monitor } from '../../telemetry';
 
 /**
  * Collect RUM error events for native crashes.
@@ -25,9 +25,8 @@ export class CrashCollection {
   static start(eventManager: EventManager): CrashCollection {
     crashReporter.start({ uploadToServer: false, ignoreSystemCrashHandler: true });
     const collection = new CrashCollection(eventManager);
-    // process crash files in next tick to avoid blocking app startup
-    // TODO(RUM-15046): wait for app to be stable
-    setTimeout(() => void collection.processCrashFiles(), 0);
+    // TODO(RUM-15046): wait for app to be stable (electron + browser windows)
+    void app.whenReady().then(monitor(() => collection.processCrashFiles()));
     return collection;
   }
 

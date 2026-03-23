@@ -1,9 +1,17 @@
 import { mockFs } from '../../../mocks.specUtil';
 
+let resolveWhenReady: () => void;
+
 vi.mock('electron', () => ({
   app: {
     getPath: vi.fn(() => '/mock/crash/dumps'),
     getName: vi.fn(() => 'TestApp'),
+    whenReady: vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveWhenReady = resolve;
+        })
+    ),
   },
   crashReporter: {
     start: vi.fn(),
@@ -79,6 +87,7 @@ function mockDmpFile(name = 'crash.dmp', birthtimeMs = 0) {
 
 async function startAndFlush(eventManager: EventManager) {
   CrashCollection.start(eventManager);
+  resolveWhenReady();
   await vi.advanceTimersToNextTimerAsync();
 }
 
