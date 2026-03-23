@@ -148,7 +148,7 @@ No watching of HTML changes for now to avoid extra complexity.
 #### 1. Prepare the release (run locally)
 
 ```sh
-node scripts/prepare-release.ts
+yarn release
 ```
 
 The script will:
@@ -162,7 +162,7 @@ The script will:
 **Dry-run mode** (validates all checks and previews changelog without git changes):
 
 ```sh
-node scripts/prepare-release.ts --dry-run
+yarn release --dry-run
 ```
 
 #### 2. Review the PR

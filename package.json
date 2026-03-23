@@ -29,7 +29,8 @@
     "test:e2e:ci": "yarn test:e2e:init && xvfb-run -a yarn test:e2e",
     "lint": "yarn dev:init && yarn test:e2e:init && eslint . --max-warnings 0",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "release": "node scripts/prepare-release.ts"
   },
   "dependencies": {
     "@datadog/browser-core": "6.26.0"
