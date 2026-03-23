@@ -1,4 +1,4 @@
-import { Context, generateUUID, jsonStringify } from '@datadog/browser-core';
+import { Context, generateUUID, jsonStringify, type TimeStamp, timeStampNow } from '@datadog/browser-core';
 import { EventFormat, EventKind, EventManager, EventSource } from '../../event';
 import type { RawRumError } from './rawRumData.types';
 import { monitor } from '../telemetry';
@@ -62,11 +62,12 @@ export class ErrorCollection {
     }
   ): void {
     const { message, stack, kind } = formatError(error, options.nonErrorPrefix);
+    const startTime = (options.startTime as TimeStamp) ?? timeStampNow();
 
     const errorEvent: RawRumError = {
       type: 'error',
-      date: options.startTime,
-      context: options.context,
+      date: startTime,
+      context: options.context ?? {},
       error: {
         id: generateUUID(),
         message,
@@ -82,6 +83,7 @@ export class ErrorCollection {
       source: EventSource.MAIN,
       format: EventFormat.RUM,
       data: errorEvent,
+      startTime,
     });
   }
 }

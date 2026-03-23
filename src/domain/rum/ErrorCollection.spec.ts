@@ -104,11 +104,12 @@ describe('ErrorCollection', () => {
       expect(data.context).toEqual({ key: 'value' });
     });
 
-    it('emits an error event with custom startTime mapped to date', () => {
+    it('emits an error event with custom startTime', () => {
       errorCollection = new ErrorCollection(eventManager);
 
       errorCollection.getApi().addError(new Error('manual error'), { startTime: 1234567890 });
 
+      expect(rawRumEvents[0].startTime).toBe(1234567890);
       const data = rawRumEvents[0].data as RawRumError;
       expect(data.date).toBe(1234567890);
     });

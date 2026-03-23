@@ -60,6 +60,25 @@ Avoid code duplication. When the same logic is needed in multiple places, extrac
 
 When several fields evolve together, extract them into a meaningful abstraction (typed interface/object) rather than keeping loose private fields.
 
+## Classes over Factory Functions
+
+Prefer classes over factory functions for stateful tools. Classes provide clear visibility modifiers (`private`, `readonly`) and a familiar API surface.
+
+When a class requires async initialization (e.g. loading from disk), use a **static async factory** with a private constructor:
+
+```typescript
+class MyTool<T> {
+  private constructor(/* ... */) {}
+
+  static async init<T>(opts: { /* ... */ }): Promise<MyTool<T>> {
+    // async setup
+    return new MyTool(/* ... */);
+  }
+}
+```
+
+This ensures instances are always fully initialized — callers cannot forget to call `init()`.
+
 ## Class File Organization
 
 ```

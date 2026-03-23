@@ -1,4 +1,4 @@
-import { combine, DISCARDED, type RecursivePartial } from '@datadog/browser-core';
+import { combine, DISCARDED, timeStampNow, type RecursivePartial } from '@datadog/browser-core';
 import { EventFormat, EventKind, EventManager, EventTrack, type RawEvent, ServerEvent } from '../event';
 import type { FormatHooks } from './hooks';
 import { RumEvent } from '../domain/rum';
@@ -21,7 +21,7 @@ export class Assembly {
   }
 
   private assembleToServerEvent(event: RawEvent): ServerEvent | DISCARDED {
-    const startTime = Date.now();
+    const startTime = event.startTime ?? timeStampNow();
 
     if (event.format === EventFormat.RUM) {
       const hookResult = this.hooks.triggerRum({
@@ -53,5 +53,5 @@ export class Assembly {
 }
 
 function assembleData<T>(rawData: unknown, hookResult: RecursivePartial<T> | undefined): T {
-  return (hookResult ? combine(rawData, hookResult) : rawData) as T;
+  return (hookResult ? combine(hookResult, rawData) : rawData) as T;
 }

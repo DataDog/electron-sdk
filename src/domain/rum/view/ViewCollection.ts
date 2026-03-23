@@ -17,10 +17,11 @@ import {
   type LifecycleEvent,
   LifecycleKind,
   ServerRumEvent,
-} from '../../event';
-import type { FormatHooks } from '../../assembly';
-import { setInterval, throttle } from '../telemetry';
-import type { RawRumView } from './rawRumData.types';
+} from '../../../event';
+import type { FormatHooks } from '../../../assembly';
+import { setInterval, throttle } from '../../telemetry';
+import type { RawRumView } from '../rawRumData.types';
+import { ViewContext } from './ViewContext';
 
 export const SESSION_KEEP_ALIVE_INTERVAL = 5 * ONE_MINUTE;
 // throttle view updates to avoid bursts
@@ -28,8 +29,6 @@ export const VIEW_UPDATE_THROTTLE_DELAY = 3 * ONE_SECOND;
 
 interface ViewState {
   id: string;
-  name: string;
-  url: string;
   startTime: TimeStamp;
   documentVersion: number;
   isActive: boolean;
@@ -46,22 +45,31 @@ interface ViewState {
  */
 export class ViewCollection {
   private currentView!: ViewState;
+  private viewContext!: ViewContext;
   private keepAliveIntervalId: ReturnType<typeof setInterval> | undefined;
-  private scheduleViewUpdate: () => void;
-  private cancelScheduledViewUpdate: () => void;
-  private lifecycleSubscription: Subscription;
-  private serverEventSubscription: Subscription;
+  private scheduleViewUpdate!: () => void;
+  private cancelScheduledViewUpdate!: () => void;
+  private lifecycleSubscription!: Subscription;
+  private serverEventSubscription!: Subscription;
 
   constructor(
     private readonly eventManager: EventManager,
     private readonly hooks: FormatHooks
-  ) {
+  ) {}
+
+  static async start(eventManager: EventManager, hooks: FormatHooks): Promise<ViewCollection> {
+    const collection = new ViewCollection(eventManager, hooks);
+    await collection.init();
+    return collection;
+  }
+
+  private async init(): Promise<void> {
     const { throttled, cancel } = throttle(() => this.emitViewUpdate(), VIEW_UPDATE_THROTTLE_DELAY);
     this.scheduleViewUpdate = throttled;
     this.cancelScheduledViewUpdate = cancel;
 
+    this.viewContext = await ViewContext.init(this.hooks);
     this.createNewView();
-    this.registerHooks();
 
     this.lifecycleSubscription = this.eventManager.registerHandler<LifecycleEvent>({
       canHandle: (event): event is LifecycleEvent => event.kind === EventKind.LIFECYCLE,
@@ -88,16 +96,17 @@ export class ViewCollection {
   }
 
   private createNewView(): void {
+    const viewId = generateUUID();
     this.currentView = {
-      id: generateUUID(),
-      name: 'main process', // TODO(RUM-14657) improve name / url
-      url: 'electron://main-process',
+      id: viewId,
       startTime: timeStampNow(),
       documentVersion: 1,
       isActive: true,
       counters: { action: { count: 0 }, error: { count: 0 }, resource: { count: 0 } },
     };
 
+    this.viewContext.close(); // close previous view if any (ensures non-overlapping history entries)
+    this.viewContext.add(viewId);
     this.emitViewUpdate();
     this.keepSessionAlive();
   }
@@ -107,8 +116,6 @@ export class ViewCollection {
       type: 'view',
       view: {
         id: this.currentView.id,
-        name: this.currentView.name,
-        url: this.currentView.url,
         time_spent: toServerDuration(elapsed(this.currentView.startTime, timeStampNow())),
         is_active: this.currentView.isActive,
         ...this.currentView.counters,
@@ -121,6 +128,7 @@ export class ViewCollection {
       source: EventSource.MAIN,
       format: EventFormat.RUM,
       data: viewEvent,
+      startTime: this.currentView.startTime,
     });
   }
 
@@ -130,6 +138,7 @@ export class ViewCollection {
     this.currentView.isActive = false;
     this.currentView.documentVersion++;
     this.emitViewUpdate();
+    this.viewContext.close();
   }
 
   private onSessionRenew(): void {
@@ -160,15 +169,5 @@ export class ViewCollection {
       clearInterval(this.keepAliveIntervalId);
       this.keepAliveIntervalId = undefined;
     }
-  }
-
-  private registerHooks(): void {
-    this.hooks.registerRum(() => ({
-      view: { id: this.currentView.id, name: this.currentView.name, url: this.currentView.url },
-    }));
-
-    this.hooks.registerTelemetry(() => ({
-      view: { id: this.currentView.id },
-    }));
   }
 }

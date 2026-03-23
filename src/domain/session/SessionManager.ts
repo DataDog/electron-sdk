@@ -1,13 +1,14 @@
 import { app } from 'electron';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { deepClone, generateUUID, ONE_HOUR, ONE_MINUTE, type Subscription } from '@datadog/browser-core';
-import { EventManager, EventKind, LifecycleKind, type EndUserActivityEvent } from '../event';
-import type { FormatHooks } from '../assembly';
-import { addError, setTimeout } from './telemetry';
-import { displayError } from '../tools/display';
+import { deepClone, generateUUID, ONE_MINUTE, type Subscription } from '@datadog/browser-core';
+import { type EndUserActivityEvent, EventKind, EventManager, LifecycleKind } from '../../event';
+import type { FormatHooks } from '../../assembly';
+import { addError, setTimeout } from '../telemetry';
+import { displayError } from '../../tools/display';
+import { SessionContext } from './SessionContext';
+import { SESSION_TIME_OUT_DELAY } from './session.constants';
 
-export const SESSION_TIME_OUT_DELAY = 4 * ONE_HOUR;
 export const SESSION_EXPIRATION_DELAY = 15 * ONE_MINUTE;
 export const SESSION_FILE_NAME = '_dd_s';
 
@@ -37,6 +38,7 @@ interface SessionState {
  */
 export class SessionManager {
   private currentSession!: Session;
+  private sessionContext!: SessionContext;
   private inactivityTimeoutId: ReturnType<typeof setTimeout> | undefined;
   private sessionTimeoutId: ReturnType<typeof setTimeout> | undefined;
   private activitySubscription: Subscription | undefined;
@@ -48,7 +50,7 @@ export class SessionManager {
 
   static async start(eventManager: EventManager, hooks: FormatHooks): Promise<SessionManager> {
     const manager = new SessionManager(eventManager, hooks);
-    await manager.initializeSession();
+    await manager.init();
     return manager;
   }
 
@@ -68,12 +70,15 @@ export class SessionManager {
     }
   }
 
-  private async initializeSession(): Promise<void> {
+  private async init(): Promise<void> {
     const now = Date.now();
     const existingState = await loadSessionState();
 
+    this.sessionContext = await SessionContext.init(this.hooks);
+
     if (existingState && isSessionValid(existingState, now)) {
       this.currentSession = { id: existingState.id, status: 'active' };
+      this.sessionContext.add(existingState.id);
       existingState.lastActivity = now;
       await saveSessionState(existingState);
       this.scheduleInactivityTimeout();
@@ -89,8 +94,6 @@ export class SessionManager {
         this.updateActivity().catch(addError);
       },
     });
-
-    this.registerHooks();
   }
 
   private async createNewSession(): Promise<void> {
@@ -102,6 +105,7 @@ export class SessionManager {
     };
 
     this.currentSession = { id: state.id, status: 'active' };
+    this.sessionContext.add(state.id);
     await saveSessionState(state);
 
     this.scheduleInactivityTimeout();
@@ -111,6 +115,7 @@ export class SessionManager {
   private expireSession(): void {
     this.clearTimers();
     this.currentSession.status = 'expired';
+    this.sessionContext.close();
     deleteSessionFile().catch(addError);
     this.eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
   }
@@ -160,17 +165,6 @@ export class SessionManager {
       clearTimeout(this.sessionTimeoutId);
       this.sessionTimeoutId = undefined;
     }
-  }
-
-  // TODO(RUM-14514): attach session that was active at the time of the event start
-  private registerHooks() {
-    this.hooks.registerRum(() => ({
-      session: { id: this.currentSession.id },
-    }));
-
-    this.hooks.registerTelemetry(() => ({
-      session: { id: this.currentSession.id },
-    }));
   }
 }
 

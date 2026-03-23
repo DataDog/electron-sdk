@@ -7,8 +7,6 @@ export interface RawRumView extends RecursivePartial<RumViewEvent> {
   type: 'view';
   view: {
     id: string;
-    name: string;
-    url: string;
     time_spent: ServerDuration;
     is_active: boolean;
     action: { count: number };

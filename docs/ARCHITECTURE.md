@@ -18,7 +18,8 @@ flowchart LR
 
     subgraph "Hook Providers"
         CC[commonContext]
-        SM[sessionManager]
+        SC[sessionContext]
+        VC[viewContext]
     end
 
     subgraph Transport
@@ -30,7 +31,8 @@ flowchart LR
     RUM -- RawRumEvent --> COMBINE
     TEL -- RawTelemetryEvent --> COMBINE
     CC -. "application.id, service, ..." .-> HOOKS
-    SM -. "session.id" .-> HOOKS
+    SC -. "session.id" .-> HOOKS
+    VC -. "view.id, view.name, ..." .-> HOOKS
     HOOKS --> COMBINE
     COMBINE -- ServerEvent --> BM
     BM --> BP

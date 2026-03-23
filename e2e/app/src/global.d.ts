@@ -6,7 +6,7 @@ declare global {
       generateActivity: () => Promise<void>;
       generateUncaughtException: () => Promise<void>;
       generateUnhandledRejection: () => Promise<void>;
-      generateManualError: () => Promise<void>;
+      generateManualError: (startTime?: number) => Promise<void>;
     };
   }
 }

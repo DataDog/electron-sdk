@@ -2,7 +2,7 @@ import { Assembly, createFormatHooks, registerCommonContext } from './assembly';
 import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
 import { RumCollection } from './domain/rum';
-import { SessionManager } from './domain/SessionManager';
+import { SessionManager } from './domain/session';
 import { EventManager, EventKind, LifecycleKind } from './event';
 import { startTelemetry, callMonitored } from './domain/telemetry';
 import type { ErrorOptions } from './domain/rum';
@@ -33,8 +33,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   new Assembly(eventManager, hooks);
 
   transport = await Transport.create(config, eventManager);
-  const rum = new RumCollection(eventManager, hooks);
-
+  const rum = await RumCollection.start(eventManager, hooks);
   rumApi = rum.getApi();
 
   return true;
@@ -83,3 +82,5 @@ export function _generateTelemetryError() {
 export type { InitConfiguration } from './config';
 export type { RumErrorEvent, RumViewEvent } from './domain/rum';
 export type { TelemetryErrorEvent } from './domain/telemetry';
+
+export { SESSION_TIME_OUT_DELAY } from './domain/session';
