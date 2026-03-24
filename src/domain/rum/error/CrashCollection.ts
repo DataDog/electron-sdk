@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import { generateUUID, type TimeStamp } from '@datadog/browser-core';
 import { app, crashReporter } from 'electron';
 import { EventFormat, EventKind, EventManager, EventSource } from '../../../event';
-import { processMinidump, type CrashReport } from '../../../wasm';
+import type { CrashReport } from '../../../wasm';
 import type { RawRumError } from '../rawRumData.types';
 import type { RumErrorEvent } from '../rumEvent.types';
 import { displayError, displayInfo } from '../../../tools/display';
@@ -32,11 +32,13 @@ export class CrashCollection {
     const crashDumpsPath = app.getPath('crashDumps');
     const dmpFiles = await getFilesRecursive(crashDumpsPath, '.dmp');
 
-    const hasFileToProcess = dmpFiles.length > 0;
-
-    if (hasFileToProcess) {
-      displayInfo(`${dmpFiles.length} crash dumps to process`);
+    if (dmpFiles.length === 0) {
+      return;
     }
+
+    // Dynamic import to avoid loading the ~1.6MB WASM binary into memory when there are no dumps
+    const { processMinidump } = await import('../../../wasm');
+    displayInfo(`${dmpFiles.length} crash dumps to process`);
 
     for (const filePath of dmpFiles) {
       try {
@@ -60,9 +62,7 @@ export class CrashCollection {
         displayError('Failed to process crash dump:', filePath, error);
       }
     }
-    if (hasFileToProcess) {
-      displayInfo(`Crash dump processing done.`);
-    }
+    displayInfo(`Crash dump processing done.`);
   }
 }
 

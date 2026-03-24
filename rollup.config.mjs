@@ -11,14 +11,18 @@ const config = [
     input: 'src/index.ts',
     output: [
       {
-        file: 'dist/index.cjs',
+        dir: 'dist',
         format: 'cjs',
         sourcemap: true,
+        entryFileNames: 'index.cjs',
+        chunkFileNames: '[name]-[hash].cjs',
       },
       {
-        file: 'dist/index.mjs',
+        dir: 'dist',
         format: 'esm',
         sourcemap: true,
+        entryFileNames: 'index.mjs',
+        chunkFileNames: '[name]-[hash].mjs',
       },
     ],
     external: ['electron'],
