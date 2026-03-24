@@ -38,7 +38,7 @@ await init({
 
 - **Sessions** — Session-based event grouping
 - **RUM Views** — One view per main process instance
-- **RUM Errors** — Capture Node errors in main process
+- **RUM Errors** — Capture Node errors and crashes in main process
 
 ## API
 
