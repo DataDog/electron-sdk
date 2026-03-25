@@ -15,6 +15,7 @@ export default tseslint.config(
       'rum-events-format/**',
       '**/rumEvent.types.ts',
       '**/telemetryEvent.types.ts',
+      'minidump-processor/**',
     ],
   },
   js.configs.recommended,

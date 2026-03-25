@@ -6,6 +6,7 @@ interface ElectronAPI {
   generateTelemetryError: () => Promise<void>;
   generateUncaughtException: () => Promise<void>;
   generateUnhandledRejection: () => Promise<void>;
+  crash: () => Promise<void>;
 }
 
 declare global {
@@ -97,4 +98,10 @@ uncaughtExceptionButton.addEventListener('click', () => {
 const unhandledRejectionButton = document.getElementById('generate-unhandled-rejection') as HTMLButtonElement;
 unhandledRejectionButton.addEventListener('click', () => {
   void window.electronAPI.generateUnhandledRejection().then(() => refreshSessionDisplay());
+});
+
+// Handle crash button click
+const crashBtn = document.getElementById('crash-btn') as HTMLButtonElement;
+crashBtn.addEventListener('click', () => {
+  void window.electronAPI.crash();
 });

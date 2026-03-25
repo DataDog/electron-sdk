@@ -57,4 +57,13 @@ export class AppPage {
   async flushTransport() {
     await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.flushTransport());
   }
+
+  crash() {
+    void this.page
+      .locator('#crash')
+      .click()
+      .catch(() => {
+        // app will crash
+      });
+  }
 }

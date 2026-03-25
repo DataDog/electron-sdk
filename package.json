@@ -17,6 +17,7 @@
     "json-schemas:generate": "scripts/cli generate_schemas",
     "build": "rollup -c",
     "build:watch": "rollup -c --watch",
+    "build:wasm": "node scripts/build-minidump-processor.ts",
     "typecheck": "tsc -b --noEmit",
     "dev:init": "cd playground && yarn install",
     "dev": "scripts/cli dev",
@@ -50,7 +51,7 @@
     "eslint-plugin-prettier": "5.5.5",
     "eslint-plugin-unicorn": "63.0.0",
     "husky": "9.1.7",
-    "json-schema-to-typescript": "11.0.5",
+    "json-schema-to-typescript": "bcaudan/json-schema-to-typescript#bcaudan/add-readonly-support",
     "lint-staged": "16.3.1",
     "playwright": "1.58.2",
     "prettier": "3.8.1",
@@ -75,7 +76,7 @@
   "lint-staged": {
     "*.{ts,mts,cts}": [
       "prettier --write",
-      "eslint --max-warnings 0"
+      "eslint --max-warnings 0 --no-warn-ignored"
     ],
     "*.{js,mjs,cjs,json,yml,yaml,md}": [
       "prettier --write"

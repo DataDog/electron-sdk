@@ -9,6 +9,7 @@ export function mockFs() {
     access: fs.access as unknown as MockInstance,
     readFile: fs.readFile as unknown as MockInstance,
     readdir: fs.readdir as unknown as MockInstance,
+    stat: fs.stat as unknown as MockInstance,
     writeFile: fs.writeFile as unknown as MockInstance,
     appendFile: fs.appendFile as unknown as MockInstance,
     unlink: fs.unlink as unknown as MockInstance,
@@ -18,6 +19,7 @@ export function mockFs() {
       mocks.access.mockReset();
       mocks.readFile.mockReset();
       mocks.readdir.mockReset();
+      mocks.stat.mockReset();
       mocks.writeFile.mockReset();
       mocks.appendFile.mockReset();
       mocks.unlink.mockReset();

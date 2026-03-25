@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ErrorCollection } from './ErrorCollection';
-import { EventFormat, EventKind, EventManager, type RawRumEvent } from '../../event';
-import type { RawRumError } from './rawRumData.types';
+import { EventFormat, EventKind, EventManager, type RawRumEvent } from '../../../event';
+import type { RawRumError } from '../rawRumData.types';
 
 describe('ErrorCollection', () => {
   let eventManager: EventManager;

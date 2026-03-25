@@ -1,4 +1,4 @@
 export * from './RumCollection';
-export * from './ErrorCollection';
+export { ErrorOptions } from './error';
 export * from './rawRumData.types';
 export * from './rumEvent.types';

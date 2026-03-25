@@ -4,3 +4,4 @@ coverage
 .yarn
 yarn.lock
 rum-events-format
+minidump-processor/pkg

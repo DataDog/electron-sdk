@@ -50,6 +50,10 @@ void app.whenReady().then(async () => {
     await _flushTransport();
   });
 
+  ipcMain.handle('crash', () => {
+    process.crash();
+  });
+
   createWindow();
 });
 

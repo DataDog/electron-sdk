@@ -1,6 +1,6 @@
 import { EventManager } from '../../event';
 import type { FormatHooks } from '../../assembly';
-import { ErrorCollection } from './ErrorCollection';
+import { ErrorCollection, CrashCollection } from './error';
 import { ViewCollection } from './view';
 
 export class RumCollection {
@@ -12,6 +12,7 @@ export class RumCollection {
   static async start(eventManager: EventManager, hooks: FormatHooks): Promise<RumCollection> {
     const viewCollection = await ViewCollection.start(eventManager, hooks);
     const errorCollection = new ErrorCollection(eventManager);
+    CrashCollection.start(eventManager);
     return new RumCollection(viewCollection, errorCollection);
   }
 

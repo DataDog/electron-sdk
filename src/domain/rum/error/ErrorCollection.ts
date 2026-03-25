@@ -1,7 +1,7 @@
 import { Context, generateUUID, jsonStringify, type TimeStamp, timeStampNow } from '@datadog/browser-core';
-import { EventFormat, EventKind, EventManager, EventSource } from '../../event';
-import type { RawRumError } from './rawRumData.types';
-import { monitor } from '../telemetry';
+import { EventFormat, EventKind, EventManager, EventSource } from '../../../event';
+import type { RawRumError } from '../rawRumData.types';
+import { monitor } from '../../telemetry';
 
 export interface ErrorOptions {
   /**
