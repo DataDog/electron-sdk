@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { command } from './command.ts';
 
-interface PackageJsonInfo {
+export interface PackageJsonInfo {
   relativePath: string;
   path: string;
   content: any;

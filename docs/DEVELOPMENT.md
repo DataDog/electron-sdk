@@ -44,25 +44,37 @@ For unit tests, these constants are defined via Vitest's `define` option in `vit
 
 ### Adding Dependencies
 
-When adding a new dependency, you must update `LICENSE-3rdparty.csv`:
+When adding a new dependency, you must update `LICENSE-3rdparty.csv`.
 
-1. Add entry with format: `Component,Origin,License,Copyright`
-2. Use `dev` prefix for all devDependencies (including playground)
-3. **Do not include version numbers** - list package name only
-4. Maintain alphabetical order by package name
-5. Fetch license info from GitHub raw LICENSE file
+`LICENSE-3rdparty.csv` tracks four categories of dependencies:
 
-**Example:**
+| Component   | Scope                                                                  |
+| ----------- | ---------------------------------------------------------------------- |
+| `npm-prod`  | NPM production deps (`dependencies` in any `package.json`)             |
+| `npm-dev`   | NPM dev deps (`devDependencies` in any `package.json`)                 |
+| `rust-prod` | Rust crates compiled into the distributed WASM binary (non-dev deps)   |
+| `rust-dev`  | Rust crates used only during minidump-processor development (dev-deps) |
 
-```csv
-dev,chokidar,MIT,Copyright (c) 2012 Paul Miller / Elan Shanker
-```
+**Section order** (must be respected):
+
+1. `npm-prod`
+2. `rust-prod`
+3. `npm-dev`
+4. `rust-dev`
+
+**Rules for all:**
+
+1. Format: `Component,Origin,License,Copyright`
+2. Do not include version numbers — list package name only
+3. Maintain alphabetical order by package name within each component group
+4. Fetch license info from the crate/package repository
+
+**Validation:** Run `node scripts/check-licenses.ts` to verify both NPM and Rust entries are in sync.
 
 ### License Information Sources
 
-- Check package repository's LICENSE or package.json
-- GitHub: `https://raw.githubusercontent.com/{org}/{repo}/master/LICENSE`
-- Extract copyright holder from license file header
+- NPM: check package repository's LICENSE or `package.json`
+- Rust crates: check `Cargo.toml` license field or repo LICENSE file; `cargo metadata` reports the license field for registered crates
 
 ### Updating Dependencies
 
