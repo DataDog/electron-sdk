@@ -1,0 +1,36 @@
+version: 2
+updates:
+- package-ecosystem: npm
+  directory: /
+  schedule:
+    interval: weekly
+    day: monday
+    time: 09:00
+  ignore:
+  - dependency-name: json-schema-to-typescript
+  commit-message:
+    prefix: "\U0001F477"
+  cooldown:
+    default-days: 14
+- package-ecosystem: npm
+  directory: /e2e/app
+  schedule:
+    interval: weekly
+    day: monday
+    time: 09:00
+  commit-message:
+    prefix: "\U0001F477"
+  cooldown:
+    default-days: 14
+- package-ecosystem: npm
+  directory: /playground
+  schedule:
+    interval: weekly
+    day: monday
+    time: 09:00
+  ignore:
+  - dependency-name: electron
+  commit-message:
+    prefix: "\U0001F477"
+  cooldown:
+    default-days: 14
