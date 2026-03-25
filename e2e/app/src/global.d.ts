@@ -8,6 +8,8 @@ declare global {
       generateUnhandledRejection: () => Promise<void>;
       generateManualError: (startTime?: number) => Promise<void>;
       crash: () => Promise<void>;
+      openFileWindow: () => Promise<void>;
+      openHttpWindow: () => Promise<void>;
     };
   }
 }

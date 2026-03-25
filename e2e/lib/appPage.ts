@@ -4,8 +4,10 @@ import type { Page } from '@playwright/test';
 interface ElectronAppWindow {
   electronAPI: {
     generateTelemetryErrors: (count: number) => Promise<void>;
-    flushTransport: () => Promise<void>;
     generateManualError: (startTime?: number) => Promise<void>;
+    flushTransport: () => Promise<void>;
+    openFileWindow: () => Promise<void>;
+    openHttpWindow: () => Promise<void>;
   };
 }
 
@@ -48,10 +50,14 @@ export class AppPage {
   }
 
   async generateManualError(startTime?: number) {
-    await this.page.evaluate(
-      (ts) => (globalThis as unknown as ElectronAppWindow).electronAPI.generateManualError(ts),
-      startTime
-    );
+    if (startTime !== undefined) {
+      await this.page.evaluate(
+        (ts) => (globalThis as unknown as ElectronAppWindow).electronAPI.generateManualError(ts),
+        startTime
+      );
+    } else {
+      await this.page.locator('#generate-manual-error').click();
+    }
   }
 
   async flushTransport() {
@@ -65,5 +71,13 @@ export class AppPage {
       .catch(() => {
         // app will crash
       });
+  }
+
+  async openFileWindow() {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.openFileWindow());
+  }
+
+  async openHttpWindow() {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.openHttpWindow());
   }
 }

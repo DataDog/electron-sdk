@@ -41,3 +41,10 @@ const crashButton = document.getElementById('crash') as HTMLButtonElement;
 crashButton.addEventListener('click', () => {
   void window.electronAPI.crash();
 });
+
+const manualErrorButton = document.getElementById('generate-manual-error') as HTMLButtonElement;
+manualErrorButton.addEventListener('click', () => {
+  void window.electronAPI.generateManualError().then(() => {
+    statusDiv.textContent = 'Manual error generated';
+  });
+});
