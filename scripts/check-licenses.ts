@@ -6,6 +6,8 @@ import { findPackageJsonFiles, type PackageJsonInfo } from './lib/filesUtils.ts'
 
 const LICENSE_FILE = 'LICENSE-3rdparty.csv';
 const CARGO_MANIFEST = 'minidump-processor/Cargo.toml';
+const KNOWN_COMPONENTS = ['npm-prod', 'npm-dev', 'rust-prod', 'rust-dev'] as const;
+type Component = (typeof KNOWN_COMPONENTS)[number];
 
 runMain(async () => {
   const packageJsonFiles = findPackageJsonFiles();
@@ -13,14 +15,16 @@ runMain(async () => {
 
   printLog('Looking for dependencies in:\n', filePaths, '\n');
 
-  await checkDependencies('npm-prod', retrieveAllNpmDeps(packageJsonFiles, 'dependencies'));
-  await checkDependencies('npm-dev', retrieveAllNpmDeps(packageJsonFiles, 'devDependencies'));
-  await checkDependencies('rust-prod', retrieveCargoDeps('dependencies'));
-  await checkDependencies('rust-dev', retrieveCargoDeps('dev-dependencies'));
+  const licenses = await readLicenseFile();
+
+  checkDependencies('npm-prod', licenses['npm-prod'], retrieveAllNpmDeps(packageJsonFiles, 'dependencies'));
+  checkDependencies('npm-dev', licenses['npm-dev'], retrieveAllNpmDeps(packageJsonFiles, 'devDependencies'));
+  checkDependencies('rust-prod', licenses['rust-prod'], retrieveCargoDeps('dependencies'));
+  checkDependencies('rust-dev', licenses['rust-dev'], retrieveCargoDeps('dev-dependencies'));
 });
 
-async function checkDependencies(label: string, declared: string[]): Promise<void> {
-  const sortedLicensed = [...(await retrieveLicenses(label))].sort();
+function checkDependencies(label: string, licensed: string[], declared: string[]): void {
+  const sortedLicensed = [...licensed].sort();
   if (JSON.stringify(declared) !== JSON.stringify(sortedLicensed)) {
     printError(`${label} dependencies and ${LICENSE_FILE} mismatch`);
     printError(
@@ -75,22 +79,22 @@ function retrieveCargoDeps(section: 'dependencies' | 'dev-dependencies'): string
   return withoutDuplicates(deps).sort();
 }
 
-async function retrieveLicenses(component: string): Promise<string[]> {
+async function readLicenseFile(): Promise<Record<Component, string[]>> {
   const fileStream = fs.createReadStream(path.join(import.meta.dirname, '..', LICENSE_FILE));
   const rl = readline.createInterface({ input: fileStream });
-  const licenses: string[] = [];
+  const result: Record<Component, string[]> = { 'npm-prod': [], 'npm-dev': [], 'rust-prod': [], 'rust-dev': [] };
   let header = true;
   for await (const line of rl) {
-    const csvColumns = line.split(',');
-    if (!header && csvColumns[0] !== 'file' && csvColumns[0] === component) {
-      if (!csvColumns[1]) {
-        console.log(csvColumns);
+    if (!header) {
+      const [component, origin] = line.split(',');
+      if (!KNOWN_COMPONENTS.includes(component as Component)) {
+        throw new Error(`Unknown component in ${LICENSE_FILE}: "${component}"`);
       }
-      licenses.push(csvColumns[1]);
+      result[component as Component].push(origin);
     }
     header = false;
   }
-  return licenses;
+  return result;
 }
 
 function withoutDuplicates<T>(a: T[]): T[] {
