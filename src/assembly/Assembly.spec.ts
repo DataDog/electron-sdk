@@ -96,7 +96,7 @@ describe('Assembly — renderer events', () => {
     const hooks = createFormatHooks();
 
     registerCommonContext(config, hooks);
-    hooks.registerRum(() => ({ session: { id: 'main-session-id' } }));
+    hooks.registerRum(() => ({ session: { id: 'main-session-id' }, view: { id: 'main-view-id' } }));
 
     new Assembly(eventManager, hooks);
     return { eventManager };
@@ -131,6 +131,9 @@ describe('Assembly — renderer events', () => {
     // Overridden by main process
     expect(data.session.id).toBe('main-session-id');
     expect(data.application.id).toBe('main-app-id');
+
+    // Container from main process
+    expect(data.container).toEqual({ view: { id: 'main-view-id' }, source: 'electron' });
 
     // Preserved from renderer
     expect(data.source).toBe('browser');

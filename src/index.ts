@@ -1,6 +1,3 @@
-import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { session } from 'electron';
 import { Assembly, createFormatHooks, registerCommonContext } from './assembly';
 import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
@@ -9,7 +6,7 @@ import { SessionManager } from './domain/session';
 import type { ErrorOptions } from './domain/rum';
 import { callMonitored, startTelemetry } from './domain/telemetry';
 import { EventKind, EventManager, LifecycleKind } from './event';
-import { BridgeHandler } from './bridge';
+import { BridgeHandler, registerPreload } from './bridge';
 import { Transport } from './transport';
 
 let sessionManager: SessionManager | undefined;
@@ -35,17 +32,8 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   sessionManager = await SessionManager.start(eventManager, hooks);
 
   new Assembly(eventManager, hooks);
-  new BridgeHandler(eventManager, {
-    defaultPrivacyLevel: config.defaultPrivacyLevel,
-    allowedWebViewHosts: config.allowedWebViewHosts,
-  });
-
-  const currentDir = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url));
-  const preloadPath = path.join(currentDir, 'preload-auto.cjs');
-  session.defaultSession.registerPreloadScript({
-    type: 'frame',
-    filePath: preloadPath,
-  });
+  new BridgeHandler(eventManager, config);
+  registerPreload();
 
   transport = await Transport.create(config, eventManager);
   const rum = await RumCollection.start(eventManager, hooks);

@@ -24,6 +24,7 @@ npm-dev,@vitest/ui,MIT,Copyright (c) 2021-Present VoidZero Inc.
 npm-dev,chokidar,MIT,Copyright (c) 2012 Paul Miller / Elan Shanker
 npm-dev,concurrently,MIT,Copyright (c) 2015 Kimmo Brunfeldt
 npm-dev,electron,MIT,Copyright Electron contributors / GitHub Inc.
+npm-dev,esbuild,MIT,Copyright (c) 2020 Evan Wallace
 npm-dev,electron-reloader,MIT,Copyright Sindre Sorhus
 npm-dev,eslint,MIT,Copyright OpenJS Foundation and other contributors
 npm-dev,eslint-config-prettier,MIT,Copyright (c) 2017-2023 Simon Lydell and contributors

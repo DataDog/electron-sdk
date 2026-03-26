@@ -26,6 +26,7 @@ export type ServerEvent = ServerRumEvent | ServerTelemetryEvent | ServerLogsEven
 export interface ServerRumEvent {
   kind: typeof EventKind.SERVER;
   track: typeof EventTrack.RUM;
+  source: EventSource;
   data: RumEvent;
 }
 

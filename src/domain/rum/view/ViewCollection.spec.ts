@@ -13,7 +13,15 @@ vi.mock('../../../tools/display', () => ({
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { type TimeStamp } from '@datadog/browser-core';
 import { ViewCollection, SESSION_KEEP_ALIVE_INTERVAL, VIEW_UPDATE_THROTTLE_DELAY } from './ViewCollection';
-import { EventManager, EventKind, EventFormat, EventTrack, LifecycleKind, type RawRumEvent } from '../../../event';
+import {
+  EventManager,
+  EventKind,
+  EventFormat,
+  EventSource,
+  EventTrack,
+  LifecycleKind,
+  type RawRumEvent,
+} from '../../../event';
 import { createFormatHooks, type FormatHooks } from '../../../assembly';
 import { createServerRumEvent, createServerRumView } from '../../../mocks.specUtil';
 import { RawRumView } from '../rawRumData.types';
@@ -174,7 +182,12 @@ describe('ViewCollection', () => {
     it.each(['action', 'error', 'resource'] as const)(
       'increments %s counter on corresponding ServerRumEvent',
       (type) => {
-        eventManager.notify({ kind: EventKind.SERVER, track: EventTrack.RUM, data: createServerRumEvent(type) });
+        eventManager.notify({
+          kind: EventKind.SERVER,
+          track: EventTrack.RUM,
+          source: EventSource.MAIN,
+          data: createServerRumEvent(type),
+        });
 
         expect(rawRumEvents).toHaveLength(2);
         const data = rawRumEvents[1].data as RawRumView;
@@ -184,7 +197,24 @@ describe('ViewCollection', () => {
     );
 
     it('does not count view type ServerEvents', () => {
-      eventManager.notify({ kind: EventKind.SERVER, track: EventTrack.RUM, data: createServerRumView() });
+      eventManager.notify({
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        source: EventSource.MAIN,
+        data: createServerRumView(),
+      });
+
+      // Only the initial event, no update
+      expect(rawRumEvents).toHaveLength(1);
+    });
+
+    it('does not count renderer events', () => {
+      eventManager.notify({
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        source: EventSource.RENDERER,
+        data: createServerRumEvent('error'),
+      });
 
       // Only the initial event, no update
       expect(rawRumEvents).toHaveLength(1);
@@ -205,7 +235,12 @@ describe('ViewCollection', () => {
 
   describe('throttled view updates', () => {
     function notifyServerRumEvent(type: 'action' | 'error' | 'resource') {
-      eventManager.notify({ kind: EventKind.SERVER, track: EventTrack.RUM, data: createServerRumEvent(type) });
+      eventManager.notify({
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        source: EventSource.MAIN,
+        data: createServerRumEvent(type),
+      });
     }
 
     it('collapses a burst into a leading and a trailing update', () => {

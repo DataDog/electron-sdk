@@ -5,11 +5,6 @@ import type { FormatHooks } from './hooks';
 import { RumEvent } from '../domain/rum';
 import { TelemetryEvent } from '../domain/telemetry';
 
-interface MainProcessAttributes {
-  session?: { id?: string };
-  application?: { id?: string };
-}
-
 /**
  * Transforms RawEvents into ServerEvents by enriching them with contextual
  * attributes (session, application, view, etc.) via format hooks.
@@ -63,15 +58,19 @@ export class Assembly {
       return DISCARDED;
     }
 
-    const { session, application } = (hookResult ?? {}) as MainProcessAttributes;
+    const { session, application, view } = hookResult ?? {};
+    const mainProcessAttributes = {
+      session: { id: session?.id },
+      application: { id: application?.id },
+      container: { view: { id: view?.id }, source: 'electron' },
+    };
 
     return {
       kind: EventKind.SERVER,
       track: EventTrack.RUM,
-      data: combine(event.data, {
-        session: { id: session?.id },
-        application: { id: application?.id },
-      }) as RumEvent,
+      source: EventSource.RENDERER,
+      // override some renderer event attributes by main process attributes
+      data: combine(event.data, mainProcessAttributes) as RumEvent,
     };
   }
 
@@ -92,6 +91,7 @@ export class Assembly {
         return {
           kind: EventKind.SERVER,
           track: EventTrack.RUM,
+          source: EventSource.MAIN,
           data: assembleData<RumEvent>(event.data, hookResult),
         };
       }
