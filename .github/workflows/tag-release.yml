@@ -17,7 +17,7 @@ jobs:
       - name: Create release tag if commit is a release
         run: |
           COMMIT_MSG=$(git log -1 --pretty=format:%s)
-          VERSION=$(echo "$COMMIT_MSG" | grep -oP '^v\d+\.\d+\.\d+')
+          VERSION=$(echo "$COMMIT_MSG" | grep -oP '^v\d+\.\d+\.\d+' || true)
           if [ -n "$VERSION" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
