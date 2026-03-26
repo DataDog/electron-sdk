@@ -1,0 +1,29 @@
+name: Tag Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write # push release tag
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create release tag if commit is a release
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=format:%s)
+          VERSION=$(echo "$COMMIT_MSG" | grep -oP '^v\d+\.\d+\.\d+')
+          if [ -n "$VERSION" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag "$VERSION"
+            git push origin "$VERSION"
+            echo "✅ Tagged $VERSION"
+          else
+            echo "Not a release commit, skipping."
+          fi
