@@ -103,6 +103,20 @@ When adding a new dependency, you must update `LICENSE-3rdparty.csv`.
 - NPM: check package repository's LICENSE or `package.json`
 - Rust crates: check `Cargo.toml` license field or repo LICENSE file; `cargo metadata` reports the license field for registered crates
 
+### GitHub Actions
+
+GitHub Actions must be pinned to a **full commit SHA** (DataDog enterprise policy). Use the version tag as a comment for readability:
+
+```yaml
+uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+```
+
+To find the SHA for a given version, check the action's GitHub releases page or run:
+
+```bash
+git ls-remote --tags https://github.com/actions/checkout | grep 'v4\.'
+```
+
 ### Updating Dependencies
 
 Always use latest stable versions for new dependencies. Check with:
