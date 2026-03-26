@@ -1,3 +1,7 @@
+# Changelog
+
+All notable changes to `@datadog/electron-sdk` are documented here.
+
 ## [0.1.0] - 2026-03-26
 
 ### ✨ Features
@@ -27,7 +31,3 @@
 - Setup CI
 - Add license files + check
 - Init project + node + yarn
-
-# Changelog
-
-All notable changes to `@datadog/electron-sdk` are documented here.
