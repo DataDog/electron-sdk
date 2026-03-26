@@ -14,12 +14,24 @@
     }
   },
   "files": [
-    "dist",
-    "README.md"
+    "dist/index.cjs",
+    "dist/index.cjs.map",
+    "dist/index.mjs",
+    "dist/index.mjs.map",
+    "dist/index.d.ts",
+    "dist/wasm.chunk.cjs",
+    "dist/wasm.chunk.cjs.map",
+    "dist/wasm.chunk.mjs",
+    "dist/wasm.chunk.mjs.map",
+    "dist/preload-auto.cjs",
+    "dist/preload-auto.cjs.map",
+    "README.md",
+    "LICENSE",
+    "LICENSE-3rdparty.csv"
   ],
   "scripts": {
+    "init": "scripts/cli init_submodule && yarn dev:init && yarn test:e2e:init",
     "prepare": "husky",
-    "postinstall": "scripts/cli init_submodule",
     "json-schemas:sync": "scripts/cli sync_schemas",
     "json-schemas:generate": "scripts/cli generate_schemas",
     "build": "rollup -c",
@@ -75,7 +87,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git@github.com:DataDog/electron-sdk.git"
+    "url": "git+https://github.com/DataDog/electron-sdk.git"
   },
   "volta": {
     "node": "25.3.0",
