@@ -7,7 +7,7 @@ Development workflow, build configuration, and dependencies.
 After cloning, run the one-time setup script:
 
 ```sh
-yarn init
+yarn repo:init
 ```
 
 This initializes the git submodule, installs playground and e2e app dependencies, and builds the SDK.
