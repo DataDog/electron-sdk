@@ -9,4 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   generateManualError: (startTime?: number) => ipcRenderer.invoke('generateManualError', startTime),
   flushTransport: () => ipcRenderer.invoke('flushTransport'),
   crash: () => ipcRenderer.invoke('crash'),
+  openRendererFileWindow: () => ipcRenderer.invoke('openRendererFileWindow'),
+  openRendererFileWindowNoIsolation: () => ipcRenderer.invoke('openRendererFileWindowNoIsolation'),
+  openRendererHttpWindow: () => ipcRenderer.invoke('openRendererHttpWindow'),
 });

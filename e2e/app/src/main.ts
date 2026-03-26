@@ -1,4 +1,6 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
+import * as http from 'node:http';
+import * as fs from 'node:fs';
 import { join } from 'node:path';
 import {
   init,
@@ -10,7 +12,45 @@ import {
   type InitConfiguration,
 } from '@datadog/electron-sdk';
 
+const isDebugMode = process.env.PWDEBUG === '1';
 let mainWindow: BrowserWindow | null = null;
+let rendererHttpServer: http.Server | null = null;
+
+function startRendererHttpServer(): Promise<number> {
+  return new Promise((resolve) => {
+    rendererHttpServer = http.createServer((_req, res) => {
+      const htmlPath = join(__dirname, 'index-renderer.html');
+      const jsPath = join(__dirname, 'renderer-bridge.js');
+
+      if (_req.url === '/' || _req.url?.endsWith('.html')) {
+        const html = fs.readFileSync(htmlPath, 'utf-8');
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(html);
+      } else if (_req.url?.endsWith('.js')) {
+        const js = fs.readFileSync(jsPath, 'utf-8');
+        res.writeHead(200, { 'Content-Type': 'application/javascript' });
+        res.end(js);
+      } else if (_req.url?.endsWith('.js.map')) {
+        const mapPath = join(__dirname, 'renderer-bridge.js.map');
+        try {
+          const map = fs.readFileSync(mapPath, 'utf-8');
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(map);
+        } catch {
+          res.writeHead(404);
+          res.end();
+        }
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+    rendererHttpServer.listen(0, () => {
+      const addr = rendererHttpServer!.address() as { port: number };
+      resolve(addr.port);
+    });
+  });
+}
 
 void app.whenReady().then(async () => {
   const config = getConfiguration();
@@ -54,6 +94,46 @@ void app.whenReady().then(async () => {
     process.crash();
   });
 
+  ipcMain.handle('openRendererFileWindow', () => {
+    const win = new BrowserWindow({
+      width: 800,
+      height: 600,
+      show: isDebugMode,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+    void win.loadFile(join(__dirname, 'index-renderer.html'));
+  });
+
+  ipcMain.handle('openRendererFileWindowNoIsolation', () => {
+    const win = new BrowserWindow({
+      width: 800,
+      height: 600,
+      show: isDebugMode,
+      webPreferences: {
+        contextIsolation: false,
+        nodeIntegration: false,
+      },
+    });
+    void win.loadFile(join(__dirname, 'index-renderer.html'));
+  });
+
+  ipcMain.handle('openRendererHttpWindow', async () => {
+    const port = await startRendererHttpServer();
+    const win = new BrowserWindow({
+      width: 800,
+      height: 600,
+      show: isDebugMode,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+    void win.loadURL(`http://localhost:${port}`);
+  });
+
   createWindow();
 });
 
@@ -70,9 +150,6 @@ app.on('activate', () => {
 });
 
 function createWindow() {
-  // Show window only in debug mode (when Playwright's --debug flag is used)
-  const isDebugMode = process.env.PWDEBUG === '1';
-
   mainWindow = new BrowserWindow({
     width: 800,
     height: 600,

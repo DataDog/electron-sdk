@@ -5,12 +5,14 @@
   "description": "Playground for testing @datadog/electron-sdk",
   "main": "./dist/main.js",
   "scripts": {
-    "build": "tsc && tsc -p tsconfig.renderer.json && cp src/index.html dist/index.html",
-    "build:watch": "concurrently \"tsc --watch\" \"tsc -p tsconfig.renderer.json --watch\"",
+    "build": "tsc && yarn build:renderer && cp src/index.html dist/index.html",
+    "build:renderer": "esbuild src/renderer.ts --bundle --format=esm --outfile=dist/renderer.js --sourcemap",
+    "build:watch": "concurrently \"tsc --watch\" \"yarn build:renderer --watch\"",
     "start": "yarn build && electron .",
     "dev": "yarn build && concurrently \"yarn build:watch\" \"electron .\""
   },
   "dependencies": {
+    "@datadog/browser-rum": "6.30.1",
     "@datadog/electron-sdk": "portal:.."
   },
   "devDependencies": {
@@ -19,6 +21,7 @@
     "concurrently": "9.2.1",
     "electron": "39.1.1",
     "electron-reloader": "1.2.3",
+    "esbuild": "0.27.3",
     "typescript": "5.9.3"
   }
 }

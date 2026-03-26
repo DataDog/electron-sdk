@@ -147,6 +147,10 @@ export class ViewCollection {
   }
 
   private onServerRumEvent(event: ServerRumEvent): void {
+    if (event.source === EventSource.RENDERER) {
+      return;
+    }
+
     const type = event.data.type;
     if (type === 'action' || type === 'error' || type === 'resource') {
       this.currentView.counters[type].count++;

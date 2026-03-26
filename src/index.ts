@@ -3,9 +3,10 @@ import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
 import { RumCollection } from './domain/rum';
 import { SessionManager } from './domain/session';
-import { EventManager, EventKind, LifecycleKind } from './event';
-import { startTelemetry, callMonitored } from './domain/telemetry';
 import type { ErrorOptions } from './domain/rum';
+import { callMonitored, startTelemetry } from './domain/telemetry';
+import { EventKind, EventManager, LifecycleKind } from './event';
+import { BridgeHandler, registerPreload } from './bridge';
 import { Transport } from './transport';
 
 let sessionManager: SessionManager | undefined;
@@ -31,6 +32,8 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   sessionManager = await SessionManager.start(eventManager, hooks);
 
   new Assembly(eventManager, hooks);
+  new BridgeHandler(eventManager, config);
+  registerPreload();
 
   transport = await Transport.create(config, eventManager);
   const rum = await RumCollection.start(eventManager, hooks);

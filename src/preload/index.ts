@@ -1,0 +1,1 @@
+export { setupRendererBridge } from './bridge';
