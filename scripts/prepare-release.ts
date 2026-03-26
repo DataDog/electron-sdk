@@ -36,7 +36,7 @@ runMain(async () => {
   if (DRY_RUN) {
     printLog('\n[DRY RUN] Would apply the following changes:');
     printLog(`  - Bump package.json version: ${pkg.version} → ${newVersion}`);
-    printLog(`  - Prepend edited section to CHANGELOG.md`);
+    printLog(`  - Insert new section into CHANGELOG.md`);
     printLog(`  - Create branch: release/v${newVersion}`);
     printLog(`  - Commit: v${newVersion}`);
     printLog(`  - Push and open GitHub PR`);
@@ -45,7 +45,7 @@ runMain(async () => {
 
   // ── Apply changes and create PR ───────────────────────────────────────────
   applyChanges(newVersion, editedSection);
-  const prUrl = createReleaseBranchAndPR(newVersion, editedSection);
+  const prUrl = createReleaseBranchAndPR(newVersion);
   printLog(`\n✅ Release PR opened: ${prUrl}`);
   printLog('Review and edit the changelog in the PR, then merge to trigger the publish workflow.');
 });
@@ -119,9 +119,14 @@ function openEditorForReview(section: string): string {
 }
 
 function applyChanges(newVersion: string, editedSection: string): void {
-  // Prepend to CHANGELOG.md
+  // Insert new section after the file header, before the first existing version entry.
   const existing = fs.existsSync(CHANGELOG_PATH) ? fs.readFileSync(CHANGELOG_PATH, 'utf-8') : '';
-  fs.writeFileSync(CHANGELOG_PATH, editedSection + (existing ? '\n' + existing : ''), 'utf-8');
+  const firstSectionIndex = existing.search(/^## /m);
+  const updatedChangelog =
+    firstSectionIndex === -1
+      ? existing + (existing.endsWith('\n') ? '' : '\n') + editedSection
+      : existing.slice(0, firstSectionIndex) + editedSection + '\n' + existing.slice(firstSectionIndex);
+  fs.writeFileSync(CHANGELOG_PATH, updatedChangelog, 'utf-8');
 
   // Bump version in root package.json only.
   // (We read/write the root directly rather than using findPackageJsonFiles because
@@ -135,7 +140,7 @@ function applyChanges(newVersion: string, editedSection: string): void {
   command`yarn install`.withLogs().run();
 }
 
-function createReleaseBranchAndPR(newVersion: string, editedSection: string): string {
+function createReleaseBranchAndPR(newVersion: string): string {
   const branch = `release/v${newVersion}`;
   command`git checkout -b ${branch}`.withLogs().run();
   command`git add ${CHANGELOG_PATH} ${PACKAGE_JSON_PATH} ${YARN_LOCK_PATH}`.run();
@@ -143,5 +148,5 @@ function createReleaseBranchAndPR(newVersion: string, editedSection: string): st
   command`git push origin ${branch}`.withLogs().run();
 
   printLog('Creating GitHub PR...');
-  return command`gh pr create --title v${newVersion} --body ${editedSection} --base main`.run().trim();
+  return command`gh pr create --title v${newVersion} --body ${''} --base main`.run().trim();
 }
