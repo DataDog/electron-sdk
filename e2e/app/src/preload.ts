@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   generateManualError: (startTime?: number) => ipcRenderer.invoke('generateManualError', startTime),
   flushTransport: () => ipcRenderer.invoke('flushTransport'),
   crash: () => ipcRenderer.invoke('crash'),
-  openFileWindow: () => ipcRenderer.invoke('openFileWindow'),
-  openHttpWindow: () => ipcRenderer.invoke('openHttpWindow'),
+  openRendererFileWindow: () => ipcRenderer.invoke('openRendererFileWindow'),
+  openRendererFileWindowNoIsolation: () => ipcRenderer.invoke('openRendererFileWindowNoIsolation'),
+  openRendererHttpWindow: () => ipcRenderer.invoke('openRendererHttpWindow'),
 });

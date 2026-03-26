@@ -46,8 +46,6 @@ await init({
 In order to monitor the renderer process, the [Browser SDK](https://docs.datadoghq.com/real_user_monitoring/application_monitoring/browser/setup/) must be setup in pages loaded by the renderer.
 The Electron SDK automatically registers a preload script that exposes a `DatadogEventBridge` to every renderer process. When present, the Browser SDK detects the bridge and routes events through IPC to the Electron SDK instead of sending them directly to Datadog servers.
 
-Both `contextIsolation: true` (default) and `contextIsolation: false` are supported.
-
 ## API
 
 ### `init(config: InitConfiguration): Promise<boolean>`

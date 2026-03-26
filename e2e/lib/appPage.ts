@@ -6,8 +6,9 @@ interface ElectronAppWindow {
     generateTelemetryErrors: (count: number) => Promise<void>;
     generateManualError: (startTime?: number) => Promise<void>;
     flushTransport: () => Promise<void>;
-    openFileWindow: () => Promise<void>;
-    openHttpWindow: () => Promise<void>;
+    openRendererFileWindow: () => Promise<void>;
+    openRendererFileWindowNoIsolation: () => Promise<void>;
+    openRendererHttpWindow: () => Promise<void>;
   };
 }
 
@@ -50,14 +51,10 @@ export class AppPage {
   }
 
   async generateManualError(startTime?: number) {
-    if (startTime !== undefined) {
-      await this.page.evaluate(
-        (ts) => (globalThis as unknown as ElectronAppWindow).electronAPI.generateManualError(ts),
-        startTime
-      );
-    } else {
-      await this.page.locator('#generate-manual-error').click();
-    }
+    await this.page.evaluate(
+      (ts) => (globalThis as unknown as ElectronAppWindow).electronAPI.generateManualError(ts),
+      startTime
+    );
   }
 
   async flushTransport() {
@@ -73,11 +70,17 @@ export class AppPage {
       });
   }
 
-  async openFileWindow() {
-    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.openFileWindow());
+  async openRendererFileWindow() {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.openRendererFileWindow());
   }
 
-  async openHttpWindow() {
-    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.openHttpWindow());
+  async openRendererFileWindowNoIsolation() {
+    await this.page.evaluate(() =>
+      (globalThis as unknown as ElectronAppWindow).electronAPI.openRendererFileWindowNoIsolation()
+    );
+  }
+
+  async openRendererHttpWindow() {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.openRendererHttpWindow());
   }
 }

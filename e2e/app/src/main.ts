@@ -94,7 +94,7 @@ void app.whenReady().then(async () => {
     process.crash();
   });
 
-  ipcMain.handle('openFileWindow', () => {
+  ipcMain.handle('openRendererFileWindow', () => {
     const win = new BrowserWindow({
       width: 800,
       height: 600,
@@ -107,7 +107,20 @@ void app.whenReady().then(async () => {
     void win.loadFile(join(__dirname, 'index-renderer.html'));
   });
 
-  ipcMain.handle('openHttpWindow', async () => {
+  ipcMain.handle('openRendererFileWindowNoIsolation', () => {
+    const win = new BrowserWindow({
+      width: 800,
+      height: 600,
+      show: isDebugMode,
+      webPreferences: {
+        contextIsolation: false,
+        nodeIntegration: false,
+      },
+    });
+    void win.loadFile(join(__dirname, 'index-renderer.html'));
+  });
+
+  ipcMain.handle('openRendererHttpWindow', async () => {
     const port = await startRendererHttpServer();
     const win = new BrowserWindow({
       width: 800,

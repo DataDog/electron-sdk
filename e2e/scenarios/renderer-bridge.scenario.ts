@@ -24,7 +24,7 @@ test.describe('renderer bridge — file:// window', () => {
     await intake.getEventsByType('view');
 
     // Open a file:// renderer window with browser-rum
-    await app.openFileWindow();
+    await app.openRendererFileWindow();
     const rendererWindow = await waitForRendererWindow(electronApp);
     expect(rendererWindow).toBeDefined();
 
@@ -46,7 +46,7 @@ test.describe('renderer bridge — http:// window', () => {
     await intake.getEventsByType('view');
 
     // Open an http:// renderer window
-    await app.openHttpWindow();
+    await app.openRendererHttpWindow();
     const rendererWindow = await waitForRendererWindow(electronApp);
     expect(rendererWindow).toBeDefined();
 
@@ -62,13 +62,34 @@ test.describe('renderer bridge — http:// window', () => {
   });
 });
 
+test.describe('renderer bridge — contextIsolation: false', () => {
+  test('renderer RUM view events arrive when contextIsolation is disabled', async ({ electronApp, app, intake }) => {
+    await app.flushTransport();
+    await intake.getEventsByType('view');
+
+    await app.openRendererFileWindowNoIsolation();
+    const rendererWindow = await waitForRendererWindow(electronApp);
+    expect(rendererWindow).toBeDefined();
+
+    await app.flushTransport();
+
+    const viewEvents = await intake.waitForEventCount('view', 2);
+    const rendererView = viewEvents.find(isRendererView);
+
+    expect(rendererView).toBeDefined();
+    const view = rendererView!.body as RumViewEvent;
+    expect(view.view.url).toContain('index-renderer.html');
+    expect(view.session.id).toBeDefined();
+  });
+});
+
 test.describe('renderer bridge — event types', () => {
   test('renderer view events have correct attributes', async ({ electronApp, app, intake }) => {
     await app.flushTransport();
     const mainViewEvents = await intake.getEventsByType('view');
     const mainView = mainViewEvents[0].body as RumViewEvent;
 
-    await app.openFileWindow();
+    await app.openRendererFileWindow();
     await waitForRendererWindow(electronApp);
     await app.flushTransport();
 
@@ -90,7 +111,7 @@ test.describe('renderer bridge — event types', () => {
     const mainViewEvents = await intake.getEventsByType('view');
     const mainView = mainViewEvents[0].body as RumViewEvent;
 
-    await app.openFileWindow();
+    await app.openRendererFileWindow();
     const rendererWindow = await waitForRendererWindow(electronApp);
 
     // Throw an error in the renderer — browser-rum captures it via the bridge
@@ -116,7 +137,7 @@ test.describe('renderer bridge — event types', () => {
 
   test('renderer resource events are captured', async ({ electronApp, app, intake }) => {
     // Use http:// window so fetch works (file:// has CORS restrictions)
-    await app.openHttpWindow();
+    await app.openRendererHttpWindow();
     const rendererWindow = await waitForRendererWindow(electronApp);
 
     // Trigger a fetch from the renderer — browser-rum tracks resources
