@@ -54,6 +54,13 @@ check-licenses:
     - yarn
     - node scripts/check-licenses.ts
 
+check-package-content:
+  stage: test
+  script:
+    - yarn
+    - yarn build
+    - node scripts/check-package-content.ts
+
 e2e:
   stage: test
   script:
