@@ -112,5 +112,5 @@ notify-release-ready:
   script:
     - !reference [.slack-notifier-base, script]
     - WORKFLOW_URL="https://github.com/DataDog/electron-sdk/actions/workflows/publish.yml"
-    - 'MESSAGE=":rocket: electron-sdk ${CI_COMMIT_TAG} is ready to publish. Run the <${WORKFLOW_URL}|publish workflow> from `${CI_COMMIT_TAG}`"'
+    - 'MESSAGE=":rocket: electron-sdk ${CI_COMMIT_TAG} is ready to publish. Run the <${WORKFLOW_URL}|publish workflow> from \`${CI_COMMIT_TAG}\`"'
     - postmessage "#rum-electron-sdk-ops" "$MESSAGE"
