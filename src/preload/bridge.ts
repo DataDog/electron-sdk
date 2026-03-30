@@ -16,6 +16,12 @@ declare const location: { hostname: string };
  * forwarded to the main process via IPC for assembly and transport.
  */
 export function setupRendererBridge(): void {
+  // Guard against double registration — the bridge may already be set up by
+  // auto-injection (preload-auto.cjs) or by a previous manual import.
+  if (window.DatadogEventBridge) {
+    return;
+  }
+
   // ipcRenderer.sendSync is needed so DatadogEventBridge is fully
   // initialized before renderer scripts run, preventing race conditions
   // with scripts (e.g. @datadog/browser-rum) that rely on the bridge.

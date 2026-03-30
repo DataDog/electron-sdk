@@ -141,4 +141,17 @@ describe('setupRendererBridge', () => {
       expect(JSON.parse(getBridge().getAllowedWebViewHosts())).toEqual(['localhost', 'other.com']);
     });
   });
+
+  describe('double registration guard', () => {
+    it('should skip setup when DatadogEventBridge already exists on window', async () => {
+      mockWindow.DatadogEventBridge = { existing: true };
+
+      await loadBridge();
+
+      expect(mockIpcRendererSendSync).not.toHaveBeenCalled();
+      expect(mockExposeInMainWorld).not.toHaveBeenCalled();
+      // Original bridge should be preserved
+      expect(mockWindow.DatadogEventBridge).toEqual({ existing: true });
+    });
+  });
 });
