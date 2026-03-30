@@ -39,7 +39,8 @@ runMain(async () => {
     printLog(`  - Insert new section into CHANGELOG.md`);
     printLog(`  - Create branch: release/v${newVersion}`);
     printLog(`  - Commit: v${newVersion}`);
-    printLog(`  - Push and open GitHub PR`);
+    printLog(`  - Push branch and create annotated tag: v${newVersion}`);
+    printLog(`  - Open GitHub PR`);
     return;
   }
 
@@ -47,7 +48,9 @@ runMain(async () => {
   applyChanges(newVersion, editedSection);
   const prUrl = createReleaseBranchAndPR(newVersion);
   printLog(`\n✅ Release PR opened: ${prUrl}`);
-  printLog('Review and edit the changelog in the PR, then merge to trigger the publish workflow.');
+  printLog('Review the changelog in the PR. If you push fixup commits, move the tag:');
+  printLog(`  git tag -a -f v${newVersion} -m v${newVersion} && git push -f origin v${newVersion}`);
+  printLog('Merge the PR, then trigger the publish workflow from the tag.');
 });
 
 function runPreflightChecks(): void {
@@ -146,6 +149,10 @@ function createReleaseBranchAndPR(newVersion: string): string {
   command`git add ${CHANGELOG_PATH} ${PACKAGE_JSON_PATH} ${YARN_LOCK_PATH}`.run();
   command`git commit -m v${newVersion}`.run();
   command`git push origin ${branch}`.withLogs().run();
+
+  printLog('Creating release tag...');
+  command`git tag -a v${newVersion} -m v${newVersion}`.withLogs().run();
+  command`git push origin v${newVersion}`.withLogs().run();
 
   printLog('Creating GitHub PR...');
   return command`gh pr create --title v${newVersion} --body ${''} --base main`.run().trim();
