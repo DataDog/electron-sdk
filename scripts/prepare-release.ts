@@ -50,7 +50,7 @@ runMain(async () => {
   printLog(`\n✅ Release PR opened: ${prUrl}`);
   printLog('Review the changelog in the PR. If you push fixup commits, move the tag:');
   printLog(`  git tag -a -f v${newVersion} -m v${newVersion} && git push -f origin v${newVersion}`);
-  printLog('Trigger the publish workflow from the tag once the PR is ready.');
+  printLog('Trigger the publish workflow from the tag, then merge the PR.');
 });
 
 function runPreflightChecks(): void {
