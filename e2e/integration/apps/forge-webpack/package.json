@@ -1,0 +1,35 @@
+{
+  "name": "forge-webpack",
+  "version": "1.0.0",
+  "private": true,
+  "main": ".webpack/main",
+  "integration": {
+    "devMain": ".webpack/{arch}/main/index.js",
+    "packagedBinary": {
+      "darwin": "out/forge-webpack-darwin-{arch}/forge-webpack.app/Contents/MacOS/forge-webpack",
+      "linux": "out/forge-webpack-linux-{arch}/forge-webpack",
+      "win32": "out/forge-webpack-win32-{arch}/forge-webpack.exe"
+    }
+  },
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package"
+  },
+  "dependencies": {
+    "@datadog/browser-rum": "6.32.0",
+    "@datadog/electron-sdk": "file:../../integration-sdk.tgz"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "7.11.1",
+    "@electron-forge/plugin-webpack": "7.11.1",
+    "@types/node": "24.10.11",
+    "@vercel/webpack-asset-relocator-loader": "1.7.4",
+    "css-loader": "7.1.2",
+    "electron": "40.2.1",
+    "node-loader": "2.1.0",
+    "style-loader": "4.0.0",
+    "ts-loader": "9.5.2",
+    "typescript": "5.9.3",
+    "webpack": "5.99.5"
+  }
+}
