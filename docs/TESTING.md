@@ -24,6 +24,7 @@ Testing a new feature end-to-end means updating the `e2e/app/` to exercise it, t
   - `helpers.ts`: Playwright fixtures for app launch/cleanup
   - `intake.ts`: Local HTTP server that captures RUM events sent by the SDK
 - **`e2e/scenarios/`**: Test files using Playwright
+- **`e2e/integration/`**: Integration tests with realistic Electron setups
 
 ### Custom Test Fixtures
 
@@ -36,3 +37,7 @@ The intake server (`e2e/lib/intake.ts`) runs on a dynamic port (OS-assigned) to 
 ### E2E App as Reference
 
 The `e2e/app/` is the reference implementation for IPC bridge patterns and SDK integration.
+
+### Integration testing
+
+See e2e/integration/README.md for integration tests strategy and structure
