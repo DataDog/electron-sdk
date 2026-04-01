@@ -1,6 +1,5 @@
 import os from 'node:os';
 import { execFile } from 'node:child_process';
-import { app } from 'electron';
 import { addError } from '../domain/telemetry';
 import { ONE_SECOND } from '@datadog/browser-core';
 
@@ -12,7 +11,6 @@ import { ONE_SECOND } from '@datadog/browser-core';
 export function getUserAgent(): Promise<string> {
   return getOSUserAgentPart().then((osPart) =>
     [
-      `${app.getName()}/${app.getVersion()}`,
       `(${osPart})`,
       `Electron/${process.versions.electron}`,
       `Chrome/${process.versions.chrome}`,
