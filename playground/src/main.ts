@@ -112,8 +112,8 @@ void app.whenReady().then(async () => {
       site: 'datad0g.com',
     },
     prod: {
-      applicationId: '75581b33-6cfb-4a61-985c-8d309adfe5f6',
-      clientToken: 'pubf39340763f9ff434d09ac1bee2eae5c9',
+      applicationId: '0f574f27-317e-4223-b5b6-c935b4c83700',
+      clientToken: 'pub09a54e493460355ef58c0c617d577e19',
       site: 'datadoghq.com',
     },
   };
