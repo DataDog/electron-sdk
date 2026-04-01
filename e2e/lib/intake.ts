@@ -1,6 +1,6 @@
 import * as http from 'node:http';
 
-interface ReceivedEvent {
+export interface ReceivedEvent {
   timestamp: number;
   body: unknown;
   headers: Record<string, string>;
@@ -107,7 +107,23 @@ export class Intake {
       await new Promise((resolve) => setTimeout(resolve, pollInterval));
     }
 
-    return this.filterEventsByType(type);
+    const received = this.filterEventsByType(type);
+    throw new Error(
+      `Timed out waiting for ${count} "${type}" event(s) after ${timeout}ms. Received ${received.length}.`
+    );
+  }
+
+  async assertNoNewEvents(type: string, duration = 500): Promise<void> {
+    const startTime = Date.now();
+    const pollInterval = 100;
+
+    while (Date.now() - startTime < duration) {
+      const matchingEvents = this.filterEventsByType(type);
+      if (matchingEvents.length > 0) {
+        throw new Error(`Expected no "${type}" events but received ${matchingEvents.length} within ${duration}ms.`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+    }
   }
 
   private filterEventsByType(type: string): ReceivedEvent[] {

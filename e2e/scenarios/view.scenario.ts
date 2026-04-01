@@ -48,6 +48,7 @@ test('emits an inactive view on session expiry and a new active view on session 
 
 test('increments view error count after an uncaught exception', async ({ app, intake }) => {
   await app.generateUncaughtException();
+  await app.flushTransport();
 
   await intake.getEventsByType('error');
   const viewEvents = await intake.waitForEventCount('view', 2);

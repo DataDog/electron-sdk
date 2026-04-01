@@ -65,7 +65,20 @@ e2e:
   stage: test
   script:
     - yarn
-    - yarn test:e2e:ci
+    - yarn test:e2e:init
+    - xvfb-run -a yarn test:e2e
+  artifacts:
+    when: on_failure
+    paths:
+      - e2e/test-results/
+      - e2e/playwright-report/
+
+integration:
+  stage: test
+  script:
+    - yarn
+    - yarn test:integration:init
+    - xvfb-run -a yarn test:integration
   artifacts:
     when: on_failure
     paths:

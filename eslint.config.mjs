@@ -16,6 +16,9 @@ export default tseslint.config(
       '**/rumEvent.types.ts',
       '**/telemetryEvent.types.ts',
       'minidump-processor/**',
+      // Integration apps are standalone projects with their own tsconfigs and toolchains.
+      // They are not part of the root project service and are not linted here.
+      'e2e/integration/apps/**',
     ],
   },
   js.configs.recommended,

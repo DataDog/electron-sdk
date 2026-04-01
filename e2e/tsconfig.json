@@ -12,5 +12,5 @@
     "emitDeclarationOnly": true
   },
   "include": ["**/*.ts"],
-  "exclude": ["node_modules", "app"]
+  "exclude": ["node_modules", "app", "integration/apps"]
 }
