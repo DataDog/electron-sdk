@@ -11,6 +11,18 @@
       "types": "./dist/index.d.ts",
       "require": "./dist/index.cjs",
       "import": "./dist/index.mjs"
+    },
+    "./preload": {
+      "types": "./dist/preload.d.ts",
+      "require": "./dist/preload-auto.cjs",
+      "import": "./dist/preload.mjs"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "preload": [
+        "./dist/preload.d.ts"
+      ]
     }
   },
   "files": [
@@ -25,6 +37,9 @@
     "dist/wasm.chunk.mjs.map",
     "dist/preload-auto.cjs",
     "dist/preload-auto.cjs.map",
+    "dist/preload.d.ts",
+    "dist/preload.mjs",
+    "dist/preload.mjs.map",
     "README.md",
     "LICENSE",
     "LICENSE-3rdparty.csv"

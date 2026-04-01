@@ -44,7 +44,22 @@ await init({
 ### Renderer Process Support
 
 In order to monitor the renderer process, the [Browser SDK](https://docs.datadoghq.com/real_user_monitoring/application_monitoring/browser/setup/) must be setup in pages loaded by the renderer.
-The Electron SDK automatically registers a preload script that exposes a `DatadogEventBridge` to every renderer process. When present, the Browser SDK detects the bridge and routes events through IPC to the Electron SDK instead of sending them directly to Datadog servers.
+The Electron SDK exposes a `DatadogEventBridge` to every renderer process via a preload script. When present, the Browser SDK detects the bridge and routes events through IPC to the Electron SDK instead of sending them directly to Datadog servers.
+
+#### Unbundled apps
+
+For apps that don't bundle the main process, the SDK automatically registers the preload script. No additional setup is needed.
+
+#### Bundled apps (Vite, Webpack)
+
+If your main process is bundled (e.g. Electron Forge with the Vite or Webpack plugin), automatic preload injection won't work. Instead, add the following import to your preload script:
+
+```ts
+// src/preload.ts
+import '@datadog/electron-sdk/preload';
+```
+
+This ensures the bridge code is bundled into your app's `preload.js` and included in the final package.
 
 ## API
 

@@ -51,6 +51,11 @@ const config = [
         format: 'cjs',
         sourcemap: true,
       },
+      {
+        file: 'dist/preload.mjs',
+        format: 'esm',
+        sourcemap: true,
+      },
     ],
     external: ['electron'],
     plugins: sharedPlugins,
@@ -61,6 +66,15 @@ const config = [
     external: ['electron'],
     output: {
       file: 'dist/index.d.ts',
+      format: 'esm',
+    },
+    plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
+  },
+  // TypeScript declarations: preload
+  {
+    input: 'src/entries/preload.ts',
+    output: {
+      file: 'dist/preload.d.ts',
       format: 'esm',
     },
     plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
