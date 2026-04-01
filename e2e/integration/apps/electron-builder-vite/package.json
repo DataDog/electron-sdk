@@ -1,0 +1,30 @@
+{
+  "name": "electron-builder-vite",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/main.js",
+  "integration": {
+    "devMain": "dist/main.js",
+    "packagedBinary": {
+      "darwin-arm64": "out/mac-arm64/electron-builder-vite.app/Contents/MacOS/electron-builder-vite",
+      "darwin-x64": "out/mac/electron-builder-vite.app/Contents/MacOS/electron-builder-vite",
+      "linux": "out/linux-unpacked/electron-builder-vite",
+      "win32": "out/win-unpacked/electron-builder-vite.exe"
+    }
+  },
+  "scripts": {
+    "build": "vite build -c vite.main.config.ts && vite build -c vite.preload.config.ts && vite build -c vite.renderer.config.ts",
+    "package": "yarn build && electron-builder --dir --publish never"
+  },
+  "dependencies": {
+    "@datadog/browser-rum": "6.32.0",
+    "@datadog/electron-sdk": "file:../../integration-sdk.tgz"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.11",
+    "electron": "40.2.1",
+    "electron-builder": "26.8.1",
+    "typescript": "5.9.3",
+    "vite": "8.0.3"
+  }
+}
