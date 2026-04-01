@@ -2,6 +2,11 @@ name: Publish
 
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Skip publish and GitHub release creation (dry run)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write # create GitHub release
@@ -18,25 +23,34 @@ jobs:
         id: version
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
-      - name: Validate release commit
+      - name: Validate release tag
+        env:
+          GH_REF: ${{ github.ref }}
+          GH_REF_NAME: ${{ github.ref_name }}
+          EXPECTED_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          COMMIT_MSG=$(git log -1 --pretty=format:%s)
-          EXPECTED="v${{ steps.version.outputs.version }}"
-          if [ "$COMMIT_MSG" != "$EXPECTED" ]; then
-            echo "❌ Current commit is not a release commit."
-            echo "   Expected: '$EXPECTED'"
-            echo "   Got:      '$COMMIT_MSG'"
-            echo ""
-            echo "Trigger this workflow using the release tag (provided in the Slack notification)."
+          if [[ "$GH_REF" != refs/tags/* ]]; then
+            echo "❌ Workflow must be triggered from a tag ref, not '$GH_REF'."
+            echo "Open the workflow and select the release tag (e.g. v0.1.0) in the ref dropdown."
             exit 1
           fi
-          echo "✅ Release commit validated: $EXPECTED"
+          TAG="$GH_REF_NAME"
+          EXPECTED="v$EXPECTED_VERSION"
+          if [ "$TAG" != "$EXPECTED" ]; then
+            echo "❌ Tag mismatch: expected $EXPECTED, got $TAG"
+            echo "Make sure package.json version matches the tag you are publishing from."
+            exit 1
+          fi
+          echo "✅ Release tag validated: $TAG"
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '25'
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -45,6 +59,7 @@ jobs:
         run: yarn build
 
       - name: Publish to npm (OIDC Trusted Publishers)
+        if: ${{ !inputs.dry_run }}
         run: npm publish --access public --provenance
 
       - name: Extract release notes from CHANGELOG.md
@@ -57,6 +72,7 @@ jobs:
           fi
 
       - name: Create GitHub Release
+        if: ${{ !inputs.dry_run }}
         run: |
           gh release create "v${{ steps.version.outputs.version }}" \
             --title "v${{ steps.version.outputs.version }}" \

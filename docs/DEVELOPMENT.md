@@ -186,6 +186,7 @@ No watching of HTML changes for now to avoid extra complexity.
 - [`gh` CLI](https://cli.github.com/) installed and authenticated (`gh auth login`)
 - `$EDITOR` environment variable set (e.g. `export EDITOR=vim` in your shell profile)
 - npm Trusted Publisher configured on npmjs.com
+- Maintain permission on the GitHub repository (required to push tags)
 
 ### Release flow
 
@@ -201,7 +202,8 @@ The script will:
 2. Sync with main and install latest deps
 3. Prompt you to choose a version bump (patch / minor / major / custom)
 4. Generate a changelog draft and open it in `$EDITOR` for review
-5. Create a `release/vX.Y.Z` branch, commit, push, and open a GitHub PR
+5. Create a `release/vX.Y.Z` branch, commit, push, and create an annotated tag `vX.Y.Z`
+6. Open a GitHub PR
 
 **Dry-run mode** (validates all checks and previews changelog without git changes):
 
@@ -209,19 +211,26 @@ The script will:
 yarn release --dry-run
 ```
 
-#### 2. Review the PR
+#### 2. Review and merge the PR
 
 - Review the generated changelog in the PR
-- Edit `CHANGELOG.md` if needed
-- Merge when ready
+- Edit `CHANGELOG.md` if needed (push commits directly to the release branch)
+
+> **⚠️ Warning:** The release tag is created **before** the PR is merged. If you push fixup commits to the release branch, you **must** move the tag to the latest commit before merging — otherwise those commits will be excluded from the published release:
+>
+> ```sh
+> git tag -a -f vX.Y.Z -m "vX.Y.Z"
+> git push -f origin vX.Y.Z
+> ```
+
+Merge the PR when ready.
 
 #### 3. Trigger the publish workflow
 
-After the PR is merged:
-
-1. A git tag `vX.Y.Z` is automatically created by CI.
-2. A Slack message in `#rum-electron-sdk-ops` will include a link to the GitHub Actions publish workflow.
+A Slack message in `#rum-electron-sdk-ops` is sent when the tag is pushed in step 1. It includes a link to the GitHub Actions publish workflow and reminds you to review and merge the PR first.
 
 Open the workflow link, click **Run workflow**, and select the tag `vX.Y.Z` in the ref dropdown.
+
+> **Dry-run option:** Enable the `dry_run` toggle to run the full pipeline (build, validate, extract changelog) without publishing to npm or creating a GitHub release. Useful to validate the pipeline before the real publish.
 
 [1]: https://gitmoji.carloscuesta.me/
