@@ -208,18 +208,18 @@ yarn release --dry-run
 - Review the generated changelog in the PR
 - Edit `CHANGELOG.md` if needed (push commits directly to the release branch)
 
-If you push fixup commits, move the tag to the latest commit:
-
-```sh
-git tag -a -f vX.Y.Z -m "vX.Y.Z"
-git push -f origin vX.Y.Z
-```
+> **⚠️ Warning:** The release tag is created **before** the PR is merged. If you push fixup commits to the release branch, you **must** move the tag to the latest commit before merging — otherwise those commits will be excluded from the published release:
+>
+> ```sh
+> git tag -a -f vX.Y.Z -m "vX.Y.Z"
+> git push -f origin vX.Y.Z
+> ```
 
 Merge the PR when ready.
 
 #### 3. Trigger the publish workflow
 
-A Slack message in `#rum-electron-sdk-ops` will include a link to the GitHub Actions publish workflow (sent when the tag is pushed in step 1).
+A Slack message in `#rum-electron-sdk-ops` is sent when the tag is pushed in step 1. It includes a link to the GitHub Actions publish workflow and reminds you to review and merge the PR first.
 
 Open the workflow link, click **Run workflow**, and select the tag `vX.Y.Z` in the ref dropdown.
 

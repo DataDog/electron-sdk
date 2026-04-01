@@ -48,9 +48,10 @@ runMain(async () => {
   applyChanges(newVersion, editedSection);
   const prUrl = createReleaseBranchAndPR(newVersion);
   printLog(`\n✅ Release PR opened: ${prUrl}`);
-  printLog('Review the changelog in the PR. If you push fixup commits, move the tag:');
-  printLog(`  git tag -a -f v${newVersion} -m v${newVersion} && git push -f origin v${newVersion}`);
-  printLog('Merge the PR, then trigger the publish workflow from the tag.');
+  printLog('\n⚠️  WARNING: The release tag has been pushed BEFORE the PR is merged.');
+  printLog('   If you push fixup commits to the release branch, you MUST move the tag:');
+  printLog(`     git tag -a -f v${newVersion} -m "v${newVersion}" && git push -f origin v${newVersion}`);
+  printLog('\nMerge the PR, then trigger the publish workflow from the tag.');
 });
 
 function runPreflightChecks(): void {
