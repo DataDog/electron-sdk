@@ -1,7 +1,7 @@
 import { defineConfig } from '@playwright/test';
 import type { IntegrationFixtures } from './integration/lib/integrationFixture';
 
-const INTEGRATION_APPS = ['forge-webpack', 'forge-vite'] as const;
+const INTEGRATION_APPS = ['forge-webpack', 'forge-vite', 'electron-vite'] as const;
 const INTEGRATION_MODES = ['dev', 'packaged'] as const;
 
 export type IntegrationApp = (typeof INTEGRATION_APPS)[number];
