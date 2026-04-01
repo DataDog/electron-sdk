@@ -108,6 +108,14 @@ When adding a new dependency, you must update `LICENSE-3rdparty.csv`.
 
 **Validation:** Run `node scripts/check-licenses.ts` to verify both NPM and Rust entries are in sync.
 
+### Bundled vs runtime dependencies
+
+This SDK is fully bundled: Rollup inlines all packages not listed in `external` (`rollup.config.mjs`).
+Currently `external` contains only `['electron']`.
+
+- **`devDependencies`**: use for packages inlined by Rollup — consumers don't need to install them (e.g. `@datadog/browser-core`).
+- **`dependencies` + add to `external`**: only for packages that must remain a shared singleton at runtime (e.g. `electron`).
+
 ### License Information Sources
 
 - NPM: check package repository's LICENSE or `package.json`

@@ -58,11 +58,12 @@ const config = [
   // TypeScript declarations: main
   {
     input: 'src/index.ts',
+    external: ['electron'],
     output: {
       file: 'dist/index.d.ts',
       format: 'esm',
     },
-    plugins: [dts({ tsconfig: './tsconfig.build.json' })],
+    plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
   },
 ];
 
