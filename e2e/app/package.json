@@ -12,7 +12,7 @@
     "@datadog/electron-sdk": "portal:../.."
   },
   "devDependencies": {
-    "electron": "41.0.2",
+    "electron": "41.1.0",
     "esbuild": "0.27.3",
     "typescript": "5.9.3"
   }
