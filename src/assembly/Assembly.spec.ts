@@ -1,5 +1,5 @@
 import { beforeEach, describe, it, expect } from 'vitest';
-import { DISCARDED, type TimeStamp } from '@datadog/browser-core';
+import { DISCARDED, SKIPPED, type TimeStamp } from '@datadog/browser-core';
 import { Assembly } from './Assembly';
 import { createFormatHooks, type FormatHooks } from './hooks';
 import { registerCommonContext } from './commonContext';
@@ -99,7 +99,7 @@ describe('Assembly — renderer events', () => {
     hooks.registerRum(() => ({ session: { id: 'main-session-id' }, view: { id: 'main-view-id' } }));
 
     new Assembly(eventManager, hooks);
-    return { eventManager };
+    return { eventManager, hooks };
   }
 
   it('should only override session.id and application.id', () => {
@@ -171,5 +171,29 @@ describe('Assembly — renderer events', () => {
     expect(data.application.id).toBe('main-app-id');
     expect(data.view.id).toBe('renderer-view-456');
     expect(collected[0].track).toBe(EventTrack.RUM);
+  });
+
+  it('passes event.data.date as startTime for hook context resolution', () => {
+    const { eventManager, hooks } = setup();
+    let capturedStartTime: TimeStamp | undefined;
+
+    hooks.registerRum((params) => {
+      capturedStartTime = params.startTime;
+      return SKIPPED;
+    });
+
+    eventManager.notify({
+      kind: EventKind.RAW,
+      source: EventSource.RENDERER,
+      format: EventFormat.RUM,
+      data: {
+        type: 'error',
+        date: 12345 as TimeStamp,
+        session: { id: 'renderer-session' },
+        application: { id: 'renderer-app' },
+      },
+    } as unknown as RawRumEvent);
+
+    expect(capturedStartTime).toBe(12345);
   });
 });
