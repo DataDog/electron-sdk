@@ -46,6 +46,7 @@
   ],
   "scripts": {
     "repo:init": "yarn install && scripts/cli init_submodule && yarn dev:init && yarn test:e2e:init",
+    "prepack": "rm -rf dist/ && yarn build",
     "prepare": "husky",
     "json-schemas:sync": "scripts/cli sync_schemas",
     "json-schemas:generate": "scripts/cli generate_schemas",

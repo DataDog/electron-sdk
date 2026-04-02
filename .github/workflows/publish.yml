@@ -55,9 +55,6 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Build
-        run: yarn build
-
       - name: Publish to npm (OIDC Trusted Publishers)
         if: ${{ !inputs.dry_run }}
         run: npm publish --access public --provenance
