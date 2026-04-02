@@ -22,6 +22,7 @@ import { displayError } from './display';
 export class DiskValueHistory<T> {
   private readonly history: TimeStampValueHistory<T>;
   private readonly filePath: string;
+  private pendingWrite: Promise<void> = Promise.resolve();
 
   private constructor(history: TimeStampValueHistory<T>, filePath: string) {
     this.history = history;
@@ -77,8 +78,11 @@ export class DiskValueHistory<T> {
   }
 
   private persistToDisk(): void {
-    fs.writeFile(this.filePath, JSON.stringify(this.history.getEntries()), 'utf-8').catch((error) => {
-      displayError('Failed to persist value history:', error);
-    });
+    const snapshot = JSON.stringify(this.history.getEntries());
+    this.pendingWrite = this.pendingWrite
+      .then(() => fs.writeFile(this.filePath, snapshot, 'utf-8'))
+      .catch((error) => {
+        displayError('Failed to persist value history:', error);
+      });
   }
 }
