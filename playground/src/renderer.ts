@@ -95,28 +95,30 @@ if (stopBtn && sessionContent) {
   console.error('Required elements not found');
 }
 
+document.addEventListener('click', () => setTimeout(() => void refreshSessionDisplay(), 500));
+
 // Handle generate activity button click
 const activityButton = document.getElementById('generate-activity') as HTMLButtonElement;
 activityButton.addEventListener('click', () => {
-  void window.electronAPI.generateActivity().then(() => refreshSessionDisplay());
+  void window.electronAPI.generateActivity();
 });
 
 // Handle telemetry error button click
 const telemetryErrorButton = document.getElementById('generate-telemetry-error') as HTMLButtonElement;
 telemetryErrorButton.addEventListener('click', () => {
-  void window.electronAPI.generateTelemetryError().then(() => refreshSessionDisplay());
+  void window.electronAPI.generateTelemetryError();
 });
 
 // Handle uncaught exception button click
 const uncaughtExceptionButton = document.getElementById('generate-uncaught-exception') as HTMLButtonElement;
 uncaughtExceptionButton.addEventListener('click', () => {
-  void window.electronAPI.generateUncaughtException().then(() => refreshSessionDisplay());
+  void window.electronAPI.generateUncaughtException();
 });
 
 // Handle unhandled rejection button click
 const unhandledRejectionButton = document.getElementById('generate-unhandled-rejection') as HTMLButtonElement;
 unhandledRejectionButton.addEventListener('click', () => {
-  void window.electronAPI.generateUnhandledRejection().then(() => refreshSessionDisplay());
+  void window.electronAPI.generateUnhandledRejection();
 });
 
 // Handle crash button click
