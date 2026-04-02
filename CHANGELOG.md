@@ -2,6 +2,19 @@
 
 All notable changes to `@datadog/electron-sdk` are documented here.
 
+## [0.1.1] - 2026-04-02
+
+### 🐛 Bug Fixes
+
+- 🐛 fix session management and event attribution issues (#79)
+- 🐛 [RUM-15336] Fix preload script resolution (#73)
+
+### Internal
+
+- 👷 [RUM-15055] fix release/publish pipeline issues from v0.1.0 (#77)
+- ♻️ move browser-core to devDependencies (#78)
+- ♻️ chore: re-enable dependabot with 2-day cooldown (#64)
+
 ## [0.1.0] - 2026-03-26
 
 ### ✨ Features
