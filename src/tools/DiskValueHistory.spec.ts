@@ -70,7 +70,7 @@ describe('DiskValueHistory', () => {
 
       const entries = history.getEntries();
       expect(entries).toHaveLength(2);
-      expect(entries[0]).toMatchObject({ startTime: T10, endTime: null, value: 'session-b' });
+      expect(entries[0]).toMatchObject({ startTime: T10, endTime: Infinity, value: 'session-b' });
       expect(entries[1]).toMatchObject({ startTime: T0, endTime: T10, value: 'session-a' });
     });
 
@@ -98,6 +98,23 @@ describe('DiskValueHistory', () => {
 
       expect(history.getEntries()).toHaveLength(1);
       expect(history.getEntries()[0].value).toBe('old-active');
+    });
+
+    it('active entries persist as null on disk and reload as Infinity', async () => {
+      mfs.readFile.mockRejectedValue(new Error('ENOENT'));
+      const history = await DiskValueHistory.init<string>({ filePath: FILE_PATH, expireDelay: EXPIRE_DELAY });
+
+      history.add('active-session', T0);
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Disk stores Infinity as null (JSON.stringify behavior)
+      const written = JSON.parse(mfs.writeFile.mock.calls[0][1] as string) as TimeStampHistoryEntry<string>[];
+      expect(written[0].endTime).toBeNull();
+
+      // Reload: null on disk → Infinity in memory
+      mfs.readFile.mockResolvedValue(mfs.writeFile.mock.calls[0][1] as string);
+      const reloaded = await DiskValueHistory.init<string>({ filePath: FILE_PATH, expireDelay: EXPIRE_DELAY });
+      expect(reloaded.getEntries()[0].endTime).toBe(Infinity);
     });
   });
 

@@ -1,11 +1,12 @@
 import { test, expect, launchAppManually } from '../lib/helpers';
-import type { RumErrorEvent } from '@datadog/electron-sdk';
+import type { RumErrorEvent, RumViewEvent } from '@datadog/electron-sdk';
 
 test('emits a crash error event after a native crash', async ({ intake }) => {
   // Phase 1: Launch and crash
   const { electronApp: firstElectronApp, app: firstApp } = await launchAppManually(intake);
   await firstApp.flushTransport();
-  await intake.getEventsByType('view');
+  const viewEvents = await intake.getEventsByType('view');
+  const sessionId = (viewEvents[0].body as RumViewEvent).session.id;
 
   const appClosed = firstElectronApp.waitForEvent('close');
   firstApp.crash();
@@ -21,6 +22,7 @@ test('emits a crash error event after a native crash', async ({ intake }) => {
     expect(errorEvents).toHaveLength(1);
 
     const error = errorEvents[0].body as RumErrorEvent;
+    expect(error.session.id).toBe(sessionId);
     expect(error.error.is_crash).toBe(true);
     expect(error.error.source).toBe('source');
     expect(error.error.handling).toBe('unhandled');

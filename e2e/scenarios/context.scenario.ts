@@ -27,3 +27,14 @@ test('attributes event to correct session and view based on startTime', async ({
   expect(error.view.id).toBe(firstViewId);
   expect(error.date).toBe(timestampInFirstSession);
 });
+
+test('events should not be sent when the session is expired', async ({ app, intake }) => {
+  await app.flushTransport();
+  await app.stopSession();
+
+  await app.generateManualError();
+  await app.flushTransport();
+
+  const errorEvents = await intake.getEventsByType('error');
+  expect(errorEvents).toHaveLength(0);
+});

@@ -1,10 +1,3 @@
-vi.mock('electron', () => ({
-  app: {
-    getName: vi.fn(() => 'TestApp'),
-    getVersion: vi.fn(() => '1.2.3'),
-  },
-}));
-
 vi.mock('node:child_process', () => ({
   execFile: vi.fn(),
 }));
@@ -68,7 +61,7 @@ describe('getUserAgent', () => {
 
     const ua = await getUserAgent();
 
-    expect(ua).toBe('TestApp/1.2.3 (Macintosh; Intel Mac OS X 15_3_0) Electron/30.0.0 Chrome/124.0.0 Node/20.14.0');
+    expect(ua).toBe('(Macintosh; Intel Mac OS X 15_3_0) Electron/30.0.0 Chrome/124.0.0 Node/20.14.0');
   });
 
   it('appends .0 to two-part macOS versions', async () => {
@@ -100,7 +93,7 @@ describe('getUserAgent', () => {
 
     const ua = await getUserAgent();
 
-    expect(ua).toBe('TestApp/1.2.3 (Windows NT 10.0; Win64; x64) Electron/30.0.0 Chrome/124.0.0 Node/20.14.0');
+    expect(ua).toBe('(Windows NT 10.0; Win64; x64) Electron/30.0.0 Chrome/124.0.0 Node/20.14.0');
   });
 
   it('reports ARM64 on Windows arm64', async () => {
@@ -119,7 +112,7 @@ describe('getUserAgent', () => {
 
     const ua = await getUserAgent();
 
-    expect(ua).toBe('TestApp/1.2.3 (X11; Linux x86_64) Electron/30.0.0 Chrome/124.0.0 Node/20.14.0');
+    expect(ua).toBe('(X11; Linux x86_64) Electron/30.0.0 Chrome/124.0.0 Node/20.14.0');
   });
 
   it('maps arm64 to aarch64 on Linux', async () => {

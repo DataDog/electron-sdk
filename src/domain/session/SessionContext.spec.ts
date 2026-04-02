@@ -126,5 +126,17 @@ describe('SessionContext', () => {
         session: { id: 'session-abc' },
       });
     });
+
+    it('RUM hook returns DISCARDED for events after the session ended', async () => {
+      const hooks = createFormatHooks();
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
+
+      context.add('session-abc'); // at T0
+      vi.advanceTimersByTime(10); // now T10
+      context.close(); // closed at T10
+
+      // Event at T20 (after session ended at T10) → DISCARDED
+      expect(hooks.triggerRum({ eventType: 'view', startTime: 20 as TimeStamp })).toBe(DISCARDED);
+    });
   });
 });

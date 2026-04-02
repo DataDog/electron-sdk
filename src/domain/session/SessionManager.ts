@@ -84,6 +84,7 @@ export class SessionManager {
       this.scheduleInactivityTimeout();
       this.scheduleSessionTimeout(existingState.created);
     } else {
+      this.sessionContext.close();
       await this.createNewSession();
     }
 

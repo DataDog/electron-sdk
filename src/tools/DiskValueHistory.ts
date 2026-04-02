@@ -12,12 +12,17 @@ import { displayError } from './display';
  * - Create instances via `DiskValueHistory.init()` which loads and restores entries from a
  *   previous run. Expired closed entries are pruned during init using the same threshold as add().
  *
+ * Disk format: active entries (endTime = Infinity in memory) are stored as `endTime: null` on
+ * disk, because JSON.stringify converts Infinity to null. On load, entries with `endTime: null`
+ * are restored as active (endTime = Infinity).
+ *
  * Error handling: write failures are logged via displayError and do not throw.
  * Read/parse failures leave the history empty (silent fallback).
  */
 export class DiskValueHistory<T> {
   private readonly history: TimeStampValueHistory<T>;
   private readonly filePath: string;
+  private pendingWrite: Promise<void> = Promise.resolve();
 
   private constructor(history: TimeStampValueHistory<T>, filePath: string) {
     this.history = history;
@@ -73,8 +78,11 @@ export class DiskValueHistory<T> {
   }
 
   private persistToDisk(): void {
-    fs.writeFile(this.filePath, JSON.stringify(this.history.getEntries()), 'utf-8').catch((error) => {
-      displayError('Failed to persist value history:', error);
-    });
+    const snapshot = JSON.stringify(this.history.getEntries());
+    this.pendingWrite = this.pendingWrite
+      .then(() => fs.writeFile(this.filePath, snapshot, 'utf-8'))
+      .catch((error) => {
+        displayError('Failed to persist value history:', error);
+      });
   }
 }

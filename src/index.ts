@@ -3,6 +3,7 @@ import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
 import { RumCollection } from './domain/rum';
 import { SessionManager } from './domain/session';
+import { UserActivityTracker } from './domain/UserActivityTracker';
 import type { ErrorOptions } from './domain/rum';
 import { callMonitored, startTelemetry } from './domain/telemetry';
 import { EventKind, EventManager, LifecycleKind } from './event';
@@ -33,6 +34,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   new Assembly(eventManager, hooks);
   new BridgeHandler(eventManager, config);
+  new UserActivityTracker(eventManager);
   registerPreload();
 
   transport = await Transport.create(config, eventManager);
@@ -57,8 +59,8 @@ export function addError(error: unknown, options?: ErrorOptions): void {
 }
 
 /**
- * Internal API to simulate end-user activity
- * TODO(RUM-14303) replace usages with real user activity
+ * Internal API to simulate end-user activity.
+ * TODO remove usages and adjust E2E test infrastructure
  */
 export function _generateActivity(): void {
   callMonitored(() => eventManager?.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.END_USER_ACTIVITY }));

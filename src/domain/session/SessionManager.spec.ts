@@ -117,6 +117,34 @@ describe('sessionManager', () => {
       expect(sessionManager.getSession().id).not.toBe('timed-out-session-id');
       expect(sessionManager.getSession().status).toBe('active');
     });
+
+    it('closes previous session history entry on restart when session expired', async () => {
+      vi.setSystemTime(1000);
+      const now = Date.now();
+      const expiredState = {
+        id: 'expired-session-id',
+        created: now - SESSION_EXPIRATION_DELAY - 1000,
+        lastActivity: now - SESSION_EXPIRATION_DELAY - 1000,
+      };
+      mfs.readFile
+        .mockResolvedValueOnce(JSON.stringify(expiredState)) // _dd_s
+        .mockResolvedValueOnce(JSON.stringify([{ startTime: 0, endTime: null, value: 'expired-session-id' }])); // _dd_session_history
+
+      sessionManager = await SessionManager.start(eventManager, hooks);
+
+      const newSessionId = sessionManager.getSession().id;
+      expect(newSessionId).not.toBe('expired-session-id');
+
+      // Event at T_now (after restart) → new session
+      expect(hooks.triggerRum({ eventType: 'view', startTime: now as TimeStamp })).toMatchObject({
+        session: { id: newSessionId },
+      });
+
+      // Event at T0 (before restart, within old session) → old session (crash attribution)
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toMatchObject({
+        session: { id: 'expired-session-id' },
+      });
+    });
   });
 
   describe('session expiration', () => {

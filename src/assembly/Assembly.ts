@@ -1,4 +1,4 @@
-import { combine, DISCARDED, timeStampNow, type RecursivePartial } from '@datadog/browser-core';
+import { combine, DISCARDED, timeStampNow, type RecursivePartial, TimeStamp } from '@datadog/browser-core';
 import { EventFormat, EventKind, EventManager, EventSource, EventTrack, type RawEvent, ServerEvent } from '../event';
 import type { RawRumEvent } from '../event';
 import type { FormatHooks } from './hooks';
@@ -51,7 +51,7 @@ export class Assembly {
   private assembleRendererRumEvent(event: RawRumEvent): ServerEvent | DISCARDED {
     const hookResult = this.hooks.triggerRum({
       eventType: event.data.type,
-      startTime: event.startTime ?? timeStampNow(),
+      startTime: event.data.date as TimeStamp,
     });
 
     if (hookResult === DISCARDED) {
