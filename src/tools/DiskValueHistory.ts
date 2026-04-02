@@ -12,6 +12,10 @@ import { displayError } from './display';
  * - Create instances via `DiskValueHistory.init()` which loads and restores entries from a
  *   previous run. Expired closed entries are pruned during init using the same threshold as add().
  *
+ * Disk format: active entries (endTime = Infinity in memory) are stored as `endTime: null` on
+ * disk, because JSON.stringify converts Infinity to null. On load, entries with `endTime: null`
+ * are restored as active (endTime = Infinity).
+ *
  * Error handling: write failures are logged via displayError and do not throw.
  * Read/parse failures leave the history empty (silent fallback).
  */

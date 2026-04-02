@@ -80,7 +80,7 @@ describe('TimeStampValueHistory', () => {
       history.add('a', T10);
       history.closeActive(T30);
 
-      expect(history.find(T40)).toBe('a');
+      expect(history.find(T40)).toBeUndefined();
     });
 
     it('closes only the latest active entry (index 0)', () => {
@@ -94,7 +94,7 @@ describe('TimeStampValueHistory', () => {
       // 'b' is at index 0 (newest), so it gets closed
       expect(entries[0]).toMatchObject({ value: 'b', endTime: T30 });
       // 'a' at index 1 remains open
-      expect(entries[1]).toMatchObject({ value: 'a', endTime: null });
+      expect(entries[1]).toMatchObject({ value: 'a', endTime: Infinity });
     });
 
     it('is a no-op when there is no active entry', () => {
@@ -186,8 +186,8 @@ describe('TimeStampValueHistory', () => {
       history.closeActive(T10);
       history.add('session-2', T30); // gap between T10 and T30
 
-      // T20 falls in the gap — session-1 is the most recent entry with startTime <= T20
-      expect(history.find(T20)).toBe('session-1');
+      // T20 is after session-1 expired (endTime=T10) — no active session → undefined
+      expect(history.find(T20)).toBeUndefined();
     });
   });
 
