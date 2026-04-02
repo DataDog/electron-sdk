@@ -55,6 +55,20 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      - name: Verify npm publish — dry run (OIDC check)
+        if: ${{ inputs.dry_run }}
+        run: npm publish --dry-run --provenance --access public --tag dry-run
+
+      - name: Verify GitHub token — dry run (release check)
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "--- gh auth status ---"
+          gh auth status
+          echo "--- repo permissions ---"
+          gh api "repos/$GITHUB_REPOSITORY" --jq '.permissions'
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - name: Publish to npm (OIDC Trusted Publishers)
         if: ${{ !inputs.dry_run }}
         run: npm publish --access public --provenance
