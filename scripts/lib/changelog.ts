@@ -25,7 +25,7 @@ const CATEGORY_HEADINGS: Partial<Record<ChangelogCategory, string>> = {
   security: '### 🔒 Security',
 };
 
-const RELEASE_COMMIT_RE = /^v?\d+\.\d+\.\d+$/;
+const RELEASE_COMMIT_RE = /^v?\d+\.\d+\.\d+( \(#\d+\))?$/;
 
 export function categorizeCommit(subject: string): ChangelogCategory {
   for (const [emoji, category] of Object.entries(PUBLIC_CATEGORIES)) {
