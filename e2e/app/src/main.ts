@@ -6,7 +6,6 @@ import {
   init,
   addError,
   _generateTelemetryError,
-  _generateActivity,
   _flushTransport,
   stopSession,
   type InitConfiguration,
@@ -66,10 +65,6 @@ void app.whenReady().then(async () => {
 
   ipcMain.handle('stopSession', () => {
     stopSession();
-  });
-
-  ipcMain.handle('generateActivity', () => {
-    _generateActivity();
   });
 
   ipcMain.handle('generateUncaughtException', () => {

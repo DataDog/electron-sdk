@@ -6,7 +6,7 @@ import { SessionManager } from './domain/session';
 import { UserActivityTracker } from './domain/UserActivityTracker';
 import type { ErrorOptions } from './domain/rum';
 import { callMonitored, startTelemetry } from './domain/telemetry';
-import { EventKind, EventManager, LifecycleKind } from './event';
+import { EventManager } from './event';
 import { BridgeHandler, registerPreload } from './bridge';
 import { Transport } from './transport';
 
@@ -59,25 +59,16 @@ export function addError(error: unknown, options?: ErrorOptions): void {
 }
 
 /**
- * Internal API to simulate end-user activity.
- * TODO remove usages and adjust E2E test infrastructure
- */
-export function _generateActivity(): void {
-  callMonitored(() => eventManager?.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.END_USER_ACTIVITY }));
-}
-
-/*
- * Internal API to test monitoring
- * TODO replace with the usage of another API when available
- */
-
-/**
  * Internal API to flush all pending batches to the intake
  */
 export async function _flushTransport(): Promise<void> {
   await transport?.flush();
 }
 
+/*
+ * Internal API to test monitoring
+ * TODO replace with the usage of another API when available
+ */
 export function _generateTelemetryError() {
   return callMonitored(() => {
     throw new Error('expected error');
