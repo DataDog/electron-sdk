@@ -47,7 +47,6 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '25'
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Enable Corepack
         run: corepack enable
@@ -105,8 +104,6 @@ jobs:
           fi
 
           exit $FAILED
-        env:
-          NODE_AUTH_TOKEN: ''
 
       - name: Verify GitHub token — dry run
         if: ${{ inputs.dry_run }}
@@ -121,10 +118,6 @@ jobs:
       - name: Publish to npm (OIDC Trusted Publishers)
         if: ${{ !inputs.dry_run }}
         run: npm publish --access public --provenance
-        env:
-          # Clear NODE_AUTH_TOKEN so npm uses the OIDC Trusted Publishers exchange
-          # instead of the org-level NODE_AUTH_TOKEN secret (which is not a valid npm token).
-          NODE_AUTH_TOKEN: ''
 
       - name: Extract release notes from CHANGELOG.md
         run: |
