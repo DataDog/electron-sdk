@@ -18,7 +18,7 @@ test('emits a crash error event after a native crash', async ({ intake }) => {
   try {
     await secondMainPage.flushTransport();
     // increase timeout to account for crash dump processing
-    const errorEvents = await intake.getEventsByType('error', 15_000);
+    const errorEvents = await intake.getEventsByType('error', { timeout: 15_000 });
     expect(errorEvents).toHaveLength(1);
 
     const error = errorEvents[0].body as RumErrorEvent;
