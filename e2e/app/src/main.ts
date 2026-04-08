@@ -160,8 +160,8 @@ function createWindow() {
 }
 
 function getConfiguration(): InitConfiguration {
-  if (process.env.DD_SDK_CONFIG) {
-    return JSON.parse(process.env.DD_SDK_CONFIG) as InitConfiguration;
+  if (process.env.DD_ELECTRON_SDK_CONFIG) {
+    return JSON.parse(process.env.DD_ELECTRON_SDK_CONFIG) as InitConfiguration;
   }
-  throw new Error('DD_SDK_CONFIG environment variable is not set');
+  throw new Error('DD_ELECTRON_SDK_CONFIG environment variable is not set');
 }

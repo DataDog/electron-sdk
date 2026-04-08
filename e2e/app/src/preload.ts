@@ -1,5 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+const rumBrowserSdkConfig = process.env.DD_RUM_BROWSER_SDK
+  ? (JSON.parse(process.env.DD_RUM_BROWSER_SDK) as Record<string, unknown>)
+  : null;
+contextBridge.exposeInMainWorld('e2eConfig', { rumBrowserSdk: rumBrowserSdkConfig });
+
 contextBridge.exposeInMainWorld('electronAPI', {
   generateTelemetryErrors: (count: number) => ipcRenderer.invoke('generateTelemetryErrors', count),
   stopSession: () => ipcRenderer.invoke('stopSession'),

@@ -24,18 +24,22 @@ test('SDK sends telemetry error event to intake', async ({ mainPage, intake }) =
   expect(event._dd.format_version).toBe(2);
 });
 
-test('telemetry events are limited per session and reset on session renewal', async ({ mainPage, intake }) => {
-  // only 100 should be sent (MAX_TELEMETRY_EVENTS_PER_SESSION)
-  await mainPage.generateTelemetryErrors(110);
-  await mainPage.flushTransport();
+test.describe('telemetry rate-limit reset on session renewal', () => {
+  test.use({ rumBrowserSdk: {} });
 
-  const telemetryEvents = await intake.waitForEventCount('telemetry', 100);
-  expect(telemetryEvents).toHaveLength(100);
+  test('telemetry events are limited per session and reset on session renewal', async ({ mainPage, intake }) => {
+    // only 100 should be sent (MAX_TELEMETRY_EVENTS_PER_SESSION)
+    await mainPage.generateTelemetryErrors(110);
+    await mainPage.flushTransport();
 
-  await mainPage.renewSession();
-  await mainPage.generateTelemetryError();
-  await mainPage.flushTransport();
+    const telemetryEvents = await intake.waitForEventCount('telemetry', 100);
+    expect(telemetryEvents).toHaveLength(100);
 
-  const allTelemetryEvents = await intake.waitForEventCount('telemetry', 101);
-  expect(allTelemetryEvents).toHaveLength(101);
+    await mainPage.renewSession();
+    await mainPage.generateTelemetryError();
+    await mainPage.flushTransport();
+
+    const allTelemetryEvents = await intake.waitForEventCount('telemetry', 101);
+    expect(allTelemetryEvents).toHaveLength(101);
+  });
 });

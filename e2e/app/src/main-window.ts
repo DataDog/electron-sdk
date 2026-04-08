@@ -1,3 +1,10 @@
+import { datadogRum } from '@datadog/browser-rum';
+
+const rumBrowserSdkConfig = window.e2eConfig?.rumBrowserSdk;
+if (rumBrowserSdkConfig) {
+  datadogRum.init(rumBrowserSdkConfig);
+}
+
 const statusDiv = document.getElementById('status') as HTMLDivElement;
 statusDiv.textContent = 'SDK initialized in main process';
 statusDiv.className = 'info';

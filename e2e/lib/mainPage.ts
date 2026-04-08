@@ -30,6 +30,12 @@ export class MainPage {
 
   async generateActivity() {
     await this.page.locator('#generate-activity').click();
+    await this.waitForIpcPropagation();
+  }
+
+  private async waitForIpcPropagation() {
+    // Wait for event propagation: renderer → bridge IPC -> main → transport
+    await this.page.waitForTimeout(1000);
   }
 
   async generateTelemetryError() {

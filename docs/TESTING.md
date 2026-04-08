@@ -34,6 +34,19 @@ Tests import custom `test` and `expect` from `lib/helpers.ts` (not directly from
 
 The intake server (`e2e/lib/intake.ts`) runs on a dynamic port (OS-assigned) to avoid conflicts. It is managed as a Playwright fixture for automatic startup/teardown.
 
+#### `rumBrowserSdk` option
+
+By default, no browser-sdk runs in the main window renderer. Tests that need real user-activity tracking (e.g. session renewal via click) opt in per-describe or per file:
+
+```ts
+test.describe('session renewal', () => {
+  test.use({ rumBrowserSdk: {} });
+  // ...
+});
+```
+
+Pass an object to override specific init options (merged with the defaults). The fixture serialises the config into `DD_RUM_BROWSER_SDK` and the preload exposes it as `window.e2eConfig.rumBrowserSdk`.
+
 ### E2E App as Reference
 
 The `e2e/app/` is the reference implementation for IPC bridge patterns and SDK integration.

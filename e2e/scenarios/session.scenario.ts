@@ -1,6 +1,8 @@
 import { test, expect } from '../lib/helpers';
 import type { TelemetryErrorEvent } from '@datadog/electron-sdk';
 
+test.use({ rumBrowserSdk: {} });
+
 test('new session id is generated when renewing a session', async ({ mainPage, intake }) => {
   await mainPage.generateTelemetryError();
   await mainPage.flushTransport();

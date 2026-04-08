@@ -4,8 +4,10 @@
   "private": true,
   "main": "dist/main.js",
   "scripts": {
-    "build": "tsc && tsc --project tsconfig.renderer.json && yarn build:bridge-window && mkdir -p ./dist && cp src/main-window.html src/bridge-window.html dist/",
-    "build:bridge-window": "esbuild src/bridge-window.ts --bundle --format=esm --outfile=dist/bridge-window.js --sourcemap"
+    "build": "yarn build:ts && mkdir -p ./dist && yarn build:bridge-window && yarn build:main-window",
+    "build:ts": "tsc && tsc --project tsconfig.renderer.json",
+    "build:main-window": "esbuild src/main-window.ts --bundle --format=iife --outfile=dist/main-window.js --sourcemap && cp src/main-window.html dist/",
+    "build:bridge-window": "esbuild src/bridge-window.ts --bundle --format=esm --outfile=dist/bridge-window.js --sourcemap && cp src/bridge-window.html dist/"
   },
   "dependencies": {
     "@datadog/browser-rum": "6.30.1",

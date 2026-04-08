@@ -13,6 +13,7 @@ export interface TestFixtures {
   window: Page;
   mainPage: MainPage;
   intake: Intake;
+  rumBrowserSdk: Record<string, unknown> | null;
 }
 
 /**
@@ -31,8 +32,8 @@ export const test = base.extend<TestFixtures>({
     { option: true },
   ],
 
-  electronApp: async ({ intake }, use) => {
-    const electronApp = await launchApp(intake);
+  electronApp: async ({ intake, rumBrowserSdk }, use) => {
+    const electronApp = await launchApp(intake, rumBrowserSdk);
     await use(electronApp);
     await electronApp.close();
   },
@@ -48,14 +49,19 @@ export const test = base.extend<TestFixtures>({
   mainPage: async ({ window }, use) => {
     await use(new MainPage(window));
   },
+
+  rumBrowserSdk: [null, { option: true }],
 });
 
-async function launchApp(intake: Intake): Promise<ElectronApplication> {
+async function launchApp(
+  intake: Intake,
+  rumBrowserSdk: Record<string, unknown> | null = null
+): Promise<ElectronApplication> {
   const env: Record<string, string> = {
     ...process.env,
   } as Record<string, string>;
 
-  const config: InitConfiguration = {
+  const electronSdkConfig: InitConfiguration = {
     site: 'datadoghq.com',
     proxy: `http://localhost:${intake.getPort()}/api/v2/rum`,
     clientToken: 'test-client-token',
@@ -67,7 +73,19 @@ async function launchApp(intake: Intake): Promise<ElectronApplication> {
     defaultPrivacyLevel: 'mask',
     allowedWebViewHosts: [],
   };
-  env.DD_SDK_CONFIG = JSON.stringify(config);
+  env.DD_ELECTRON_SDK_CONFIG = JSON.stringify(electronSdkConfig);
+
+  if (rumBrowserSdk !== null) {
+    env.DD_RUM_BROWSER_SDK = JSON.stringify({
+      applicationId: 'blank',
+      clientToken: 'blank',
+      site: 'datadoghq.com',
+      service: 'e2e-main-window',
+      sessionSampleRate: 100,
+      trackUserInteractions: true,
+      ...rumBrowserSdk,
+    });
+  }
 
   return electron.launch({
     executablePath: electronPath,

@@ -1,5 +1,10 @@
+import type { RumInitConfiguration } from '@datadog/browser-rum';
+
 declare global {
   interface Window {
+    e2eConfig?: {
+      rumBrowserSdk: RumInitConfiguration;
+    };
     electronAPI: {
       generateTelemetryErrors: (count: number) => Promise<void>;
       stopSession: () => Promise<void>;

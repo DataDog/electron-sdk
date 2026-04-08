@@ -1,31 +1,38 @@
 import { test, expect } from '../lib/helpers';
 import type { RumErrorEvent, RumViewEvent } from '@datadog/electron-sdk';
 
-test('attributes event to correct session and view based on startTime', async ({ mainPage, intake }) => {
-  await mainPage.flushTransport();
-  const viewEvents = await intake.getEventsByType('view');
-  const firstView = viewEvents[0].body as RumViewEvent;
-  const firstSessionId = firstView.session.id;
-  const firstViewId = firstView.view.id;
+const isMainProcessView = (event: { body: unknown }) =>
+  (event.body as RumViewEvent).view.url === 'electron://main-process';
 
-  // Record timestamp while first session is active
-  const timestampInFirstSession = Date.now();
+test.describe('event attribution with session renewal', () => {
+  test.use({ rumBrowserSdk: {} });
 
-  // Renew session (stop + activity)
-  await mainPage.renewSession();
+  test('attributes event to correct session and view based on startTime', async ({ mainPage, intake }) => {
+    await mainPage.flushTransport();
+    const viewEvents = await intake.getEventsByType('view');
+    const firstView = viewEvents.find(isMainProcessView)!.body as RumViewEvent;
+    const firstSessionId = firstView.session.id;
+    const firstViewId = firstView.view.id;
 
-  // Add error with timestamp from first session
-  await mainPage.generateManualError(timestampInFirstSession);
-  await mainPage.flushTransport();
+    // Record timestamp while first session is active
+    const timestampInFirstSession = Date.now();
 
-  // Verify error is attributed to first session/view
-  const errorEvents = await intake.getEventsByType('error');
-  expect(errorEvents).toHaveLength(1);
+    // Renew session (stop + activity)
+    await mainPage.renewSession();
 
-  const error = errorEvents[0].body as RumErrorEvent;
-  expect(error.session.id).toBe(firstSessionId);
-  expect(error.view.id).toBe(firstViewId);
-  expect(error.date).toBe(timestampInFirstSession);
+    // Add error with timestamp from first session
+    await mainPage.generateManualError(timestampInFirstSession);
+    await mainPage.flushTransport();
+
+    // Verify error is attributed to first session/view
+    const errorEvents = await intake.getEventsByType('error');
+    expect(errorEvents).toHaveLength(1);
+
+    const error = errorEvents[0].body as RumErrorEvent;
+    expect(error.session.id).toBe(firstSessionId);
+    expect(error.view.id).toBe(firstViewId);
+    expect(error.date).toBe(timestampInFirstSession);
+  });
 });
 
 test('events should not be sent when the session is expired', async ({ mainPage, intake }) => {
