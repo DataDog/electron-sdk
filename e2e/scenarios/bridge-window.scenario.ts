@@ -1,17 +1,5 @@
 import { test, expect } from '../lib/helpers';
-import type { ElectronApplication } from '@playwright/test';
 import type { RumViewEvent, RumErrorEvent } from '@datadog/electron-sdk';
-
-/**
- * Helper: wait for a new bridge window to open and its bridge to be ready.
- * Returns the Playwright Page for the bridge window.
- */
-async function waitForBridgeWindow(electronApp: ElectronApplication) {
-  const newPage = await electronApp.waitForEvent('window');
-  await newPage.waitForSelector('#status');
-  await newPage.waitForFunction('document.getElementById("status")?.textContent === "bridge-ready"');
-  return newPage;
-}
 
 function isBridgeView(event: { body: unknown }): boolean {
   return (event.body as RumViewEvent).view.url !== 'electron://main-process';
@@ -23,11 +11,7 @@ test.describe('bridge window — file:// window', () => {
     await mainPage.flushTransport();
     await intake.getEventsByType('view');
 
-    // Open a file:// bridge window with browser-rum
-    await mainPage.openBridgeFileWindow();
-    const bridgeWindow = await waitForBridgeWindow(electronApp);
-    expect(bridgeWindow).toBeDefined();
-
+    await mainPage.openBridgeFileWindow(electronApp);
     await mainPage.flushTransport();
 
     const viewEvents = await intake.waitForEventCount('view', 2);
@@ -45,11 +29,7 @@ test.describe('bridge window — http:// window', () => {
     await mainPage.flushTransport();
     await intake.getEventsByType('view');
 
-    // Open an http:// bridge window
-    await mainPage.openBridgeHttpWindow();
-    const bridgeWindow = await waitForBridgeWindow(electronApp);
-    expect(bridgeWindow).toBeDefined();
-
+    await mainPage.openBridgeHttpWindow(electronApp);
     await mainPage.flushTransport();
 
     const viewEvents = await intake.waitForEventCount('view', 2);
@@ -71,10 +51,7 @@ test.describe('bridge window — contextIsolation: false', () => {
     await mainPage.flushTransport();
     await intake.getEventsByType('view');
 
-    await mainPage.openBridgeFileWindowNoIsolation();
-    const bridgeWindow = await waitForBridgeWindow(electronApp);
-    expect(bridgeWindow).toBeDefined();
-
+    await mainPage.openBridgeFileWindowNoIsolation(electronApp);
     await mainPage.flushTransport();
 
     const viewEvents = await intake.waitForEventCount('view', 2);
@@ -93,8 +70,7 @@ test.describe('bridge window — event types', () => {
     const mainViewEvents = await intake.getEventsByType('view');
     const mainView = mainViewEvents[0].body as RumViewEvent;
 
-    await mainPage.openBridgeFileWindow();
-    await waitForBridgeWindow(electronApp);
+    await mainPage.openBridgeFileWindow(electronApp);
     await mainPage.flushTransport();
 
     const viewEvents = await intake.waitForEventCount('view', 2);
@@ -115,22 +91,15 @@ test.describe('bridge window — event types', () => {
     const mainViewEvents = await intake.getEventsByType('view');
     const mainView = mainViewEvents[0].body as RumViewEvent;
 
-    await mainPage.openBridgeFileWindow();
-    const bridgeWindow = await waitForBridgeWindow(electronApp);
+    const bridgeWindowPage = await mainPage.openBridgeFileWindow(electronApp);
 
     // Throw an error in the renderer — browser-rum captures it via the bridge
-    await bridgeWindow.evaluate(() => {
-      setTimeout(() => {
-        throw new Error('renderer test error');
-      }, 0);
-    });
-
-    // Wait for the error to propagate: renderer browser-rum → bridge IPC → main process → transport
-    await bridgeWindow.waitForTimeout(1000);
+    const errorMessage = 'renderer test error';
+    await bridgeWindowPage.generateError(errorMessage);
     await mainPage.flushTransport();
 
     const errorEvents = await intake.waitForEventCount('error', 1, 10000);
-    const rendererError = errorEvents.find((e) => (e.body as RumErrorEvent).error.message === 'renderer test error');
+    const rendererError = errorEvents.find((e) => (e.body as RumErrorEvent).error.message === errorMessage);
 
     expect(rendererError).toBeDefined();
     const error = rendererError!.body as RumErrorEvent;
@@ -141,12 +110,9 @@ test.describe('bridge window — event types', () => {
 
   test('renderer resource events are captured', async ({ electronApp, mainPage, intake }) => {
     // Use http:// window so fetch works (file:// has CORS restrictions)
-    await mainPage.openBridgeHttpWindow();
-    const bridgeWindow = await waitForBridgeWindow(electronApp);
+    const bridgeWindowPage = await mainPage.openBridgeHttpWindow(electronApp);
 
-    // Trigger a fetch from the renderer — browser-rum tracks resources
-    await bridgeWindow.evaluate(() => fetch('/'));
-
+    await bridgeWindowPage.generateResource();
     await mainPage.flushTransport();
 
     const resourceEvents = await intake.getEventsByType('resource');

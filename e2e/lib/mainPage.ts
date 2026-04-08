@@ -1,4 +1,5 @@
-import type { Page } from '@playwright/test';
+import type { ElectronApplication, Page } from '@playwright/test';
+import { BridgeWindowPage } from './bridgeWindowPage';
 
 // declare exposed IPC methods called directly in tests
 interface ElectronAppWindow {
@@ -70,17 +71,20 @@ export class MainPage {
       });
   }
 
-  async openBridgeFileWindow() {
+  async openBridgeFileWindow(electronApp: ElectronApplication) {
     await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.openBridgeFileWindow());
+    return await BridgeWindowPage.waitForReady(electronApp);
   }
 
-  async openBridgeFileWindowNoIsolation() {
+  async openBridgeFileWindowNoIsolation(electronApp: ElectronApplication) {
     await this.page.evaluate(() =>
       (globalThis as unknown as ElectronAppWindow).electronAPI.openBridgeFileWindowNoIsolation()
     );
+    return await BridgeWindowPage.waitForReady(electronApp);
   }
 
-  async openBridgeHttpWindow() {
+  async openBridgeHttpWindow(electronApp: ElectronApplication) {
     await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.openBridgeHttpWindow());
+    return await BridgeWindowPage.waitForReady(electronApp);
   }
 }

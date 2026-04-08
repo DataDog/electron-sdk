@@ -21,6 +21,7 @@ Testing a new feature end-to-end means updating the `e2e/app/` to exercise it, t
 - **`e2e/app/`**: Minimal Electron app used as test fixture (main, preload, renderer)
 - **`e2e/lib/`**: Shared test utilities
   - `mainPage.ts`: Page Object that encapsulates high-level interactions with the main app window.
+  - `bridgeWindowPage.ts`: Page Object for bridge windows, with static factory methods to open and await a ready bridge window.
   - `helpers.ts`: Playwright fixtures for app launch/cleanup
   - `intake.ts`: Local HTTP server that captures RUM events sent by the SDK
 - **`e2e/scenarios/`**: Test files using Playwright
