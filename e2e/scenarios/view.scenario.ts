@@ -58,6 +58,7 @@ test.describe('session renewal via user activity', () => {
 
 test('increments view error count after an uncaught exception', async ({ mainPage, intake }) => {
   await mainPage.generateUncaughtException();
+  await mainPage.flushTransport();
 
   await intake.getEventsByType('error');
   const viewEvents = await intake.waitForEventCount('view', 2);
