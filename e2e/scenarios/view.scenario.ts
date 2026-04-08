@@ -1,8 +1,8 @@
 import { test, expect } from '../lib/helpers';
 import type { RumViewEvent } from '@datadog/electron-sdk';
 
-test('emits an initial active view event on SDK init', async ({ app, intake }) => {
-  await app.flushTransport();
+test('emits an initial active view event on SDK init', async ({ mainPage, intake }) => {
+  await mainPage.flushTransport();
   const events = await intake.getEventsByType('view');
   expect(events).toHaveLength(1);
 
@@ -20,13 +20,16 @@ test('emits an initial active view event on SDK init', async ({ app, intake }) =
   expect(view.view.time_spent).toBeGreaterThanOrEqual(0);
 });
 
-test('emits an inactive view on session expiry and a new active view on session renewal', async ({ app, intake }) => {
-  await app.flushTransport();
+test('emits an inactive view on session expiry and a new active view on session renewal', async ({
+  mainPage,
+  intake,
+}) => {
+  await mainPage.flushTransport();
   const initialEvents = await intake.getEventsByType('view');
   const initialViewId = (initialEvents[0].body as RumViewEvent).view.id;
 
-  await app.stopSession();
-  await app.flushTransport();
+  await mainPage.stopSession();
+  await mainPage.flushTransport();
 
   const eventsAfterStop = await intake.waitForEventCount('view', 2);
   const inactiveView = eventsAfterStop[1].body as RumViewEvent;
@@ -35,8 +38,8 @@ test('emits an inactive view on session expiry and a new active view on session 
   expect(inactiveView.view.is_active).toBe(false);
   expect(inactiveView._dd.document_version).toBe(2);
 
-  await app.generateActivity();
-  await app.flushTransport();
+  await mainPage.generateActivity();
+  await mainPage.flushTransport();
 
   const eventsAfterRenewal = await intake.waitForEventCount('view', 3);
   const newView = eventsAfterRenewal[2].body as RumViewEvent;
@@ -46,8 +49,8 @@ test('emits an inactive view on session expiry and a new active view on session 
   expect(newView._dd.document_version).toBe(1);
 });
 
-test('increments view error count after an uncaught exception', async ({ app, intake }) => {
-  await app.generateUncaughtException();
+test('increments view error count after an uncaught exception', async ({ mainPage, intake }) => {
+  await mainPage.generateUncaughtException();
 
   await intake.getEventsByType('error');
   const viewEvents = await intake.waitForEventCount('view', 2);

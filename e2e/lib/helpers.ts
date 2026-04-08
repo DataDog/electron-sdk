@@ -1,7 +1,7 @@
 import { test as base, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import { join } from 'node:path';
 import { Intake } from './intake';
-import { AppPage } from './appPage';
+import { MainPage } from './mainPage';
 import type { InitConfiguration } from '@datadog/electron-sdk';
 
 // Get electron executable path from the app's node_modules
@@ -11,7 +11,7 @@ const electronPath = require(join(__dirname, '../app/node_modules/electron')) as
 export interface TestFixtures {
   electronApp: ElectronApplication;
   window: Page;
-  app: AppPage;
+  mainPage: MainPage;
   intake: Intake;
 }
 
@@ -45,8 +45,8 @@ export const test = base.extend<TestFixtures>({
     { auto: true },
   ],
 
-  app: async ({ window }, use) => {
-    await use(new AppPage(window));
+  mainPage: async ({ window }, use) => {
+    await use(new MainPage(window));
   },
 });
 
@@ -86,10 +86,10 @@ async function waitForWindowLoaded(electronApp: ElectronApplication): Promise<{ 
 
 export async function launchAppManually(
   intake: Intake
-): Promise<{ electronApp: ElectronApplication; window: Page; app: AppPage }> {
+): Promise<{ electronApp: ElectronApplication; window: Page; mainPage: MainPage }> {
   const electronApp = await launchApp(intake);
   const { window } = await waitForWindowLoaded(electronApp);
-  return { electronApp, window, app: new AppPage(window) };
+  return { electronApp, window, mainPage: new MainPage(window) };
 }
 
 export { expect } from '@playwright/test';

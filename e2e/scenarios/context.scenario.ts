@@ -1,8 +1,8 @@
 import { test, expect } from '../lib/helpers';
 import type { RumErrorEvent, RumViewEvent } from '@datadog/electron-sdk';
 
-test('attributes event to correct session and view based on startTime', async ({ app, intake }) => {
-  await app.flushTransport();
+test('attributes event to correct session and view based on startTime', async ({ mainPage, intake }) => {
+  await mainPage.flushTransport();
   const viewEvents = await intake.getEventsByType('view');
   const firstView = viewEvents[0].body as RumViewEvent;
   const firstSessionId = firstView.session.id;
@@ -12,11 +12,11 @@ test('attributes event to correct session and view based on startTime', async ({
   const timestampInFirstSession = Date.now();
 
   // Renew session (stop + activity)
-  await app.renewSession();
+  await mainPage.renewSession();
 
   // Add error with timestamp from first session
-  await app.generateManualError(timestampInFirstSession);
-  await app.flushTransport();
+  await mainPage.generateManualError(timestampInFirstSession);
+  await mainPage.flushTransport();
 
   // Verify error is attributed to first session/view
   const errorEvents = await intake.getEventsByType('error');
@@ -28,12 +28,12 @@ test('attributes event to correct session and view based on startTime', async ({
   expect(error.date).toBe(timestampInFirstSession);
 });
 
-test('events should not be sent when the session is expired', async ({ app, intake }) => {
-  await app.flushTransport();
-  await app.stopSession();
+test('events should not be sent when the session is expired', async ({ mainPage, intake }) => {
+  await mainPage.flushTransport();
+  await mainPage.stopSession();
 
-  await app.generateManualError();
-  await app.flushTransport();
+  await mainPage.generateManualError();
+  await mainPage.flushTransport();
 
   const errorEvents = await intake.getEventsByType('error');
   expect(errorEvents).toHaveLength(0);

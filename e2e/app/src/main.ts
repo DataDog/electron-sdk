@@ -18,8 +18,8 @@ let rendererHttpServer: http.Server | null = null;
 function startRendererHttpServer(): Promise<number> {
   return new Promise((resolve) => {
     rendererHttpServer = http.createServer((_req, res) => {
-      const htmlPath = join(__dirname, 'index-renderer.html');
-      const jsPath = join(__dirname, 'renderer-bridge.js');
+      const htmlPath = join(__dirname, 'bridge-window.html');
+      const jsPath = join(__dirname, 'bridge-window.js');
 
       if (_req.url === '/' || _req.url?.endsWith('.html')) {
         const html = fs.readFileSync(htmlPath, 'utf-8');
@@ -30,7 +30,7 @@ function startRendererHttpServer(): Promise<number> {
         res.writeHead(200, { 'Content-Type': 'application/javascript' });
         res.end(js);
       } else if (_req.url?.endsWith('.js.map')) {
-        const mapPath = join(__dirname, 'renderer-bridge.js.map');
+        const mapPath = join(__dirname, 'bridge-window.js.map');
         try {
           const map = fs.readFileSync(mapPath, 'utf-8');
           res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -89,7 +89,7 @@ void app.whenReady().then(async () => {
     process.crash();
   });
 
-  ipcMain.handle('openRendererFileWindow', () => {
+  ipcMain.handle('openBridgeFileWindow', () => {
     const win = new BrowserWindow({
       width: 800,
       height: 600,
@@ -99,10 +99,10 @@ void app.whenReady().then(async () => {
         nodeIntegration: false,
       },
     });
-    void win.loadFile(join(__dirname, 'index-renderer.html'));
+    void win.loadFile(join(__dirname, 'bridge-window.html'));
   });
 
-  ipcMain.handle('openRendererFileWindowNoIsolation', () => {
+  ipcMain.handle('openBridgeFileWindowNoIsolation', () => {
     const win = new BrowserWindow({
       width: 800,
       height: 600,
@@ -112,10 +112,10 @@ void app.whenReady().then(async () => {
         nodeIntegration: false,
       },
     });
-    void win.loadFile(join(__dirname, 'index-renderer.html'));
+    void win.loadFile(join(__dirname, 'bridge-window.html'));
   });
 
-  ipcMain.handle('openRendererHttpWindow', async () => {
+  ipcMain.handle('openBridgeHttpWindow', async () => {
     const port = await startRendererHttpServer();
     const win = new BrowserWindow({
       width: 800,
@@ -156,7 +156,7 @@ function createWindow() {
     },
   });
 
-  void mainWindow.loadFile(join(__dirname, 'index.html'));
+  void mainWindow.loadFile(join(__dirname, 'main-window.html'));
 }
 
 function getConfiguration(): InitConfiguration {

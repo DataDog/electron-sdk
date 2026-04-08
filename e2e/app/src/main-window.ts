@@ -16,13 +16,6 @@ stopSessionButton.addEventListener('click', () => {
   });
 });
 
-const generateActivityButton = document.getElementById('generate-activity') as HTMLButtonElement;
-generateActivityButton.addEventListener('click', () => {
-  void window.electronAPI.generateActivity().then(() => {
-    statusDiv.textContent = 'Activity generated';
-  });
-});
-
 const uncaughtExceptionButton = document.getElementById('generate-uncaught-exception') as HTMLButtonElement;
 uncaughtExceptionButton.addEventListener('click', () => {
   void window.electronAPI.generateUncaughtException().then(() => {

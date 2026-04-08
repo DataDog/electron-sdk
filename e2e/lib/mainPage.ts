@@ -6,16 +6,16 @@ interface ElectronAppWindow {
     generateTelemetryErrors: (count: number) => Promise<void>;
     generateManualError: (startTime?: number) => Promise<void>;
     flushTransport: () => Promise<void>;
-    openRendererFileWindow: () => Promise<void>;
-    openRendererFileWindowNoIsolation: () => Promise<void>;
-    openRendererHttpWindow: () => Promise<void>;
+    openBridgeFileWindow: () => Promise<void>;
+    openBridgeFileWindowNoIsolation: () => Promise<void>;
+    openBridgeHttpWindow: () => Promise<void>;
   };
 }
 
 /**
- * Page Object to interact with the electron app window
+ * Page Object to interact with the main app window
  */
-export class AppPage {
+export class MainPage {
   constructor(private readonly page: Page) {}
 
   async renewSession() {
@@ -70,17 +70,17 @@ export class AppPage {
       });
   }
 
-  async openRendererFileWindow() {
-    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.openRendererFileWindow());
+  async openBridgeFileWindow() {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.openBridgeFileWindow());
   }
 
-  async openRendererFileWindowNoIsolation() {
+  async openBridgeFileWindowNoIsolation() {
     await this.page.evaluate(() =>
-      (globalThis as unknown as ElectronAppWindow).electronAPI.openRendererFileWindowNoIsolation()
+      (globalThis as unknown as ElectronAppWindow).electronAPI.openBridgeFileWindowNoIsolation()
     );
   }
 
-  async openRendererHttpWindow() {
-    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.openRendererHttpWindow());
+  async openBridgeHttpWindow() {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.openBridgeHttpWindow());
   }
 }

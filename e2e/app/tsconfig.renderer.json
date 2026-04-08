@@ -7,5 +7,5 @@
     "rootDir": "./src",
     "composite": true
   },
-  "include": ["src/renderer.ts", "src/renderer-bridge.ts", "src/global.d.ts"]
+  "include": ["src/main-window.ts", "src/bridge-window.ts", "src/global.d.ts"]
 }

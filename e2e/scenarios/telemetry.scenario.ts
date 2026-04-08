@@ -1,9 +1,9 @@
 import { test, expect } from '../lib/helpers';
 import type { TelemetryErrorEvent } from '@datadog/electron-sdk';
 
-test('SDK sends telemetry error event to intake', async ({ app, intake }) => {
-  await app.generateTelemetryError();
-  await app.flushTransport();
+test('SDK sends telemetry error event to intake', async ({ mainPage, intake }) => {
+  await mainPage.generateTelemetryError();
+  await mainPage.flushTransport();
 
   const telemetryEvents = await intake.getEventsByType('telemetry');
   expect(telemetryEvents).toHaveLength(1);
@@ -24,17 +24,17 @@ test('SDK sends telemetry error event to intake', async ({ app, intake }) => {
   expect(event._dd.format_version).toBe(2);
 });
 
-test('telemetry events are limited per session and reset on session renewal', async ({ app, intake }) => {
+test('telemetry events are limited per session and reset on session renewal', async ({ mainPage, intake }) => {
   // only 100 should be sent (MAX_TELEMETRY_EVENTS_PER_SESSION)
-  await app.generateTelemetryErrors(110);
-  await app.flushTransport();
+  await mainPage.generateTelemetryErrors(110);
+  await mainPage.flushTransport();
 
   const telemetryEvents = await intake.waitForEventCount('telemetry', 100);
   expect(telemetryEvents).toHaveLength(100);
 
-  await app.renewSession();
-  await app.generateTelemetryError();
-  await app.flushTransport();
+  await mainPage.renewSession();
+  await mainPage.generateTelemetryError();
+  await mainPage.flushTransport();
 
   const allTelemetryEvents = await intake.waitForEventCount('telemetry', 101);
   expect(allTelemetryEvents).toHaveLength(101);
