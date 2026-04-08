@@ -2,6 +2,12 @@
 
 All notable changes to `@datadog/electron-sdk` are documented here.
 
+## [0.1.3] - 2026-04-08
+
+### Internal
+
+- 👷 [RUM-15055] fix release / publish pipeline issues from v0.1.2 (#87)
+
 ## [0.1.2] - 2026-04-07
 
 ### Internal
