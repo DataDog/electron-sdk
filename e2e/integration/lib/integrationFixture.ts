@@ -40,16 +40,13 @@ export const test = base.extend<IntegrationFixtures>({
     await electronApp.close();
   },
 
-  window: [
-    async ({ electronApp }, use) => {
-      const window = await electronApp.firstWindow();
-      await window.waitForLoadState('load');
-      // Small buffer for the SDK and browser-rum to initialize
-      await window.waitForTimeout(500);
-      await use(window);
-    },
-    { auto: true },
-  ],
+  window: async ({ electronApp }, use) => {
+    const window = await electronApp.firstWindow();
+    await window.waitForLoadState('load');
+    // Small buffer for the SDK and browser-rum to initialize
+    await window.waitForTimeout(500);
+    await use(window);
+  },
 });
 
 /**
