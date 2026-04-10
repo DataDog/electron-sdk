@@ -1,8 +1,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { session } from 'electron';
+import { app, session } from 'electron';
 import { displayInfo } from '../tools/display';
+import { monitor } from '../domain/telemetry';
 
 const PRELOAD_FILENAME = 'preload-auto.cjs';
 
@@ -16,9 +17,13 @@ export function registerPreload(): void {
     );
     return;
   }
-
-  session.defaultSession.registerPreloadScript({
-    type: 'frame',
-    filePath: preloadPath,
-  });
+  void app.whenReady().then(
+    monitor(() => {
+      // Session can only be accessed when app is ready
+      session.defaultSession.registerPreloadScript({
+        type: 'frame',
+        filePath: preloadPath,
+      });
+    })
+  );
 }
