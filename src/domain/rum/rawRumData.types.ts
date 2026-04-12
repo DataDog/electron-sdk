@@ -1,7 +1,7 @@
 import { RecursivePartial, ServerDuration } from '@datadog/browser-core';
-import { RumErrorEvent, RumViewEvent } from './rumEvent.types';
+import { RumErrorEvent, RumResourceEvent, RumViewEvent } from './rumEvent.types';
 
-export type RawRumData = RawRumView | RawRumError;
+export type RawRumData = RawRumView | RawRumError | RawRumResource;
 
 export interface RawRumView extends RecursivePartial<RumViewEvent> {
   type: 'view';
@@ -49,5 +49,25 @@ export interface RawRumError extends RecursivePartial<RumErrorEvent> {
       max_address?: string;
       arch?: string;
     }[];
+  };
+}
+
+export type RawResourceMethod = 'POST' | 'GET' | 'HEAD' | 'PUT' | 'DELETE' | 'PATCH' | 'TRACE' | 'OPTIONS' | 'CONNECT';
+
+export interface RawRumResource extends RecursivePartial<RumResourceEvent> {
+  type: 'resource';
+  date: number;
+  resource: {
+    id: string;
+    duration: number;
+    type: 'native';
+    method?: RawResourceMethod;
+    status_code: number;
+    url: string;
+  };
+  _dd: {
+    trace_id: string;
+    span_id: string;
+    format_version: 2;
   };
 }

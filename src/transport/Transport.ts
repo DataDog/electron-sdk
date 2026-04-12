@@ -9,7 +9,7 @@ import { BatchManager } from './batch';
  * through dedicated {@link BatchManager} instances for disk-buffered delivery.
  */
 export class Transport {
-  private tracks: EventTrack[] = [EventTrack.RUM];
+  private tracks: EventTrack[] = [EventTrack.RUM, EventTrack.SPANS];
   private batchManagers: BatchManager[] = [];
   private basePath: string;
 

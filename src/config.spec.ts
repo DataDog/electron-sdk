@@ -14,6 +14,7 @@ describe('buildConfiguration', () => {
     service: 'test-service',
     clientToken: 'test-token',
     applicationId: 'test-app-id',
+    tracing: false,
   };
 
   afterEach(() => {

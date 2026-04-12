@@ -4,6 +4,7 @@ import { EventKind, EventSource, EventFormat } from '../event';
 import type { EventManager, RawRumEvent } from '../event';
 import { monitor, addError as addTelemetryError } from '../domain/telemetry';
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
+import { displayInfo } from '../tools/display';
 
 type BridgeEventType = 'rum' | 'log' | 'internal_telemetry';
 
@@ -58,6 +59,7 @@ export class BridgeHandler {
 
     switch (bridgeEvent.eventType) {
       case 'rum':
+        displayInfo('Bridge received renderer RUM event:', (bridgeEvent.event as { type?: string })?.type);
         this.eventManager.notify({
           kind: EventKind.RAW,
           source: EventSource.RENDERER,

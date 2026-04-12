@@ -1,6 +1,7 @@
 import typescript from '@rollup/plugin-typescript';
 import { nodeResolve } from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
+import json from '@rollup/plugin-json';
 import replace from '@rollup/plugin-replace';
 import dts from 'rollup-plugin-dts';
 import pkg from './package.json' with { type: 'json' };
@@ -9,6 +10,7 @@ const sharedPlugins = [
   replace({ preventAssignment: true, __SDK_VERSION__: JSON.stringify(pkg.version) }),
   nodeResolve(),
   commonjs(),
+  json(),
   typescript({
     tsconfig: './tsconfig.build.json',
     declaration: false,
@@ -60,6 +62,24 @@ const config = [
     external: ['electron'],
     plugins: sharedPlugins,
   },
+  // Early init: imported before electron to hook require('electron') for BrowserWindow wrapping
+  {
+    input: 'src/entries/init.ts',
+    output: [
+      {
+        file: 'dist/init.cjs',
+        format: 'cjs',
+        sourcemap: true,
+      },
+      {
+        file: 'dist/init.mjs',
+        format: 'esm',
+        sourcemap: true,
+      },
+    ],
+    external: ['electron'],
+    plugins: sharedPlugins,
+  },
   // TypeScript declarations: main
   {
     input: 'src/index.ts',
@@ -75,6 +95,15 @@ const config = [
     input: 'src/entries/preload.ts',
     output: {
       file: 'dist/preload.d.ts',
+      format: 'esm',
+    },
+    plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
+  },
+  // TypeScript declarations: init
+  {
+    input: 'src/entries/init.ts',
+    output: {
+      file: 'dist/init.d.ts',
       format: 'esm',
     },
     plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],

@@ -84,6 +84,61 @@ Internal observability for the SDK itself. Captures SDK errors and sends them as
 
 See `src/domain/telemetry/`.
 
+## APM Tracing (dd-trace integration)
+
+When `tracing: true` is set in the configuration, the SDK integrates with dd-trace (bundled) for HTTP resource collection and automatic preload injection.
+
+### Early initialization (`@datadog/electron-sdk/init`)
+
+dd-trace instruments modules by hooking `require()`. For this to work, it must be initialized **before** `require('electron')`. The SDK provides a dedicated entry point for this:
+
+```typescript
+import '@datadog/electron-sdk/init'; // must be first
+import { app, BrowserWindow } from 'electron';
+```
+
+This entry point initializes dd-trace with the `electron` exporter and silently no-ops if dd-trace is unavailable. Because it runs before `electron` is imported, dd-trace can:
+
+- Hook `require('electron')` to wrap `BrowserWindow` for automatic preload injection
+- Instrument Electron's `net` module for HTTP span collection
+
+### How tracing works
+
+dd-trace's `electron` exporter publishes normalized spans to a Node.js diagnostics channel (`datadog:apm:electron:export`) instead of sending them to a local Datadog Agent. The `ResourceConverter` subscribes to this channel, filters for HTTP spans, excludes the SDK's own intake requests, and converts them into `RawRumResource` events routed through the standard event pipeline.
+
+```
+Instrumented code (fetch, net.request)
+    ↓
+dd-trace creates spans
+    ↓
+ElectronExporter → diagnostics channel 'datadog:apm:electron:export'
+    ↓
+ResourceConverter (filters + converts)
+    ↓
+EventManager → Assembly → Transport → Datadog intake
+```
+
+Service, env, and version are not configured on the tracer — the SDK's Assembly hooks enrich RUM events with those values from the SDK config.
+
+Trace and span IDs are converted to **decimal strings** (`Identifier.toString(10)`) as required by the RUM intake for APM correlation.
+
+### Supported HTTP integrations
+
+In Electron, only these dd-trace integrations produce HTTP spans:
+
+- **`fetch`** — global `fetch()` (patched at runtime)
+- **`electron` (net)** — `net.request()` / `net.fetch()` (Electron-specific API)
+
+Node's `http`/`https` modules cannot be instrumented in bundled Electron apps because they load before dd-trace's hooks activate.
+
+### Preload injection
+
+dd-trace wraps `BrowserWindow` to automatically inject a preload script via `session.registerPreloadScript()`. This preload sets up the `DatadogEventBridge` — the same bridge the SDK's own `preload-auto.cjs` provides. This works in both bundled and non-bundled environments because `electron` is always a runtime module (never bundled).
+
+The SDK's own `registerPreload()` is not used when the `@datadog/electron-sdk/init` entry point handles preload injection. Both preloads have a double-registration guard (`if (window.DatadogEventBridge) return`), so they are safe to run together in any order.
+
+See `src/domain/tracing/` and `src/entries/init.ts`.
+
 ## Two-Tier Configuration
 
 `InitConfiguration` (user API) → `buildConfiguration()` → `Configuration` (internal, validated).
