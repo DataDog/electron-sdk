@@ -1,4 +1,8 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+// Must be imported before 'electron' — initializes dd-trace and hooks require('electron')
+// for automatic BrowserWindow preload injection.
+import '@datadog/electron-sdk/init';
+
+import { app, BrowserWindow, ipcMain, net } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as https from 'node:https';
@@ -93,6 +97,16 @@ ipcMain.handle('main:fetch-api', async () => {
   return JSON.parse(data) as unknown;
 });
 
+ipcMain.handle('main:fetch-api-fetch', async () => {
+  const res = await fetch('https://httpbin.org/json');
+  return (await res.json()) as unknown;
+});
+
+ipcMain.handle('main:fetch-api-net', async () => {
+  const res = await net.fetch('https://httpbin.org/json');
+  return (await res.json()) as unknown;
+});
+
 // IPC handler to crash the main process
 ipcMain.handle('crash', () => {
   process.crash();
@@ -117,6 +131,7 @@ void app.whenReady().then(async () => {
     ...CONF.staging,
     service: 'electron-playground',
     env: 'dev',
+    tracing: true,
   });
   console.log('SDK init result:', result);
 

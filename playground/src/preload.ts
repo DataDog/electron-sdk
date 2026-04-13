@@ -10,4 +10,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   generateUnhandledRejection: () => ipcRenderer.invoke('generateUnhandledRejection'),
   crash: () => ipcRenderer.invoke('crash'),
   mainFetchApi: () => ipcRenderer.invoke('main:fetch-api'),
+  mainFetchApiFetch: () => ipcRenderer.invoke('main:fetch-api-fetch'),
+  mainFetchApiNet: () => ipcRenderer.invoke('main:fetch-api-net'),
 });
