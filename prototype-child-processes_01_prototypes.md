@@ -101,16 +101,44 @@ See `prototype-child-processes_00_research.md` for the landscape survey.
 ## Prototype 3: Electron utilityProcess
 
 **Branch:** `bcaudan/proto-utility`
-**Status:** Not started
+**Status:** Complete
 
 ### Findings
 
-_To be populated after prototype._
+| Test                                    | Result                                                                                                                                        |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `utilityProcess.fork()` monkey-patching | Works via `Object.defineProperty` on the `utilityProcess` singleton                                                                           |
+| Fork with serviceName                   | Captured: modulePath, serviceName, pid on spawn                                                                                               |
+| Send ping (round-trip)                  | Works. Message in/out both tracked with counts                                                                                                |
+| Send work (fibonacci 35)                | 63ms computation in utility process, result received in main                                                                                  |
+| Dedicated MessagePort channel           | Works. Periodic telemetry (memoryUsage, cpuUsage) every 2s on dedicated port                                                                  |
+| parentPort piggyback (`__dd` prefix)    | Works. Error forwarding with full stack trace received in main. Filtered from app messages.                                                   |
+| Crash utility (thrown error)            | Three events in order: (1) `dd-message` with stack trace, (2) `utilityProcess.exit` exitCode=1, (3) `child-process-gone` reason=abnormal-exit |
+| Exit utility (process.exit(1))          | `utilityProcess.exit` exitCode=1 + `child-process-gone` reason=abnormal-exit. **No** error message forwarded.                                 |
+| `child-process-gone` correlation        | Fires with `type=Utility`, `serviceName=node.mojom.NodeService`, `name=dd-proto-worker`                                                       |
+| Fork without serviceName                | Appears as `service=Node Utility Process` — hard to identify                                                                                  |
 
 ### What worked
 
+- **Fork wrapper via `Object.defineProperty`** — `utilityProcess.fork` is a static method on a singleton. Straightforward and reliable.
+- **All 3 data flow approaches validated:**
+  - **Dedicated MessagePort channel** — richest. Periodic telemetry (memory, CPU) on a separate port. No interference with app messages.
+  - **parentPort piggyback (`__dd` prefix)** — simpler setup. Error forwarding with full stack traces. `__dd` flag cleanly separates SDK from app messages.
+  - **`child-process-gone` event** — fires automatically for all utility process terminations. Provides reason, exitCode, serviceName.
+- **Crash error ordering is reliable** — error message via parentPort arrives **before** `child-process-gone`. Allows correlating error details with lifecycle event.
+- **`getAppMetrics()` provides free metrics** — CPU%, memory per utility process, keyed by serviceName. No child-side instrumentation needed.
+
 ### What didn't
+
+- **`child-process-gone` cannot distinguish crash from intentional exit** — both `process.exit(1)` and thrown errors produce `reason=abnormal-exit, exitCode=256`. Only differentiator is whether an error message was forwarded via parentPort.
+- **`child-process-gone` serviceName is Chromium-internal** — shows `node.mojom.NodeService`, not the user's serviceName. The `name` field has the user-set value. Different fields for different identifiers.
+- **`child-process-gone` exitCode differs from utility exit event** — Chromium reports `exitCode=256` for `process.exit(1)`, while the utility `exit` event correctly reports `exitCode=1`.
 
 ### Unexpected issues
 
+- Fork without serviceName defaults to `Node Utility Process` — multiple unnamed utility processes would be indistinguishable. SDK guidance should recommend always setting serviceName.
+- Electron always runs a `network.mojom.NetworkService` utility process. `getAppMetrics()` always shows at least one Utility type.
+
 ### Feasibility verdict
+
+**Fully feasible. High value, low complexity.** Main-process-only approach (fork wrapper + `getAppMetrics()` + `child-process-gone`) captures ~80% of useful telemetry with near-zero overhead. Dedicated MessagePort channel provides rich child-side telemetry when deeper visibility is needed.
