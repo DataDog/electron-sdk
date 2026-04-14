@@ -175,8 +175,8 @@ Error forwarding (parentPort piggyback):
 Data flows back to main process via three complementary paths:
 
 - **`child-process-gone` event** — automatic, provides crash reason (but no error details)
-- **parentPort `__dd` messages** — error details with stack traces, arrives before child-process-gone
-- **Dedicated MessagePort** — rich periodic telemetry (memory, CPU), separate from app traffic
+- **parentPort `__dd` messages** — error details with stack traces, arrives before child-process-gone. **Caveat:** `__dd` messages leak into the customer's `child.on('message')` handlers — we can't suppress them since EventEmitter delivers to all listeners. Suitable for one-shot critical data (crash-time error forwarding) but not for periodic telemetry.
+- **Dedicated MessagePort** — rich periodic telemetry (memory, CPU), completely separate from app traffic. Invisible to the customer. **Recommended for all ongoing telemetry.**
 
 ### Findings
 
@@ -208,6 +208,7 @@ Data flows back to main process via three complementary paths:
 - **`child-process-gone` cannot distinguish crash from intentional exit** — both `process.exit(1)` and thrown errors produce `reason=abnormal-exit, exitCode=256`. Only differentiator is whether an error message was forwarded via parentPort.
 - **`child-process-gone` serviceName is Chromium-internal** — shows `node.mojom.NodeService`, not the user's serviceName. The `name` field has the user-set value. Different fields for different identifiers.
 - **`child-process-gone` exitCode differs from utility exit event** — Chromium reports `exitCode=256` for `process.exit(1)`, while the utility `exit` event correctly reports `exitCode=1`.
+- **parentPort piggyback leaks into customer message handlers** — `__dd`-prefixed messages are visible to the customer's `child.on('message')` listeners. EventEmitter delivers to all listeners; we cannot suppress delivery. This makes parentPort piggyback unsuitable for periodic telemetry (pollutes customer IPC). Use only for one-shot critical data (crash-time error forwarding where the process is dying anyway). Use the dedicated MessagePort channel for all ongoing telemetry.
 
 ### Unexpected issues
 
