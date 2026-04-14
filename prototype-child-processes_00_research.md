@@ -4,23 +4,16 @@ Research hub for evaluating how the Datadog Electron SDK could monitor Electron 
 
 ## Priority Matrix
 
-| #   | Mechanism                           | Customer Likelihood | Monitoring Value                           | Instrumentation Feasibility                           | Bundler Safety          | Data Flow                     | Overhead          | **Priority**                  |
-| --- | ----------------------------------- | ------------------- | ------------------------------------------ | ----------------------------------------------------- | ----------------------- | ----------------------------- | ----------------- | ----------------------------- |
-| 1   | `child_process.spawn/exec/execFile` | Very High           | Very High                                  | High (monkey-patch)                                   | High (externalized)     | Trivial (main process)        | Negligible        | **P0**                        |
-| 2   | Electron lifecycle events           | Universal           | High                                       | Very High (event listeners)                           | No risk                 | Trivial (main process)        | Negligible        | **P0**                        |
-| 3   | Electron `utilityProcess`           | High, growing fast  | High                                       | High (fork wrapper + free metrics)                    | Low risk                | Excellent (main-process APIs) | Very Low          | **P1**                        |
-| 4   | `child_process.fork`                | Medium              | High (unique IPC data)                     | High (monkey-patch)                                   | High (externalized)     | Good (built-in IPC)           | Negligible        | **P1**                        |
-| 5   | `worker_threads`                    | Moderate (~20-30%)  | Medium-High                                | Medium (constructor patch easy, child injection hard) | Medium (worker scripts) | Good (MessageChannel)         | Low-Medium        | **P2**                        |
-| 6   | `MessagePort/MessageChannel`        | Growing (~15-25%)   | Low as telemetry target, High as transport | Risky (native binding patching)                       | No risk                 | IS the transport              | High on hot paths | **P3** (as monitoring target) |
+> Updated after prototyping. See `prototype-child-processes_01_prototypes.md` for detailed findings.
 
-## Recommended Prototype Order
-
-1. **child_process.spawn/exec/execFile** — Most used, straightforward instrumentation, validates the monkey-patching + deduplication approach
-2. **Electron lifecycle events** — Trivial to implement, high value, zero risk — can be done alongside #1
-3. **Electron utilityProcess** — Growing adoption, most telemetry available from main-process APIs, good bang for buck
-4. **child_process.fork** — Similar to spawn but with IPC monitoring; test parent-side-only approach first
-5. **worker_threads** — Constructor patching; defer message interception and child-side injection
-6. **MessagePort** — Skip as monitoring target; evaluate as SDK transport mechanism for utility process telemetry
+| #   | Mechanism                           | Customer Likelihood | Monitoring Value | Feasibility (validated)                                                                                | **Priority**      |
+| --- | ----------------------------------- | ------------------- | ---------------- | ------------------------------------------------------------------------------------------------------ | ----------------- |
+| 1   | Electron lifecycle events           | Universal           | High             | **Trivial.** Event listeners only, zero risk. Validated.                                               | **P0 — do first** |
+| 2   | `child_process.spawn/exec/execFile` | Very High           | Very High        | **Feasible with caveats.** Requires `require()` + `Object.defineProperty`. Dedup and bundler concerns. | **P0**            |
+| 3   | Electron `utilityProcess`           | High, growing fast  | High             | **Fully feasible.** Fork wrapper + MessagePort telemetry channel. Validated.                           | **P1**            |
+| 4   | `child_process.fork`                | Medium, declining   | High             | Same approach as spawn. Not prototyped but expected to work.                                           | **P2**            |
+| 5   | `worker_threads`                    | Moderate (~20-30%)  | Medium-High      | Not prototyped. Constructor patch likely works, child injection hard.                                  | **P3**            |
+| 6   | `MessagePort/MessageChannel`        | Growing (~15-25%)   | Low as target    | **Validated as transport** for utility process telemetry. Skip as monitoring target.                   | N/A (transport)   |
 
 ---
 
@@ -427,34 +420,3 @@ SDK uses `execFile('sw_vers')` internally. Must exclude from customer telemetry.
 ### Relationship to SDK architecture
 
 Child process events fit as a new `RawEvent` source flowing through `EventManager` → `Assembly` → `Transport`. Events tagged with `EventSource.MAIN`. Could add `EventSource.CHILD_PROCESS` for events originating from child-side instrumentation.
-
----
-
-## Prototype Findings
-
-_Sections below will be populated as prototypes complete._
-
-### Prototype: child_process.spawn/exec/execFile
-
-**Status:** Not started
-**Worktree:** —
-
-### Prototype: Electron lifecycle events
-
-**Status:** Not started
-**Worktree:** —
-
-### Prototype: utilityProcess
-
-**Status:** Not started
-**Worktree:** —
-
-### Prototype: child_process.fork
-
-**Status:** Not started
-**Worktree:** —
-
-### Prototype: worker_threads
-
-**Status:** Not started
-**Worktree:** —
