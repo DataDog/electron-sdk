@@ -11,6 +11,29 @@ See `prototype-child-processes_00_research.md` for the landscape survey.
 **Branch:** `bcaudan/proto-spawn`
 **Status:** Complete
 
+### Instrumentation strategy
+
+Monkey-patch `spawn`, `exec`, `execFile` (and sync variants) on the `child_process` module object at SDK initialization time, before any customer code runs.
+
+```
+SDK init (early)
+  └─ instrumentChildProcess()
+       ├─ require('node:child_process')  ← must use require(), not import *
+       ├─ Object.defineProperty(cp, 'spawn', wrappedSpawn)
+       ├─ Object.defineProperty(cp, 'exec', wrappedExec)
+       ├─ Object.defineProperty(cp, 'execFile', wrappedExecFile)
+       └─ (same for sync variants)
+
+Customer code calls child_process.spawn/exec/execFile
+  └─ Our wrapper intercepts
+       ├─ Records: command, args, start time
+       ├─ Calls original function
+       ├─ Listens for exit/error events (async) or wraps callback (exec/execFile)
+       └─ Logs telemetry to main process: command, args, duration, exitCode/error
+```
+
+All data stays in the main process — no cross-process communication needed since the parent IS the main process.
+
 ### Findings
 
 | Test                              | Result                                                               |
@@ -62,6 +85,22 @@ See `prototype-child-processes_00_research.md` for the landscape survey.
 **Branch:** `bcaudan/proto-lifecycle`
 **Status:** Complete
 
+### Instrumentation strategy
+
+Subscribe to Electron's built-in process lifecycle events and poll `app.getAppMetrics()` on a timer. No monkey-patching needed — pure event listeners.
+
+```
+SDK init (after app.whenReady)
+  └─ setupLifecycleMonitoring()
+       ├─ app.on('child-process-gone')     ← Electron-managed processes only (GPU, utility, etc.)
+       ├─ app.on('render-process-gone')    ← renderer crashes, with webContentsId for correlation
+       └─ setInterval(5s)
+            └─ app.getAppMetrics()         ← CPU%, memory per process
+                 └─ Diff snapshots by pid+creationTime → detect appeared/disappeared processes
+```
+
+All data originates in the main process. Lifecycle events provide crash reasons (clean-exit, abnormal-exit, killed, crashed, oom). Metrics polling provides continuous CPU/memory per process type.
+
 ### Findings
 
 | Test                                                   | Result                                                                                                                               |
@@ -102,6 +141,42 @@ See `prototype-child-processes_00_research.md` for the landscape survey.
 
 **Branch:** `bcaudan/proto-utility`
 **Status:** Complete
+
+### Instrumentation strategy
+
+Two layers: (1) monkey-patch `utilityProcess.fork()` in the main process, and (2) establish a dedicated telemetry channel to the utility process for rich data.
+
+```
+SDK init (early)
+  └─ instrumentUtilityProcess()
+       ├─ Object.defineProperty(utilityProcess, 'fork', wrappedFork)
+       └─ app.on('child-process-gone')    ← catches utility process crashes
+
+Customer code calls utilityProcess.fork(modulePath, args, options)
+  └─ Our wrapper intercepts
+       ├─ Records: modulePath, serviceName, start time
+       ├─ Calls original fork → returns UtilityProcess instance
+       ├─ Wraps child.postMessage() → counts outbound messages
+       ├─ Listens for spawn, message, exit, error events → counts inbound, logs telemetry
+       └─ (optional) Sets up dedicated MessagePort telemetry channel:
+            Main process                          Utility process
+            ┌─────────────────┐                   ┌──────────────────┐
+            │ port1.on('msg') │◄──── MessagePort ──│ port2.postMessage│
+            │ (receives       │      (dedicated    │ (sends periodic  │
+            │  telemetry)     │       channel)     │  memory/CPU)     │
+            └─────────────────┘                   └──────────────────┘
+
+Error forwarding (parentPort piggyback):
+  Utility process catches uncaughtException
+    └─ parentPort.postMessage({ __dd: true, type: 'error', data: { message, stack } })
+         └─ Main process filters __dd messages from app messages, logs error with stack trace
+```
+
+Data flows back to main process via three complementary paths:
+
+- **`child-process-gone` event** — automatic, provides crash reason (but no error details)
+- **parentPort `__dd` messages** — error details with stack traces, arrives before child-process-gone
+- **Dedicated MessagePort** — rich periodic telemetry (memory, CPU), separate from app traffic
 
 ### Findings
 
