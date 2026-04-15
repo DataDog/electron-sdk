@@ -11,7 +11,7 @@ test('spawn ls produces exactly one resource event', async ({ window, intake }) 
   await flushTransport(window);
 
   const resources = await intake.getEventsByType('resource', 10_000);
-  const lsResources = filterResources(resources, 'child_process://ls');
+  const lsResources = filterResources(resources, 'spawn://ls');
 
   expect(lsResources).toHaveLength(1);
   const body = lsResources[0].body as RumResourceEvent;

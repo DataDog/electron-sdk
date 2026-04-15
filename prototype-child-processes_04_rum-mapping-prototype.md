@@ -94,6 +94,18 @@ Production should make the interval configurable.
 
 `exec` callback errors have `error.code` which can be a string (e.g., `'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'`) rather than a number. The prototype handles this with a fallback to `-1` for `status_code`, but production should distinguish errno strings from numeric exit codes.
 
+### Application path sanitization
+
+Events from all sources (main process, child process, renderer/browser-rum) can contain full filesystem paths to the Electron app in view names/URLs, resource URLs, and error stack traces. This leaks the local directory structure.
+
+**Prototype approach:** Global string replace on serialized JSON in `BatchProducer.writeData`, replacing `app.getAppPath()` with `[APP_PATH]`. Quick and catches everything.
+
+**Production recommendations:**
+
+- **Assembly-level hook** — a dedicated sanitization step in Assembly, applied to specific fields (view.url, view.name, error.stack, resource.url) rather than brute-force string replace. More targeted, avoids false positives.
+- **Source-level scrubbing** — each collection sanitizes paths before emitting. Most precise but duplicated across collections. Doesn't cover renderer events.
+- **Configurable patterns** — allow users to specify additional paths to sanitize (e.g., `userData`, `home` directory) beyond just the app path.
+
 ## Known issues and open questions
 
 ### Renderer crash processing not investigated

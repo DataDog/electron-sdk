@@ -72,12 +72,19 @@ export class ChildProcessCollection {
           child.on('close', (code: number | null, signal: string | null) => {
             if (emitted) return;
             emitted = true;
-            emitResource(command, startTime, code ?? (signal ? -1 : 0), extractArgs(rest), extractSpawnOptions(rest));
+            emitResource(
+              'spawn',
+              command,
+              startTime,
+              code ?? (signal ? -1 : 0),
+              extractArgs(rest),
+              extractSpawnOptions(rest)
+            );
           });
           child.on('error', (err: NodeJS.ErrnoException) => {
             if (emitted) return;
             emitted = true;
-            emitResource(command, startTime, -1, extractArgs(rest), extractSpawnOptions(rest), err);
+            emitResource('spawn', command, startTime, -1, extractArgs(rest), extractSpawnOptions(rest), err);
           });
         }
 
@@ -103,6 +110,7 @@ export class ChildProcessCollection {
             if (!isSelfInstrumentation(command)) {
               const code = error ? ((error.code as number | undefined) ?? -1) : 0;
               emitResource(
+                'exec',
                 command,
                 startTime,
                 typeof code === 'number' ? code : -1,
@@ -125,12 +133,12 @@ export class ChildProcessCollection {
           child.on('close', (code: number | null) => {
             if (emitted) return;
             emitted = true;
-            emitResource(command, startTime, code ?? 0);
+            emitResource('exec', command, startTime, code ?? 0);
           });
           child.on('error', (err: NodeJS.ErrnoException) => {
             if (emitted) return;
             emitted = true;
-            emitResource(command, startTime, -1, undefined, undefined, err);
+            emitResource('exec', command, startTime, -1, undefined, undefined, err);
           });
         }
 
@@ -160,6 +168,7 @@ export class ChildProcessCollection {
             if (!isSelfInstrumentation(file)) {
               const code = error ? ((error.code as number | undefined) ?? -1) : 0;
               emitResource(
+                'execFile',
                 file,
                 startTime,
                 typeof code === 'number' ? code : -1,
@@ -181,12 +190,12 @@ export class ChildProcessCollection {
           child.on('close', (code: number | null) => {
             if (emitted) return;
             emitted = true;
-            emitResource(file, startTime, code ?? 0, extractArgs(rest));
+            emitResource('execFile', file, startTime, code ?? 0, extractArgs(rest));
           });
           child.on('error', (err: NodeJS.ErrnoException) => {
             if (emitted) return;
             emitted = true;
-            emitResource(file, startTime, -1, extractArgs(rest), undefined, err);
+            emitResource('execFile', file, startTime, -1, extractArgs(rest), undefined, err);
           });
         }
 
@@ -207,7 +216,15 @@ export class ChildProcessCollection {
 
         if (!isSelfInstrumentation(command)) {
           const code = result.status ?? (result.error ? -1 : 0);
-          emitResource(command, startTime, code, extractArgs(rest), extractSpawnOptions(rest), result.error);
+          emitResource(
+            'spawnSync',
+            command,
+            startTime,
+            code,
+            extractArgs(rest),
+            extractSpawnOptions(rest),
+            result.error
+          );
         }
 
         return result;
@@ -226,13 +243,13 @@ export class ChildProcessCollection {
         try {
           const result = original.apply(childProcessModule, [command, ...rest]) as Buffer | string;
           if (!isSelfInstrumentation(command)) {
-            emitResource(command, startTime, 0);
+            emitResource('execSync', command, startTime, 0);
           }
           return result;
         } catch (error) {
           if (!isSelfInstrumentation(command)) {
             const code = (error as { status?: number }).status ?? -1;
-            emitResource(command, startTime, code, undefined, undefined, error as Error);
+            emitResource('execSync', command, startTime, code, undefined, undefined, error as Error);
           }
           throw error;
         }
@@ -251,13 +268,13 @@ export class ChildProcessCollection {
         try {
           const result = original.apply(childProcessModule, [file, ...rest]) as Buffer | string;
           if (!isSelfInstrumentation(file)) {
-            emitResource(file, startTime, 0, extractArgs(rest));
+            emitResource('execFileSync', file, startTime, 0, extractArgs(rest));
           }
           return result;
         } catch (error) {
           if (!isSelfInstrumentation(file)) {
             const code = (error as { status?: number }).status ?? -1;
-            emitResource(file, startTime, code, extractArgs(rest), undefined, error as Error);
+            emitResource('execFileSync', file, startTime, code, extractArgs(rest), undefined, error as Error);
           }
           throw error;
         }
@@ -267,6 +284,7 @@ export class ChildProcessCollection {
   }
 
   private emitResource(
+    method: 'spawn' | 'exec' | 'execFile' | 'spawnSync' | 'execSync' | 'execFileSync',
     command: string,
     startTime: TimeStamp,
     statusCode: number,
@@ -291,7 +309,7 @@ export class ChildProcessCollection {
       resource: {
         id: generateUUID(),
         type: 'native',
-        url: `child_process://${command}`,
+        url: `${method}://${command}`,
         duration: toServerDuration(elapsed(startTime, endTime)),
         status_code: statusCode,
       },
