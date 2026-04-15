@@ -154,7 +154,7 @@ const WORKER_PATH = path.join(__dirname, 'workers', 'demo-worker.js');
 
 ipcMain.handle('utility-process:fork', () => {
   return new Promise<string>((resolve) => {
-    const child = utilityProcess.fork(WORKER_PATH, [], { serviceName: 'dd-demo-worker' });
+    const child = utilityProcess.fork(WORKER_PATH, [], { serviceName: 'dd-demo-fork' });
     child.once('message', (msg: { ready?: boolean }) => {
       if (msg.ready) resolve(`Worker forked, pid: ${child.pid}`);
     });
@@ -164,8 +164,8 @@ ipcMain.handle('utility-process:fork', () => {
 
 ipcMain.handle('utility-process:send-message', () => {
   return new Promise<string>((resolve) => {
-    const child = utilityProcess.fork(WORKER_PATH, [], { serviceName: 'dd-demo-worker' });
-    child.once('message', (msg: { ready?: boolean; reply?: string }) => {
+    const child = utilityProcess.fork(WORKER_PATH, [], { serviceName: 'dd-demo-message' });
+    child.on('message', (msg: { ready?: boolean; reply?: string }) => {
       if (msg.ready) {
         child.postMessage({ action: 'ping' });
       } else if (msg.reply) {

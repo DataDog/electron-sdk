@@ -77,6 +77,18 @@ async function refreshSessionDisplay() {
   }
 }
 
+const copySessionIdBtn = document.getElementById('copy-session-id') as HTMLButtonElement;
+copySessionIdBtn.addEventListener('click', () => {
+  try {
+    const parsed = JSON.parse(sessionContent.textContent ?? '');
+    if (parsed.id) {
+      void navigator.clipboard.writeText(parsed.id as string);
+    }
+  } catch {
+    // Session content not valid JSON
+  }
+});
+
 if (stopBtn && sessionContent) {
   // Load session file content on page load
   void refreshSessionDisplay();

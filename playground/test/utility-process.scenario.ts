@@ -11,7 +11,7 @@ test('fork utility produces a view event', async ({ window, intake }) => {
 
   expect(utilityView).toBeDefined();
   const body = utilityView!.body as RumViewEvent;
-  expect(body.view.name).toContain('dd-demo-worker');
+  expect(body.view.name).toContain('dd-demo-fork');
   expect(body.view.id).toBeDefined();
 });
 
@@ -25,7 +25,7 @@ test('fork utility produces view updates with memory metrics', async ({ window, 
   // Find a view update that has memory context (from metrics poll)
   const viewWithMemory = viewEvents.find((e) => {
     const body = e.body as RumViewEvent & { context?: Record<string, unknown> };
-    return (body.view.name ?? '').includes('dd-demo-worker') && body.context?.memory_average !== undefined;
+    return (body.view.name ?? '').includes('dd-demo-fork') && body.context?.memory_average !== undefined;
   });
 
   expect(viewWithMemory).toBeDefined();
