@@ -9,7 +9,8 @@
     "build:renderer": "esbuild src/renderer.ts --bundle --format=esm --outfile=dist/renderer.js --sourcemap",
     "build:watch": "concurrently \"tsc --watch\" \"yarn build:renderer --watch\"",
     "start": "yarn build && electron .",
-    "dev": "yarn build && concurrently \"yarn build:watch\" \"electron .\""
+    "dev": "yarn build && concurrently \"yarn build:watch\" \"electron .\"",
+    "test": "yarn build && playwright test -c test/playwright.config.ts"
   },
   "dependencies": {
     "@datadog/browser-rum": "6.30.1",

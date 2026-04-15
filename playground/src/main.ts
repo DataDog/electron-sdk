@@ -2,10 +2,11 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as https from 'node:https';
-import { init, stopSession, _generateActivity, _generateTelemetryError } from '@datadog/electron-sdk';
+import { init, stopSession, _generateActivity, _generateTelemetryError, _flushTransport } from '@datadog/electron-sdk';
 import { loadWindowState, saveWindowState } from './main/windowState';
 import { setupHotReload } from './main/hotReload';
 
+const isTestMode = process.env.DD_TEST_MODE === '1';
 let mainWindow: BrowserWindow | null = null;
 
 function getSessionFilePath(): string {
@@ -20,6 +21,7 @@ function createWindow() {
     height: savedState?.height ?? 768,
     x: savedState?.x,
     y: savedState?.y,
+    show: !isTestMode,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -54,6 +56,10 @@ ipcMain.handle('get-session-file', () => {
     console.error('Error reading session file:', error);
     return null;
   }
+});
+
+ipcMain.handle('flushTransport', async () => {
+  await _flushTransport();
 });
 
 ipcMain.handle('stop-session', () => {
@@ -121,6 +127,8 @@ void app.whenReady().then(async () => {
     ...CONF.staging,
     service: 'electron-playground',
     env: 'dev',
+    // Allow tests to redirect events to a mock intake server
+    ...(process.env.DD_SDK_PROXY ? { proxy: process.env.DD_SDK_PROXY } : {}),
   });
   console.log('SDK init result:', result);
 

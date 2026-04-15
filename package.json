@@ -56,6 +56,7 @@
     "typecheck": "tsc -b --noEmit",
     "dev:init": "cd playground && yarn install",
     "dev": "scripts/cli dev",
+    "playground:test": "yarn build && cd playground && yarn test",
     "test": "vitest",
     "test:unit": "vitest run --coverage",
     "test:e2e:init": "yarn build && cd e2e/app && yarn install && yarn build",

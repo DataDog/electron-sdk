@@ -26,6 +26,7 @@ interface ElectronAPI {
   generateUnhandledRejection: () => Promise<void>;
   crash: () => Promise<void>;
   mainFetchApi: () => Promise<unknown>;
+  flushTransport: () => Promise<void>;
 }
 
 declare global {
