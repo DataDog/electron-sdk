@@ -27,6 +27,9 @@ interface ElectronAPI {
   crash: () => Promise<void>;
   mainFetchApi: () => Promise<unknown>;
   flushTransport: () => Promise<void>;
+  forkUtility: () => Promise<string>;
+  sendMessage: () => Promise<string>;
+  crashUtility: () => Promise<string>;
   spawnLs: () => Promise<string>;
   execEcho: () => Promise<string>;
   spawnFail: () => Promise<string>;
@@ -205,6 +208,11 @@ if (rendererFetchBtn) {
 }
 
 setupDemoButton('main-fetch', 'main:fetch-api', () => window.electronAPI.mainFetchApi());
+
+// Utility process buttons
+setupDemoButton('fork-utility', 'utility-process:fork', () => window.electronAPI.forkUtility());
+setupDemoButton('send-message', 'utility-process:send-message', () => window.electronAPI.sendMessage());
+setupDemoButton('crash-utility', 'utility-process:crash', () => window.electronAPI.crashUtility());
 
 // Child process buttons
 setupDemoButton('spawn-ls', 'child-process:spawn-ls', () => window.electronAPI.spawnLs());

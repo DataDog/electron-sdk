@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, utilityProcess } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as https from 'node:https';
@@ -145,6 +145,47 @@ ipcMain.handle('child-process:exec-timeout', () => {
     childProcess.exec('sleep 10', { timeout: 100 }, (error) => {
       resolve(error ? `Timeout: ${error.message}` : 'Completed');
     });
+  });
+});
+
+// --- Utility process demo handlers ---
+
+const WORKER_PATH = path.join(__dirname, 'workers', 'demo-worker.js');
+
+ipcMain.handle('utility-process:fork', () => {
+  return new Promise<string>((resolve) => {
+    const child = utilityProcess.fork(WORKER_PATH, [], { serviceName: 'dd-demo-worker' });
+    child.once('message', (msg: { ready?: boolean }) => {
+      if (msg.ready) resolve(`Worker forked, pid: ${child.pid}`);
+    });
+    child.once('exit', (code: number) => resolve(`Worker exited with code ${code}`));
+  });
+});
+
+ipcMain.handle('utility-process:send-message', () => {
+  return new Promise<string>((resolve) => {
+    const child = utilityProcess.fork(WORKER_PATH, [], { serviceName: 'dd-demo-worker' });
+    child.once('message', (msg: { ready?: boolean; reply?: string }) => {
+      if (msg.ready) {
+        child.postMessage({ action: 'ping' });
+      } else if (msg.reply) {
+        resolve(`Reply: ${msg.reply}`);
+        child.kill();
+      }
+    });
+    child.once('exit', () => resolve('Worker exited'));
+  });
+});
+
+ipcMain.handle('utility-process:crash', () => {
+  return new Promise<string>((resolve) => {
+    const child = utilityProcess.fork(WORKER_PATH, [], { serviceName: 'dd-demo-crash-worker' });
+    child.once('message', (msg: { ready?: boolean }) => {
+      if (msg.ready) {
+        child.postMessage({ action: 'crash' });
+      }
+    });
+    child.once('exit', (code: number) => resolve(`Worker crashed, exit code: ${code}`));
   });
 });
 

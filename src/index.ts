@@ -85,7 +85,7 @@ export function _generateTelemetryError() {
 }
 
 export type { InitConfiguration } from './config';
-export type { RumErrorEvent, RumResourceEvent, RumViewEvent } from './domain/rum';
+export type { RumActionEvent, RumErrorEvent, RumResourceEvent, RumViewEvent } from './domain/rum';
 export type { TelemetryErrorEvent } from './domain/telemetry';
 
 export { SESSION_TIME_OUT_DELAY } from './domain/session';
