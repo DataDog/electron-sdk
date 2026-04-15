@@ -100,7 +100,7 @@ export class RendererProcessCollection {
     this.webContentsIdToPid.set(wc.id, pid);
 
     if (!this.rendererViews.has(pid)) {
-      this.createRendererView(pid, wc.getTitle() || `Renderer (pid ${pid})`);
+      this.createRendererView(pid, wc.getTitle() || 'unknown');
     }
     return true;
   }
@@ -112,7 +112,7 @@ export class RendererProcessCollection {
   getOrCreateRendererViewId(pid: number, eventDate?: number): string {
     let view = this.rendererViews.get(pid);
     if (!view) {
-      view = this.createRendererView(pid, `Renderer (pid ${pid})`, eventDate);
+      view = this.createRendererView(pid, 'unknown', eventDate);
     }
     return view.viewId;
   }
