@@ -85,6 +85,11 @@ export class RendererProcessCollection {
         });
       }
     });
+
+    // Page title is available only after the HTML is loaded — update the view name
+    wc.once('page-title-updated', () => {
+      this.trackWebContents(wc);
+    });
   }
 
   /**
@@ -99,7 +104,16 @@ export class RendererProcessCollection {
 
     this.webContentsIdToPid.set(wc.id, pid);
 
-    if (!this.rendererViews.has(pid)) {
+    const existingView = this.rendererViews.get(pid);
+    if (existingView) {
+      // Update title if the view was lazily created with a fallback name
+      const title = wc.getTitle();
+      if (title && existingView.title !== title) {
+        existingView.title = title;
+        existingView.documentVersion++;
+        this.emitViewUpdate(existingView);
+      }
+    } else {
       this.createRendererView(pid, wc.getTitle() || 'unknown');
     }
     return true;
@@ -113,6 +127,11 @@ export class RendererProcessCollection {
     let view = this.rendererViews.get(pid);
     if (!view) {
       view = this.createRendererView(pid, 'unknown', eventDate);
+    } else if (eventDate && eventDate < view.startTime) {
+      // Backdate if this event predates the current startTime
+      view.startTime = eventDate as TimeStamp;
+      view.documentVersion++;
+      this.emitViewUpdate(view);
     }
     return view.viewId;
   }
