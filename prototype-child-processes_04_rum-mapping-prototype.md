@@ -98,13 +98,20 @@ Production should make the interval configurable.
 
 Events from all sources (main process, child process, renderer/browser-rum) can contain full filesystem paths to the Electron app in view names/URLs, resource URLs, and error stack traces. This leaks the local directory structure.
 
-**Prototype approach:** Global string replace on serialized JSON in `BatchProducer.writeData`, replacing `app.getAppPath()` with `[APP_PATH]`. Quick and catches everything.
+**Prototype approach:** Global string replace on serialized JSON in `BatchProducer.writeData`, stripping `app.getAppPath()` from all string values. E.g., `file:///Users/.../playground/dist/index.html` → `file:///index.html`.
+
+**Key finding: `[APP_PATH]` placeholder breaks Datadog UI.**
+The initial approach replaced the path with `[APP_PATH]`, but Datadog RUM Explorer validates `view.url` and won't display URLs containing square brackets. Stripping the path entirely (empty replacement) produces valid URLs the UI displays correctly.
+
+**Key finding: `app.getAppPath()` includes the dist directory.**
+For apps with `"main": "./dist/main.js"`, `app.getAppPath()` returns the `dist/` directory, not the project root. This means `file:///path/to/app/dist/index.html` becomes `file:///index.html` (not `file:///dist/index.html`).
 
 **Production recommendations:**
 
-- **Assembly-level hook** — a dedicated sanitization step in Assembly, applied to specific fields (view.url, view.name, error.stack, resource.url) rather than brute-force string replace. More targeted, avoids false positives.
+- **Assembly-level hook** — a dedicated sanitization step in Assembly, applied to specific fields (view.url, view.name, error.stack, resource.url) rather than brute-force string replace on serialized JSON. More targeted, avoids false positives.
 - **Source-level scrubbing** — each collection sanitizes paths before emitting. Most precise but duplicated across collections. Doesn't cover renderer events.
 - **Configurable patterns** — allow users to specify additional paths to sanitize (e.g., `userData`, `home` directory) beyond just the app path.
+- **Different strategies per field** — `view.url` needs a valid URL (strip path), while `error.stack` could use a placeholder (`[APP]`) since it's not parsed as a URL by the UI.
 
 ## Known issues and open questions
 
