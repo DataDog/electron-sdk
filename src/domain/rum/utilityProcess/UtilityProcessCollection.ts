@@ -168,10 +168,6 @@ export class UtilityProcessCollection {
         time_spent: toServerDuration(elapsed(view.startTime, timeStampNow())),
         is_active: view.isActive,
         ...view.counters,
-      },
-      _dd: { document_version: view.documentVersion },
-      context: {
-        ...(view.pid !== undefined ? { pid: view.pid } : {}),
         ...(view.memorySamples.length > 0
           ? {
               memory_average: Math.round(view.memorySamples.reduce((a, b) => a + b, 0) / view.memorySamples.length),
@@ -179,6 +175,8 @@ export class UtilityProcessCollection {
             }
           : {}),
       },
+      _dd: { document_version: view.documentVersion },
+      ...(view.pid !== undefined ? { context: { pid: view.pid } } : {}),
     };
 
     this.eventManager.notify({

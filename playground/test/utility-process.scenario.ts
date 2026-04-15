@@ -22,16 +22,16 @@ test('fork utility produces view updates with memory metrics', async ({ window, 
   await flushTransport(window);
 
   const viewEvents = await intake.getEventsByType('view', 10_000);
-  // Find a view update that has memory context (from metrics poll)
+  // Find a view update that has memory fields (from metrics poll)
   const viewWithMemory = viewEvents.find((e) => {
-    const body = e.body as RumViewEvent & { context?: Record<string, unknown> };
-    return (body.view.name ?? '').includes('dd-demo-fork') && body.context?.memory_average !== undefined;
+    const body = e.body as RumViewEvent;
+    return (body.view.name ?? '').includes('dd-demo-fork') && body.view.memory_average !== undefined;
   });
 
   expect(viewWithMemory).toBeDefined();
-  const body = viewWithMemory!.body as RumViewEvent & { context: Record<string, unknown> };
-  expect(body.context.memory_average).toBeGreaterThan(0);
-  expect(body.context.memory_max).toBeGreaterThan(0);
+  const body = viewWithMemory!.body as RumViewEvent;
+  expect(body.view.memory_average).toBeGreaterThan(0);
+  expect(body.view.memory_max).toBeGreaterThan(0);
 });
 
 test('crash utility produces an error event linked to utility view', async ({ window, intake }) => {

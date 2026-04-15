@@ -14,6 +14,8 @@ export interface RawRumView extends RecursivePartial<RumViewEvent> {
     action: { count: number };
     error: { count: number };
     resource: { count: number };
+    memory_average?: number;
+    memory_max?: number;
   };
   _dd: { document_version: number };
 }
