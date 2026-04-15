@@ -122,5 +122,5 @@ function sanitizeAppPaths(json: string): string {
       return json;
     }
   }
-  return json.replace(appPathPattern, '[APP_PATH]');
+  return json.replace(appPathPattern, '');
 }

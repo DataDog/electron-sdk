@@ -25,8 +25,9 @@ test('browser-rum view URL is sanitized', async ({ window, intake }) => {
   expect(browserRumView).toBeDefined();
   const browserBody = browserRumView!.body as RumViewEvent;
   expect(browserBody.view.url).toBeDefined();
-  expect(browserBody.view.url).toContain('[APP_PATH]');
   expect(browserBody.view.url).not.toContain('/Users/');
+  // App path (including dist/) is stripped by sanitizeAppPaths
+  expect(browserBody.view.url).toBe('file:///index.html');
 });
 
 test('renderer process view starts before or at the same time as browser-rum view', async ({ window, intake }) => {
