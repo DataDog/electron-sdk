@@ -10,7 +10,7 @@ import {
 import { EventFormat, EventKind, EventManager, EventSource } from '../../../event';
 import type { RawRumError, RawRumView } from '../rawRumData.types';
 
-export const RENDERER_POLL_INTERVAL = 2 * ONE_SECOND;
+export const METRICS_POLL_INTERVAL = 2 * ONE_SECOND;
 
 interface RendererView {
   viewId: string;
@@ -26,9 +26,8 @@ interface RendererView {
 /**
  * Track Electron renderer processes as RUM views.
  *
- * - Detect renderers via webContents.getAllWebContents() + getOSProcessId()
- * - Create a view per renderer process
- * - Attach memory metrics from app.getAppMetrics()
+ * - Detect renderers immediately via app 'web-contents-created'
+ * - Poll app.getAppMetrics() for memory metrics updates
  * - Handle render-process-gone → emit error on renderer view
  * - Expose getRendererViewId(pid) for Assembly container hierarchy
  */
@@ -36,7 +35,8 @@ export class RendererProcessCollection {
   private readonly rendererViews = new Map<number, RendererView>();
   /** Map webContents.id → OS pid, so we can look up the view after process death. */
   private readonly webContentsIdToPid = new Map<number, number>();
-  private readonly pollIntervalId: ReturnType<typeof setInterval>;
+  private readonly metricsIntervalId: ReturnType<typeof setInterval>;
+  private readonly webContentsCreatedListener: (event: Electron.Event, wc: WebContents) => void;
   private readonly renderProcessGoneListener: (
     event: Electron.Event,
     webContents: WebContents,
@@ -44,17 +44,29 @@ export class RendererProcessCollection {
   ) => void;
 
   constructor(private readonly eventManager: EventManager) {
+    this.webContentsCreatedListener = (_event, wc) => {
+      this.onWebContentsCreated(wc);
+    };
+    app.on('web-contents-created', this.webContentsCreatedListener);
+
     this.renderProcessGoneListener = (_event, wc, details) => {
       this.onRenderProcessGone(wc, details);
     };
     app.on('render-process-gone', this.renderProcessGoneListener);
 
-    this.pollIntervalId = setInterval(() => this.pollRenderers(), RENDERER_POLL_INTERVAL);
+    // Detect renderers that were created before the SDK initialized
+    for (const wc of webContentsModule.getAllWebContents()) {
+      this.trackWebContents(wc);
+    }
+
+    // Poll only for metrics updates, not for detection
+    this.metricsIntervalId = setInterval(() => this.pollMetrics(), METRICS_POLL_INTERVAL);
   }
 
   stop(): void {
+    app.off('web-contents-created', this.webContentsCreatedListener);
     app.off('render-process-gone', this.renderProcessGoneListener);
-    clearInterval(this.pollIntervalId);
+    clearInterval(this.metricsIntervalId);
     this.rendererViews.clear();
   }
 
@@ -63,51 +75,91 @@ export class RendererProcessCollection {
     return this.rendererViews.get(pid)?.viewId;
   }
 
-  private pollRenderers(): void {
-    const allWebContents = webContentsModule.getAllWebContents();
+  private onWebContentsCreated(wc: WebContents): void {
+    // Try to track as early as possible — did-start-navigation fires before did-finish-load
+    wc.once('did-start-navigation', () => {
+      if (!this.trackWebContents(wc)) {
+        // pid not available yet — fall back to did-finish-load
+        wc.once('did-finish-load', () => {
+          this.trackWebContents(wc);
+        });
+      }
+    });
+  }
+
+  /**
+   * Try to create a view for the given webContents.
+   * Returns true if the renderer was successfully tracked (or already tracked).
+   */
+  private trackWebContents(wc: WebContents): boolean {
+    if (wc.isDestroyed()) return false;
+
+    const pid = wc.getOSProcessId();
+    if (pid === 0) return false;
+
+    this.webContentsIdToPid.set(wc.id, pid);
+
+    if (!this.rendererViews.has(pid)) {
+      this.createRendererView(pid, wc.getTitle() || `Renderer (pid ${pid})`);
+    }
+    return true;
+  }
+
+  /**
+   * Get or create a renderer view for the given pid.
+   * Called by Assembly to guarantee the view exists before the first bridge event.
+   */
+  getOrCreateRendererViewId(pid: number, eventDate?: number): string {
+    let view = this.rendererViews.get(pid);
+    if (!view) {
+      view = this.createRendererView(pid, `Renderer (pid ${pid})`, eventDate);
+    }
+    return view.viewId;
+  }
+
+  private createRendererView(pid: number, title: string, startDate?: number): RendererView {
+    const view: RendererView = {
+      viewId: generateUUID(),
+      startTime: (startDate ?? timeStampNow()) as TimeStamp,
+      documentVersion: 1,
+      isActive: true,
+      counters: { action: { count: 0 }, error: { count: 0 }, resource: { count: 0 } },
+      pid,
+      title,
+      memorySamples: [],
+    };
+    this.rendererViews.set(pid, view);
+    this.emitViewUpdate(view);
+    return view;
+  }
+
+  private pollMetrics(): void {
     const metrics = app.getAppMetrics();
+    const allWebContents = webContentsModule.getAllWebContents();
     const activePids = new Set<number>();
 
     for (const wc of allWebContents) {
-      if (wc.isDestroyed()) continue;
+      if (!wc.isDestroyed()) {
+        const pid = wc.getOSProcessId();
+        if (pid !== 0) activePids.add(pid);
+      }
+    }
 
-      const pid = wc.getOSProcessId();
-      if (pid === 0) continue;
-      activePids.add(pid);
+    for (const [pid, view] of this.rendererViews) {
+      if (!view.isActive) continue;
 
-      this.webContentsIdToPid.set(wc.id, pid);
-
-      let view = this.rendererViews.get(pid);
-      if (!view) {
-        // New renderer detected
-        const title = wc.getTitle() || `Renderer (pid ${pid})`;
-        view = {
-          viewId: generateUUID(),
-          startTime: timeStampNow(),
-          documentVersion: 1,
-          isActive: true,
-          counters: { action: { count: 0 }, error: { count: 0 }, resource: { count: 0 } },
-          pid,
-          title,
-          memorySamples: [],
-        };
-        this.rendererViews.set(pid, view);
+      // Mark views for pids that are no longer active
+      if (!activePids.has(pid)) {
+        view.isActive = false;
+        view.documentVersion++;
         this.emitViewUpdate(view);
+        continue;
       }
 
       // Update memory metrics
       const metric = metrics.find((m) => m.pid === pid);
       if (metric) {
         view.memorySamples.push(metric.memory.workingSetSize * 1024);
-        view.documentVersion++;
-        this.emitViewUpdate(view);
-      }
-    }
-
-    // Mark views for pids that are no longer active
-    for (const [pid, view] of this.rendererViews) {
-      if (!activePids.has(pid) && view.isActive) {
-        view.isActive = false;
         view.documentVersion++;
         this.emitViewUpdate(view);
       }

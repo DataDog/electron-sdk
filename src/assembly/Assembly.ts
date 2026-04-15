@@ -18,8 +18,8 @@ import { TelemetryEvent } from '../domain/telemetry';
  *   service, and other attributes are preserved.
  */
 export interface AssemblyOptions {
-  /** Resolve a renderer process OS pid to its process view ID for container hierarchy. */
-  getRendererContainerViewId?: (pid: number) => string | undefined;
+  /** Resolve a renderer process OS pid to its process view ID for container hierarchy. Creates the view if needed. */
+  getRendererContainerViewId?: (pid: number, eventDate?: number) => string;
 }
 
 export class Assembly {
@@ -67,7 +67,9 @@ export class Assembly {
     const { session, application, view } = hookResult ?? {};
 
     // Use renderer process view ID if available (container hierarchy), fall back to main view
-    const containerViewId = (event.senderPid && this.options.getRendererContainerViewId?.(event.senderPid)) ?? view?.id;
+    const eventDate = (event.data as { date?: number }).date;
+    const containerViewId =
+      (event.senderPid && this.options.getRendererContainerViewId?.(event.senderPid, eventDate)) ?? view?.id;
 
     const mainProcessAttributes = {
       session: { id: session?.id },

@@ -35,7 +35,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   const rendererProcessCollection = new RendererProcessCollection(eventManager);
   new Assembly(eventManager, hooks, {
-    getRendererContainerViewId: (pid) => rendererProcessCollection.getRendererViewId(pid),
+    getRendererContainerViewId: (pid, eventDate) => rendererProcessCollection.getOrCreateRendererViewId(pid, eventDate),
   });
   new BridgeHandler(eventManager, config);
   new UserActivityTracker(eventManager);
