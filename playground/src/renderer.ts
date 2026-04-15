@@ -27,6 +27,10 @@ interface ElectronAPI {
   crash: () => Promise<void>;
   mainFetchApi: () => Promise<unknown>;
   flushTransport: () => Promise<void>;
+  spawnLs: () => Promise<string>;
+  execEcho: () => Promise<string>;
+  spawnFail: () => Promise<string>;
+  execTimeout: () => Promise<string>;
 }
 
 declare global {
@@ -201,3 +205,9 @@ if (rendererFetchBtn) {
 }
 
 setupDemoButton('main-fetch', 'main:fetch-api', () => window.electronAPI.mainFetchApi());
+
+// Child process buttons
+setupDemoButton('spawn-ls', 'child-process:spawn-ls', () => window.electronAPI.spawnLs());
+setupDemoButton('exec-echo', 'child-process:exec-echo', () => window.electronAPI.execEcho());
+setupDemoButton('spawn-fail', 'child-process:spawn-fail', () => window.electronAPI.spawnFail());
+setupDemoButton('exec-timeout', 'child-process:exec-timeout', () => window.electronAPI.execTimeout());

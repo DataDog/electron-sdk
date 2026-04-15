@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as https from 'node:https';
+import * as childProcess from 'node:child_process';
 import { init, stopSession, _generateActivity, _generateTelemetryError, _flushTransport } from '@datadog/electron-sdk';
 import { loadWindowState, saveWindowState } from './main/windowState';
 import { setupHotReload } from './main/hotReload';
@@ -106,6 +107,45 @@ ipcMain.handle('main:fetch-api', async () => {
 // IPC handler to crash the main process
 ipcMain.handle('crash', () => {
   process.crash();
+});
+
+// --- Child process demo handlers ---
+
+ipcMain.handle('child-process:spawn-ls', () => {
+  return new Promise<string>((resolve, reject) => {
+    const child = childProcess.spawn('ls', ['-la']);
+    let stdout = '';
+    child.stdout.on('data', (data: Buffer) => {
+      stdout += data.toString();
+    });
+    child.on('close', () => resolve(stdout));
+    child.on('error', reject);
+  });
+});
+
+ipcMain.handle('child-process:exec-echo', () => {
+  return new Promise<string>((resolve, reject) => {
+    childProcess.exec('echo hello world', (error, stdout) => {
+      if (error) reject(error);
+      else resolve(stdout.trim());
+    });
+  });
+});
+
+ipcMain.handle('child-process:spawn-fail', () => {
+  return new Promise<string>((resolve) => {
+    const child = childProcess.spawn('nonexistent-command-xyz');
+    child.on('error', (err) => resolve(`Error: ${err.message}`));
+    child.on('close', (code) => resolve(`Exited with code ${code}`));
+  });
+});
+
+ipcMain.handle('child-process:exec-timeout', () => {
+  return new Promise<string>((resolve) => {
+    childProcess.exec('sleep 10', { timeout: 100 }, (error) => {
+      resolve(error ? `Timeout: ${error.message}` : 'Completed');
+    });
+  });
 });
 
 void app.whenReady().then(async () => {

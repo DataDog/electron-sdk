@@ -12,4 +12,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   crash: () => ipcRenderer.invoke('crash'),
   mainFetchApi: () => ipcRenderer.invoke('main:fetch-api'),
   flushTransport: () => ipcRenderer.invoke('flushTransport'),
+  spawnLs: () => ipcRenderer.invoke('child-process:spawn-ls'),
+  execEcho: () => ipcRenderer.invoke('child-process:exec-echo'),
+  spawnFail: () => ipcRenderer.invoke('child-process:spawn-fail'),
+  execTimeout: () => ipcRenderer.invoke('child-process:exec-timeout'),
 });
