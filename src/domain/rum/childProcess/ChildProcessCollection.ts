@@ -15,6 +15,12 @@ const SELF_INSTRUMENTATION_COMMANDS = ['sw_vers'];
 type AnyFunction = (...args: any[]) => any;
 
 /**
+ * Reentrant guard: when exec/execFile call spawn internally, we skip
+ * the spawn instrumentation to avoid duplicate resource events.
+ */
+let insideHigherLevelCall = false;
+
+/**
  * Collect child_process spawn/exec/execFile calls as RUM resource events.
  *
  * Each completed child process produces a resource with:
@@ -61,11 +67,16 @@ export class ChildProcessCollection {
         const startTime = timeStampNow();
         const child = original.apply(childProcessModule, [command, ...rest]) as ChildProcess;
 
-        if (!isSelfInstrumentation(command)) {
+        if (!isSelfInstrumentation(command) && !insideHigherLevelCall) {
+          let emitted = false;
           child.on('close', (code: number | null, signal: string | null) => {
+            if (emitted) return;
+            emitted = true;
             emitResource(command, startTime, code ?? (signal ? -1 : 0), extractArgs(rest), extractSpawnOptions(rest));
           });
           child.on('error', (err: NodeJS.ErrnoException) => {
+            if (emitted) return;
+            emitted = true;
             emitResource(command, startTime, -1, extractArgs(rest), extractSpawnOptions(rest), err);
           });
         }
@@ -104,14 +115,21 @@ export class ChildProcessCollection {
           };
         }
 
+        insideHigherLevelCall = true;
         const child = original.apply(childProcessModule, [command, ...rest]) as ChildProcess;
+        insideHigherLevelCall = false;
 
         // If no callback was provided, listen for close/error
         if (typeof lastArg !== 'function' && !isSelfInstrumentation(command)) {
+          let emitted = false;
           child.on('close', (code: number | null) => {
+            if (emitted) return;
+            emitted = true;
             emitResource(command, startTime, code ?? 0);
           });
           child.on('error', (err: NodeJS.ErrnoException) => {
+            if (emitted) return;
+            emitted = true;
             emitResource(command, startTime, -1, undefined, undefined, err);
           });
         }
@@ -128,6 +146,11 @@ export class ChildProcessCollection {
 
     Object.defineProperty(childProcessModule, 'execFile', {
       value: function patchedExecFile(file: string, ...rest: unknown[]): ChildProcess {
+        // Skip if called from within exec (which already instruments)
+        if (insideHigherLevelCall) {
+          return original.apply(childProcessModule, [file, ...rest]) as ChildProcess;
+        }
+
         const startTime = timeStampNow();
 
         const lastArg = rest[rest.length - 1];
@@ -149,13 +172,20 @@ export class ChildProcessCollection {
           };
         }
 
+        insideHigherLevelCall = true;
         const child = original.apply(childProcessModule, [file, ...rest]) as ChildProcess;
+        insideHigherLevelCall = false;
 
         if (typeof lastArg !== 'function' && !isSelfInstrumentation(file)) {
+          let emitted = false;
           child.on('close', (code: number | null) => {
+            if (emitted) return;
+            emitted = true;
             emitResource(file, startTime, code ?? 0, extractArgs(rest));
           });
           child.on('error', (err: NodeJS.ErrnoException) => {
+            if (emitted) return;
+            emitted = true;
             emitResource(file, startTime, -1, extractArgs(rest), undefined, err);
           });
         }
