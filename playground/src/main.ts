@@ -189,6 +189,27 @@ ipcMain.handle('utility-process:crash', () => {
   });
 });
 
+// --- Renderer process demo handlers ---
+
+ipcMain.handle('renderer-process:crash', () => {
+  return new Promise<string>((resolve) => {
+    const win = new BrowserWindow({
+      width: 400,
+      height: 300,
+      show: !isTestMode,
+      webPreferences: { contextIsolation: true, nodeIntegration: false },
+    });
+    void win.loadURL('about:blank');
+    win.webContents.once('did-finish-load', () => {
+      // Wait for at least one renderer poll cycle so the process is tracked
+      setTimeout(() => {
+        win.webContents.forcefullyCrashRenderer();
+        resolve('Renderer crashed');
+      }, 3000);
+    });
+  });
+});
+
 void app.whenReady().then(async () => {
   // Initialize SDK on app ready (before window creation)
   console.log('Initializing SDK from main process...');

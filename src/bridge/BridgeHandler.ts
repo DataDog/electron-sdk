@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { ipcMain, type IpcMainEvent } from 'electron';
 import { DefaultPrivacyLevel } from '@datadog/browser-core';
 import { EventKind, EventSource, EventFormat } from '../event';
 import type { EventManager, RawRumEvent } from '../event';
@@ -34,8 +34,9 @@ export class BridgeHandler {
   ) {
     ipcMain.on(
       BRIDGE_CHANNEL,
-      monitor((_ipcEvent: unknown, msg: string) => {
-        this.onBridgeMessage(msg);
+      monitor((ipcEvent: IpcMainEvent, msg: string) => {
+        const senderPid = ipcEvent.sender?.getOSProcessId();
+        this.onBridgeMessage(msg, senderPid);
       })
     );
 
@@ -47,7 +48,7 @@ export class BridgeHandler {
     );
   }
 
-  private onBridgeMessage(msg: string): void {
+  private onBridgeMessage(msg: string, senderPid?: number): void {
     let bridgeEvent: BridgeEvent;
     try {
       bridgeEvent = JSON.parse(msg) as BridgeEvent;
@@ -63,6 +64,7 @@ export class BridgeHandler {
           source: EventSource.RENDERER,
           format: EventFormat.RUM,
           data: bridgeEvent.event,
+          senderPid,
         } as RawRumEvent);
         break;
       case 'log':

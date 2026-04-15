@@ -2,6 +2,7 @@ import { Assembly, createFormatHooks, registerCommonContext } from './assembly';
 import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
 import { RumCollection } from './domain/rum';
+import { RendererProcessCollection } from './domain/rum/rendererProcess';
 import { SessionManager } from './domain/session';
 import { UserActivityTracker } from './domain/UserActivityTracker';
 import type { ErrorOptions } from './domain/rum';
@@ -32,13 +33,16 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   startTelemetry(eventManager, config);
   sessionManager = await SessionManager.start(eventManager, hooks);
 
-  new Assembly(eventManager, hooks);
+  const rendererProcessCollection = new RendererProcessCollection(eventManager);
+  new Assembly(eventManager, hooks, {
+    getRendererContainerViewId: (pid) => rendererProcessCollection.getRendererViewId(pid),
+  });
   new BridgeHandler(eventManager, config);
   new UserActivityTracker(eventManager);
   registerPreload();
 
   transport = await Transport.create(config, eventManager);
-  const rum = await RumCollection.start(eventManager, hooks);
+  const rum = await RumCollection.start(eventManager, hooks, rendererProcessCollection);
   rumApi = rum.getApi();
 
   return true;
