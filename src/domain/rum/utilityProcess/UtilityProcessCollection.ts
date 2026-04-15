@@ -1,7 +1,16 @@
 import { app, utilityProcess, type UtilityProcess } from 'electron';
-import { elapsed, generateUUID, type TimeStamp, timeStampNow, toServerDuration } from '@datadog/browser-core';
+import {
+  elapsed,
+  generateUUID,
+  ONE_SECOND,
+  type TimeStamp,
+  timeStampNow,
+  toServerDuration,
+} from '@datadog/browser-core';
 import { EventFormat, EventKind, EventManager, EventSource } from '../../../event';
 import type { RawRumAction, RawRumError, RawRumView } from '../rawRumData.types';
+
+export const METRICS_POLL_INTERVAL = 2 * ONE_SECOND;
 
 interface ProcessView {
   viewId: string;
@@ -11,6 +20,7 @@ interface ProcessView {
   counters: { action: { count: number }; error: { count: number }; resource: { count: number } };
   serviceName: string;
   pid?: number;
+  memorySamples: number[];
 }
 
 /**
@@ -26,6 +36,7 @@ export class UtilityProcessCollection {
   private readonly processViews = new Map<UtilityProcess, ProcessView>();
   private readonly originalFork = utilityProcess.fork.bind(utilityProcess);
   private readonly childProcessGoneListener: (event: Electron.Event, details: Electron.Details) => void;
+  private readonly metricsIntervalId: ReturnType<typeof setInterval>;
 
   constructor(private readonly eventManager: EventManager) {
     this.patchFork();
@@ -34,6 +45,8 @@ export class UtilityProcessCollection {
       this.onChildProcessGone(details);
     };
     app.on('child-process-gone', this.childProcessGoneListener);
+
+    this.metricsIntervalId = setInterval(() => this.pollMetrics(), METRICS_POLL_INTERVAL);
   }
 
   stop(): void {
@@ -43,6 +56,7 @@ export class UtilityProcessCollection {
       configurable: true,
     });
     app.off('child-process-gone', this.childProcessGoneListener);
+    clearInterval(this.metricsIntervalId);
     this.processViews.clear();
   }
 
@@ -65,6 +79,7 @@ export class UtilityProcessCollection {
           isActive: true,
           counters: { action: { count: 0 }, error: { count: 0 }, resource: { count: 0 } },
           serviceName,
+          memorySamples: [],
         };
         processViews.set(child, view);
 
@@ -105,6 +120,21 @@ export class UtilityProcessCollection {
     });
   }
 
+  private pollMetrics(): void {
+    const metrics = app.getAppMetrics();
+    for (const [, view] of this.processViews) {
+      if (!view.isActive || view.pid === undefined) continue;
+
+      const metric = metrics.find((m) => m.pid === view.pid);
+      if (metric) {
+        // workingSetSize is in KB, store as bytes
+        view.memorySamples.push(metric.memory.workingSetSize * 1024);
+        view.documentVersion++;
+        this.emitViewUpdate(view);
+      }
+    }
+  }
+
   private onChildProcessGone(details: Electron.Details): void {
     if (details.type !== 'Utility') return;
 
@@ -140,7 +170,15 @@ export class UtilityProcessCollection {
         ...view.counters,
       },
       _dd: { document_version: view.documentVersion },
-      ...(view.pid !== undefined ? { context: { pid: view.pid } } : {}),
+      context: {
+        ...(view.pid !== undefined ? { pid: view.pid } : {}),
+        ...(view.memorySamples.length > 0
+          ? {
+              memory_average: Math.round(view.memorySamples.reduce((a, b) => a + b, 0) / view.memorySamples.length),
+              memory_max: Math.max(...view.memorySamples),
+            }
+          : {}),
+      },
     };
 
     this.eventManager.notify({

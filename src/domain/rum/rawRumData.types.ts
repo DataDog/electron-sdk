@@ -5,6 +5,7 @@ export type RawRumData = RawRumView | RawRumError | RawRumResource | RawRumActio
 
 export interface RawRumView extends RecursivePartial<RumViewEvent> {
   type: 'view';
+  context?: Record<string, unknown>;
   view: {
     id: string;
     name?: string;
