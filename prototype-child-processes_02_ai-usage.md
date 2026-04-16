@@ -117,3 +117,46 @@
 - **Rollup namespace wrapper** — took multiple iterations to discover that `import * as mod` produces a wrapper object that `Object.defineProperty` can't patch through. Required reading bundled output to diagnose.
 - **Path sanitization iteration** — 3 rounds needed: `[APP_PATH]` placeholder → broken UI → strip path entirely → discovered `sanitizeAppPaths` call was dropped during debug logging → final fix
 
+---
+
+## Session 4: Conclusion Document + dd-trace PR Review
+
+**Scope:** Synthesize findings from docs 00-04 into a conclusion document, review dd-trace integration PRs
+**Outcome:** Conclusion doc (`_05_conclusion.md`), dd-trace evaluation findings
+
+### How it went
+
+**Planning phase:** 2 parallel Explore agents gathered all findings from docs 00-04 and searched for dd-trace references. Plan agent designed the document structure. Iterative refinement with user through plan mode.
+
+**Writing phase:** Wrote the conclusion doc organized by topic with value/complexity ratings. Multiple rounds of user feedback reshaped the structure:
+
+- Lifecycle events folded into their respective process topics (not standalone — they need a View to attach to)
+- Data model moved to topic 1 as prerequisite, expanded with dedicated sections (processes as views, command execution as resource) and alternatives considered
+- dd-trace evaluation placed right after data model for parallel exploration
+- exec/spawn split into monkey-patching (challenging) vs collection (easy-medium) to surface where complexity actually lives
+
+**dd-trace review phase:** 2 parallel Explore agents analyzed both PRs (electron-sdk#95, dd-trace-js#7002). Key finding: the current integration covers HTTP spans and IPC tracing only — no child_process, no utilityProcess, no lifecycle events. BrowserWindow wrapping is for preload injection, not monitoring. The existing `child_process` plugin exists in dd-trace but isn't enabled in the Electron integration.
+
+**Data model exploration:** Investigated RUM Vitals and Feature Operations as alternative data models. Fetched official docs for operations monitoring. Concluded both are wrong abstraction level — operations sit above views (user-facing workflows), while our processes sit below/alongside views (infrastructure containers).
+
+### Human interventions that shaped the outcome
+
+- **Lifecycle events are coupled** — user pointed out that `getAppMetrics` and lifecycle events are useless without a RUM View to attach them to, leading to restructuring
+- **Custom complexity scale** — user defined easy/medium/challenging instead of standard T-shirt sizing
+- **Monkey-patching is child_process-only** — user confirmed that utility process and renderer use simple Electron API wrapping, no bundler concerns. Led to clearer separation in the doc
+- **Feature Operations consideration** — user suggested checking if RUM vitals/operations could fit the data model, leading to documentation of why they were rejected
+- **JIRA link** — user provided RUM-15282 for path sanitization bug, connecting prototype findings to existing backlog
+
+### What worked well with AI
+
+- **Parallel PR analysis** — 2 agents reviewed both PRs simultaneously, giving a complete picture of the dd-trace integration in one round
+- **Iterative document refinement** — plan mode enabled back-and-forth on structure before writing
+- **Web fetch for docs** — fetched official Datadog operations monitoring docs to evaluate the Feature Operations alternative
+
+### What didn't
+
+- **Initial topic ordering** — first draft had lifecycle events as standalone topic and data model buried at position 4. Required user feedback to restructure
+
+### Improvement for future sessions
+
+- **Review PRs early** — the dd-trace PR review answered most evaluation questions concretely. In future prototypes, review related in-progress work earlier to avoid speculative sections
