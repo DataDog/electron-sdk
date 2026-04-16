@@ -2,6 +2,35 @@
 
 Findings from implementing the RUM concept mapping (`_03_rum-mapping.md`) as a working prototype.
 
+## Architecture summary
+
+```
+ChildProcessCollection          → patches require('node:child_process')
+                                  emits RawRumResource on completion
+                                  reentrant guard deduplicates exec→execFile→spawn chain
+
+UtilityProcessCollection        → patches utilityProcess.fork()
+                                  emits RawRumView (process as view)
+                                  emits RawRumAction (clean exit)
+                                  emits RawRumError (abnormal exit / crash)
+                                  polls app.getAppMetrics() for memory
+
+RendererProcessCollection       → detects renderers via web-contents-created + did-start-navigation
+                                  lazy creation from Assembly via getOrCreateRendererViewId
+                                  emits RawRumView (renderer as view)
+                                  emits RawRumError (render-process-gone)
+                                  polls app.getAppMetrics() for memory
+
+Assembly (modified)             → uses senderPid + getRendererContainerViewId
+                                  to set container.view.id on renderer events
+                                  passes event date for renderer view backdating
+
+BridgeHandler (modified)        → extracts sender pid from IpcMainEvent
+```
+
+All events flow through the existing pipeline: EventManager → Assembly → Transport → intake.
+
+
 ## What was built
 
 | Step | Feature                                                            | Validated                                    |
@@ -18,22 +47,23 @@ Findings from implementing the RUM concept mapping (`_03_rum-mapping.md`) as a w
 
 ### Monkey-patching
 
+Multiple issues reinforce the need to explore a proper instrumentation approach before going to production.
+
 **Rollup namespace wrapper breaks `Object.defineProperty`.**
 `import * as mod from 'node:child_process'` produces a Rollup namespace wrapper (`_interopNamespaceDefault`). Patching properties on the wrapper does not affect the real module — other consumers still see the original functions. **Fix**: use `require()` to get the actual CommonJS module object. This applies to any future monkey-patching in the SDK.
 
-**`webContents.getOSProcessId()` returns 0 after renderer crash.**
-By the time `render-process-gone` fires, the OS process is already dead and the pid accessor returns 0. **Fix**: maintain a `webContents.id → pid` mapping proactively during detection, before any crash occurs.
-
 **exec/execFile/spawn call chain produces duplicate resource events.**
 Node's `exec()` delegates to `execFile()` which delegates to `spawn()`. Since all three are patched, a single `exec()` call triggered instrumentation at every level. Additionally, a failed `spawn()` fires both `error` and `close` events. **Fix**: reentrant `insideHigherLevelCall` flag prevents lower-level patches from emitting when called from a higher-level wrapper; one-shot `emitted` flag prevents close+error double-emission on spawn.
+
+### Renderer process tracking
+
+**`webContents.getOSProcessId()` returns 0 after renderer crash.**
+By the time `render-process-gone` fires, the OS process is already dead and the pid accessor returns 0. **Fix**: maintain a `webContents.id → pid` mapping proactively during detection, before any crash occurs.
 
 ### Event pipeline
 
 **Container hierarchy requires sender identity.**
 The bridge handler (`BridgeHandler`) had no notion of which renderer sent an event. To set `container.view.id` to the renderer's process view, we added `senderPid` to `RawRumEvent` and extracted it from `IpcMainEvent.sender.getOSProcessId()`. This is a production requirement — the main view ID was previously used for all renderers, which is incorrect for multi-window apps.
-
-**Multiple view updates per process view.**
-Each process view emits many updates (document versions 1, 2, 3…) as counters and metrics change. Tests and intake consumers need to filter for the specific version they care about (e.g., `is_active: false` for the final update).
 
 **View date bug (pre-existing).**
 `ViewCollection` did not set `date` on raw view events. The `commonContext` hook set `date: Date.now()` at assembly time, so every view update got the timestamp of the latest update instead of the view's creation time. Fixed by setting `date: startTime` on the raw event.
@@ -54,12 +84,12 @@ Create the renderer view at the bridge level (`BridgeHandler`) rather than Assem
 ### Memory and CPU metrics
 
 **Memory uses existing RUM view fields.**
-The RUM view schema already defines `view.memory_average` and `view.memory_max` (used by mobile SDKs). The prototype uses these directly — no schema extension needed for memory. Data comes from `app.getAppMetrics()` → `memory.workingSetSize` (current RSS in KB), sampled at each poll interval. For `memory_max`, `memory.peakWorkingSetSize` from the last sample could also be used as the OS-level peak.
+The RUM view schema already defines `view.memory_average` and `view.memory_max` (used by mobile SDKs). The prototype uses these directly — no schema extension needed for memory. Data comes from `app.getAppMetrics()` → `memory.workingSetSize` (current physical RAM usage in KB), sampled at each poll interval. For `memory_max`, `memory.peakWorkingSetSize` from the last sample could also be used as the OS-level peak.
 
 **CPU metrics not prototyped — unit mismatch needs investigation.**
 The RUM schema has `view.cpu_ticks_count` and `view.cpu_ticks_per_second` (mobile SDK fields). Electron provides `cpu.cumulativeCPUUsage` (total CPU seconds) and `cpu.percentCPUUsage` (% since last call). These measure the same concept (total CPU consumption and average intensity) but in different units (seconds vs ticks).
 
-**Both memory and CPU fields are mobile SDK fields** — it's unclear how Datadog displays them for non-mobile platforms. Needs further investigation before production to confirm these fields are rendered correctly in the RUM Explorer and Session Replay for Electron views.
+**Both memory and CPU fields are mobile SDK fields** — Datadog does not display them for non-mobile platforms. Production will need backend/UI support to surface these metrics for Electron views.
 
 ### Schema gaps
 
@@ -88,7 +118,7 @@ The prototype uses a 2s polling interval for metrics on both utility and rendere
 - **Faster polling** = fresher memory data, but more CPU and more view update events
 - **Slower polling** = less overhead, but stale memory readings
 
-Production should make the interval configurable.
+Before production, we should explore how mobile SDKs (iOS/Android) collect and report process metrics, and align the approach. The polling model and reporting frequency may already be established there.
 
 ### exec error codes
 
@@ -101,17 +131,11 @@ Events from all sources (main process, child process, renderer/browser-rum) can 
 **Prototype approach:** Global string replace on serialized JSON in `BatchProducer.writeData`, stripping `app.getAppPath()` from all string values. E.g., `file:///Users/.../playground/dist/index.html` → `file:///index.html`.
 
 **Key finding: `[APP_PATH]` placeholder breaks Datadog UI.**
-The initial approach replaced the path with `[APP_PATH]`, but Datadog RUM Explorer validates `view.url` and won't display URLs containing square brackets. Stripping the path entirely (empty replacement) produces valid URLs the UI displays correctly.
-
-**Key finding: `app.getAppPath()` includes the dist directory.**
-For apps with `"main": "./dist/main.js"`, `app.getAppPath()` returns the `dist/` directory, not the project root. This means `file:///path/to/app/dist/index.html` becomes `file:///index.html` (not `file:///dist/index.html`).
+The initial approach replaced the path with `[APP_PATH]`, but the resulting URL was not displayed in the Datadog RUM Explorer. It's unclear whether the issue is at ingestion, processing, or display — the URL may be rejected or dropped at any stage. Stripping the path entirely (empty replacement) produces URLs the UI displays correctly.
 
 **Production recommendations:**
 
 - **Assembly-level hook** — a dedicated sanitization step in Assembly, applied to specific fields (view.url, view.name, error.stack, resource.url) rather than brute-force string replace on serialized JSON. More targeted, avoids false positives.
-- **Source-level scrubbing** — each collection sanitizes paths before emitting. Most precise but duplicated across collections. Doesn't cover renderer events.
-- **Configurable patterns** — allow users to specify additional paths to sanitize (e.g., `userData`, `home` directory) beyond just the app path.
-- **Different strategies per field** — `view.url` needs a valid URL (strip path), while `error.stack` could use a placeholder (`[APP]`) since it's not parsed as a URL by the UI.
 
 ## Known issues and open questions
 
@@ -140,31 +164,3 @@ The Datadog RUM Explorer labels all views as "Load Page ..." which is misleading
 ### UI does not display resource status codes clearly
 
 The RUM Explorer does not render `resource.status_code` prominently for native resources. Exit codes like `0`, `-1`, `-2` from child processes are not displayed as clearly as HTTP status codes (200, 404, etc.) would be. This is a display limitation — the data is correct in the events.
-
-## Architecture summary
-
-```
-ChildProcessCollection          → patches require('node:child_process')
-                                  emits RawRumResource on completion
-                                  reentrant guard deduplicates exec→execFile→spawn chain
-
-UtilityProcessCollection        → patches utilityProcess.fork()
-                                  emits RawRumView (process as view)
-                                  emits RawRumAction (clean exit)
-                                  emits RawRumError (abnormal exit / crash)
-                                  polls app.getAppMetrics() for memory
-
-RendererProcessCollection       → detects renderers via web-contents-created + did-start-navigation
-                                  lazy creation from Assembly via getOrCreateRendererViewId
-                                  emits RawRumView (renderer as view)
-                                  emits RawRumError (render-process-gone)
-                                  polls app.getAppMetrics() for memory
-
-Assembly (modified)             → uses senderPid + getRendererContainerViewId
-                                  to set container.view.id on renderer events
-                                  passes event date for renderer view backdating
-
-BridgeHandler (modified)        → extracts sender pid from IpcMainEvent
-```
-
-All events flow through the existing pipeline: EventManager → Assembly → Transport → intake.
