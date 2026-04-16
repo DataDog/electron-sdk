@@ -1,5 +1,28 @@
 # Child Process Monitoring — AI Usage Log
 
+## Overview
+
+This prototype ran over 4 sessions, progressing from landscape research → RUM data model design → working prototype → conclusion doc. AI (Claude Code) was the primary implementer throughout, with the human acting as architect, domain expert, and QA reviewer.
+
+### How AI was used
+
+- **Research & exploration**: parallel sub-agents surveyed mechanisms, parsed RUM schemas from GitHub, fetched product briefs via Google Workspace MCP, and reviewed PRs
+- **Technical prototypes**: 3 parallel prototype worktrees (monkey-patching, utility process, MessagePort) built, run via background Electron shell, and tested interactively
+- **Domain design**: iterative brainstorming (one question at a time, multiple choice) to converge on the "processes as views" data model
+- **Domain prototype**: sequential plan execution with self-validation via Playwright + mock intake — the key enabler for agent autonomy
+- **Domain prototype refinement**: screenshot-driven debugging where the human shared Datadog Explorer screenshots and the agent diagnosed and fixed issues
+- **Organize conclusion**: parallel explore agents gathered findings, plan mode structured the document, iterative feedback refined it
+
+### Key insights
+
+1. **Self-validation infrastructure is the highest-leverage investment.** Session 1 required human button-clicking for every test. Session 2 planned a Playwright + mock intake harness. Session 3 used it — the agent iterated on failures autonomously, dramatically increasing throughput.
+
+2. **Human domain expertise steers, AI executes.** Every significant design decision came from the human (processes as views, container hierarchy, context fields are customer-owned, path sanitization). AI was effective at implementing those decisions and exploring their implications, but not at originating them.
+
+3. **Parallel agents scale research, not implementation.** Parallel sub-agents worked well for broad surveys (6 mechanisms × 9 dimensions), PR reviews (2 PRs simultaneously), and codebase exploration. Implementation remained sequential — each step depended on the previous one.
+
+4. **Screenshots bridge the observability gap.** When the agent can't access the production tool (RUM Explorer), user-provided screenshots were an effective substitute — the agent diagnosed duplicate events, wrong timestamps, and UI display issues from visual data alone.
+
 ---
 
 ## Session 1: Research + Technical Prototypes
