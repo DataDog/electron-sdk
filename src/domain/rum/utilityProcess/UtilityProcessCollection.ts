@@ -192,7 +192,7 @@ export class UtilityProcessCollection {
     const actionEvent: RawRumAction = {
       type: 'action',
       date: timeStampNow(),
-      view: { id: view.viewId },
+      view: { id: view.viewId, name: `Utility: ${view.serviceName}` },
       action: {
         id: generateUUID(),
         type: 'custom',
@@ -213,7 +213,7 @@ export class UtilityProcessCollection {
     const errorEvent: RawRumError = {
       type: 'error',
       date: timeStampNow(),
-      view: { id: view.viewId },
+      view: { id: view.viewId, name: `Utility: ${view.serviceName}` },
       context,
       error: {
         id: generateUUID(),

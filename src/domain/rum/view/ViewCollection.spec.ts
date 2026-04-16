@@ -179,6 +179,10 @@ describe('ViewCollection', () => {
   });
 
   describe('event counters', () => {
+    function currentViewId() {
+      return (rawRumEvents[rawRumEvents.length - 1].data as RawRumView).view.id;
+    }
+
     it.each(['action', 'error', 'resource'] as const)(
       'increments %s counter on corresponding ServerRumEvent',
       (type) => {
@@ -186,7 +190,7 @@ describe('ViewCollection', () => {
           kind: EventKind.SERVER,
           track: EventTrack.RUM,
           source: EventSource.MAIN,
-          data: createServerRumEvent(type),
+          data: createServerRumEvent(type, { view: { id: currentViewId() } }),
         });
 
         expect(rawRumEvents).toHaveLength(2);
@@ -201,7 +205,7 @@ describe('ViewCollection', () => {
         kind: EventKind.SERVER,
         track: EventTrack.RUM,
         source: EventSource.MAIN,
-        data: createServerRumView(),
+        data: createServerRumView({ view: { id: currentViewId() } }),
       });
 
       // Only the initial event, no update
@@ -213,7 +217,19 @@ describe('ViewCollection', () => {
         kind: EventKind.SERVER,
         track: EventTrack.RUM,
         source: EventSource.RENDERER,
-        data: createServerRumEvent('error'),
+        data: createServerRumEvent('error', { view: { id: currentViewId() } }),
+      });
+
+      // Only the initial event, no update
+      expect(rawRumEvents).toHaveLength(1);
+    });
+
+    it('does not count events from other views', () => {
+      eventManager.notify({
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        source: EventSource.MAIN,
+        data: createServerRumEvent('action', { view: { id: 'other-view-id' } }),
       });
 
       // Only the initial event, no update
@@ -235,11 +251,12 @@ describe('ViewCollection', () => {
 
   describe('throttled view updates', () => {
     function notifyServerRumEvent(type: 'action' | 'error' | 'resource') {
+      const viewId = (rawRumEvents[rawRumEvents.length - 1].data as RawRumView).view.id;
       eventManager.notify({
         kind: EventKind.SERVER,
         track: EventTrack.RUM,
         source: EventSource.MAIN,
-        data: createServerRumEvent(type),
+        data: createServerRumEvent(type, { view: { id: viewId } }),
       });
     }
 
