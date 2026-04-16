@@ -13,7 +13,7 @@ datadogRum.init({
   sessionSampleRate: 100,
   trackResources: true,
   trackLongTasks: true,
-  trackUserInteractions: true,
+  trackUserInteractions: false,
 });
 
 // Type definition for the exposed API
