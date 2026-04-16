@@ -77,3 +77,43 @@
 ### Improvement for future sessions
 
 - **Playground test harness** — the plan includes setting up Playwright + intake for the playground (Step 0). Once built, agents can self-validate by clicking buttons and asserting on captured events, eliminating the manual validation bottleneck from session 1.
+
+---
+
+## Session 3: RUM Mapping Prototype Implementation + Refinements
+
+**Scope:** Implement all 5 steps of the prototype plan, then iterative refinements based on user testing in Datadog
+**Outcome:** Full working prototype (12 Playwright scenarios), findings doc (`_04_rum-mapping-prototype.md`), multiple bug fixes
+
+### How it went
+
+**Implementation phase:** Sequential execution of the 5 plan steps. Each step: implement SDK collection → add playground buttons/IPC → write Playwright scenario → run checks (typecheck, lint, unit tests, playground tests) → commit.
+
+**Refinement phase:** User tested the prototype against real Datadog RUM Explorer. Iterative cycle: user spots issue in screenshot → agent diagnoses → implements fix → verifies with tests → commits. Covered: duplicate resources, view date bug, renderer timing, path sanitization, view naming.
+
+### Human interventions that shaped the outcome
+
+- **Hidden window in test mode** — user requested playground window stays hidden during tests to avoid disruption
+- **Distinct serviceName per utility button** — user asked for unique names (`dd-demo-fork`, `dd-demo-message`, `dd-demo-crash-worker`) to ease event identification in Explorer
+- **Duplicate resource events** — user spotted duplicates in Explorer screenshot, leading to discovery of exec→execFile→spawn chain and close+error double-emission
+- **Main view date bug** — user noticed main process view had wrong start time in Explorer, revealing pre-existing bug where `commonContext` hook's `Date.now()` overwrote the view creation time
+- **Renderer view timing** — user asked how to ensure renderer view predates browser-rum events, leading to `did-start-navigation` + lazy creation with backdating approach
+- **Bridge-level detection alternative** — user suggested creating renderer views at bridge level (earlier than Assembly) as production improvement
+- **Path sanitization** — user flagged filesystem paths leaking in events. Iterative debugging: `[APP_PATH]` placeholder → discovered it broke Datadog UI display → switched to stripping path entirely
+- **Memory on view fields** — user pointed out existing `view.memory_average`/`view.memory_max` schema fields (from mobile SDKs) instead of using context
+- **CPU not prototyped** — user decided to skip CPU metrics after discussion of unit mismatch (ticks vs seconds) and lack of Datadog display support
+- **Method-specific URL schemes** — user preferred `spawn://`, `exec://` over generic `child_process://` for resource URLs
+- **Renderer view naming** — user wanted page title for grouping, pid in context only, with `Renderer:` prefix for consistency with `Utility:`
+
+### What worked well with AI
+
+- **Self-validating test harness** — the Playwright + mock intake setup (session 2's improvement) worked as designed. Agent ran `yarn playground:test` after each change and iterated on failures without human intervention
+- **Screenshot-driven debugging** — user shared Datadog Explorer screenshots, agent diagnosed issues from the visual data (duplicate events, wrong timestamps, missing URLs)
+- **Incremental commits** — plan steps + fixup commits kept history clean and reviewable
+- **Parallel exploration agents** — used for initial codebase understanding (e2e infra, SDK types, Electron APIs)
+
+### What didn't
+
+- **Rollup namespace wrapper** — took multiple iterations to discover that `import * as mod` produces a wrapper object that `Object.defineProperty` can't patch through. Required reading bundled output to diagnose.
+- **Path sanitization iteration** — 3 rounds needed: `[APP_PATH]` placeholder → broken UI → strip path entirely → discovered `sanitizeAppPaths` call was dropped during debug logging → final fix
+
