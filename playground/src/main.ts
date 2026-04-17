@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as https from 'node:https';
 import {
+  _flushTransport,
   _generateActivity,
   _generateTelemetryError,
   getInternalContext,
@@ -12,6 +13,8 @@ import {
 import { loadWindowState, saveWindowState } from './main/windowState';
 import { setupHotReload } from './main/hotReload';
 import { buildRumExplorerUrl } from './main/utils';
+
+const isTestMode = process.env.DD_TEST_MODE === '1';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -27,6 +30,7 @@ function createWindow() {
     height: savedState?.height ?? 768,
     x: savedState?.x,
     y: savedState?.y,
+    show: !isTestMode,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -123,6 +127,10 @@ const CONF = {
   },
 };
 
+ipcMain.handle('flush-transport', async () => {
+  await _flushTransport();
+});
+
 ipcMain.handle('open-rum-explorer', () => {
   const ctx = getInternalContext();
   if (!ctx) return;
@@ -136,6 +144,7 @@ void app.whenReady().then(async () => {
     ...CONF[ACTIVE_ENV],
     service: 'electron-playground',
     env: 'dev',
+    ...(process.env.DD_SDK_PROXY ? { proxy: process.env.DD_SDK_PROXY } : {}),
   });
   console.log('SDK init result:', result);
 

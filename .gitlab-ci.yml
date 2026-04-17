@@ -76,7 +76,9 @@ playground:
   stage: test
   script:
     - yarn
-    - scripts/cli test_playground
+    - yarn build
+    - yarn dev:init
+    - cd playground && xvfb-run -a yarn test
 
 ########################################################################################################################
 # Notify

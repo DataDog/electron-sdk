@@ -27,6 +27,7 @@ interface ElectronAPI {
   crash: () => Promise<void>;
   mainFetchApi: () => Promise<unknown>;
   openRumExplorer: () => Promise<void>;
+  flushTransport: () => Promise<void>;
 }
 
 declare global {
