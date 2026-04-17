@@ -67,11 +67,19 @@ describe('ViewCollection', () => {
       expect(rawRumEvents).toHaveLength(1);
       const data = rawRumEvents[0].data as RawRumView;
       expect(data.type).toBe('view');
+      expect(data.date).toBe(0);
       expect(data._dd.document_version).toBe(1);
       expect(data.view.is_active).toBe(true);
       expect(data.view.action.count).toBe(0);
       expect(data.view.error.count).toBe(0);
       expect(data.view.resource.count).toBe(0);
+    });
+
+    it('sets date to the view start time, not the update time', () => {
+      vi.advanceTimersByTime(SESSION_KEEP_ALIVE_INTERVAL);
+
+      const data = rawRumEvents[1].data as RawRumView;
+      expect(data.date).toBe(0);
     });
   });
 
