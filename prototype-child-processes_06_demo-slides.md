@@ -51,6 +51,3 @@ data model agreement ───────────────────�
 ## AI Usage — Key Takeaways
 
 - **Self-validation infrastructure is the highest-leverage investment** — building a Playwright + mock intake harness let the AI agent iterate autonomously
-- **Human domain expertise steers, AI executes** — every significant design decision came from the human, AI implemented and explored implications
-- **Parallel agents scale research, not implementation** — broad surveys parallelized well, implementation remained sequential
-- **Screenshots bridge the observability gap** — when the AI can't access the RUM Explorer, screenshots were an effective substitute for debugging
