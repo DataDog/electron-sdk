@@ -13,7 +13,7 @@ datadogRum.init({
   sessionSampleRate: 100,
   trackResources: true,
   trackLongTasks: true,
-  trackUserInteractions: true,
+  trackUserInteractions: false,
 });
 
 // Type definition for the exposed API
@@ -26,6 +26,15 @@ interface ElectronAPI {
   generateUnhandledRejection: () => Promise<void>;
   crash: () => Promise<void>;
   mainFetchApi: () => Promise<unknown>;
+  flushTransport: () => Promise<void>;
+  forkUtility: () => Promise<string>;
+  sendMessage: () => Promise<string>;
+  crashUtility: () => Promise<string>;
+  crashRenderer: () => Promise<string>;
+  spawnLs: () => Promise<string>;
+  execEcho: () => Promise<string>;
+  spawnFail: () => Promise<string>;
+  execTimeout: () => Promise<string>;
 }
 
 declare global {
@@ -67,6 +76,18 @@ async function refreshSessionDisplay() {
     sessionContent.style.opacity = '0.6';
   }
 }
+
+const copySessionIdBtn = document.getElementById('copy-session-id') as HTMLButtonElement;
+copySessionIdBtn.addEventListener('click', () => {
+  try {
+    const parsed = JSON.parse(sessionContent.textContent ?? '');
+    if (parsed.id) {
+      void navigator.clipboard.writeText(parsed.id as string);
+    }
+  } catch {
+    // Session content not valid JSON
+  }
+});
 
 if (stopBtn && sessionContent) {
   // Load session file content on page load
@@ -200,3 +221,17 @@ if (rendererFetchBtn) {
 }
 
 setupDemoButton('main-fetch', 'main:fetch-api', () => window.electronAPI.mainFetchApi());
+
+// Utility process buttons
+setupDemoButton('fork-utility', 'utility-process:fork', () => window.electronAPI.forkUtility());
+setupDemoButton('send-message', 'utility-process:send-message', () => window.electronAPI.sendMessage());
+setupDemoButton('crash-utility', 'utility-process:crash', () => window.electronAPI.crashUtility());
+
+// Renderer process buttons
+setupDemoButton('crash-renderer', 'renderer-process:crash', () => window.electronAPI.crashRenderer());
+
+// Child process buttons
+setupDemoButton('spawn-ls', 'child-process:spawn-ls', () => window.electronAPI.spawnLs());
+setupDemoButton('exec-echo', 'child-process:exec-echo', () => window.electronAPI.execEcho());
+setupDemoButton('spawn-fail', 'child-process:spawn-fail', () => window.electronAPI.spawnFail());
+setupDemoButton('exec-timeout', 'child-process:exec-timeout', () => window.electronAPI.execTimeout());

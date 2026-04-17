@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@datadog/electron-sdk": ["../../dist/index.d.ts"]
+    },
+    "composite": true,
+    "emitDeclarationOnly": true
+  },
+  "include": ["**/*.ts", "../../e2e/lib/**/*.ts"],
+  "exclude": ["node_modules"]
+}

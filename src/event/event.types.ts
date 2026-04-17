@@ -11,6 +11,8 @@ export interface RawRumEvent {
   format: typeof EventFormat.RUM;
   data: RawRumData;
   startTime?: TimeStamp;
+  /** OS pid of the renderer that sent this event (only for RENDERER source). */
+  senderPid?: number;
 }
 
 export interface RawTelemetryEvent {

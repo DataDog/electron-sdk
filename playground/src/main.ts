@@ -1,11 +1,13 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, utilityProcess } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as https from 'node:https';
-import { init, stopSession, _generateActivity, _generateTelemetryError } from '@datadog/electron-sdk';
+import * as childProcess from 'node:child_process';
+import { init, stopSession, _generateActivity, _generateTelemetryError, _flushTransport } from '@datadog/electron-sdk';
 import { loadWindowState, saveWindowState } from './main/windowState';
 import { setupHotReload } from './main/hotReload';
 
+const isTestMode = process.env.DD_TEST_MODE === '1';
 let mainWindow: BrowserWindow | null = null;
 
 function getSessionFilePath(): string {
@@ -20,6 +22,7 @@ function createWindow() {
     height: savedState?.height ?? 768,
     x: savedState?.x,
     y: savedState?.y,
+    show: !isTestMode,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -54,6 +57,10 @@ ipcMain.handle('get-session-file', () => {
     console.error('Error reading session file:', error);
     return null;
   }
+});
+
+ipcMain.handle('flushTransport', async () => {
+  await _flushTransport();
 });
 
 ipcMain.handle('stop-session', () => {
@@ -102,6 +109,107 @@ ipcMain.handle('crash', () => {
   process.crash();
 });
 
+// --- Child process demo handlers ---
+
+ipcMain.handle('child-process:spawn-ls', () => {
+  return new Promise<string>((resolve, reject) => {
+    const child = childProcess.spawn('ls', ['-la']);
+    let stdout = '';
+    child.stdout.on('data', (data: Buffer) => {
+      stdout += data.toString();
+    });
+    child.on('close', () => resolve(stdout));
+    child.on('error', reject);
+  });
+});
+
+ipcMain.handle('child-process:exec-echo', () => {
+  return new Promise<string>((resolve, reject) => {
+    childProcess.exec('echo hello world', (error, stdout) => {
+      if (error) reject(error);
+      else resolve(stdout.trim());
+    });
+  });
+});
+
+ipcMain.handle('child-process:spawn-fail', () => {
+  return new Promise<string>((resolve) => {
+    const child = childProcess.spawn('nonexistent-command-xyz');
+    child.on('error', (err) => resolve(`Error: ${err.message}`));
+    child.on('close', (code) => resolve(`Exited with code ${code}`));
+  });
+});
+
+ipcMain.handle('child-process:exec-timeout', () => {
+  return new Promise<string>((resolve) => {
+    childProcess.exec('sleep 10', { timeout: 100 }, (error) => {
+      resolve(error ? `Timeout: ${error.message}` : 'Completed');
+    });
+  });
+});
+
+// --- Utility process demo handlers ---
+
+const WORKER_PATH = path.join(__dirname, 'workers', 'demo-worker.js');
+
+ipcMain.handle('utility-process:fork', () => {
+  return new Promise<string>((resolve) => {
+    const child = utilityProcess.fork(WORKER_PATH, [], { serviceName: 'dd-demo-fork' });
+    child.once('message', (msg: { ready?: boolean }) => {
+      if (msg.ready) resolve(`Worker forked, pid: ${child.pid}`);
+    });
+    child.once('exit', (code: number) => resolve(`Worker exited with code ${code}`));
+  });
+});
+
+ipcMain.handle('utility-process:send-message', () => {
+  return new Promise<string>((resolve) => {
+    const child = utilityProcess.fork(WORKER_PATH, [], { serviceName: 'dd-demo-message' });
+    child.on('message', (msg: { ready?: boolean; reply?: string }) => {
+      if (msg.ready) {
+        child.postMessage({ action: 'ping' });
+      } else if (msg.reply) {
+        resolve(`Reply: ${msg.reply}`);
+        child.kill();
+      }
+    });
+    child.once('exit', () => resolve('Worker exited'));
+  });
+});
+
+ipcMain.handle('utility-process:crash', () => {
+  return new Promise<string>((resolve) => {
+    const child = utilityProcess.fork(WORKER_PATH, [], { serviceName: 'dd-demo-crash-worker' });
+    child.once('message', (msg: { ready?: boolean }) => {
+      if (msg.ready) {
+        child.postMessage({ action: 'crash' });
+      }
+    });
+    child.once('exit', (code: number) => resolve(`Worker crashed, exit code: ${code}`));
+  });
+});
+
+// --- Renderer process demo handlers ---
+
+ipcMain.handle('renderer-process:crash', () => {
+  return new Promise<string>((resolve) => {
+    const win = new BrowserWindow({
+      width: 400,
+      height: 300,
+      show: !isTestMode,
+      webPreferences: { contextIsolation: true, nodeIntegration: false },
+    });
+    void win.loadURL('about:blank');
+    win.webContents.once('did-finish-load', () => {
+      // Wait for at least one renderer poll cycle so the process is tracked
+      setTimeout(() => {
+        win.webContents.forcefullyCrashRenderer();
+        resolve('Renderer crashed');
+      }, 3000);
+    });
+  });
+});
+
 void app.whenReady().then(async () => {
   // Initialize SDK on app ready (before window creation)
   console.log('Initializing SDK from main process...');
@@ -121,6 +229,8 @@ void app.whenReady().then(async () => {
     ...CONF.staging,
     service: 'electron-playground',
     env: 'dev',
+    // Allow tests to redirect events to a mock intake server
+    ...(process.env.DD_SDK_PROXY ? { proxy: process.env.DD_SDK_PROXY } : {}),
   });
   console.log('SDK init result:', result);
 

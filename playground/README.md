@@ -45,6 +45,42 @@ This will:
 - Reload Electron when files change
 - Open DevTools by default
 
+## Testing
+
+Automated Playwright tests validate playground scenarios against a mock intake server.
+
+### Run Tests
+
+```bash
+# From playground/
+yarn test
+
+# Or from root
+yarn playground:test
+```
+
+### Creating a Scenario
+
+1. **Add a button + IPC handler** in `src/main.ts` and `src/preload.ts` for the feature you want to test
+2. **Write a test** in `test/<name>.scenario.ts`:
+
+```typescript
+import { test, expect } from './helpers';
+
+test('description', async ({ window, intake }) => {
+  // Click a button in the playground
+  await window.click('#my-button');
+
+  // Assert events arrived at the mock intake
+  const events = await intake.getEventsByType('resource', 10_000);
+  expect(events.length).toBeGreaterThanOrEqual(1);
+});
+```
+
+3. **Run** `yarn test` and iterate
+
+The test harness auto-launches the playground app with SDK events routed to a mock intake server via the `DD_SDK_PROXY` env var.
+
 ## Development with SDK Changes
 
 From the root directory, run:

@@ -1,3 +1,4 @@
+import { app } from 'electron';
 import { dateNow } from '@datadog/browser-core';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -95,7 +96,7 @@ export class BatchProducer {
   private async writeData(data: unknown) {
     await this.ensureTrackDirectoryExists();
 
-    const serialized = `${JSON.stringify(data)}\n`;
+    const serialized = `${sanitizeAppPaths(JSON.stringify(data))}\n`;
     const dataSize = Buffer.byteLength(serialized, 'utf8');
 
     if (this.currentBatchSize + dataSize > this.batchSize && this.currentBatchSize > 0) {
@@ -106,4 +107,20 @@ export class BatchProducer {
     await fs.appendFile(batchPath, serialized, 'utf8');
     this.currentBatchSize += dataSize;
   }
+}
+
+let appPathPattern: RegExp | undefined;
+
+function sanitizeAppPaths(json: string): string {
+  if (!appPathPattern) {
+    try {
+      // Escape special regex chars in the path, match both raw and JSON-escaped separators
+      const appPath = app.getAppPath().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const pattern = appPath.split('/').join('[\\\\/]');
+      appPathPattern = new RegExp(pattern, 'g');
+    } catch {
+      return json;
+    }
+  }
+  return json.replace(appPathPattern, '');
 }

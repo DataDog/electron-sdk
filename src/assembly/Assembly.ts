@@ -17,10 +17,16 @@ import { TelemetryEvent } from '../domain/telemetry';
  *   overridden from the main process; the renderer's own view, source,
  *   service, and other attributes are preserved.
  */
+export interface AssemblyOptions {
+  /** Resolve a renderer process OS pid to its process view ID for container hierarchy. Creates the view if needed. */
+  getRendererContainerViewId?: (pid: number, eventDate?: number) => string;
+}
+
 export class Assembly {
   constructor(
     private eventManager: EventManager,
-    private hooks: FormatHooks
+    private hooks: FormatHooks,
+    private options: AssemblyOptions = {}
   ) {
     this.eventManager.registerHandler<RawEvent>({
       canHandle: (event) => event.kind === EventKind.RAW,
@@ -59,10 +65,16 @@ export class Assembly {
     }
 
     const { session, application, view } = hookResult ?? {};
+
+    // Use renderer process view ID if available (container hierarchy), fall back to main view
+    const eventDate = (event.data as { date?: number }).date;
+    const containerViewId =
+      (event.senderPid && this.options.getRendererContainerViewId?.(event.senderPid, eventDate)) ?? view?.id;
+
     const mainProcessAttributes = {
       session: { id: session?.id },
       application: { id: application?.id },
-      container: { view: { id: view?.id }, source: 'electron' },
+      container: { view: { id: containerViewId }, source: 'electron' },
     };
 
     return {

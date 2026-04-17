@@ -114,6 +114,7 @@ export class ViewCollection {
   private emitViewUpdate(): void {
     const viewEvent: RawRumView = {
       type: 'view',
+      date: this.currentView.startTime,
       view: {
         id: this.currentView.id,
         time_spent: toServerDuration(elapsed(this.currentView.startTime, timeStampNow())),
@@ -153,6 +154,10 @@ export class ViewCollection {
 
     const type = event.data.type;
     if (type === 'action' || type === 'error' || type === 'resource') {
+      // Only count events belonging to the current main process view
+      if (event.data.view.id !== this.currentView.id) {
+        return;
+      }
       this.currentView.counters[type].count++;
       this.currentView.documentVersion++;
       this.scheduleViewUpdate();
