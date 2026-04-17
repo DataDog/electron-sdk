@@ -11,4 +11,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   generateUnhandledRejection: () => ipcRenderer.invoke('generateUnhandledRejection'),
   crash: () => ipcRenderer.invoke('crash'),
   mainFetchApi: () => ipcRenderer.invoke('main:fetch-api'),
+  openRumExplorer: () => ipcRenderer.invoke('open-rum-explorer'),
 });
