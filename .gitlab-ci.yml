@@ -74,6 +74,8 @@ e2e:
 
 playground:
   stage: test
+  variables:
+    DD_DISABLE_PROXY: '1'
   script:
     - yarn
     - yarn build
