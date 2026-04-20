@@ -114,6 +114,7 @@ export class ViewCollection {
   private emitViewUpdate(): void {
     const viewEvent: RawRumView = {
       type: 'view',
+      date: this.currentView.startTime,
       view: {
         id: this.currentView.id,
         time_spent: toServerDuration(elapsed(this.currentView.startTime, timeStampNow())),
