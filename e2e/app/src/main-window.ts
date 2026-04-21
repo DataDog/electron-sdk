@@ -1,3 +1,10 @@
+import { datadogRum } from '@datadog/browser-rum';
+
+const rumBrowserSdkConfig = window.e2eConfig?.rumBrowserSdk;
+if (rumBrowserSdkConfig) {
+  datadogRum.init(rumBrowserSdkConfig);
+}
+
 const statusDiv = document.getElementById('status') as HTMLDivElement;
 statusDiv.textContent = 'SDK initialized in main process';
 statusDiv.className = 'info';
@@ -13,13 +20,6 @@ const stopSessionButton = document.getElementById('stop-session') as HTMLButtonE
 stopSessionButton.addEventListener('click', () => {
   void window.electronAPI.stopSession().then(() => {
     statusDiv.textContent = 'Session stopped';
-  });
-});
-
-const generateActivityButton = document.getElementById('generate-activity') as HTMLButtonElement;
-generateActivityButton.addEventListener('click', () => {
-  void window.electronAPI.generateActivity().then(() => {
-    statusDiv.textContent = 'Activity generated';
   });
 });
 

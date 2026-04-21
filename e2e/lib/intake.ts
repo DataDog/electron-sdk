@@ -90,28 +90,34 @@ export class Intake {
     });
   }
 
-  async getEventsByType(type: string, timeout = 5000): Promise<ReceivedEvent[]> {
+  async getEventsByType(
+    type: string,
+    options?: { timeout?: number; predicate?: (event: ReceivedEvent) => boolean }
+  ): Promise<ReceivedEvent[]> {
     // return as soon as we have one event
-    return this.waitForEventCount(type, 1, timeout);
+    return this.waitForEventCount(type, 1, options);
   }
 
-  async waitForEventCount(type: string, count: number, timeout = 5000): Promise<ReceivedEvent[]> {
+  async waitForEventCount(
+    type: string,
+    count: number,
+    options?: { timeout?: number; predicate?: (event: ReceivedEvent) => boolean }
+  ): Promise<ReceivedEvent[]> {
+    const timeout = options?.timeout ?? 5000;
+    const byPredicate = options?.predicate ?? (() => true);
+    const byType = (type: string) => (event: ReceivedEvent) => (event.body as { type?: string }).type === type;
     const startTime = Date.now();
     const pollInterval = 100;
 
     while (Date.now() - startTime < timeout) {
-      const matchingEvents = this.filterEventsByType(type);
+      const matchingEvents = this.events.filter(byType(type)).filter(byPredicate);
       if (matchingEvents.length >= count) {
         return matchingEvents;
       }
       await new Promise((resolve) => setTimeout(resolve, pollInterval));
     }
 
-    return this.filterEventsByType(type);
-  }
-
-  private filterEventsByType(type: string): ReceivedEvent[] {
-    return this.events.filter((event) => (event.body as { type?: string }).type === type);
+    return this.events.filter(byType(type)).filter(byPredicate);
   }
 
   clear(): void {
