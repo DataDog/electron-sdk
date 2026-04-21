@@ -7,7 +7,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self'"
     />
-    <title>E2E Test App</title>
+    <title>Main Window</title>
     <style>
       body {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -28,7 +28,7 @@
     </style>
   </head>
   <body>
-    <h1>E2E Test App</h1>
+    <h1>Main Window</h1>
     <p>SDK is automatically initialized on app launch.</p>
     <div id="status"></div>
     <button id="generate-telemetry-error">Generate Telemetry Error</button>
@@ -38,6 +38,6 @@
     <button id="generate-unhandled-rejection">Generate Unhandled Rejection</button>
     <button id="crash">Crash</button>
     <button id="generate-manual-error">Generate Manual Error</button>
-    <script src="renderer.js"></script>
+    <script src="main-window.js"></script>
   </body>
 </html>

@@ -3,22 +3,22 @@ import type { RumErrorEvent, RumViewEvent } from '@datadog/electron-sdk';
 
 test('emits a crash error event after a native crash', async ({ intake }) => {
   // Phase 1: Launch and crash
-  const { electronApp: firstElectronApp, app: firstApp } = await launchAppManually(intake);
-  await firstApp.flushTransport();
+  const { electronApp: firstElectronApp, mainPage: firstMainPage } = await launchAppManually(intake);
+  await firstMainPage.flushTransport();
   const viewEvents = await intake.getEventsByType('view');
   const sessionId = (viewEvents[0].body as RumViewEvent).session.id;
 
   const appClosed = firstElectronApp.waitForEvent('close');
-  firstApp.crash();
+  firstMainPage.crash();
   await appClosed;
   intake.clear();
 
   // Phase 2: Relaunch and verify crash event
-  const { electronApp: secondElectronApp, app: secondApp } = await launchAppManually(intake);
+  const { electronApp: secondElectronApp, mainPage: secondMainPage } = await launchAppManually(intake);
   try {
-    await secondApp.flushTransport();
+    await secondMainPage.flushTransport();
     // increase timeout to account for crash dump processing
-    const errorEvents = await intake.getEventsByType('error', 15_000);
+    const errorEvents = await intake.getEventsByType('error', { timeout: 15_000 });
     expect(errorEvents).toHaveLength(1);
 
     const error = errorEvents[0].body as RumErrorEvent;

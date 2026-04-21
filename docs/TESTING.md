@@ -20,7 +20,8 @@ Testing a new feature end-to-end means updating the `e2e/app/` to exercise it, t
 
 - **`e2e/app/`**: Minimal Electron app used as test fixture (main, preload, renderer)
 - **`e2e/lib/`**: Shared test utilities
-  - `appPage.ts`: Page Object that encapsulates high-level interactions with the E2E app.
+  - `mainPage.ts`: Page Object that encapsulates high-level interactions with the main app window.
+  - `bridgeWindowPage.ts`: Page Object for bridge windows, with static factory methods to open and await a ready bridge window.
   - `helpers.ts`: Playwright fixtures for app launch/cleanup
   - `intake.ts`: Local HTTP server that captures RUM events sent by the SDK
 - **`e2e/scenarios/`**: Test files using Playwright
@@ -32,6 +33,19 @@ Tests import custom `test` and `expect` from `lib/helpers.ts` (not directly from
 ### Intake Server
 
 The intake server (`e2e/lib/intake.ts`) runs on a dynamic port (OS-assigned) to avoid conflicts. It is managed as a Playwright fixture for automatic startup/teardown.
+
+#### `rumBrowserSdk` option
+
+By default, no browser-sdk runs in the main window renderer. Tests that need real user-activity tracking (e.g. session renewal via click) opt in per-describe or per file:
+
+```ts
+test.describe('session renewal', () => {
+  test.use({ rumBrowserSdk: {} });
+  // ...
+});
+```
+
+Pass an object to override specific init options (merged with the defaults). The fixture serialises the config into `DD_RUM_BROWSER_SDK` and the preload exposes it as `window.e2eConfig.rumBrowserSdk`.
 
 ### E2E App as Reference
 

@@ -9,5 +9,5 @@
     "composite": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/renderer.ts", "src/renderer-bridge.ts"]
+  "exclude": ["node_modules", "dist", "src/main-window.ts", "src/bridge-window.ts"]
 }

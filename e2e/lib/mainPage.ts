@@ -1,4 +1,5 @@
-import type { Page } from '@playwright/test';
+import type { ElectronApplication, Page } from '@playwright/test';
+import { BridgeWindowPage } from './bridgeWindowPage';
 
 // declare exposed IPC methods called directly in tests
 interface ElectronAppWindow {
@@ -6,16 +7,16 @@ interface ElectronAppWindow {
     generateTelemetryErrors: (count: number) => Promise<void>;
     generateManualError: (startTime?: number) => Promise<void>;
     flushTransport: () => Promise<void>;
-    openRendererFileWindow: () => Promise<void>;
-    openRendererFileWindowNoIsolation: () => Promise<void>;
-    openRendererHttpWindow: () => Promise<void>;
+    openBridgeFileWindow: () => Promise<void>;
+    openBridgeFileWindowNoIsolation: () => Promise<void>;
+    openBridgeHttpWindow: () => Promise<void>;
   };
 }
 
 /**
- * Page Object to interact with the electron app window
+ * Page Object to interact with the main app window
  */
-export class AppPage {
+export class MainPage {
   constructor(private readonly page: Page) {}
 
   async renewSession() {
@@ -29,6 +30,12 @@ export class AppPage {
 
   async generateActivity() {
     await this.page.locator('#generate-activity').click();
+    await this.waitForIpcPropagation();
+  }
+
+  private async waitForIpcPropagation() {
+    // Wait for event propagation: renderer → bridge IPC -> main → transport
+    await this.page.waitForTimeout(1000);
   }
 
   async generateTelemetryError() {
@@ -70,17 +77,20 @@ export class AppPage {
       });
   }
 
-  async openRendererFileWindow() {
-    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.openRendererFileWindow());
+  async openBridgeFileWindow(electronApp: ElectronApplication) {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.openBridgeFileWindow());
+    return await BridgeWindowPage.waitForReady(electronApp);
   }
 
-  async openRendererFileWindowNoIsolation() {
+  async openBridgeFileWindowNoIsolation(electronApp: ElectronApplication) {
     await this.page.evaluate(() =>
-      (globalThis as unknown as ElectronAppWindow).electronAPI.openRendererFileWindowNoIsolation()
+      (globalThis as unknown as ElectronAppWindow).electronAPI.openBridgeFileWindowNoIsolation()
     );
+    return await BridgeWindowPage.waitForReady(electronApp);
   }
 
-  async openRendererHttpWindow() {
-    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.openRendererHttpWindow());
+  async openBridgeHttpWindow(electronApp: ElectronApplication) {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.openBridgeHttpWindow());
+    return await BridgeWindowPage.waitForReady(electronApp);
   }
 }

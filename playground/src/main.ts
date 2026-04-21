@@ -2,14 +2,7 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as https from 'node:https';
-import {
-  _flushTransport,
-  _generateActivity,
-  _generateTelemetryError,
-  getInternalContext,
-  init,
-  stopSession,
-} from '@datadog/electron-sdk';
+import { _flushTransport, _generateTelemetryError, getInternalContext, init, stopSession } from '@datadog/electron-sdk';
 import { loadWindowState, saveWindowState } from './main/windowState';
 import { setupHotReload } from './main/hotReload';
 import { buildRumExplorerUrl } from './main/utils';
@@ -69,10 +62,6 @@ ipcMain.handle('get-session-file', () => {
 
 ipcMain.handle('stop-session', () => {
   stopSession();
-});
-
-ipcMain.handle('generate-activity', () => {
-  _generateActivity();
 });
 
 ipcMain.handle('generateTelemetryError', () => {
