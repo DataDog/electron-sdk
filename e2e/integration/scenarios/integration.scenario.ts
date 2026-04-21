@@ -44,10 +44,10 @@ test.describe('renderer error propagation @integration', () => {
     });
 
     // Wait for browser-rum to capture and send the error via the bridge IPC
-    await window.waitForTimeout(1000);
+    await window.waitForTimeout(ONE_SECOND);
     await flushTransport(window);
 
-    const errorEvents = await intake.waitForEventCount('error', 1, 10 * ONE_SECOND);
+    const errorEvents = await intake.waitForEventCount('error', 1, { timeout: 10 * ONE_SECOND });
     expect(errorEvents).toHaveLength(1);
 
     const error = errorEvents[0].body as RumErrorEvent;
@@ -73,7 +73,7 @@ test.describe('crash reporting across restart @integration', () => {
       await firstWindow.waitForLoadState('load');
       await firstWindow.waitForTimeout(500);
       await flushTransport(firstWindow);
-      await intake.getEventsByType('view', 10_000);
+      await intake.getEventsByType('view', { timeout: 10 * ONE_SECOND });
 
       const appClosed = firstApp.waitForEvent('close');
       void firstWindow
@@ -134,7 +134,7 @@ async function flushUntilEventArrives(
       /* empty */
     });
     const received = await intake
-      .waitForEventCount(type, count, Math.min(pollInterval, deadline - Date.now()))
+      .waitForEventCount(type, count, { timeout: Math.min(pollInterval, deadline - Date.now()) })
       .catch(() => null);
     if (received) return received;
   }
