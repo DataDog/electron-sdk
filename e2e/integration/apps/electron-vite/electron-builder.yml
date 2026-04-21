@@ -1,0 +1,16 @@
+appId: com.example.electron-vite
+productName: electron-vite
+directories:
+  output: out
+files:
+  - out/main/**
+  - out/preload/**
+  - out/renderer/**
+  - package.json
+linux:
+  target: dir
+mac:
+  target: dir
+  identity: null # disable code signing for integration test apps
+win:
+  target: dir

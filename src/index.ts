@@ -25,6 +25,8 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
     return false;
   }
 
+  // register preload early to avoid missing windows creation before init is complete
+  registerPreload();
   eventManager = new EventManager();
   const hooks = createFormatHooks();
 
@@ -35,7 +37,6 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   new Assembly(eventManager, hooks);
   new BridgeHandler(eventManager, config);
   new UserActivityTracker(eventManager);
-  registerPreload();
 
   transport = await Transport.create(config, eventManager);
   const rum = await RumCollection.start(eventManager, hooks);

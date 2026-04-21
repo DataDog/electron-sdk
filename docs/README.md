@@ -8,10 +8,11 @@ When making changes that impact development workflows or architecture, update th
 
 ## Reference
 
-| Document               | Purpose                                          |
-| ---------------------- | ------------------------------------------------ |
-| `docs/DEVELOPMENT.md`  | Workflow, build system, dependencies             |
-| `docs/CONVENTIONS.md`  | Coding conventions and style guidelines          |
-| `docs/ARCHITECTURE.md` | SDK design patterns and event pipeline           |
-| `docs/TESTING.md`      | Unit and E2E testing strategy and infrastructure |
-| `scripts/README.md`    | Script placement and CLI conventions             |
+| Document                    | Purpose                                          |
+| --------------------------- | ------------------------------------------------ |
+| `docs/DEVELOPMENT.md`       | Workflow, build system, dependencies             |
+| `docs/CONVENTIONS.md`       | Coding conventions and style guidelines          |
+| `docs/ARCHITECTURE.md`      | SDK design patterns and event pipeline           |
+| `docs/TESTING.md`           | Unit and E2E testing strategy and infrastructure |
+| `scripts/README.md`         | Script placement and CLI conventions             |
+| `e2e/integration/README.md` | Integration tests strategy and structure         |

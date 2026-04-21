@@ -12,6 +12,9 @@ rust-prod,serde_json,MIT OR Apache-2.0,Copyright (c) 2014 Erick Tryzelaar and Da
 rust-prod,wasm-bindgen,MIT OR Apache-2.0,Copyright (c) 2014 Alex Crichton
 rust-prod,wasm-bindgen-futures,MIT OR Apache-2.0,Copyright (c) 2014 Alex Crichton
 rust-prod,web-sys,MIT OR Apache-2.0,Copyright (c) 2014 Alex Crichton
+npm-dev,@electron-forge/cli,MIT,Copyright (c) 2019 The Electron Forge Contributors
+npm-dev,@electron-forge/plugin-vite,MIT,Copyright (c) 2019 The Electron Forge Contributors
+npm-dev,@electron-forge/plugin-webpack,MIT,Copyright (c) 2019 The Electron Forge Contributors
 npm-dev,@eslint/js,MIT,Copyright OpenJS Foundation and other contributors
 npm-dev,@playwright/test,Apache-2.0,Copyright Microsoft Corporation
 npm-dev,@rollup/plugin-commonjs,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)
@@ -19,13 +22,17 @@ npm-dev,@rollup/plugin-node-resolve,MIT,Copyright (c) 2019 RollupJS Plugin Contr
 npm-dev,@rollup/plugin-replace,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)
 npm-dev,@rollup/plugin-typescript,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)
 npm-dev,@types/node,MIT,Copyright (c) Microsoft Corporation
+npm-dev,@vercel/webpack-asset-relocator-loader,MIT,Copyright (c) 2019 Vercel, Inc.
 npm-dev,@vitest/coverage-v8,MIT,Copyright (c) 2021-Present VoidZero Inc.
 npm-dev,@vitest/ui,MIT,Copyright (c) 2021-Present VoidZero Inc.
 npm-dev,chokidar,MIT,Copyright (c) 2012 Paul Miller / Elan Shanker
 npm-dev,concurrently,MIT,Copyright (c) 2015 Kimmo Brunfeldt
+npm-dev,css-loader,MIT,Copyright (c) JS Foundation and other contributors
 npm-dev,electron,MIT,Copyright Electron contributors / GitHub Inc.
-npm-dev,esbuild,MIT,Copyright (c) 2020 Evan Wallace
+npm-dev,electron-builder,MIT,Copyright (c) 2015 Vladimir Krivosheev
 npm-dev,electron-reloader,MIT,Copyright Sindre Sorhus
+npm-dev,electron-vite,MIT,Copyright (c) 2022 Alex Wei
+npm-dev,esbuild,MIT,Copyright (c) 2020 Evan Wallace
 npm-dev,eslint,MIT,Copyright OpenJS Foundation and other contributors
 npm-dev,eslint-config-prettier,MIT,Copyright (c) 2017-2023 Simon Lydell and contributors
 npm-dev,eslint-plugin-prettier,MIT,Copyright (c) 2017 Andres Suarez and Teddy Katz
@@ -33,12 +40,17 @@ npm-dev,eslint-plugin-unicorn,MIT,Copyright (c) Sindre Sorhus
 npm-dev,husky,MIT,Copyright (c) 2021 typicode
 npm-dev,json-schema-to-typescript,MIT,Copyright (c) 2017 Boris Cherny
 npm-dev,lint-staged,MIT,Copyright (c) 2016 Andrey Okonetchnikov
+npm-dev,node-loader,MIT,Copyright (c) JS Foundation and other contributors
 npm-dev,playwright,Apache-2.0,Copyright Microsoft Corporation
 npm-dev,prettier,MIT,Copyright James Long and contributors
 npm-dev,rollup,MIT,Copyright (c) 2017 Rollup contributors (https://github.com/rollup/rollup/graphs/contributors)
 npm-dev,rollup-plugin-dts,LGPL-3.0-only,Copyright Arpad Borsos
+npm-dev,style-loader,MIT,Copyright (c) JS Foundation and other contributors
+npm-dev,ts-loader,MIT,Copyright (c) 2015 TypeStrong
 npm-dev,tslib,0BSD,Copyright Microsoft Corporation
 npm-dev,typescript,Apache-2.0,Copyright Microsoft Corporation
 npm-dev,typescript-eslint,MIT,Copyright (c) 2019 typescript-eslint and other contributors
+npm-dev,vite,MIT,Copyright (c) 2019-present VoidZero Inc.
 npm-dev,vitest,MIT,Copyright (c) 2021-Present VoidZero Inc.
+npm-dev,webpack,MIT,Copyright (c) JS Foundation and other contributors
 rust-dev,wasm-bindgen-test,MIT OR Apache-2.0,Copyright (c) 2014 Alex Crichton
