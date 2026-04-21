@@ -156,29 +156,6 @@ yarn json-schemas:generate  # Regenerate types only
 
 ⚠️ Never edit `src/rumEvent.types.ts` manually.
 
-## Playground Architecture
-
-### Module System Split
-
-The playground uses different module systems due to Electron constraints:
-
-- **main.ts, preload.ts**: CommonJS (`tsconfig.json`) - Electron requires this
-- **renderer.ts**: ES modules (`tsconfig.renderer.json`) - Runs in browser, can use modern modules
-- **ESLint**: Uses `tsconfig.eslint.json` that includes all files for type-checking
-
-**Critical detail:** Using `export {}` in CommonJS code generates `exports` references that fail in browser. Separate compilation configs prevent this.
-
-### Hot Reload System
-
-Two watchers handle different reload scenarios:
-
-1. **electron-reloader** (3s startup delay) - Watches playground files, reloads windows
-2. **chokidar** (5s grace period, 200ms debounce) - Watches parent SDK's dist/, clears require cache, relaunches app
-
-Grace periods prevent reload loops during initial TypeScript compilation.
-
-No watching of HTML changes for now to avoid extra complexity.
-
 ## Releasing
 
 ### Prerequisites

@@ -16,6 +16,13 @@ let transport: Transport | undefined;
 let rumApi: ReturnType<RumCollection['getApi']> | undefined;
 
 /**
+ * Internal SDK context
+ */
+export interface InternalContext {
+  session_id: string;
+}
+
+/**
  * Initialize the Electron SDK
  */
 export async function init(configuration: InitConfiguration): Promise<boolean> {
@@ -74,6 +81,20 @@ export function _generateTelemetryError() {
   return callMonitored(() => {
     throw new Error('expected error');
   });
+}
+
+/**
+ * [Internal API] Get the internal SDK context
+ */
+export function getInternalContext(): InternalContext | undefined {
+  if (!sessionManager) {
+    return undefined;
+  }
+  const session = sessionManager.getSession();
+  if (session.status !== 'active') {
+    return undefined;
+  }
+  return { session_id: session.id };
 }
 
 export type { InitConfiguration } from './config';
