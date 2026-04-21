@@ -1,0 +1,34 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "commitMessagePrefix": "👷 ",
+  "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict",
+  "prCreation": "not-pending",
+  "schedule": ["every weekend"],
+  "postUpdateOptions": ["yarnDedupeHighest"],
+  "lockFileMaintenance": { "enabled": true },
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 1,
+  "ignorePaths": ["rum-events-format/**", "**/node_modules/**"],
+  "ignoreDeps": ["minidump", "minidump-common", "minidump-processor", "minidump-unwind", "breakpad-symbols"],
+  "packageRules": [
+    {
+      "description": "Catch-all: group all minor/patch updates",
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "all non-major dependencies (minor/patch)"
+    },
+    {
+      "description": "Rust/Cargo semver deps — disabled until crash file test coverage is sufficient",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "rust dependencies (minor/patch)",
+      "enabled": false
+    },
+    {
+      "description": "Ignore all packages from the internal Datadog registry",
+      "matchRegistryUrls": ["registry.ddbuild.io"],
+      "enabled": false
+    }
+  ]
+}
