@@ -5,34 +5,34 @@ __metadata:
   version: 8
   cacheKey: 10c0
 
-"@datadog/browser-core@npm:6.30.1":
-  version: 6.30.1
-  resolution: "@datadog/browser-core@npm:6.30.1"
-  checksum: 10c0/3a17ddcfbc1d8321941f8119958e8e050f83eb9f7bc7895c30e6e73d33f66fd50e1194756e0dc10830e59721a1fd7829e57e236c73588471d413596566e1f2c4
+"@datadog/browser-core@npm:6.32.0":
+  version: 6.32.0
+  resolution: "@datadog/browser-core@npm:6.32.0"
+  checksum: 10c0/631afa79701f48c3c5d7aa0aa57a61ad1f84a82426a6bdb81032a509cb93925b540aac993fe0da31accdda21b017edfb0a908d0da85162e1982f47bf18c3e4c9
   languageName: node
   linkType: hard
 
-"@datadog/browser-rum-core@npm:6.30.1":
-  version: 6.30.1
-  resolution: "@datadog/browser-rum-core@npm:6.30.1"
+"@datadog/browser-rum-core@npm:6.32.0":
+  version: 6.32.0
+  resolution: "@datadog/browser-rum-core@npm:6.32.0"
   dependencies:
-    "@datadog/browser-core": "npm:6.30.1"
-  checksum: 10c0/c26fec4859856b287c90ce3eb631f6b2703869d2fdf2119df5b33a3a3abf4016147de3ba7a95fa0973bd322b2b0655e4ca7310ff91461583536d8665186d37b7
+    "@datadog/browser-core": "npm:6.32.0"
+  checksum: 10c0/a1967c34c21811a5a5d44b2dac5c70dae9c4c4cd627ac9946daffe51e398b9451fce163f5c65800d2c375c469ef01b6c69a737b76fcf47b2624ad56cfafeed4b
   languageName: node
   linkType: hard
 
-"@datadog/browser-rum@npm:6.30.1":
-  version: 6.30.1
-  resolution: "@datadog/browser-rum@npm:6.30.1"
+"@datadog/browser-rum@npm:6.32.0":
+  version: 6.32.0
+  resolution: "@datadog/browser-rum@npm:6.32.0"
   dependencies:
-    "@datadog/browser-core": "npm:6.30.1"
-    "@datadog/browser-rum-core": "npm:6.30.1"
+    "@datadog/browser-core": "npm:6.32.0"
+    "@datadog/browser-rum-core": "npm:6.32.0"
   peerDependencies:
-    "@datadog/browser-logs": 6.30.1
+    "@datadog/browser-logs": 6.32.0
   peerDependenciesMeta:
     "@datadog/browser-logs":
       optional: true
-  checksum: 10c0/f07f55c1ccd8ae535d7216e41d3a8244999d68c678115f0f9df8a9407b9ce7b5924c687a91a3100c63569a55443b54cd4d2861dbd3560148a5f2285e68f93f5d
+  checksum: 10c0/ad160880950d3fb0dcf50cd83ac2309c8b25d7acaeda74eea461a4a54eeb83839a6b1472a99c867f24afcfafd7f62270be4d2b8c77cb9cb55c25e70912eedc12
   languageName: node
   linkType: hard
 
@@ -431,7 +431,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "e2e-test-app@workspace:."
   dependencies:
-    "@datadog/browser-rum": "npm:6.30.1"
+    "@datadog/browser-rum": "npm:6.32.0"
     "@datadog/electron-sdk": "portal:../.."
     electron: "npm:41.0.2"
     esbuild: "npm:0.27.3"
