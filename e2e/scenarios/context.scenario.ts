@@ -42,6 +42,5 @@ test('events should not be sent when the session is expired', async ({ mainPage,
   await mainPage.generateManualError();
   await mainPage.flushTransport();
 
-  const errorEvents = await intake.getEventsByType('error');
-  expect(errorEvents).toHaveLength(0);
+  await intake.assertNoNewEvents('error');
 });

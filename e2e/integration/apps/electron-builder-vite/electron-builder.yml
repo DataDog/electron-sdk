@@ -1,0 +1,14 @@
+appId: com.example.electron-builder-vite
+productName: electron-builder-vite
+directories:
+  output: out
+files:
+  - dist/**
+  - package.json
+linux:
+  target: dir
+mac:
+  target: dir
+  identity: null # disable code signing for integration test apps
+win:
+  target: dir

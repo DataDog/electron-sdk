@@ -13,6 +13,9 @@ vi.mock('electron', () => ({
       registerPreloadScript: mockRegisterPreloadScript,
     },
   },
+  app: {
+    whenReady: vi.fn(() => Promise.resolve()),
+  },
 }));
 
 vi.mock('node:fs', () => ({

@@ -14,7 +14,7 @@ test.describe('bridge window — file:// window', () => {
     await mainPage.openBridgeFileWindow(electronApp);
     await mainPage.flushTransport();
 
-    const bridgeViews = await intake.waitForEventCount('view', 2, { predicate: isBridgeView });
+    const bridgeViews = await intake.waitForEventCount('view', 1, { predicate: isBridgeView });
     const view = bridgeViews[0].body as RumViewEvent;
 
     expect(view.view.url).toContain('bridge-window.html');
@@ -30,7 +30,7 @@ test.describe('bridge window — http:// window', () => {
     await mainPage.openBridgeHttpWindow(electronApp);
     await mainPage.flushTransport();
 
-    const bridgeViews = await intake.waitForEventCount('view', 2, { predicate: isBridgeView });
+    const bridgeViews = await intake.waitForEventCount('view', 1, { predicate: isBridgeView });
     const view = bridgeViews[0].body as RumViewEvent;
 
     expect(view.view.url).toMatch(/^http:\/\/localhost:\d+/);
@@ -50,7 +50,7 @@ test.describe('bridge window — contextIsolation: false', () => {
     await mainPage.openBridgeFileWindowNoIsolation(electronApp);
     await mainPage.flushTransport();
 
-    const bridgeViews = await intake.waitForEventCount('view', 2, { predicate: isBridgeView });
+    const bridgeViews = await intake.waitForEventCount('view', 1, { predicate: isBridgeView });
     const view = bridgeViews[0].body as RumViewEvent;
 
     expect(view.view.url).toContain('bridge-window.html');
@@ -67,7 +67,7 @@ test.describe('bridge window — event types', () => {
     await mainPage.openBridgeFileWindow(electronApp);
     await mainPage.flushTransport();
 
-    const bridgeViews = await intake.waitForEventCount('view', 2, { predicate: isBridgeView });
+    const bridgeViews = await intake.waitForEventCount('view', 1, { predicate: isBridgeView });
     const view = bridgeViews[0].body as RumViewEvent;
 
     // Session attributes come from the main process (assembly hooks)

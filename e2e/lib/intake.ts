@@ -1,10 +1,12 @@
 import * as http from 'node:http';
 
-interface ReceivedEvent {
+export interface ReceivedEvent {
   timestamp: number;
   body: unknown;
   headers: Record<string, string>;
 }
+
+const byType = (type: string) => (event: ReceivedEvent) => (event.body as { type?: string }).type === type;
 
 export class Intake {
   private server: http.Server | null = null;
@@ -105,7 +107,6 @@ export class Intake {
   ): Promise<ReceivedEvent[]> {
     const timeout = options?.timeout ?? 5000;
     const byPredicate = options?.predicate ?? (() => true);
-    const byType = (type: string) => (event: ReceivedEvent) => (event.body as { type?: string }).type === type;
     const startTime = Date.now();
     const pollInterval = 100;
 
@@ -117,7 +118,23 @@ export class Intake {
       await new Promise((resolve) => setTimeout(resolve, pollInterval));
     }
 
-    return this.events.filter(byType(type)).filter(byPredicate);
+    const received = this.events.filter(byType(type)).filter(byPredicate);
+    throw new Error(
+      `Timed out waiting for ${count} "${type}" event(s) after ${timeout}ms. Received ${received.length}.`
+    );
+  }
+
+  async assertNoNewEvents(type: string, duration = 500): Promise<void> {
+    const startTime = Date.now();
+    const pollInterval = 100;
+
+    while (Date.now() - startTime < duration) {
+      const matchingEvents = this.events.filter(byType(type));
+      if (matchingEvents.length > 0) {
+        throw new Error(`Expected no "${type}" events but received ${matchingEvents.length} within ${duration}ms.`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+    }
   }
 
   clear(): void {

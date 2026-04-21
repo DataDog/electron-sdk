@@ -16,6 +16,12 @@ playwright-report/
 # IA settings
 /.claude/settings.local.json
 
+# Integration test generated artifacts
+e2e/integration/integration-sdk.tgz
+e2e/integration/apps/*/out/
+e2e/integration/apps/*/.webpack/
+e2e/integration/apps/*/.vite/
+
 # Logs
 *.log
 
