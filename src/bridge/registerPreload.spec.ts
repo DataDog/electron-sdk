@@ -7,8 +7,6 @@ const { mockRegisterPreloadScript, mockExistsSync, mockDisplayInfo } = vi.hoiste
   return { mockRegisterPreloadScript, mockExistsSync, mockDisplayInfo };
 });
 
-let resolveWhenReady: () => void;
-
 vi.mock('electron', () => ({
   session: {
     defaultSession: {
@@ -16,12 +14,7 @@ vi.mock('electron', () => ({
     },
   },
   app: {
-    whenReady: vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveWhenReady = resolve;
-        })
-    ),
+    whenReady: vi.fn(() => Promise.resolve()),
   },
 }));
 
@@ -42,7 +35,6 @@ describe('registerPreload', () => {
   async function loadAndRegister() {
     const { registerPreload } = await import('./registerPreload');
     registerPreload();
-    resolveWhenReady();
   }
 
   it('should register the preload script when found next to current file', async () => {
