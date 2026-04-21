@@ -20,7 +20,6 @@ datadogRum.init({
 interface ElectronAPI {
   getSessionFile: () => Promise<string | null>;
   stopSession: () => Promise<void>;
-  generateActivity: () => Promise<void>;
   generateTelemetryError: () => Promise<void>;
   generateUncaughtException: () => Promise<void>;
   generateUnhandledRejection: () => Promise<void>;
@@ -96,12 +95,6 @@ if (stopBtn && sessionContent) {
 }
 
 document.addEventListener('click', () => setTimeout(() => void refreshSessionDisplay(), 500));
-
-// Handle generate activity button click
-const activityButton = document.getElementById('generate-activity') as HTMLButtonElement;
-activityButton.addEventListener('click', () => {
-  void window.electronAPI.generateActivity();
-});
 
 // Handle telemetry error button click
 const telemetryErrorButton = document.getElementById('generate-telemetry-error') as HTMLButtonElement;

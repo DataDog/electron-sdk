@@ -6,6 +6,8 @@ export interface ReceivedEvent {
   headers: Record<string, string>;
 }
 
+const byType = (type: string) => (event: ReceivedEvent) => (event.body as { type?: string }).type === type;
+
 export class Intake {
   private server: http.Server | null = null;
   private events: ReceivedEvent[] = [];
@@ -90,24 +92,33 @@ export class Intake {
     });
   }
 
-  async getEventsByType(type: string, timeout = 5000): Promise<ReceivedEvent[]> {
+  async getEventsByType(
+    type: string,
+    options?: { timeout?: number; predicate?: (event: ReceivedEvent) => boolean }
+  ): Promise<ReceivedEvent[]> {
     // return as soon as we have one event
-    return this.waitForEventCount(type, 1, timeout);
+    return this.waitForEventCount(type, 1, options);
   }
 
-  async waitForEventCount(type: string, count: number, timeout = 5000): Promise<ReceivedEvent[]> {
+  async waitForEventCount(
+    type: string,
+    count: number,
+    options?: { timeout?: number; predicate?: (event: ReceivedEvent) => boolean }
+  ): Promise<ReceivedEvent[]> {
+    const timeout = options?.timeout ?? 5000;
+    const byPredicate = options?.predicate ?? (() => true);
     const startTime = Date.now();
     const pollInterval = 100;
 
     while (Date.now() - startTime < timeout) {
-      const matchingEvents = this.filterEventsByType(type);
+      const matchingEvents = this.events.filter(byType(type)).filter(byPredicate);
       if (matchingEvents.length >= count) {
         return matchingEvents;
       }
       await new Promise((resolve) => setTimeout(resolve, pollInterval));
     }
 
-    const received = this.filterEventsByType(type);
+    const received = this.events.filter(byType(type)).filter(byPredicate);
     throw new Error(
       `Timed out waiting for ${count} "${type}" event(s) after ${timeout}ms. Received ${received.length}.`
     );
@@ -118,16 +129,12 @@ export class Intake {
     const pollInterval = 100;
 
     while (Date.now() - startTime < duration) {
-      const matchingEvents = this.filterEventsByType(type);
+      const matchingEvents = this.events.filter(byType(type));
       if (matchingEvents.length > 0) {
         throw new Error(`Expected no "${type}" events but received ${matchingEvents.length} within ${duration}ms.`);
       }
       await new Promise((resolve) => setTimeout(resolve, pollInterval));
     }
-  }
-
-  private filterEventsByType(type: string): ReceivedEvent[] {
-    return this.events.filter((event) => (event.body as { type?: string }).type === type);
   }
 
   clear(): void {

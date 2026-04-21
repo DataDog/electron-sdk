@@ -1,8 +1,11 @@
 import { test, expect } from '../lib/helpers';
 import type { RumViewEvent } from '@datadog/electron-sdk';
 
-test('emits an initial active view event on SDK init', async ({ app, intake }) => {
-  await app.flushTransport();
+const isMainProcessView = (event: { body: unknown }) =>
+  (event.body as RumViewEvent).view.url === 'electron://main-process';
+
+test('emits an initial active view event on SDK init', async ({ mainPage, intake }) => {
+  await mainPage.flushTransport();
   const events = await intake.getEventsByType('view');
   expect(events).toHaveLength(1);
 
@@ -20,35 +23,42 @@ test('emits an initial active view event on SDK init', async ({ app, intake }) =
   expect(view.view.time_spent).toBeGreaterThanOrEqual(0);
 });
 
-test('emits an inactive view on session expiry and a new active view on session renewal', async ({ app, intake }) => {
-  await app.flushTransport();
-  const initialEvents = await intake.getEventsByType('view');
-  const initialViewId = (initialEvents[0].body as RumViewEvent).view.id;
+test.describe('session renewal via user activity', () => {
+  test.use({ rumBrowserSdk: {} });
 
-  await app.stopSession();
-  await app.flushTransport();
+  test('emits an inactive view on session expiry and a new active view on session renewal', async ({
+    mainPage,
+    intake,
+  }) => {
+    await mainPage.flushTransport();
+    const initialEvents = await intake.getEventsByType('view');
+    const initialViewId = (initialEvents.find(isMainProcessView)!.body as RumViewEvent).view.id;
 
-  const eventsAfterStop = await intake.waitForEventCount('view', 2);
-  const inactiveView = eventsAfterStop[1].body as RumViewEvent;
+    await mainPage.stopSession();
+    await mainPage.flushTransport();
 
-  expect(inactiveView.view.id).toBe(initialViewId);
-  expect(inactiveView.view.is_active).toBe(false);
-  expect(inactiveView._dd.document_version).toBe(2);
+    const eventsAfterStop = await intake.waitForEventCount('view', 2, { predicate: isMainProcessView });
+    const inactiveView = eventsAfterStop[1].body as RumViewEvent;
 
-  await app.generateActivity();
-  await app.flushTransport();
+    expect(inactiveView.view.id).toBe(initialViewId);
+    expect(inactiveView.view.is_active).toBe(false);
+    expect(inactiveView._dd.document_version).toBe(2);
 
-  const eventsAfterRenewal = await intake.waitForEventCount('view', 3);
-  const newView = eventsAfterRenewal[2].body as RumViewEvent;
+    await mainPage.generateActivity();
+    await mainPage.flushTransport();
 
-  expect(newView.view.id).not.toBe(initialViewId);
-  expect(newView.view.is_active).toBe(true);
-  expect(newView._dd.document_version).toBe(1);
+    const eventsAfterRenewal = await intake.waitForEventCount('view', 3, { predicate: isMainProcessView });
+    const newView = eventsAfterRenewal[2].body as RumViewEvent;
+
+    expect(newView.view.id).not.toBe(initialViewId);
+    expect(newView.view.is_active).toBe(true);
+    expect(newView._dd.document_version).toBe(1);
+  });
 });
 
-test('increments view error count after an uncaught exception', async ({ app, intake }) => {
-  await app.generateUncaughtException();
-  await app.flushTransport();
+test('increments view error count after an uncaught exception', async ({ mainPage, intake }) => {
+  await mainPage.generateUncaughtException();
+  await mainPage.flushTransport();
 
   await intake.getEventsByType('error');
   const viewEvents = await intake.waitForEventCount('view', 2);

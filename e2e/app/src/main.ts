@@ -6,7 +6,6 @@ import {
   init,
   addError,
   _generateTelemetryError,
-  _generateActivity,
   _flushTransport,
   stopSession,
   type InitConfiguration,
@@ -19,8 +18,8 @@ let rendererHttpServer: http.Server | null = null;
 function startRendererHttpServer(): Promise<number> {
   return new Promise((resolve) => {
     rendererHttpServer = http.createServer((_req, res) => {
-      const htmlPath = join(__dirname, 'index-renderer.html');
-      const jsPath = join(__dirname, 'renderer-bridge.js');
+      const htmlPath = join(__dirname, 'bridge-window.html');
+      const jsPath = join(__dirname, 'bridge-window.js');
 
       if (_req.url === '/' || _req.url?.endsWith('.html')) {
         const html = fs.readFileSync(htmlPath, 'utf-8');
@@ -31,7 +30,7 @@ function startRendererHttpServer(): Promise<number> {
         res.writeHead(200, { 'Content-Type': 'application/javascript' });
         res.end(js);
       } else if (_req.url?.endsWith('.js.map')) {
-        const mapPath = join(__dirname, 'renderer-bridge.js.map');
+        const mapPath = join(__dirname, 'bridge-window.js.map');
         try {
           const map = fs.readFileSync(mapPath, 'utf-8');
           res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -68,10 +67,6 @@ void app.whenReady().then(async () => {
     stopSession();
   });
 
-  ipcMain.handle('generateActivity', () => {
-    _generateActivity();
-  });
-
   ipcMain.handle('generateUncaughtException', () => {
     setTimeout(() => {
       throw new Error('test uncaught exception');
@@ -94,7 +89,7 @@ void app.whenReady().then(async () => {
     process.crash();
   });
 
-  ipcMain.handle('openRendererFileWindow', () => {
+  ipcMain.handle('openBridgeFileWindow', () => {
     const win = new BrowserWindow({
       width: 800,
       height: 600,
@@ -104,10 +99,10 @@ void app.whenReady().then(async () => {
         nodeIntegration: false,
       },
     });
-    void win.loadFile(join(__dirname, 'index-renderer.html'));
+    void win.loadFile(join(__dirname, 'bridge-window.html'));
   });
 
-  ipcMain.handle('openRendererFileWindowNoIsolation', () => {
+  ipcMain.handle('openBridgeFileWindowNoIsolation', () => {
     const win = new BrowserWindow({
       width: 800,
       height: 600,
@@ -117,10 +112,10 @@ void app.whenReady().then(async () => {
         nodeIntegration: false,
       },
     });
-    void win.loadFile(join(__dirname, 'index-renderer.html'));
+    void win.loadFile(join(__dirname, 'bridge-window.html'));
   });
 
-  ipcMain.handle('openRendererHttpWindow', async () => {
+  ipcMain.handle('openBridgeHttpWindow', async () => {
     const port = await startRendererHttpServer();
     const win = new BrowserWindow({
       width: 800,
@@ -161,12 +156,12 @@ function createWindow() {
     },
   });
 
-  void mainWindow.loadFile(join(__dirname, 'index.html'));
+  void mainWindow.loadFile(join(__dirname, 'main-window.html'));
 }
 
 function getConfiguration(): InitConfiguration {
-  if (process.env.DD_SDK_CONFIG) {
-    return JSON.parse(process.env.DD_SDK_CONFIG) as InitConfiguration;
+  if (process.env.DD_ELECTRON_SDK_CONFIG) {
+    return JSON.parse(process.env.DD_ELECTRON_SDK_CONFIG) as InitConfiguration;
   }
-  throw new Error('DD_SDK_CONFIG environment variable is not set');
+  throw new Error('DD_ELECTRON_SDK_CONFIG environment variable is not set');
 }
