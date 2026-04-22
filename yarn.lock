@@ -92,7 +92,7 @@ __metadata:
     "@vitest/coverage-v8": "npm:4.0.18"
     "@vitest/ui": "npm:4.0.18"
     concurrently: "npm:9.2.1"
-    dd-trace: "file:./dd-trace.tgz"
+    dd-trace: "file:./dd-trace-04.tgz"
     electron: "npm:40.2.1"
     eslint: "npm:10.0.2"
     eslint-config-prettier: "npm:10.1.8"
@@ -123,10 +123,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@datadog/libdatadog@npm:0.9.2":
-  version: 0.9.2
-  resolution: "@datadog/libdatadog@npm:0.9.2"
-  checksum: 10c0/79206754bf7fa85b1d888e27b865827eb39553aa6b7063846128f7582a780aefdbbe431b01ee55b21f57ad2de232f7bb1dbae3da14ae02d764f418b20413e4f6
+"@datadog/libdatadog@npm:0.9.3":
+  version: 0.9.3
+  resolution: "@datadog/libdatadog@npm:0.9.3"
+  checksum: 10c0/83f46a1aa5eae21a5a042f82a7acacf158fab46744c9a9181371bd048ab4bd80f34bdf691c48e1e541414f72254ce9d153bb7f678c020829589bb4ef7ec5eb8f
   languageName: node
   linkType: hard
 
@@ -1874,11 +1874,11 @@ __metadata:
   languageName: node
   linkType: hard
 
-"dd-trace@file:./dd-trace.tgz::locator=%40datadog%2Felectron-sdk%40workspace%3A.":
+"dd-trace@file:./dd-trace-04.tgz::locator=%40datadog%2Felectron-sdk%40workspace%3A.":
   version: 6.0.0-pre
-  resolution: "dd-trace@file:./dd-trace.tgz#./dd-trace.tgz::hash=e6e223&locator=%40datadog%2Felectron-sdk%40workspace%3A."
+  resolution: "dd-trace@file:./dd-trace-04.tgz#./dd-trace-04.tgz::hash=af7ecd&locator=%40datadog%2Felectron-sdk%40workspace%3A."
   dependencies:
-    "@datadog/libdatadog": "npm:0.9.2"
+    "@datadog/libdatadog": "npm:0.9.3"
     "@datadog/native-appsec": "npm:11.0.1"
     "@datadog/native-iast-taint-tracking": "npm:4.1.0"
     "@datadog/native-metrics": "npm:3.1.1"
@@ -1911,7 +1911,7 @@ __metadata:
       optional: true
     oxc-parser:
       optional: true
-  checksum: 10c0/7c496207de7f915f3250ff746b334b102040ef2e63ac8c783d511a39de9d64e83db639f12347f316fb0cc432459cb52b86138b3f1b584f5230fd876e72f9b3e1
+  checksum: 10c0/46d337d70e7a83a0d3a7cd1efa779cc6fbc4a159ae791318c8451443855afa891cc86e8782f88b655709540bef09bd8ff4914a8107ada5de893afc031936fc64
   languageName: node
   linkType: hard
 

@@ -24,6 +24,12 @@ export class ViewContext {
       if (id === undefined) return SKIPPED;
       return { view: { id } };
     });
+
+    hooks.registerSpan((params) => {
+      const id = this.history.find(params.startTime);
+      if (id === undefined) return SKIPPED;
+      return { '_dd.view.id': id };
+    });
   }
 
   static async init(hooks: FormatHooks, expireDelay = SESSION_TIME_OUT_DELAY): Promise<ViewContext> {

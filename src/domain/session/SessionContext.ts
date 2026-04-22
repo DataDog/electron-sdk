@@ -24,6 +24,12 @@ export class SessionContext {
       if (id === undefined) return SKIPPED;
       return { session: { id } };
     });
+
+    hooks.registerSpan((params) => {
+      const id = this.history.find(params.startTime);
+      if (id === undefined) return SKIPPED;
+      return { '_dd.session.id': id };
+    });
   }
 
   static async init(hooks: FormatHooks, expireDelay = SESSION_TIME_OUT_DELAY): Promise<SessionContext> {

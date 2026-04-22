@@ -21,7 +21,7 @@ export interface RawTelemetryEvent {
   startTime?: TimeStamp;
 }
 
-export type ServerEvent = ServerRumEvent | ServerTelemetryEvent | ServerLogsEvent;
+export type ServerEvent = ServerRumEvent | ServerTelemetryEvent | ServerLogsEvent | ServerSpansEvent;
 
 export interface ServerRumEvent {
   kind: typeof EventKind.SERVER;
@@ -39,6 +39,12 @@ export interface ServerTelemetryEvent {
 export interface ServerLogsEvent {
   kind: typeof EventKind.SERVER;
   track: typeof EventTrack.LOGS;
+  data: unknown;
+}
+
+export interface ServerSpansEvent {
+  kind: typeof EventKind.SERVER;
+  track: typeof EventTrack.SPANS;
   data: unknown;
 }
 

@@ -46,7 +46,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   new UserActivityTracker(eventManager);
 
   if (tracing?.enabled) {
-    new ResourceConverter(eventManager);
+    new ResourceConverter(eventManager, hooks, config.env ?? '');
     displayInfo('Tracing enabled');
   }
 
