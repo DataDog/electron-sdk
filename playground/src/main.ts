@@ -131,7 +131,6 @@ void app.whenReady().then(async () => {
     ...CONF.staging,
     service: 'electron-playground',
     env: 'dev',
-    tracing: true,
   });
   console.log('SDK init result:', result);
 
