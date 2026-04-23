@@ -2,6 +2,12 @@
 
 All notable changes to `@datadog/electron-sdk` are documented here.
 
+## [Unreleased]
+
+### ✨ Features
+
+- ⚗️ add RUM Operations API (`startFeatureOperation`, `succeedFeatureOperation`, `failFeatureOperation`) to the main process — preview/experimental. Renderer consumers keep using `@datadog/browser-rum` directly (requires the `feature_operation_vital` experimental flag); API signatures match between the two.
+
 ## [0.1.3] - 2026-04-08
 
 ### Internal

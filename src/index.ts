@@ -4,7 +4,7 @@ import { buildConfiguration } from './config';
 import { RumCollection } from './domain/rum';
 import { SessionManager } from './domain/session';
 import { UserActivityTracker } from './domain/UserActivityTracker';
-import type { ErrorOptions } from './domain/rum';
+import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './domain/rum';
 import { callMonitored, startTelemetry } from './domain/telemetry';
 import { EventManager } from './event';
 import { BridgeHandler, registerPreload } from './bridge';
@@ -60,6 +60,76 @@ export function addError(error: unknown, options?: ErrorOptions): void {
 }
 
 /**
+ * Start a RUM Operation step from the main process.
+ *
+ * Emits a vital `operation_step` event with `step_type: "start"`.
+ * Pair every `startFeatureOperation` with exactly one `succeedFeatureOperation`
+ * or `failFeatureOperation`. Use `options.operationKey` to distinguish parallel
+ * operations with the same name.
+ *
+ * Renderer consumers should continue to call `DD_RUM.startFeatureOperation`
+ * on the bundled `@datadog/browser-rum` (with `feature_operation_vital`
+ * experimental flag enabled) — the API signatures match. An operation started
+ * in one process may be completed in the other; the backend correlates start
+ * and end steps by `name` + `operationKey`.
+ *
+ * The main-process API does not maintain any local active-operation tracking
+ * (by design — renderer-originated start/stop events cross the IPC bridge
+ * without updating main-process state, so local tracking would produce false
+ * "duplicate start" / "stop without start" warnings on legitimate cross-
+ * process flows). This matches the bundled browser-sdk's behavior.
+ *
+ * @experimental This API is in preview and may change in future releases.
+ * @example
+ * startFeatureOperation('checkout');
+ * // ... later
+ * succeedFeatureOperation('checkout');
+ *
+ * // Parallel operations with distinct keys
+ * startFeatureOperation('upload', { operationKey: 'profile_pic' });
+ * startFeatureOperation('upload', { operationKey: 'cover_photo' });
+ */
+export function startFeatureOperation(name: string, options?: FeatureOperationOptions): void {
+  callMonitored(() => rumApi?.startFeatureOperation(name, options));
+}
+
+/**
+ * Record the successful completion of a RUM Operation started with
+ * `startFeatureOperation`.
+ *
+ * Emits a vital `operation_step` event with `step_type: "end"` and no
+ * `failure_reason`. Pass the same `name` (and `operationKey`, if any) that
+ * was used when starting the operation.
+ *
+ * @experimental This API is in preview and may change in future releases.
+ * @example
+ * succeedFeatureOperation('upload', { operationKey: 'profile_pic' });
+ */
+export function succeedFeatureOperation(name: string, options?: FeatureOperationOptions): void {
+  callMonitored(() => rumApi?.succeedFeatureOperation(name, options));
+}
+
+/**
+ * Record the failure of a RUM Operation started with `startFeatureOperation`.
+ *
+ * Emits a vital `operation_step` event with `step_type: "end"` and the
+ * supplied `failureReason`. Pass the same `name` (and `operationKey`, if any)
+ * that was used when starting the operation.
+ *
+ * @experimental This API is in preview and may change in future releases.
+ * @example
+ * failFeatureOperation('checkout', 'error');
+ * failFeatureOperation('upload', 'abandoned', { operationKey: 'cover_photo' });
+ */
+export function failFeatureOperation(
+  name: string,
+  failureReason: FailureReason,
+  options?: FeatureOperationOptions
+): void {
+  callMonitored(() => rumApi?.failFeatureOperation(name, failureReason, options));
+}
+
+/**
  * Internal API to flush all pending batches to the intake
  */
 export async function _flushTransport(): Promise<void> {
@@ -77,7 +147,14 @@ export function _generateTelemetryError() {
 }
 
 export type { InitConfiguration } from './config';
-export type { RumErrorEvent, RumViewEvent } from './domain/rum';
+export type {
+  FailureReason,
+  FeatureOperationOptions,
+  RumErrorEvent,
+  RumViewEvent,
+  RumVitalEvent,
+  RumVitalOperationStepEvent,
+} from './domain/rum';
 export type { TelemetryErrorEvent } from './domain/telemetry';
 
 export { SESSION_TIME_OUT_DELAY } from './domain/session';
