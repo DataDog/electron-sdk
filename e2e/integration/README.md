@@ -36,12 +36,14 @@ yarn test:integration --project=forge-webpack-packaged
 
 ## Supported Toolchains
 
-| App                     | Bundler             | Packager         | SDK preload loading                                   |
-| ----------------------- | ------------------- | ---------------- | ----------------------------------------------------- |
-| `forge-webpack`         | Webpack (via Forge) | Electron Forge   | `import '@datadog/electron-sdk/preload'`              |
-| `forge-vite`            | Vite (via Forge)    | Electron Forge   | `import '@datadog/electron-sdk/preload'`              |
-| `electron-vite`         | electron-vite CLI   | electron-builder | Auto-registered via `session.registerPreloadScript()` |
-| `electron-builder-vite` | Vite (manual)       | electron-builder | `import '@datadog/electron-sdk/preload'`              |
+| App                     | Bundler             | Packager         |
+| ----------------------- | ------------------- | ---------------- |
+| `forge-webpack`         | Webpack (via Forge) | Electron Forge   |
+| `forge-vite`            | Vite (via Forge)    | Electron Forge   |
+| `electron-vite`         | electron-vite CLI   | electron-builder |
+| `electron-builder-vite` | Vite (manual)       | electron-builder |
+
+All apps use `import '@datadog/electron-sdk/instrument'` before importing `electron` in their main process. This initializes dd-trace which automatically injects the preload script via BrowserWindow wrapping.
 
 ## Key design points
 

@@ -1,3 +1,4 @@
+import '@datadog/electron-sdk/instrument';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import * as http from 'node:http';
 import * as fs from 'node:fs';
