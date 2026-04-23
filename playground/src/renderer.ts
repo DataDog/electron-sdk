@@ -30,6 +30,7 @@ interface ElectronAPI {
   forkUtility: () => Promise<string>;
   sendMessage: () => Promise<string>;
   crashUtility: () => Promise<string>;
+  throwUtilityError: () => Promise<string>;
   crashRenderer: () => Promise<string>;
   spawnLs: () => Promise<string>;
   execEcho: () => Promise<string>;
@@ -226,6 +227,7 @@ setupDemoButton('main-fetch', 'main:fetch-api', () => window.electronAPI.mainFet
 setupDemoButton('fork-utility', 'utility-process:fork', () => window.electronAPI.forkUtility());
 setupDemoButton('send-message', 'utility-process:send-message', () => window.electronAPI.sendMessage());
 setupDemoButton('crash-utility', 'utility-process:crash', () => window.electronAPI.crashUtility());
+setupDemoButton('throw-utility-error', 'utility-process:throw-error', () => window.electronAPI.throwUtilityError());
 
 // Renderer process buttons
 setupDemoButton('crash-renderer', 'renderer-process:crash', () => window.electronAPI.crashRenderer());

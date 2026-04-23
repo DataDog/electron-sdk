@@ -16,6 +16,9 @@
       "types": "./dist/preload.d.ts",
       "require": "./dist/preload-auto.cjs",
       "import": "./dist/preload.mjs"
+    },
+    "./utility": {
+      "require": "./dist/utility-preload.cjs"
     }
   },
   "typesVersions": {
@@ -40,6 +43,8 @@
     "dist/preload.d.ts",
     "dist/preload.mjs",
     "dist/preload.mjs.map",
+    "dist/utility-preload.cjs",
+    "dist/utility-preload.cjs.map",
     "README.md",
     "LICENSE",
     "LICENSE-3rdparty.csv"

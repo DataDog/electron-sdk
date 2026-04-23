@@ -60,6 +60,31 @@ const config = [
     external: ['electron'],
     plugins: sharedPlugins,
   },
+  // Utility process preload: self-contained CJS script injected via --require in utilityProcess.fork()
+  // Uses external: ['electron'] to prevent bundling the npm electron package, then strips the
+  // resulting require('electron') from the output since it's only a type-level dependency.
+  {
+    input: 'src/entries/utilityPreload.ts',
+    output: [
+      {
+        file: 'dist/utility-preload.cjs',
+        format: 'cjs',
+        sourcemap: true,
+        banner: '/* utility-preload: runs inside Electron utility process via --require */',
+      },
+    ],
+    external: ['electron'],
+    plugins: [
+      ...sharedPlugins,
+      {
+        name: 'strip-electron-require',
+        renderChunk(code) {
+          // Remove the side-effect-only require('electron') that rollup emits from ambient type refs
+          return code.replace(/require\('electron'\);\n?/g, '');
+        },
+      },
+    ],
+  },
   // TypeScript declarations: main
   {
     input: 'src/index.ts',

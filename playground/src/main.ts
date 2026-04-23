@@ -189,6 +189,16 @@ ipcMain.handle('utility-process:crash', () => {
   });
 });
 
+ipcMain.handle('utility-process:throw-error', () => {
+  return new Promise<string>((resolve) => {
+    const child = utilityProcess.fork(WORKER_PATH, [], { serviceName: 'dd-demo-throw-worker' });
+    child.once('message', (msg: { ready?: boolean }) => {
+      if (msg.ready) child.postMessage({ action: 'throw-error' });
+    });
+    child.once('exit', (code: number) => resolve(`Worker exited with code: ${code}`));
+  });
+});
+
 // --- Renderer process demo handlers ---
 
 ipcMain.handle('renderer-process:crash', () => {

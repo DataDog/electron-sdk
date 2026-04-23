@@ -27,10 +27,14 @@ interface ProcessView {
  * Track Electron utility processes as RUM views.
  *
  * - On utilityProcess.fork(): start a new view ("Utility: {serviceName}")
- * - On spawn: update view with pid
+ * - On spawn: update view with pid, transfer a dedicated MessagePort for error forwarding
  * - On exit (code=0): end view + emit action (clean exit)
  * - On exit (code≠0): end view + emit error (abnormal exit)
  * - On app 'child-process-gone': enrich error with crash details
+ *
+ * For error capture inside utility processes, the customer must import
+ * '@datadog/electron-sdk/utility' at the top of their utility process entry file.
+ * That module listens for the MessagePort transfer and registers error handlers.
  */
 export class UtilityProcessCollection {
   private readonly processViews = new Map<UtilityProcess, ProcessView>();
@@ -86,6 +90,31 @@ export class UtilityProcessCollection {
         // Emit initial view
         emitViewUpdate(view);
 
+        // Intercept child.emit('message') to capture SDK-internal messages (__dd)
+        // sent by the utility process via process.parentPort.postMessage().
+        // This approach:
+        // - Does NOT override child.on/child.once (which breaks Electron internals)
+        // - Does NOT register parentPort.on('message') in the utility process (which drains the buffer)
+        // - Does NOT transfer MessagePorts on spawn (which blocks all messages)
+        // Instead, SDK messages are swallowed at emit time before reaching customer handlers.
+        const originalEmit = child.emit.bind(child);
+        child.emit = function (event: string, ...args: unknown[]): boolean {
+          if (event === 'message') {
+            const msg = args[0];
+            if (msg && typeof msg === 'object' && (msg as Record<string, unknown>).__dd) {
+              const data = msg as { __dd: true; type?: string; message?: string; stack?: string };
+              if (data.type === 'error' && data.message) {
+                view.counters.error.count++;
+                view.documentVersion++;
+                emitError(view, data.message, { stack: data.stack });
+                emitViewUpdate(view);
+              }
+              return true; // Swallow — don't propagate to customer handlers
+            }
+          }
+          return originalEmit(event, ...args);
+        } as typeof child.emit;
+
         child.once('spawn', () => {
           view.pid = child.pid ?? undefined;
           view.documentVersion++;
@@ -109,6 +138,7 @@ export class UtilityProcessCollection {
           }
 
           emitViewUpdate(view);
+
           // Keep in map briefly for child-process-gone enrichment, then clean up
           setTimeout(() => processViews.delete(child), 5000);
         });
@@ -218,6 +248,7 @@ export class UtilityProcessCollection {
       error: {
         id: generateUUID(),
         message,
+        stack: typeof context.stack === 'string' ? context.stack : undefined,
         source: 'source',
         handling: 'unhandled',
         is_crash: context.is_crash ? true : undefined,

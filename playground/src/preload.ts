@@ -19,5 +19,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   forkUtility: () => ipcRenderer.invoke('utility-process:fork'),
   sendMessage: () => ipcRenderer.invoke('utility-process:send-message'),
   crashUtility: () => ipcRenderer.invoke('utility-process:crash'),
+  throwUtilityError: () => ipcRenderer.invoke('utility-process:throw-error'),
   crashRenderer: () => ipcRenderer.invoke('renderer-process:crash'),
 });

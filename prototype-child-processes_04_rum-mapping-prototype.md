@@ -30,7 +30,6 @@ BridgeHandler (modified)        → extracts sender pid from IpcMainEvent
 
 All events flow through the existing pipeline: EventManager → Assembly → Transport → intake.
 
-
 ## What was built
 
 | Step | Feature                                                            | Validated                                    |

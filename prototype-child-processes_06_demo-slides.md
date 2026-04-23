@@ -24,7 +24,7 @@
 ## Prototyping with AI — 4 Sessions
 
 | Session | Focus                                      | Outcome                                                    |
-| ------- | ------------------------------------------ |------------------------------------------------------------|
+| ------- | ------------------------------------------ | ---------------------------------------------------------- |
 | 1       | Landscape research + technical feasibility | Survey of 6 process mechanisms, 3 working prototypes       |
 | 2       | RUM data model design                      | Mapping available data points to RUM events                |
 | 3       | Full prototype implementation              | Working SDK + playground with 12 Playwright test scenarios |
