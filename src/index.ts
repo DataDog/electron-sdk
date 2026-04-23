@@ -28,10 +28,6 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
     return false;
   }
 
-  // Preload injection is handled by @datadog/electron-sdk/init which hooks
-  // require('electron') and wraps BrowserWindow before the app imports electron.
-  // registerPreload();
-
   const tracing = new Tracing();
 
   eventManager = new EventManager();
