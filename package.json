@@ -17,10 +17,10 @@
       "require": "./dist/preload-auto.cjs",
       "import": "./dist/preload.mjs"
     },
-    "./init": {
-      "types": "./dist/init.d.ts",
-      "require": "./dist/init.cjs",
-      "import": "./dist/init.mjs"
+    "./instrument": {
+      "types": "./dist/instrument.d.ts",
+      "require": "./dist/instrument.cjs",
+      "import": "./dist/instrument.mjs"
     }
   },
   "typesVersions": {
@@ -28,8 +28,8 @@
       "preload": [
         "./dist/preload.d.ts"
       ],
-      "init": [
-        "./dist/init.d.ts"
+      "instrument": [
+        "./dist/instrument.d.ts"
       ]
     }
   },
@@ -48,11 +48,11 @@
     "dist/preload.d.ts",
     "dist/preload.mjs",
     "dist/preload.mjs.map",
-    "dist/init.cjs",
-    "dist/init.cjs.map",
-    "dist/init.mjs",
-    "dist/init.mjs.map",
-    "dist/init.d.ts",
+    "dist/instrument.cjs",
+    "dist/instrument.cjs.map",
+    "dist/instrument.mjs",
+    "dist/instrument.mjs.map",
+    "dist/instrument.d.ts",
     "README.md",
     "LICENSE",
     "LICENSE-3rdparty.csv"

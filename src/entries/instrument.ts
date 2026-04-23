@@ -1,8 +1,8 @@
 /**
- * Early initialization entry point — must be imported before 'electron'.
+ * Instrumentation entry point — must be imported before 'electron'.
  *
  * Usage:
- *   import '@datadog/electron-sdk/init';
+ *   import '@datadog/electron-sdk/instrument';
  *   import { app, BrowserWindow } from 'electron';
  *
  * Initializes dd-trace with the electron exporter so it can hook

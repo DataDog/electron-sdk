@@ -1,6 +1,5 @@
-// Must be imported before 'electron' — initializes dd-trace and hooks require('electron')
-// for automatic BrowserWindow preload injection.
-import '@datadog/electron-sdk/init';
+// Must be imported before 'electron' — instruments electron for tracing and preload injection.
+import '@datadog/electron-sdk/instrument';
 
 import { app, BrowserWindow, ipcMain, net } from 'electron';
 import * as path from 'node:path';

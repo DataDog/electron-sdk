@@ -62,17 +62,17 @@ const config = [
     external: ['electron'],
     plugins: sharedPlugins,
   },
-  // Early init: imported before electron to hook require('electron') for BrowserWindow wrapping
+  // Instrumentation: imported before electron to hook require('electron') for BrowserWindow wrapping
   {
-    input: 'src/entries/init.ts',
+    input: 'src/entries/instrument.ts',
     output: [
       {
-        file: 'dist/init.cjs',
+        file: 'dist/instrument.cjs',
         format: 'cjs',
         sourcemap: true,
       },
       {
-        file: 'dist/init.mjs',
+        file: 'dist/instrument.mjs',
         format: 'esm',
         sourcemap: true,
       },
@@ -101,9 +101,9 @@ const config = [
   },
   // TypeScript declarations: init
   {
-    input: 'src/entries/init.ts',
+    input: 'src/entries/instrument.ts',
     output: {
-      file: 'dist/init.d.ts',
+      file: 'dist/instrument.d.ts',
       format: 'esm',
     },
     plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
