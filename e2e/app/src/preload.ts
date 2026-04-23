@@ -11,6 +11,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   generateUncaughtException: () => ipcRenderer.invoke('generateUncaughtException'),
   generateUnhandledRejection: () => ipcRenderer.invoke('generateUnhandledRejection'),
   generateManualError: (startTime?: number) => ipcRenderer.invoke('generateManualError', startTime),
+  startFeatureOperation: (name: string, options?: Record<string, unknown>) =>
+    ipcRenderer.invoke('startFeatureOperation', name, options),
+  succeedFeatureOperation: (name: string, options?: Record<string, unknown>) =>
+    ipcRenderer.invoke('succeedFeatureOperation', name, options),
+  failFeatureOperation: (name: string, failureReason: string, options?: Record<string, unknown>) =>
+    ipcRenderer.invoke('failFeatureOperation', name, failureReason, options),
   flushTransport: () => ipcRenderer.invoke('flushTransport'),
   crash: () => ipcRenderer.invoke('crash'),
   openBridgeFileWindow: () => ipcRenderer.invoke('openBridgeFileWindow'),

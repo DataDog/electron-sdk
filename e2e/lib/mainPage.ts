@@ -1,4 +1,5 @@
 import type { ElectronApplication, Page } from '@playwright/test';
+import type { FailureReason, FeatureOperationOptions } from '@datadog/electron-sdk';
 import { BridgeWindowPage } from './bridgeWindowPage';
 
 // declare exposed IPC methods called directly in tests
@@ -6,6 +7,13 @@ interface ElectronAppWindow {
   electronAPI: {
     generateTelemetryErrors: (count: number) => Promise<void>;
     generateManualError: (startTime?: number) => Promise<void>;
+    startFeatureOperation: (name: string, options?: FeatureOperationOptions) => Promise<void>;
+    succeedFeatureOperation: (name: string, options?: FeatureOperationOptions) => Promise<void>;
+    failFeatureOperation: (
+      name: string,
+      failureReason: FailureReason,
+      options?: FeatureOperationOptions
+    ) => Promise<void>;
     flushTransport: () => Promise<void>;
     openBridgeFileWindow: () => Promise<void>;
     openBridgeFileWindowNoIsolation: () => Promise<void>;
@@ -61,6 +69,30 @@ export class MainPage {
     await this.page.evaluate(
       (ts) => (globalThis as unknown as ElectronAppWindow).electronAPI.generateManualError(ts),
       startTime
+    );
+  }
+
+  async startFeatureOperation(name: string, options?: FeatureOperationOptions) {
+    await this.page.evaluate(
+      ({ name, options }) =>
+        (globalThis as unknown as ElectronAppWindow).electronAPI.startFeatureOperation(name, options),
+      { name, options }
+    );
+  }
+
+  async succeedFeatureOperation(name: string, options?: FeatureOperationOptions) {
+    await this.page.evaluate(
+      ({ name, options }) =>
+        (globalThis as unknown as ElectronAppWindow).electronAPI.succeedFeatureOperation(name, options),
+      { name, options }
+    );
+  }
+
+  async failFeatureOperation(name: string, failureReason: FailureReason, options?: FeatureOperationOptions) {
+    await this.page.evaluate(
+      ({ name, failureReason, options }) =>
+        (globalThis as unknown as ElectronAppWindow).electronAPI.failFeatureOperation(name, failureReason, options),
+      { name, failureReason, options }
     );
   }
 
