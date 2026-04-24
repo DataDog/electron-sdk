@@ -28,8 +28,7 @@ export class BatchProducer {
   static async create(config: ProducerConfig) {
     const producer = new BatchProducer(config);
     await producer.ensureTrackDirectoryExists();
-    // rotate any leftover data so we start from a clean state
-    await producer.flush();
+    await producer.rotateOrphanedBatches();
 
     return producer;
   }
@@ -58,6 +57,20 @@ export class BatchProducer {
     }
   }
 
+  /** Renames any leftover `.tmp` files from prior sessions to `.log` so the consumer can upload them. */
+  private async rotateOrphanedBatches() {
+    try {
+      const files = await fs.readdir(this.trackPath);
+      for (const file of files) {
+        if (file.endsWith('.tmp')) {
+          await this.renameBatchFile(file);
+        }
+      }
+    } catch {
+      // Directory read failed — nothing to recover
+    }
+  }
+
   /** Generates a timestamp-based `.tmp` file name for a new batch. */
   private generateBatchFileName() {
     return `batch-${dateNow()}.tmp`;
@@ -76,8 +89,14 @@ export class BatchProducer {
     if (!this.currentBatchFile) {
       return;
     }
+    await this.renameBatchFile(this.currentBatchFile);
+    this.currentBatchFile = null;
+    this.currentBatchSize = 0;
+  }
 
-    const tmpPath = path.join(this.trackPath, this.currentBatchFile);
+  /** Renames a `.tmp` batch file to `.log` so the consumer can pick it up. */
+  private async renameBatchFile(file: string) {
+    const tmpPath = path.join(this.trackPath, file);
     const logPath = tmpPath.replace(/\.tmp$/, '.log');
 
     try {
@@ -86,9 +105,6 @@ export class BatchProducer {
     } catch {
       // File doesn't exist or rename failed - silently ignore
     }
-
-    this.currentBatchFile = null;
-    this.currentBatchSize = 0;
   }
 
   /** Serializes data as a JSON line and appends it to the current batch file, rotating first if the size limit would be exceeded. */
