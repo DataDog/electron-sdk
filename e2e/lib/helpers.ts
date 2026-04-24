@@ -1,5 +1,7 @@
 import { test as base, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import { join } from 'node:path';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { Intake } from './intake';
 import { MainPage } from './mainPage';
 import type { InitConfiguration } from '@datadog/electron-sdk';
@@ -33,9 +35,11 @@ export const test = base.extend<TestFixtures>({
   ],
 
   electronApp: async ({ intake, rumBrowserSdk }, use) => {
-    const electronApp = await launchApp(intake, rumBrowserSdk);
+    const userDataDir = await createUserDataDir();
+    const electronApp = await launchApp(intake, userDataDir, rumBrowserSdk);
     await use(electronApp);
     await electronApp.close();
+    await cleanupUserDataDir(userDataDir);
   },
 
   window: [
@@ -55,6 +59,7 @@ export const test = base.extend<TestFixtures>({
 
 async function launchApp(
   intake: Intake,
+  userDataDir: string,
   rumBrowserSdk: Record<string, unknown> | null = null
 ): Promise<ElectronApplication> {
   const env: Record<string, string> = {
@@ -89,7 +94,7 @@ async function launchApp(
 
   return electron.launch({
     executablePath: electronPath,
-    args: [join(__dirname, '../app/dist/main.js')],
+    args: [join(__dirname, '../app/dist/main.js'), `--user-data-dir=${userDataDir}`],
     env,
   });
 }
@@ -103,11 +108,20 @@ async function waitForWindowLoaded(electronApp: ElectronApplication): Promise<{ 
 }
 
 export async function launchAppManually(
-  intake: Intake
+  intake: Intake,
+  userDataDir: string
 ): Promise<{ electronApp: ElectronApplication; window: Page; mainPage: MainPage }> {
-  const electronApp = await launchApp(intake);
+  const electronApp = await launchApp(intake, userDataDir);
   const { window } = await waitForWindowLoaded(electronApp);
   return { electronApp, window, mainPage: new MainPage(window) };
+}
+
+export async function createUserDataDir(): Promise<string> {
+  return mkdtemp(join(tmpdir(), 'electron-sdk-e2e-'));
+}
+
+export async function cleanupUserDataDir(userDataDir: string): Promise<void> {
+  await rm(userDataDir, { recursive: true, force: true });
 }
 
 export { expect } from '@playwright/test';
