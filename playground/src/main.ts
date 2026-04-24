@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as https from 'node:https';
-import { init, stopSession, _generateTelemetryError } from '@datadog/electron-sdk';
+import { init, stopSession, addError, _generateTelemetryError } from '@datadog/electron-sdk';
 import { loadWindowState, saveWindowState } from './main/windowState';
 import { setupHotReload } from './main/hotReload';
 
@@ -58,6 +58,10 @@ ipcMain.handle('get-session-file', () => {
 
 ipcMain.handle('stop-session', () => {
   stopSession();
+});
+
+ipcMain.handle('addError', () => {
+  addError(new Error('test custom error'), { context: { nonce: 'abc123' } });
 });
 
 ipcMain.handle('generateTelemetryError', () => {

@@ -5,6 +5,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('electronAPI', {
   getSessionFile: () => ipcRenderer.invoke('get-session-file'),
   stopSession: () => ipcRenderer.invoke('stop-session'),
+  addError: () => ipcRenderer.invoke('addError'),
   generateTelemetryError: () => ipcRenderer.invoke('generateTelemetryError'),
   generateUncaughtException: () => ipcRenderer.invoke('generateUncaughtException'),
   generateUnhandledRejection: () => ipcRenderer.invoke('generateUnhandledRejection'),
