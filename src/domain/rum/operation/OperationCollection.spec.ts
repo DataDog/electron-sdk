@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { OperationCollection } from './OperationCollection';
+import { OperationCollection, type FeatureOperationOptions } from './OperationCollection';
 import { EventFormat, EventKind, EventManager, type RawRumEvent } from '../../../event';
 import type { RawRumVital } from '../rawRumData.types';
-import { displayError } from '../../../tools/display';
+import { displayError, displayWarn } from '../../../tools/display';
 
 vi.mock('../../../tools/display', () => ({
   displayError: vi.fn(),
+  displayWarn: vi.fn(),
   displayInfo: vi.fn(),
 }));
 
@@ -164,6 +165,32 @@ describe('OperationCollection', () => {
       expect(displayError).toHaveBeenCalledOnce();
       expect(vi.mocked(displayError).mock.calls[0][0]).toContain('operation key cannot be empty');
     });
+
+    // The public API is typed as `(name: string, options?: FeatureOperationOptions)`,
+    // but the validator accepts `unknown` to defend against JS callers passing
+    // garbage. These tests pin the runtime contract independent of the type system.
+    it.each([
+      ['null', null],
+      ['number', 42],
+      ['string', 'oops'],
+      ['boolean', true],
+      ['array', ['operationKey']],
+    ])('rejects non-object %s as options and emits no event', (_label, badOptions) => {
+      operationCollection.getApi().startFeatureOperation('login', badOptions as unknown as FeatureOperationOptions);
+      expect(rawRumEvents).toHaveLength(0);
+      expect(displayError).toHaveBeenCalledOnce();
+      expect(vi.mocked(displayError).mock.calls[0][0]).toContain('options must be an object');
+    });
+
+    it.each([
+      ['null', null],
+      ['number', 42],
+    ])('rejects non-string %s as name and emits no event', (_label, badName) => {
+      operationCollection.getApi().startFeatureOperation(badName as unknown as string);
+      expect(rawRumEvents).toHaveLength(0);
+      expect(displayError).toHaveBeenCalledOnce();
+      expect(vi.mocked(displayError).mock.calls[0][0]).toContain('operation name cannot be empty');
+    });
   });
 
   // --- Name character-set validation (schema facet-path rule) ---
@@ -191,9 +218,9 @@ describe('OperationCollection', () => {
 
       expect(rawRumEvents).toHaveLength(1);
       expect((rawRumEvents[0].data as RawRumVital).vital.name).toBe(name);
-      expect(displayError).toHaveBeenCalledOnce();
-      expect(vi.mocked(displayError).mock.calls[0][0]).toContain('does not match');
-      expect(vi.mocked(displayError).mock.calls[0][0]).toContain('still be sent');
+      expect(displayWarn).toHaveBeenCalledOnce();
+      expect(vi.mocked(displayWarn).mock.calls[0][0]).toContain('does not match');
+      expect(vi.mocked(displayWarn).mock.calls[0][0]).toContain('still be sent');
     });
 
     it.each([
@@ -212,7 +239,7 @@ describe('OperationCollection', () => {
       operationCollection.getApi().startFeatureOperation(name);
 
       expect(rawRumEvents).toHaveLength(1);
-      expect(displayError).not.toHaveBeenCalled();
+      expect(displayWarn).not.toHaveBeenCalled();
       expect((rawRumEvents[0].data as RawRumVital).vital.name).toBe(name);
     });
 
@@ -220,7 +247,7 @@ describe('OperationCollection', () => {
       operationCollection.getApi().succeedFeatureOperation('user login');
       expect(rawRumEvents).toHaveLength(1);
       expect((rawRumEvents[0].data as RawRumVital).vital.step_type).toBe('end');
-      expect(displayError).toHaveBeenCalledOnce();
+      expect(displayWarn).toHaveBeenCalledOnce();
     });
 
     it('warns but still emits on failFeatureOperation with invalid characters', () => {
@@ -229,14 +256,14 @@ describe('OperationCollection', () => {
       const data = rawRumEvents[0].data as RawRumVital;
       expect(data.vital.step_type).toBe('end');
       expect(data.vital.failure_reason).toBe('error');
-      expect(displayError).toHaveBeenCalledOnce();
+      expect(displayWarn).toHaveBeenCalledOnce();
     });
 
     it('does not restrict operationKey to the same character set', () => {
       // operation_key has no character-set constraint in the schema.
       operationCollection.getApi().startFeatureOperation('login', { operationKey: 'session-42 / user foo' });
       expect(rawRumEvents).toHaveLength(1);
-      expect(displayError).not.toHaveBeenCalled();
+      expect(displayWarn).not.toHaveBeenCalled();
       expect((rawRumEvents[0].data as RawRumVital).vital.operation_key).toBe('session-42 / user foo');
     });
   });

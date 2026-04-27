@@ -52,6 +52,8 @@ export interface RawRumError extends RecursivePartial<RumErrorEvent> {
   };
 }
 
+type RumVitalOperationStepEventVital = NonNullable<RumVitalOperationStepEvent['vital']>;
+
 export interface RawRumVital extends RecursivePartial<RumVitalOperationStepEvent> {
   type: 'vital';
   date: TimeStamp;
@@ -60,9 +62,9 @@ export interface RawRumVital extends RecursivePartial<RumVitalOperationStepEvent
     id: string;
     name?: string;
     description?: string;
-    type: 'operation_step';
-    step_type: 'start' | 'end' | 'update' | 'retry';
+    type: RumVitalOperationStepEventVital['type'];
+    step_type: RumVitalOperationStepEventVital['step_type'];
     operation_key?: string;
-    failure_reason?: 'error' | 'abandoned' | 'other';
+    failure_reason?: RumVitalOperationStepEventVital['failure_reason'];
   };
 }

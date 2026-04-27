@@ -40,6 +40,7 @@ await init({
 - **RUM Views** — One view per main process instance
 - **RUM Errors** — Capture Node errors and crashes in main process
 - **Renderer Bridge** — Capture RUM events from renderer processes via the browser SDK
+- **Operation Monitoring** _(experimental)_ — Track start / succeed / fail steps of critical user-facing workflows
 
 ### Renderer Process Support
 
@@ -80,6 +81,72 @@ try {
   addError(error, { context: { component: 'sync' } });
 }
 ```
+
+### Operation Monitoring _(experimental)_
+
+Operation Monitoring lets you track the lifecycle of critical user-facing workflows
+(login, checkout, file upload, video playback, …) by emitting paired `start` / `end`
+steps. The backend correlates the steps by `name` (and optional `operationKey`) and
+exposes them as a single Operation in the RUM UI.
+
+> ⚗️ This API is in preview and the signatures may change before stable release.
+
+```ts
+import { startFeatureOperation, succeedFeatureOperation, failFeatureOperation } from '@datadog/electron-sdk';
+
+// Simple operation
+startFeatureOperation('checkout');
+try {
+  await runCheckout();
+  succeedFeatureOperation('checkout');
+} catch (error) {
+  failFeatureOperation('checkout', 'error');
+}
+
+// Parallel operations sharing a name — distinguished by `operationKey`
+startFeatureOperation('upload', { operationKey: 'profile_pic' });
+startFeatureOperation('upload', { operationKey: 'cover_photo' });
+succeedFeatureOperation('upload', { operationKey: 'profile_pic' });
+failFeatureOperation('upload', 'abandoned', { operationKey: 'cover_photo' });
+```
+
+#### API
+
+| Function                  | Signature                                                                                 |
+| ------------------------- | ----------------------------------------------------------------------------------------- |
+| `startFeatureOperation`   | `(name: string, options?: FeatureOperationOptions) => void`                               |
+| `succeedFeatureOperation` | `(name: string, options?: FeatureOperationOptions) => void`                               |
+| `failFeatureOperation`    | `(name: string, failureReason: FailureReason, options?: FeatureOperationOptions) => void` |
+
+```ts
+type FailureReason = 'error' | 'abandoned' | 'other';
+
+interface FeatureOperationOptions {
+  /** Distinguishes parallel operations sharing the same `name`. */
+  operationKey?: string;
+  /** Free-form attributes merged into the event's `context`. */
+  context?: Record<string, unknown>;
+  /** Free-form description attached to `vital.description`. */
+  description?: string;
+}
+```
+
+#### Cross-process usage
+
+The renderer process keeps using `@datadog/browser-rum` directly (with the
+`feature_operation_vital` experimental flag enabled on its init). API signatures
+match exactly, so you can start an operation in one process and complete it in the
+other — the backend correlates steps by `name` + `operationKey`.
+
+#### Validation
+
+- Blank `name` or blank `operationKey` are rejected and an error is logged; no event
+  is emitted.
+- Non-string `name` or non-object `options` are rejected the same way (defensive
+  guard for JS callers that bypass the TypeScript signatures).
+- Names containing characters outside `[\w.@$-]*` (letters, digits, `_`, `.`, `@`,
+  `$`, `-`) emit a warning but the event is still sent — the backend is the source
+  of truth on the character-set policy.
 
 ### Configuration Options
 

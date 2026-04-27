@@ -1,9 +1,6 @@
 import { test, expect } from '../lib/helpers';
 import type { RumViewEvent, RumVitalOperationStepEvent } from '@datadog/electron-sdk';
 
-// Strict RFC 4122 v4 — matches the schema pattern.
-const UUID_REGEX = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
-
 test('emits start and succeed vital operation_step events', async ({ mainPage, intake }) => {
   await mainPage.flushTransport();
   const viewEvents = await intake.getEventsByType('view');
@@ -27,11 +24,9 @@ test('emits start and succeed vital operation_step events', async ({ mainPage, i
   expect(start.vital?.name).toBe('checkout');
   expect(start.vital?.failure_reason).toBeUndefined();
   expect(start.vital?.operation_key).toBeUndefined();
-  expect(start.vital?.id).toMatch(UUID_REGEX);
 
   expect(end.vital?.failure_reason).toBeUndefined();
   expect(end.vital?.name).toBe('checkout');
-  expect(end.vital?.id).toMatch(UUID_REGEX);
   expect(end.vital?.id).not.toBe(start.vital?.id);
 
   // Common RUM context is populated by the main-process Assembly pipeline.

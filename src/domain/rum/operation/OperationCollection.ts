@@ -1,6 +1,6 @@
-import { type Context, generateUUID, timeStampNow } from '@datadog/browser-core';
+import { type Context, generateUUID, isIndexableObject, timeStampNow } from '@datadog/browser-core';
 import { EventFormat, EventKind, EventManager, EventSource } from '../../../event';
-import { displayError } from '../../../tools/display';
+import { displayError, displayWarn } from '../../../tools/display';
 import type { RawRumVital } from '../rawRumData.types';
 
 type OperationMethod = 'startFeatureOperation' | 'succeedFeatureOperation' | 'failFeatureOperation';
@@ -119,8 +119,8 @@ export class OperationCollection {
   }
 }
 
-function isBlank(value: string): boolean {
-  return value.trim().length === 0;
+function isValidString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
 }
 
 // Mirrors the backend's server-side `vital.name` character-set regex,
@@ -133,18 +133,22 @@ function isBlank(value: string): boolean {
 // reaching the regex.
 const VALID_OPERATION_NAME_REGEX = /^[\w.@$-]*$/;
 
-function validateArgs(method: OperationMethod, name: string, options: FeatureOperationOptions | undefined): boolean {
-  if (typeof name !== 'string' || isBlank(name)) {
+function validateArgs(method: OperationMethod, name: unknown, options: unknown): boolean {
+  if (!isValidString(name)) {
     displayError(`${method}: operation name cannot be empty or blank. Event will not be sent.`);
     return false;
   }
   if (!VALID_OPERATION_NAME_REGEX.test(name)) {
-    displayError(
+    // Warn but do not drop — the backend decides on character-set policy.
+    displayWarn(
       `${method}: operation name '${name}' does not match the backend-accepted pattern [\\w.@$-]* (letters, digits, _ . @ $ -). The event will still be sent and may be rejected by the backend.`
     );
-    // Warn but do not drop — the backend decides on character-set policy.
   }
-  if (options?.operationKey !== undefined && isBlank(options.operationKey)) {
+  if (options !== undefined && !isIndexableObject(options)) {
+    displayError(`${method}: options must be an object when provided. Event will not be sent.`);
+    return false;
+  }
+  if (isIndexableObject(options) && options.operationKey !== undefined && !isValidString(options.operationKey)) {
     displayError(`${method}: operation key cannot be empty or blank. Event will not be sent.`);
     return false;
   }
