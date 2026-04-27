@@ -62,8 +62,44 @@ export function addError(error: unknown, options?: ErrorOptions): void {
 /**
  * Start a RUM Operation step.
  *
- * Pair every `startFeatureOperation` with exactly one `succeedFeatureOperation` or `failFeatureOperation`.
+ * Pair every `startOperation` with exactly one `succeedOperation` or `failOperation`.
  * Use `options.operationKey` to distinguish parallel operations sharing the same name.
+ *
+ * @experimental This API is in preview and may change in future releases.
+ * @see README "Operation Monitoring" for usage details.
+ */
+export function startOperation(name: string, options?: FeatureOperationOptions): void {
+  callMonitored(() => rumApi?.startOperation(name, options));
+}
+
+/**
+ * Record the successful completion of a RUM Operation started with `startOperation`.
+ *
+ * Pass the same `name` (and `operationKey`, if any) that was used when starting the operation.
+ *
+ * @experimental This API is in preview and may change in future releases.
+ * @see README "Operation Monitoring" for usage details.
+ */
+export function succeedOperation(name: string, options?: FeatureOperationOptions): void {
+  callMonitored(() => rumApi?.succeedOperation(name, options));
+}
+
+/**
+ * Record the failure of a RUM Operation started with `startOperation`.
+ *
+ * Pass the same `name` (and `operationKey`, if any) that was used when starting the operation.
+ *
+ * @experimental This API is in preview and may change in future releases.
+ * @see README "Operation Monitoring" for usage details.
+ */
+export function failOperation(name: string, failureReason: FailureReason, options?: FeatureOperationOptions): void {
+  callMonitored(() => rumApi?.failOperation(name, failureReason, options));
+}
+
+/**
+ * @deprecated Use `startOperation` instead. This alias exists for backwards
+ * compatibility with the API name used in early previews and will be removed
+ * in a future major release.
  *
  * @experimental This API is in preview and may change in future releases.
  * @see README "Operation Monitoring" for usage details.
@@ -73,9 +109,9 @@ export function startFeatureOperation(name: string, options?: FeatureOperationOp
 }
 
 /**
- * Record the successful completion of a RUM Operation started with `startFeatureOperation`.
- *
- * Pass the same `name` (and `operationKey`, if any) that was used when starting the operation.
+ * @deprecated Use `succeedOperation` instead. This alias exists for backwards
+ * compatibility with the API name used in early previews and will be removed
+ * in a future major release.
  *
  * @experimental This API is in preview and may change in future releases.
  * @see README "Operation Monitoring" for usage details.
@@ -85,9 +121,9 @@ export function succeedFeatureOperation(name: string, options?: FeatureOperation
 }
 
 /**
- * Record the failure of a RUM Operation started with `startFeatureOperation`.
- *
- * Pass the same `name` (and `operationKey`, if any) that was used when starting the operation.
+ * @deprecated Use `failOperation` instead. This alias exists for backwards
+ * compatibility with the API name used in early previews and will be removed
+ * in a future major release.
  *
  * @experimental This API is in preview and may change in future releases.
  * @see README "Operation Monitoring" for usage details.

@@ -3,7 +3,18 @@ import { EventFormat, EventKind, EventManager, EventSource } from '../../../even
 import { displayError, displayWarn } from '../../../tools/display';
 import type { RawRumVital } from '../rawRumData.types';
 
-type OperationMethod = 'startFeatureOperation' | 'succeedFeatureOperation' | 'failFeatureOperation';
+type OperationMethod = 'startOperation' | 'succeedOperation' | 'failOperation';
+
+// Map of deprecated -> canonical method names. The deprecated wrappers fire a
+// runtime warning once per method name and forward to the canonical
+// implementation. Kept in OperationCollection (rather than in src/index.ts)
+// so the wiring is in one testable place; the customer-facing `@deprecated`
+// JSDoc lives on the public exports in src/index.ts where IDEs surface it.
+const DEPRECATED_TO_CANONICAL: Record<string, OperationMethod> = {
+  startFeatureOperation: 'startOperation',
+  succeedFeatureOperation: 'succeedOperation',
+  failFeatureOperation: 'failOperation',
+};
 
 /**
  * Failure reason for a RUM Operation step.
@@ -49,16 +60,29 @@ export interface FeatureOperationOptions {
  * Browser in the spec's parity matrix.
  */
 export class OperationCollection {
+  // Tracks which deprecated method names have already emitted their one-time
+  // deprecation warning, so noisy hot-path callers don't drown the console.
+  private readonly warnedDeprecations = new Set<string>();
+
   constructor(private readonly eventManager: EventManager) {}
 
   getApi() {
     return {
+      startOperation: (name: string, options?: FeatureOperationOptions) => this.handle('startOperation', name, options),
+      succeedOperation: (name: string, options?: FeatureOperationOptions) =>
+        this.handle('succeedOperation', name, options),
+      failOperation: (name: string, failureReason: FailureReason, options?: FeatureOperationOptions) =>
+        this.handle('failOperation', name, options, failureReason),
+
+      // Deprecated wrappers — kept for backwards compatibility until the next
+      // major. They warn-once-per-method and forward to the canonical methods
+      // above. Do not call these from new code; use the un-prefixed names.
       startFeatureOperation: (name: string, options?: FeatureOperationOptions) =>
-        this.handle('startFeatureOperation', name, options),
+        this.handleDeprecated('startFeatureOperation', name, options),
       succeedFeatureOperation: (name: string, options?: FeatureOperationOptions) =>
-        this.handle('succeedFeatureOperation', name, options),
+        this.handleDeprecated('succeedFeatureOperation', name, options),
       failFeatureOperation: (name: string, failureReason: FailureReason, options?: FeatureOperationOptions) =>
-        this.handle('failFeatureOperation', name, options, failureReason),
+        this.handleDeprecated('failFeatureOperation', name, options, failureReason),
     };
   }
 
@@ -75,8 +99,24 @@ export class OperationCollection {
     if (!validateArgs(method, name, options)) {
       return;
     }
-    const stepType = method === 'startFeatureOperation' ? 'start' : 'end';
+    const stepType = method === 'startOperation' ? 'start' : 'end';
     this.emitOperationStep(stepType, name, options, failureReason);
+  }
+
+  private handleDeprecated(
+    deprecatedMethod: keyof typeof DEPRECATED_TO_CANONICAL,
+    name: string,
+    options: FeatureOperationOptions | undefined,
+    failureReason?: FailureReason
+  ): void {
+    const canonical = DEPRECATED_TO_CANONICAL[deprecatedMethod];
+    if (!this.warnedDeprecations.has(deprecatedMethod)) {
+      this.warnedDeprecations.add(deprecatedMethod);
+      displayWarn(
+        `${deprecatedMethod}() is deprecated and will be removed in a future major release. Use ${canonical}() instead.`
+      );
+    }
+    this.handle(canonical, name, options, failureReason);
   }
 
   private emitOperationStep(

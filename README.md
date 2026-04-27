@@ -92,31 +92,38 @@ exposes them as a single Operation in the RUM UI.
 > ⚗️ This API is in preview and the signatures may change before stable release.
 
 ```ts
-import { startFeatureOperation, succeedFeatureOperation, failFeatureOperation } from '@datadog/electron-sdk';
+import { startOperation, succeedOperation, failOperation } from '@datadog/electron-sdk';
 
 // Simple operation
-startFeatureOperation('checkout');
+startOperation('checkout');
 try {
   await runCheckout();
-  succeedFeatureOperation('checkout');
+  succeedOperation('checkout');
 } catch (error) {
-  failFeatureOperation('checkout', 'error');
+  failOperation('checkout', 'error');
 }
 
 // Parallel operations sharing a name — distinguished by `operationKey`
-startFeatureOperation('upload', { operationKey: 'profile_pic' });
-startFeatureOperation('upload', { operationKey: 'cover_photo' });
-succeedFeatureOperation('upload', { operationKey: 'profile_pic' });
-failFeatureOperation('upload', 'abandoned', { operationKey: 'cover_photo' });
+startOperation('upload', { operationKey: 'profile_pic' });
+startOperation('upload', { operationKey: 'cover_photo' });
+succeedOperation('upload', { operationKey: 'profile_pic' });
+failOperation('upload', 'abandoned', { operationKey: 'cover_photo' });
 ```
 
 #### API
 
-| Function                  | Signature                                                                                 |
-| ------------------------- | ----------------------------------------------------------------------------------------- |
-| `startFeatureOperation`   | `(name: string, options?: FeatureOperationOptions) => void`                               |
-| `succeedFeatureOperation` | `(name: string, options?: FeatureOperationOptions) => void`                               |
-| `failFeatureOperation`    | `(name: string, failureReason: FailureReason, options?: FeatureOperationOptions) => void` |
+| Function           | Signature                                                                                 |
+| ------------------ | ----------------------------------------------------------------------------------------- |
+| `startOperation`   | `(name: string, options?: FeatureOperationOptions) => void`                               |
+| `succeedOperation` | `(name: string, options?: FeatureOperationOptions) => void`                               |
+| `failOperation`    | `(name: string, failureReason: FailureReason, options?: FeatureOperationOptions) => void` |
+
+> **Deprecated aliases.** The early-preview names `startFeatureOperation` /
+> `succeedFeatureOperation` / `failFeatureOperation` are kept as deprecated
+> aliases for backwards compatibility. They forward to the un-prefixed names
+> above and emit a one-time runtime warning. They will be removed in the next
+> major release — migrate to `startOperation` / `succeedOperation` /
+> `failOperation`.
 
 ```ts
 type FailureReason = 'error' | 'abandoned' | 'other';

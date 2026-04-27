@@ -6,9 +6,9 @@ import {
   init,
   stopSession,
   _generateTelemetryError,
-  startFeatureOperation,
-  succeedFeatureOperation,
-  failFeatureOperation,
+  startOperation,
+  succeedOperation,
+  failOperation,
   type FailureReason,
   type FeatureOperationOptions,
 } from '@datadog/electron-sdk';
@@ -110,17 +110,17 @@ ipcMain.handle('crash', () => {
 // --- Operation Monitoring demo handlers ---
 
 ipcMain.handle('main:start-operation', (_event, name: string, options?: FeatureOperationOptions) => {
-  startFeatureOperation(name, options);
+  startOperation(name, options);
 });
 
 ipcMain.handle('main:succeed-operation', (_event, name: string, options?: FeatureOperationOptions) => {
-  succeedFeatureOperation(name, options);
+  succeedOperation(name, options);
 });
 
 ipcMain.handle(
   'main:fail-operation',
   (_event, name: string, failureReason: FailureReason, options?: FeatureOperationOptions) => {
-    failFeatureOperation(name, failureReason, options);
+    failOperation(name, failureReason, options);
   }
 );
 

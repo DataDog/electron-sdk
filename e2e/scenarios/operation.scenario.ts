@@ -6,8 +6,8 @@ test('emits start and succeed vital operation_step events', async ({ mainPage, i
   const viewEvents = await intake.getEventsByType('view');
   const view = viewEvents[0].body as RumViewEvent;
 
-  await mainPage.startFeatureOperation('checkout');
-  await mainPage.succeedFeatureOperation('checkout');
+  await mainPage.startOperation('checkout');
+  await mainPage.succeedOperation('checkout');
   await mainPage.flushTransport();
 
   const vitalEvents = await intake.waitForEventCount('vital', 2);
@@ -44,8 +44,8 @@ test('emits start and succeed vital operation_step events', async ({ mainPage, i
 test('emits start and fail vital operation_step events with failure_reason', async ({ mainPage, intake }) => {
   await mainPage.flushTransport();
 
-  await mainPage.startFeatureOperation('checkout');
-  await mainPage.failFeatureOperation('checkout', 'error');
+  await mainPage.startOperation('checkout');
+  await mainPage.failOperation('checkout', 'error');
   await mainPage.flushTransport();
 
   const vitals = (await intake.waitForEventCount('vital', 2)).map((e) => e.body as RumVitalOperationStepEvent);
@@ -60,8 +60,8 @@ test('emits start and fail vital operation_step events with failure_reason', asy
 test('forwards operationKey to the event payload on both start and end', async ({ mainPage, intake }) => {
   await mainPage.flushTransport();
 
-  await mainPage.startFeatureOperation('upload', { operationKey: 'photo_1' });
-  await mainPage.succeedFeatureOperation('upload', { operationKey: 'photo_1' });
+  await mainPage.startOperation('upload', { operationKey: 'photo_1' });
+  await mainPage.succeedOperation('upload', { operationKey: 'photo_1' });
   await mainPage.flushTransport();
 
   const vitals = (await intake.waitForEventCount('vital', 2)).map((e) => e.body as RumVitalOperationStepEvent);
@@ -74,7 +74,7 @@ test('forwards operationKey to the event payload on both start and end', async (
 test('omits operation_key when the operation is unkeyed', async ({ mainPage, intake }) => {
   await mainPage.flushTransport();
 
-  await mainPage.startFeatureOperation('login');
+  await mainPage.startOperation('login');
   await mainPage.flushTransport();
 
   const vitalEvents = await intake.waitForEventCount('vital', 1);
@@ -89,7 +89,7 @@ test('stop without prior start still emits the event (no local tracking)', async
   // tracking. The main-process API therefore emits unconditionally.
   await mainPage.flushTransport();
 
-  await mainPage.succeedFeatureOperation('dangling');
+  await mainPage.succeedOperation('dangling');
   await mainPage.flushTransport();
 
   const vitalEvents = await intake.waitForEventCount('vital', 1);

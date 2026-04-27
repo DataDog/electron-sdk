@@ -8,9 +8,9 @@ import {
   _generateTelemetryError,
   _flushTransport,
   stopSession,
-  startFeatureOperation,
-  succeedFeatureOperation,
-  failFeatureOperation,
+  startOperation,
+  succeedOperation,
+  failOperation,
   type FailureReason,
   type FeatureOperationOptions,
   type InitConfiguration,
@@ -86,18 +86,18 @@ void app.whenReady().then(async () => {
     addError(new Error('test manual error'), { context: { foo: 'bar' }, startTime });
   });
 
-  ipcMain.handle('startFeatureOperation', (_event, name: string, options?: FeatureOperationOptions) => {
-    startFeatureOperation(name, options);
+  ipcMain.handle('startOperation', (_event, name: string, options?: FeatureOperationOptions) => {
+    startOperation(name, options);
   });
 
-  ipcMain.handle('succeedFeatureOperation', (_event, name: string, options?: FeatureOperationOptions) => {
-    succeedFeatureOperation(name, options);
+  ipcMain.handle('succeedOperation', (_event, name: string, options?: FeatureOperationOptions) => {
+    succeedOperation(name, options);
   });
 
   ipcMain.handle(
-    'failFeatureOperation',
+    'failOperation',
     (_event, name: string, failureReason: FailureReason, options?: FeatureOperationOptions) => {
-      failFeatureOperation(name, failureReason, options);
+      failOperation(name, failureReason, options);
     }
   );
 

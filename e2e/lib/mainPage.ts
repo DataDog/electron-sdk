@@ -7,13 +7,9 @@ interface ElectronAppWindow {
   electronAPI: {
     generateTelemetryErrors: (count: number) => Promise<void>;
     generateManualError: (startTime?: number) => Promise<void>;
-    startFeatureOperation: (name: string, options?: FeatureOperationOptions) => Promise<void>;
-    succeedFeatureOperation: (name: string, options?: FeatureOperationOptions) => Promise<void>;
-    failFeatureOperation: (
-      name: string,
-      failureReason: FailureReason,
-      options?: FeatureOperationOptions
-    ) => Promise<void>;
+    startOperation: (name: string, options?: FeatureOperationOptions) => Promise<void>;
+    succeedOperation: (name: string, options?: FeatureOperationOptions) => Promise<void>;
+    failOperation: (name: string, failureReason: FailureReason, options?: FeatureOperationOptions) => Promise<void>;
     flushTransport: () => Promise<void>;
     openBridgeFileWindow: () => Promise<void>;
     openBridgeFileWindowNoIsolation: () => Promise<void>;
@@ -72,26 +68,24 @@ export class MainPage {
     );
   }
 
-  async startFeatureOperation(name: string, options?: FeatureOperationOptions) {
+  async startOperation(name: string, options?: FeatureOperationOptions) {
     await this.page.evaluate(
-      ({ name, options }) =>
-        (globalThis as unknown as ElectronAppWindow).electronAPI.startFeatureOperation(name, options),
+      ({ name, options }) => (globalThis as unknown as ElectronAppWindow).electronAPI.startOperation(name, options),
       { name, options }
     );
   }
 
-  async succeedFeatureOperation(name: string, options?: FeatureOperationOptions) {
+  async succeedOperation(name: string, options?: FeatureOperationOptions) {
     await this.page.evaluate(
-      ({ name, options }) =>
-        (globalThis as unknown as ElectronAppWindow).electronAPI.succeedFeatureOperation(name, options),
+      ({ name, options }) => (globalThis as unknown as ElectronAppWindow).electronAPI.succeedOperation(name, options),
       { name, options }
     );
   }
 
-  async failFeatureOperation(name: string, failureReason: FailureReason, options?: FeatureOperationOptions) {
+  async failOperation(name: string, failureReason: FailureReason, options?: FeatureOperationOptions) {
     await this.page.evaluate(
       ({ name, failureReason, options }) =>
-        (globalThis as unknown as ElectronAppWindow).electronAPI.failFeatureOperation(name, failureReason, options),
+        (globalThis as unknown as ElectronAppWindow).electronAPI.failOperation(name, failureReason, options),
       { name, failureReason, options }
     );
   }
