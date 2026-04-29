@@ -4,7 +4,7 @@ import { buildConfiguration } from './config';
 import { RumCollection } from './domain/rum';
 import { SessionManager } from './domain/session';
 import { UserActivityTracker } from './domain/UserActivityTracker';
-import type { ErrorOptions } from './domain/rum';
+import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './domain/rum';
 import { callMonitored, startTelemetry } from './domain/telemetry';
 import { EventManager } from './event';
 import { BridgeHandler, registerPreload } from './bridge';
@@ -60,6 +60,80 @@ export function addError(error: unknown, options?: ErrorOptions): void {
 }
 
 /**
+ * Start a RUM Operation step.
+ *
+ * Pair every `startOperation` with exactly one `succeedOperation` or `failOperation`.
+ * Use `options.operationKey` to distinguish parallel operations sharing the same name.
+ *
+ * @experimental This API is in preview and may change in future releases.
+ * @see README "Operation Monitoring" for usage details.
+ */
+export function startOperation(name: string, options?: FeatureOperationOptions): void {
+  callMonitored(() => rumApi?.startOperation(name, options));
+}
+
+/**
+ * Record the successful completion of a RUM Operation started with `startOperation`.
+ *
+ * Pass the same `name` (and `operationKey`, if any) that was used when starting the operation.
+ *
+ * @experimental This API is in preview and may change in future releases.
+ * @see README "Operation Monitoring" for usage details.
+ */
+export function succeedOperation(name: string, options?: FeatureOperationOptions): void {
+  callMonitored(() => rumApi?.succeedOperation(name, options));
+}
+
+/**
+ * Record the failure of a RUM Operation started with `startOperation`.
+ *
+ * Pass the same `name` (and `operationKey`, if any) that was used when starting the operation.
+ *
+ * @experimental This API is in preview and may change in future releases.
+ * @see README "Operation Monitoring" for usage details.
+ */
+export function failOperation(name: string, failureReason: FailureReason, options?: FeatureOperationOptions): void {
+  callMonitored(() => rumApi?.failOperation(name, failureReason, options));
+}
+
+/**
+ * @deprecated Use `startOperation` instead. This alias exists for backwards compatibility with the API name used in
+ * early previews and will be removed in a future major release.
+ *
+ * @experimental This API is in preview and may change in future releases.
+ * @see README "Operation Monitoring" for usage details.
+ */
+export function startFeatureOperation(name: string, options?: FeatureOperationOptions): void {
+  callMonitored(() => rumApi?.startFeatureOperation(name, options));
+}
+
+/**
+ * @deprecated Use `succeedOperation` instead. This alias exists for backwards compatibility with the API name used in
+ * early previews and will be removed in a future major release.
+ *
+ * @experimental This API is in preview and may change in future releases.
+ * @see README "Operation Monitoring" for usage details.
+ */
+export function succeedFeatureOperation(name: string, options?: FeatureOperationOptions): void {
+  callMonitored(() => rumApi?.succeedFeatureOperation(name, options));
+}
+
+/**
+ * @deprecated Use `failOperation` instead. This alias exists for backwards compatibility with the API name used in
+ * early previews and will be removed in a future major release.
+ *
+ * @experimental This API is in preview and may change in future releases.
+ * @see README "Operation Monitoring" for usage details.
+ */
+export function failFeatureOperation(
+  name: string,
+  failureReason: FailureReason,
+  options?: FeatureOperationOptions
+): void {
+  callMonitored(() => rumApi?.failFeatureOperation(name, failureReason, options));
+}
+
+/**
  * Internal API to flush all pending batches to the intake
  */
 export async function _flushTransport(): Promise<void> {
@@ -77,7 +151,14 @@ export function _generateTelemetryError() {
 }
 
 export type { InitConfiguration } from './config';
-export type { RumErrorEvent, RumViewEvent } from './domain/rum';
+export type {
+  FailureReason,
+  FeatureOperationOptions,
+  RumErrorEvent,
+  RumViewEvent,
+  RumVitalEvent,
+  RumVitalOperationStepEvent,
+} from './domain/rum';
 export type { TelemetryErrorEvent } from './domain/telemetry';
 
 export { SESSION_TIME_OUT_DELAY } from './domain/session';

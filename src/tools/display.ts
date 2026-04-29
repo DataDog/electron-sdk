@@ -8,6 +8,13 @@ export function displayError(...args: unknown[]) {
 }
 
 /**
+ * Display a warning in the console with the SDK prefix
+ */
+export function displayWarn(...args: unknown[]) {
+  console.warn(PREFIX, ...args);
+}
+
+/**
  * Display an info in the console with the SDK prefix
  */
 export function displayInfo(...args: unknown[]) {

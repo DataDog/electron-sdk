@@ -1,4 +1,5 @@
 import type { ElectronApplication, Page } from '@playwright/test';
+import type { FailureReason, FeatureOperationOptions } from '@datadog/electron-sdk';
 import { BridgeWindowPage } from './bridgeWindowPage';
 
 // declare exposed IPC methods called directly in tests
@@ -6,6 +7,9 @@ interface ElectronAppWindow {
   electronAPI: {
     generateTelemetryErrors: (count: number) => Promise<void>;
     generateManualError: (startTime?: number) => Promise<void>;
+    startOperation: (name: string, options?: FeatureOperationOptions) => Promise<void>;
+    succeedOperation: (name: string, options?: FeatureOperationOptions) => Promise<void>;
+    failOperation: (name: string, failureReason: FailureReason, options?: FeatureOperationOptions) => Promise<void>;
     flushTransport: () => Promise<void>;
     openBridgeFileWindow: () => Promise<void>;
     openBridgeFileWindowNoIsolation: () => Promise<void>;
@@ -61,6 +65,28 @@ export class MainPage {
     await this.page.evaluate(
       (ts) => (globalThis as unknown as ElectronAppWindow).electronAPI.generateManualError(ts),
       startTime
+    );
+  }
+
+  async startOperation(name: string, options?: FeatureOperationOptions) {
+    await this.page.evaluate(
+      ({ name, options }) => (globalThis as unknown as ElectronAppWindow).electronAPI.startOperation(name, options),
+      { name, options }
+    );
+  }
+
+  async succeedOperation(name: string, options?: FeatureOperationOptions) {
+    await this.page.evaluate(
+      ({ name, options }) => (globalThis as unknown as ElectronAppWindow).electronAPI.succeedOperation(name, options),
+      { name, options }
+    );
+  }
+
+  async failOperation(name: string, failureReason: FailureReason, options?: FeatureOperationOptions) {
+    await this.page.evaluate(
+      ({ name, failureReason, options }) =>
+        (globalThis as unknown as ElectronAppWindow).electronAPI.failOperation(name, failureReason, options),
+      { name, failureReason, options }
     );
   }
 
