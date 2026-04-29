@@ -5,11 +5,10 @@ import type { RawRumVital } from '../rawRumData.types';
 
 type OperationMethod = 'startOperation' | 'succeedOperation' | 'failOperation';
 
-// Map of deprecated -> canonical method names. The deprecated wrappers fire a
-// runtime warning once per method name and forward to the canonical
-// implementation. Kept in OperationCollection (rather than in src/index.ts)
-// so the wiring is in one testable place; the customer-facing `@deprecated`
-// JSDoc lives on the public exports in src/index.ts where IDEs surface it.
+// Map of deprecated -> canonical method names. The deprecated wrappers fire a runtime warning once per method name and
+// forward to the canonical implementation. Kept in OperationCollection (rather than in src/index.ts) so the wiring is
+// in one testable place; the customer-facing `@deprecated` JSDoc lives on the public exports in src/index.ts where
+// IDEs surface it.
 const DEPRECATED_TO_CANONICAL: Record<string, OperationMethod> = {
   startFeatureOperation: 'startOperation',
   succeedFeatureOperation: 'succeedOperation',
@@ -26,14 +25,13 @@ export type FailureReason = 'error' | 'abandoned' | 'other';
 /**
  * Options accepted by the RUM Operation APIs.
  *
- * Mirrors the browser-sdk's `FeatureOperationOptions` shape so consumers can
- * share one mental model across main process and renderer process.
+ * Mirrors the browser-sdk's `FeatureOperationOptions` shape so consumers can share one mental model across main
+ * process and renderer process.
  */
 export interface FeatureOperationOptions {
   /**
-   * Key distinguishing parallel operations with the same name (e.g. separate
-   * upload tasks sharing the name "upload"). When omitted, the operation is
-   * treated as unkeyed.
+   * Key distinguishing parallel operations with the same name (e.g. separate upload tasks sharing the name "upload").
+   * When omitted, the operation is treated as unkeyed.
    */
   operationKey?: string;
 
@@ -51,17 +49,14 @@ export interface FeatureOperationOptions {
 /**
  * Collect RUM vital operation step events emitted from the main process.
  *
- * No local duplicate-start / stop-without-start tracking is performed:
- * renderer-originated start/stop events (from the bundled browser-sdk)
- * flow through the bridge without updating main-process state, so any
- * cross-process tracking would produce false positives when a developer
- * legitimately starts in one process and stops in the other. Matches the
- * bundled browser-sdk's no-tracking behavior; aligns with Android and
- * Browser in the spec's parity matrix.
+ * No local duplicate-start / stop-without-start tracking is performed: renderer-originated start/stop events (from the
+ * bundled browser-sdk) flow through the bridge without updating main-process state, so any cross-process tracking
+ * would produce false positives when a developer legitimately starts in one process and stops in the other. Matches
+ * the bundled browser-sdk's no-tracking behavior; aligns with Android and Browser in the spec's parity matrix.
  */
 export class OperationCollection {
-  // Tracks which deprecated method names have already emitted their one-time
-  // deprecation warning, so noisy hot-path callers don't drown the console.
+  // Tracks which deprecated method names have already emitted their one-time deprecation warning, so noisy hot-path
+  // callers don't drown the console.
   private readonly warnedDeprecations = new Set<string>();
 
   constructor(private readonly eventManager: EventManager) {}
@@ -74,9 +69,8 @@ export class OperationCollection {
       failOperation: (name: string, failureReason: FailureReason, options?: FeatureOperationOptions) =>
         this.handle('failOperation', name, options, failureReason),
 
-      // Deprecated wrappers — kept for backwards compatibility until the next
-      // major. They warn-once-per-method and forward to the canonical methods
-      // above. Do not call these from new code; use the un-prefixed names.
+      // Deprecated wrappers — kept for backwards compatibility until the next major. They warn-once-per-method and
+      // forward to the canonical methods above. Do not call these from new code; use the un-prefixed names.
       startFeatureOperation: (name: string, options?: FeatureOperationOptions) =>
         this.handleDeprecated('startFeatureOperation', name, options),
       succeedFeatureOperation: (name: string, options?: FeatureOperationOptions) =>
@@ -163,14 +157,11 @@ function isValidString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
-// Mirrors the backend's server-side `vital.name` character-set regex,
-// `[\w.@$-]*` (letters, digits, `_`, `.`, `@`, `$`, `-`). Names that fail
-// this pattern generate a developer warning but the event is still emitted
-// — the backend is the source of truth on character-set policy, so client-
-// side drop would force a customer SDK bump if the rule is ever relaxed.
-// Blank / empty names are a separate check: they are rejected here because
-// the backend rejects them with its own non-empty precondition before
-// reaching the regex.
+// Mirrors the backend's server-side `vital.name` character-set regex, `[\w.@$-]*` (letters, digits, `_`, `.`, `@`,
+// `$`, `-`). Names that fail this pattern generate a developer warning but the event is still emitted — the backend
+// is the source of truth on character-set policy, so client-side drop would force a customer SDK bump if the rule is
+// ever relaxed. Blank / empty names are a separate check: they are rejected here because the backend rejects them
+// with its own non-empty precondition before reaching the regex.
 const VALID_OPERATION_NAME_REGEX = /^[\w.@$-]*$/;
 
 function validateArgs(method: OperationMethod, name: unknown, options: unknown): boolean {

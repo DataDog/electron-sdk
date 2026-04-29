@@ -98,9 +98,8 @@ describe('OperationCollection', () => {
   // --- VAL-01..VAL-07 ---
   describe('input validation', () => {
     it('VAL-01: empty name is rejected and no event is emitted', () => {
-      // The backend rejects blank/empty names with its own non-empty
-      // precondition before evaluating the character-set regex; drop
-      // client-side to match.
+      // The backend rejects blank/empty names with its own non-empty precondition before evaluating the character-set
+      // regex; drop client-side to match.
       operationCollection.getApi().startOperation('');
 
       expect(rawRumEvents).toHaveLength(0);
@@ -166,9 +165,9 @@ describe('OperationCollection', () => {
       expect(vi.mocked(displayError).mock.calls[0][0]).toContain('operation key cannot be empty');
     });
 
-    // The public API is typed as `(name: string, options?: FeatureOperationOptions)`,
-    // but the validator accepts `unknown` to defend against JS callers passing
-    // garbage. These tests pin the runtime contract independent of the type system.
+    // The public API is typed as `(name: string, options?: FeatureOperationOptions)`, but the validator accepts
+    // `unknown` to defend against JS callers passing garbage. These tests pin the runtime contract independent of the
+    // type system.
     it.each([
       ['null', null],
       ['number', 42],
@@ -194,16 +193,13 @@ describe('OperationCollection', () => {
   });
 
   // --- Name character-set validation (schema facet-path rule) ---
-  // The authoritative _vital-common-schema.json says vital.name "must contain
-  // only letters, digits, or the characters - _ . @ $". Names that fail this
-  // rule are warned about but still emitted — the backend is the source of
-  // truth, so client-side drop would force a customer SDK bump if the policy
-  // is ever relaxed.
+  // The authoritative _vital-common-schema.json says vital.name "must contain only letters, digits, or the characters
+  // - _ . @ $". Names that fail this rule are warned about but still emitted — the backend is the source of truth, so
+  // client-side drop would force a customer SDK bump if the policy is ever relaxed.
   describe('operation name character set', () => {
-    // Names outside the schema facet-path set (letters / digits / - _ . @ $)
-    // are warned about but still emitted: the backend is the source of truth
-    // for what the schema actually allows, so client-side drop would force a
-    // customer SDK bump if the backend ever relaxed the rule.
+    // Names outside the schema facet-path set (letters / digits / - _ . @ $) are warned about but still emitted: the
+    // backend is the source of truth for what the schema actually allows, so client-side drop would force a customer
+    // SDK bump if the backend ever relaxed the rule.
     it.each([
       ['space', 'user login'],
       ['slash', 'api/v1'],
@@ -359,11 +355,10 @@ describe('OperationCollection', () => {
   });
 
   // --- No-tracking behavior ---
-  // Electron intentionally does NOT track active operations locally (matches
-  // browser-sdk / Android). Renderer events flow through the bridge without
-  // updating main-process state, so any local tracking would produce false
-  // positives on cross-process start/stop flows. Consequently the main process
-  // never emits "duplicate start" / "stop without start" warnings.
+  // Electron intentionally does NOT track active operations locally (matches browser-sdk / Android). Renderer events
+  // flow through the bridge without updating main-process state, so any local tracking would produce false positives
+  // on cross-process start/stop flows. Consequently the main process never emits "duplicate start" / "stop without
+  // start" warnings.
   describe('no local tracking (cross-process safety)', () => {
     it('does not warn on duplicate start from the main process', () => {
       operationCollection.getApi().startOperation('login');
@@ -430,9 +425,8 @@ describe('OperationCollection', () => {
 
   // --- EDGE cases ---
   describe('edge cases', () => {
-    // EDGE-04 (Unicode) is intentionally omitted: the schema facet-path rule
-    // restricts names to ASCII letters/digits/- _ . @ $, which excludes
-    // non-ASCII characters. The character-set test group above covers this.
+    // EDGE-04 (Unicode) is intentionally omitted: the schema facet-path rule restricts names to ASCII letters / digits
+    // / - _ . @ $, which excludes non-ASCII characters. The character-set test group above covers this.
 
     it('EDGE-05: long operation name is preserved', () => {
       const longName = 'a'.repeat(500);
@@ -459,11 +453,9 @@ describe('OperationCollection', () => {
     });
   });
 
-  // The deprecated `*FeatureOperation` wrappers exist only for backwards
-  // compatibility with the early-preview API name. They emit a one-time
-  // deprecation warning per method and forward to the canonical
-  // implementation. These tests pin both the wrapping behavior and the
-  // warn-once policy so noisy callers don't drown the console.
+  // The deprecated `*FeatureOperation` wrappers exist only for backwards compatibility with the early-preview API
+  // name. They emit a one-time deprecation warning per method and forward to the canonical implementation. These tests
+  // pin both the wrapping behavior and the warn-once policy so noisy callers don't drown the console.
   describe('deprecated *FeatureOperation wrappers', () => {
     it('startFeatureOperation forwards to startOperation and emits the same event', () => {
       operationCollection.getApi().startFeatureOperation('login');
