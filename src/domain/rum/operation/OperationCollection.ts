@@ -90,7 +90,7 @@ export class OperationCollection {
     options: FeatureOperationOptions | undefined,
     failureReason?: FailureReason
   ): void {
-    if (!validateArgs(method, name, options)) {
+    if (!validateArgs(method, name, options, failureReason)) {
       return;
     }
     const stepType = method === 'startOperation' ? 'start' : 'end';
@@ -164,7 +164,11 @@ function isValidString(value: unknown): value is string {
 // with its own non-empty precondition before reaching the regex.
 const VALID_OPERATION_NAME_REGEX = /^[\w.@$-]*$/;
 
-function validateArgs(method: OperationMethod, name: unknown, options: unknown): boolean {
+// Mirrors the schema enum for `vital.failure_reason`. JS callers bypassing the TS signature could pass any string;
+// warn but still emit so the backend (source of truth on the enum policy) gets to decide.
+const VALID_FAILURE_REASONS: readonly FailureReason[] = ['error', 'abandoned', 'other'];
+
+function validateArgs(method: OperationMethod, name: unknown, options: unknown, failureReason?: unknown): boolean {
   if (!isValidString(name)) {
     displayError(`${method}: operation name cannot be empty or blank. Event will not be sent.`);
     return false;
@@ -182,6 +186,14 @@ function validateArgs(method: OperationMethod, name: unknown, options: unknown):
   if (isIndexableObject(options) && options.operationKey !== undefined && !isValidString(options.operationKey)) {
     displayError(`${method}: operation key cannot be empty or blank. Event will not be sent.`);
     return false;
+  }
+  if (failureReason !== undefined && !VALID_FAILURE_REASONS.includes(failureReason as FailureReason)) {
+    // Warn but do not drop — the backend is the source of truth on the enum policy and `failureReason` carries the
+    // most diagnostic value of any field on a fail event, so swallowing it on a typo would lose more signal than it
+    // protects. JSON.stringify keeps the warning safe when JS callers pass non-string values.
+    displayWarn(
+      `${method}: failure reason ${JSON.stringify(failureReason)} is not one of the expected values '${VALID_FAILURE_REASONS.join("' | '")}'. The event will still be sent and may be rejected by the backend.`
+    );
   }
   return true;
 }

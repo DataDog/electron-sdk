@@ -273,6 +273,30 @@ describe('OperationCollection', () => {
 
       const data = rawRumEvents[0].data as RawRumVital;
       expect(data.vital.failure_reason).toBe(reason);
+      expect(displayWarn).not.toHaveBeenCalled();
+    });
+
+    // Unknown / off-enum `failureReason` values can only reach this code path from JS callers that bypass the TS
+    // signature. Mirror the name character-set policy: warn so the typo is visible in the developer console, but
+    // still emit the event — `failure_reason` carries the most diagnostic value on a fail event, so dropping on a
+    // typo would lose more signal than it protects, and the backend remains the source of truth on the enum policy.
+    it.each([
+      ['off-enum string', 'cancelled'],
+      ['empty string', ''],
+      ['whitespace', '   '],
+      ['number', 42 as unknown as 'error'],
+      ['null', null as unknown as 'error'],
+      ['boolean', true as unknown as 'error'],
+    ])('warns but still emits when failOperation receives a %s failure reason', (_label, reason) => {
+      operationCollection.getApi().failOperation('login', reason as 'error');
+
+      expect(rawRumEvents).toHaveLength(1);
+      const data = rawRumEvents[0].data as RawRumVital;
+      expect(data.vital.step_type).toBe('end');
+      expect(data.vital.failure_reason).toBe(reason);
+      expect(displayWarn).toHaveBeenCalledOnce();
+      expect(vi.mocked(displayWarn).mock.calls[0][0]).toContain('failure reason');
+      expect(vi.mocked(displayWarn).mock.calls[0][0]).toContain('still be sent');
     });
 
     it('captures a non-zero startTime from timeStampNow on the emitted raw event', () => {
