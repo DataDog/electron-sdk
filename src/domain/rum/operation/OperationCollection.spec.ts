@@ -31,7 +31,7 @@ describe('OperationCollection', () => {
 
   // --- API-01..API-06 ---
   describe('public API dispatch', () => {
-    it('API-01: startOperation emits a start vital event', () => {
+    it('API-01 / PAY-01 / PAY-07 / PAY-08 / PAY-09: startOperation emits a start vital event with full payload shape', () => {
       operationCollection.getApi().startOperation('login');
 
       expect(rawRumEvents).toHaveLength(1);
@@ -41,11 +41,11 @@ describe('OperationCollection', () => {
       expect(data.vital.step_type).toBe('start');
       expect(data.vital.name).toBe('login');
       expect(data.vital.failure_reason).toBeUndefined();
-      expect(data.vital.operation_key).toBeUndefined();
+      expect('operation_key' in data.vital).toBe(false);
       expect(data.vital.id).toMatch(UUID_REGEX);
     });
 
-    it('API-02: succeedOperation emits an end vital event without failure_reason', () => {
+    it('API-02 / PAY-02: succeedOperation emits an end vital event without failure_reason', () => {
       operationCollection.getApi().succeedOperation('login');
 
       expect(rawRumEvents).toHaveLength(1);
@@ -54,7 +54,7 @@ describe('OperationCollection', () => {
       expect(data.vital.failure_reason).toBeUndefined();
     });
 
-    it('API-03: failOperation emits an end vital event with failure_reason', () => {
+    it('API-03 / PAY-03: failOperation emits an end vital event with failure_reason', () => {
       operationCollection.getApi().failOperation('login', 'error');
 
       expect(rawRumEvents).toHaveLength(1);
@@ -63,7 +63,7 @@ describe('OperationCollection', () => {
       expect(data.vital.failure_reason).toBe('error');
     });
 
-    it('API-04: operationKey is forwarded to the event payload', () => {
+    it('API-04 / PAY-10: operationKey is forwarded to the event payload', () => {
       operationCollection.getApi().startOperation('login', { operationKey: 'abc' });
 
       const data = rawRumEvents[0].data as RawRumVital;
@@ -264,67 +264,15 @@ describe('OperationCollection', () => {
     });
   });
 
-  // --- PAY-01..PAY-10 ---
+  // --- PAY-04, plus payload shape concerns not already covered by the public-API-dispatch group ---
+  // PAY-01, PAY-02, PAY-03, PAY-07, PAY-08, PAY-09 and PAY-10 are covered by the API-01..API-04 tests above (every
+  // call routes through the same `handle()`, so payload shape and dispatch are checked in a single test).
   describe('payload structure', () => {
-    it('PAY-01: start payload shape', () => {
-      operationCollection.getApi().startOperation('login');
-
-      const data = rawRumEvents[0].data as RawRumVital;
-      expect(data.type).toBe('vital');
-      expect(data.vital.type).toBe('operation_step');
-      expect(data.vital.step_type).toBe('start');
-      expect(data.vital.failure_reason).toBeUndefined();
-    });
-
-    it('PAY-02: succeed payload shape', () => {
-      operationCollection.getApi().succeedOperation('login');
-
-      const data = rawRumEvents[0].data as RawRumVital;
-      expect(data.vital.step_type).toBe('end');
-      expect(data.vital.failure_reason).toBeUndefined();
-    });
-
-    it('PAY-03: fail payload shape', () => {
-      operationCollection.getApi().failOperation('login', 'error');
-
-      const data = rawRumEvents[0].data as RawRumVital;
-      expect(data.vital.step_type).toBe('end');
-      expect(data.vital.failure_reason).toBe('error');
-    });
-
     it.each(['error', 'abandoned', 'other'] as const)('PAY-04: failure reason %s serialises correctly', (reason) => {
       operationCollection.getApi().failOperation('login', reason);
 
       const data = rawRumEvents[0].data as RawRumVital;
       expect(data.vital.failure_reason).toBe(reason);
-    });
-
-    it('PAY-07: vital.id matches UUID v4 pattern', () => {
-      operationCollection.getApi().startOperation('login');
-
-      const data = rawRumEvents[0].data as RawRumVital;
-      expect(data.vital.id).toMatch(UUID_REGEX);
-    });
-
-    it('PAY-08: vital.name matches the input', () => {
-      operationCollection.getApi().startOperation('checkout');
-
-      const data = rawRumEvents[0].data as RawRumVital;
-      expect(data.vital.name).toBe('checkout');
-    });
-
-    it('PAY-09: unkeyed operation omits operation_key', () => {
-      operationCollection.getApi().startOperation('login');
-
-      const data = rawRumEvents[0].data as RawRumVital;
-      expect('operation_key' in data.vital).toBe(false);
-    });
-
-    it('PAY-10: keyed operation includes operation_key', () => {
-      operationCollection.getApi().startOperation('login', { operationKey: 'abc' });
-
-      const data = rawRumEvents[0].data as RawRumVital;
-      expect(data.vital.operation_key).toBe('abc');
     });
 
     it('captures a non-zero startTime from timeStampNow on the emitted raw event', () => {
