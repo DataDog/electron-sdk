@@ -42,6 +42,33 @@ await init({
 - **Renderer Bridge** — Capture RUM events from renderer processes via the browser SDK
 - **Operation Monitoring** _(experimental)_ — Track start / succeed / fail steps of critical user-facing workflows
 
+### Operation Monitoring _(experimental)_
+
+Operation Monitoring lets you track the lifecycle of critical user-facing workflows (login, checkout, file upload, video playback, …) by emitting paired `start` / `end` steps. The backend correlates the steps by `name` (and optional `operationKey`) and exposes them as a single Operation in the RUM UI.
+
+> ⚗️ This API is in preview and the signatures may change before stable release.
+
+```ts
+import { startOperation, succeedOperation, failOperation } from '@datadog/electron-sdk';
+
+// Simple operation
+startOperation('checkout');
+try {
+  await runCheckout();
+  succeedOperation('checkout');
+} catch (error) {
+  failOperation('checkout', 'error');
+}
+
+// Parallel operations sharing a name — distinguished by `operationKey`
+startOperation('upload', { operationKey: 'profile_pic' });
+startOperation('upload', { operationKey: 'cover_photo' });
+succeedOperation('upload', { operationKey: 'profile_pic' });
+failOperation('upload', 'abandoned', { operationKey: 'cover_photo' });
+```
+
+The renderer process keeps using `@datadog/browser-rum` directly (with the `feature_operation_vital` experimental flag enabled on its init). API signatures match exactly, so you can start an operation in one process and complete it in the other — the backend correlates steps by `name` + `operationKey`.
+
 ### Renderer Process Support
 
 In order to monitor the renderer process, the [Browser SDK](https://docs.datadoghq.com/real_user_monitoring/application_monitoring/browser/setup/) must be setup in pages loaded by the renderer.
@@ -82,48 +109,19 @@ try {
 }
 ```
 
-### Operation Monitoring _(experimental)_
+### `startOperation(name: string, options?: FeatureOperationOptions): void`
 
-Operation Monitoring lets you track the lifecycle of critical user-facing workflows
-(login, checkout, file upload, video playback, …) by emitting paired `start` / `end`
-steps. The backend correlates the steps by `name` (and optional `operationKey`) and
-exposes them as a single Operation in the RUM UI.
+Start a RUM Operation step. Pair every `startOperation` with exactly one `succeedOperation` or `failOperation`. Use `options.operationKey` to distinguish parallel operations sharing the same `name`.
 
-> ⚗️ This API is in preview and the signatures may change before stable release.
+> Note: `name` is required and should only contain letters, digits, `_`, `.`, `@`, `$`, `-`.
 
-```ts
-import { startOperation, succeedOperation, failOperation } from '@datadog/electron-sdk';
+### `succeedOperation(name: string, options?: FeatureOperationOptions): void`
 
-// Simple operation
-startOperation('checkout');
-try {
-  await runCheckout();
-  succeedOperation('checkout');
-} catch (error) {
-  failOperation('checkout', 'error');
-}
+Record the successful completion of a RUM Operation. Pass the same `name` (and `operationKey`, if any) used to start it.
 
-// Parallel operations sharing a name — distinguished by `operationKey`
-startOperation('upload', { operationKey: 'profile_pic' });
-startOperation('upload', { operationKey: 'cover_photo' });
-succeedOperation('upload', { operationKey: 'profile_pic' });
-failOperation('upload', 'abandoned', { operationKey: 'cover_photo' });
-```
+### `failOperation(name: string, failureReason: FailureReason, options?: FeatureOperationOptions): void`
 
-#### API
-
-| Function           | Signature                                                                                 |
-| ------------------ | ----------------------------------------------------------------------------------------- |
-| `startOperation`   | `(name: string, options?: FeatureOperationOptions) => void`                               |
-| `succeedOperation` | `(name: string, options?: FeatureOperationOptions) => void`                               |
-| `failOperation`    | `(name: string, failureReason: FailureReason, options?: FeatureOperationOptions) => void` |
-
-> **Deprecated aliases.** The early-preview names `startFeatureOperation` /
-> `succeedFeatureOperation` / `failFeatureOperation` are kept as deprecated
-> aliases for backwards compatibility. They forward to the un-prefixed names
-> above and emit a one-time runtime warning. They will be removed in the next
-> major release — migrate to `startOperation` / `succeedOperation` /
-> `failOperation`.
+Record the failure of a RUM Operation. `failureReason` must be one of `'error' | 'abandoned' | 'other'`.
 
 ```ts
 type FailureReason = 'error' | 'abandoned' | 'other';
@@ -138,22 +136,7 @@ interface FeatureOperationOptions {
 }
 ```
 
-#### Cross-process usage
-
-The renderer process keeps using `@datadog/browser-rum` directly (with the
-`feature_operation_vital` experimental flag enabled on its init). API signatures
-match exactly, so you can start an operation in one process and complete it in the
-other — the backend correlates steps by `name` + `operationKey`.
-
-#### Validation
-
-- Blank `name` or blank `operationKey` are rejected and an error is logged; no event
-  is emitted.
-- Non-string `name` or non-object `options` are rejected the same way (defensive
-  guard for JS callers that bypass the TypeScript signatures).
-- Names containing characters outside `[\w.@$-]*` (letters, digits, `_`, `.`, `@`,
-  `$`, `-`) emit a warning but the event is still sent — the backend is the source
-  of truth on the character-set policy.
+> **Deprecated aliases.** The early-preview names `startFeatureOperation` / `succeedFeatureOperation` / `failFeatureOperation` are kept as deprecated aliases for backwards compatibility. They forward to the un-prefixed names above and emit a one-time runtime warning. They will be removed in the next major release — migrate to `startOperation` / `succeedOperation` / `failOperation`.
 
 ### Configuration Options
 
