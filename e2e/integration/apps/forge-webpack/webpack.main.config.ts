@@ -1,5 +1,8 @@
+import { DatadogWebpackPlugin } from '@datadog/electron-sdk/webpack-plugin';
+
 export const mainConfig = {
   entry: './src/main.ts',
+  plugins: [new DatadogWebpackPlugin()],
   module: {
     rules: [
       {
