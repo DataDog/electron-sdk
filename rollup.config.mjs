@@ -44,24 +44,6 @@ const config = [
     external: ['electron'],
     plugins: sharedPlugins,
   },
-  // Auto-instrument preload: self-contained CJS script injected via session.registerPreloadScript()
-  {
-    input: 'src/entries/preload.ts',
-    output: [
-      {
-        file: 'dist/preload-auto.cjs',
-        format: 'cjs',
-        sourcemap: true,
-      },
-      {
-        file: 'dist/preload.mjs',
-        format: 'esm',
-        sourcemap: true,
-      },
-    ],
-    external: ['electron'],
-    plugins: sharedPlugins,
-  },
   // Instrumentation: imported before electron to hook require('electron') for BrowserWindow wrapping
   {
     input: 'src/entries/instrument.ts',
@@ -104,15 +86,6 @@ const config = [
     external: ['electron'],
     output: {
       file: 'dist/index.d.ts',
-      format: 'esm',
-    },
-    plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
-  },
-  // TypeScript declarations: preload
-  {
-    input: 'src/entries/preload.ts',
-    output: {
-      file: 'dist/preload.d.ts',
       format: 'esm',
     },
     plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
