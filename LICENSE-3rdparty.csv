@@ -12,12 +12,14 @@ rust-prod,serde_json,MIT OR Apache-2.0,Copyright (c) 2014 Erick Tryzelaar and Da
 rust-prod,wasm-bindgen,MIT OR Apache-2.0,Copyright (c) 2014 Alex Crichton
 rust-prod,wasm-bindgen-futures,MIT OR Apache-2.0,Copyright (c) 2014 Alex Crichton
 rust-prod,web-sys,MIT OR Apache-2.0,Copyright (c) 2014 Alex Crichton
+npm-prod,dd-trace,Apache-2.0 OR BSD-3-Clause,Copyright (c) Datadog Inc.
 npm-dev,@electron-forge/cli,MIT,Copyright (c) 2019 The Electron Forge Contributors
 npm-dev,@electron-forge/plugin-vite,MIT,Copyright (c) 2019 The Electron Forge Contributors
 npm-dev,@electron-forge/plugin-webpack,MIT,Copyright (c) 2019 The Electron Forge Contributors
 npm-dev,@eslint/js,MIT,Copyright OpenJS Foundation and other contributors
 npm-dev,@playwright/test,Apache-2.0,Copyright Microsoft Corporation
 npm-dev,@rollup/plugin-commonjs,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)
+npm-dev,@rollup/plugin-json,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)
 npm-dev,@rollup/plugin-node-resolve,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)
 npm-dev,@rollup/plugin-replace,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)
 npm-dev,@rollup/plugin-typescript,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)

@@ -21,6 +21,16 @@
       "types": "./dist/instrument.d.ts",
       "require": "./dist/instrument.cjs",
       "import": "./dist/instrument.mjs"
+    },
+    "./vite-plugin": {
+      "types": "./dist/vite-plugin.d.ts",
+      "require": "./dist/vite-plugin.cjs",
+      "import": "./dist/vite-plugin.mjs"
+    },
+    "./webpack-plugin": {
+      "types": "./dist/webpack-plugin.d.ts",
+      "require": "./dist/webpack-plugin.cjs",
+      "import": "./dist/webpack-plugin.mjs"
     }
   },
   "typesVersions": {
@@ -30,6 +40,12 @@
       ],
       "instrument": [
         "./dist/instrument.d.ts"
+      ],
+      "vite-plugin": [
+        "./dist/vite-plugin.d.ts"
+      ],
+      "webpack-plugin": [
+        "./dist/webpack-plugin.d.ts"
       ]
     }
   },
@@ -53,6 +69,17 @@
     "dist/instrument.mjs",
     "dist/instrument.mjs.map",
     "dist/instrument.d.ts",
+    "dist/vite-plugin.cjs",
+    "dist/vite-plugin.cjs.map",
+    "dist/vite-plugin.mjs",
+    "dist/vite-plugin.mjs.map",
+    "dist/vite-plugin.d.ts",
+    "dist/webpack-plugin.cjs",
+    "dist/webpack-plugin.cjs.map",
+    "dist/webpack-plugin.mjs",
+    "dist/webpack-plugin.mjs.map",
+    "dist/webpack-plugin.d.ts",
+    "dd-trace.tgz",
     "README.md",
     "LICENSE",
     "LICENSE-3rdparty.csv"
@@ -94,7 +121,6 @@
     "@vitest/coverage-v8": "4.0.18",
     "@vitest/ui": "4.0.18",
     "concurrently": "9.2.1",
-    "dd-trace": "file:./dd-trace.tgz",
     "electron": "40.2.1",
     "eslint": "10.0.2",
     "eslint-config-prettier": "10.1.8",
@@ -111,6 +137,9 @@
     "typescript": "5.9.3",
     "typescript-eslint": "8.57.0",
     "vitest": "4.0.18"
+  },
+  "dependencies": {
+    "dd-trace": "file:./dd-trace.tgz"
   },
   "peerDependencies": {
     "electron": ">=39"
