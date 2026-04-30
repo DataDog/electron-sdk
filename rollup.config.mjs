@@ -80,6 +80,24 @@ const config = [
     external: ['electron'],
     plugins: sharedPlugins,
   },
+  // Vite plugin: ensures dd-trace initializes before hoisted requires
+  {
+    input: 'src/entries/vite-plugin.ts',
+    output: [
+      {
+        file: 'dist/vite-plugin.cjs',
+        format: 'cjs',
+        sourcemap: true,
+      },
+      {
+        file: 'dist/vite-plugin.mjs',
+        format: 'esm',
+        sourcemap: true,
+      },
+    ],
+    external: ['electron'],
+    plugins: sharedPlugins,
+  },
   // TypeScript declarations: main
   {
     input: 'src/index.ts',
@@ -99,11 +117,47 @@ const config = [
     },
     plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
   },
-  // TypeScript declarations: init
+  // TypeScript declarations: instrument
   {
     input: 'src/entries/instrument.ts',
     output: {
       file: 'dist/instrument.d.ts',
+      format: 'esm',
+    },
+    plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
+  },
+  // TypeScript declarations: vite-plugin
+  {
+    input: 'src/entries/vite-plugin.ts',
+    output: {
+      file: 'dist/vite-plugin.d.ts',
+      format: 'esm',
+    },
+    plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
+  },
+  // Webpack plugin: copies dd-trace preload into webpack output
+  {
+    input: 'src/entries/webpack-plugin.ts',
+    output: [
+      {
+        file: 'dist/webpack-plugin.cjs',
+        format: 'cjs',
+        sourcemap: true,
+      },
+      {
+        file: 'dist/webpack-plugin.mjs',
+        format: 'esm',
+        sourcemap: true,
+      },
+    ],
+    external: ['electron'],
+    plugins: sharedPlugins,
+  },
+  // TypeScript declarations: webpack-plugin
+  {
+    input: 'src/entries/webpack-plugin.ts',
+    output: {
+      file: 'dist/webpack-plugin.d.ts',
       format: 'esm',
     },
     plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],

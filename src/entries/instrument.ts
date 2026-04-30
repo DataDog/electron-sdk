@@ -7,6 +7,11 @@
  *
  * Initializes dd-trace with the electron exporter so it can hook
  * require('electron') and wrap BrowserWindow for automatic preload injection.
+ *
+ * Note: Bundlers may break the import order dd-trace needs. Use the bundler
+ * plugins provided by the SDK to ensure correct behavior:
+ * - Vite: datadogVitePlugin from '@datadog/electron-sdk/vite-plugin'
+ * - Webpack: DatadogWebpackPlugin from '@datadog/electron-sdk/webpack-plugin'
  */
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
