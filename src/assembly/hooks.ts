@@ -13,6 +13,12 @@ export interface TelemetryAssembleParams {
   startTime: TimeStamp;
 }
 
+export interface SpanAssembleParams {
+  startTime: TimeStamp;
+}
+
+export type SpanMeta = Record<string, string>;
+
 type AssembleCallback<Params, Result> = (params: Params) => Result | typeof DISCARDED | typeof SKIPPED;
 
 /**
@@ -58,11 +64,14 @@ export type FormatHooks = ReturnType<typeof createFormatHooks>;
 export function createFormatHooks() {
   const rumHook = createAssembleHook<RumAssembleParams, RecursivePartial<RumEvent>>();
   const telemetryHook = createAssembleHook<TelemetryAssembleParams, RecursivePartial<TelemetryEvent>>();
+  const spanHook = createAssembleHook<SpanAssembleParams, SpanMeta>();
 
   return {
     registerRum: rumHook.register,
     registerTelemetry: telemetryHook.register,
+    registerSpan: spanHook.register,
     triggerRum: rumHook.trigger,
     triggerTelemetry: telemetryHook.trigger,
+    triggerSpan: spanHook.trigger,
   };
 }

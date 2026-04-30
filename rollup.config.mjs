@@ -1,6 +1,7 @@
 import typescript from '@rollup/plugin-typescript';
 import { nodeResolve } from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
+import json from '@rollup/plugin-json';
 import replace from '@rollup/plugin-replace';
 import dts from 'rollup-plugin-dts';
 import pkg from './package.json' with { type: 'json' };
@@ -9,6 +10,7 @@ const sharedPlugins = [
   replace({ preventAssignment: true, __SDK_VERSION__: JSON.stringify(pkg.version) }),
   nodeResolve(),
   commonjs(),
+  json(),
   typescript({
     tsconfig: './tsconfig.build.json',
     declaration: false,
@@ -42,17 +44,35 @@ const config = [
     external: ['electron'],
     plugins: sharedPlugins,
   },
-  // Auto-instrument preload: self-contained CJS script injected via session.registerPreloadScript()
+  // Instrumentation: imported before electron to hook require('electron') for BrowserWindow wrapping
   {
-    input: 'src/entries/preload.ts',
+    input: 'src/entries/instrument.ts',
     output: [
       {
-        file: 'dist/preload-auto.cjs',
+        file: 'dist/instrument.cjs',
         format: 'cjs',
         sourcemap: true,
       },
       {
-        file: 'dist/preload.mjs',
+        file: 'dist/instrument.mjs',
+        format: 'esm',
+        sourcemap: true,
+      },
+    ],
+    external: ['electron'],
+    plugins: sharedPlugins,
+  },
+  // Vite plugin: ensures dd-trace initializes before hoisted requires
+  {
+    input: 'src/entries/vite-plugin.ts',
+    output: [
+      {
+        file: 'dist/vite-plugin.cjs',
+        format: 'cjs',
+        sourcemap: true,
+      },
+      {
+        file: 'dist/vite-plugin.mjs',
         format: 'esm',
         sourcemap: true,
       },
@@ -70,11 +90,47 @@ const config = [
     },
     plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
   },
-  // TypeScript declarations: preload
+  // TypeScript declarations: instrument
   {
-    input: 'src/entries/preload.ts',
+    input: 'src/entries/instrument.ts',
     output: {
-      file: 'dist/preload.d.ts',
+      file: 'dist/instrument.d.ts',
+      format: 'esm',
+    },
+    plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
+  },
+  // TypeScript declarations: vite-plugin
+  {
+    input: 'src/entries/vite-plugin.ts',
+    output: {
+      file: 'dist/vite-plugin.d.ts',
+      format: 'esm',
+    },
+    plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
+  },
+  // Webpack plugin: copies dd-trace preload into webpack output
+  {
+    input: 'src/entries/webpack-plugin.ts',
+    output: [
+      {
+        file: 'dist/webpack-plugin.cjs',
+        format: 'cjs',
+        sourcemap: true,
+      },
+      {
+        file: 'dist/webpack-plugin.mjs',
+        format: 'esm',
+        sourcemap: true,
+      },
+    ],
+    external: ['electron'],
+    plugins: sharedPlugins,
+  },
+  // TypeScript declarations: webpack-plugin
+  {
+    input: 'src/entries/webpack-plugin.ts',
+    output: {
+      file: 'dist/webpack-plugin.d.ts',
       format: 'esm',
     },
     plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],

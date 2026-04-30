@@ -4,6 +4,7 @@ import { EventKind, EventSource, EventFormat } from '../event';
 import type { EventManager, RawRumEvent } from '../event';
 import { monitor, addError as addTelemetryError } from '../domain/telemetry';
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
+import { displayInfo } from '../tools/display';
 
 type BridgeEventType = 'rum' | 'log' | 'internal_telemetry';
 
@@ -21,8 +22,8 @@ export interface BridgeOptions {
  * Receives events from renderer processes via IPC and routes them through the
  * main-process EventManager pipeline.
  *
- * The preload script (`src/preload/bridge.ts`) exposes a `DatadogEventBridge`
- * to each renderer. When the browser RUM SDK sends an event through the bridge,
+ * dd-trace's preload script exposes a `DatadogEventBridge` to each renderer.
+ * When the browser RUM SDK sends an event through the bridge,
  * it arrives here as a JSON string and is forwarded as a `RawRumEvent` (or, in
  * the future, a log / telemetry event) to the existing assembly & transport
  * chain.
@@ -58,6 +59,7 @@ export class BridgeHandler {
 
     switch (bridgeEvent.eventType) {
       case 'rum':
+        displayInfo('Bridge received renderer RUM event:', (bridgeEvent.event as { type?: string })?.type);
         this.eventManager.notify({
           kind: EventKind.RAW,
           source: EventSource.RENDERER,

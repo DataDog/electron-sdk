@@ -46,20 +46,43 @@ await init({
 In order to monitor the renderer process, the [Browser SDK](https://docs.datadoghq.com/real_user_monitoring/application_monitoring/browser/setup/) must be setup in pages loaded by the renderer.
 The Electron SDK exposes a `DatadogEventBridge` to every renderer process via a preload script. When present, the Browser SDK detects the bridge and routes events through IPC to the Electron SDK instead of sending them directly to Datadog servers.
 
-#### Unbundled apps
+#### Setup
 
-For apps that don't bundle the main process, the SDK automatically registers the preload script. No additional setup is needed.
-
-#### Bundled apps (Vite, Webpack)
-
-If your main process is bundled (e.g. Electron Forge with the Vite or Webpack plugin), automatic preload injection won't work. Instead, add the following import to your preload script:
+Import the instrumentation entry point **before** `electron` in your main process:
 
 ```ts
-// src/preload.ts
-import '@datadog/electron-sdk/preload';
+// src/main.ts
+import '@datadog/electron-sdk/instrument';
+import { app, BrowserWindow } from 'electron';
 ```
 
-This ensures the bridge code is bundled into your app's `preload.js` and included in the final package.
+This initializes dd-trace which automatically injects the preload script via BrowserWindow wrapping. No manual preload setup is needed.
+
+#### Bundler Plugins
+
+dd-trace hooks `require('electron')` at runtime, which requires correct module loading order. The SDK provides bundler plugins to ensure this works in all environments:
+
+**Vite** (including Electron Forge with Vite and electron-vite):
+
+```ts
+// vite.main.config.ts
+import { datadogVitePlugin } from '@datadog/electron-sdk/vite-plugin';
+
+export default defineConfig({
+  plugins: [datadogVitePlugin()],
+});
+```
+
+**Webpack** (including Electron Forge with Webpack):
+
+```ts
+// webpack.main.config.ts
+const { DatadogWebpackPlugin } = require('@datadog/electron-sdk/webpack-plugin');
+
+module.exports = {
+  plugins: [new DatadogWebpackPlugin()],
+};
+```
 
 ## API
 

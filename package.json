@@ -12,16 +12,32 @@
       "require": "./dist/index.cjs",
       "import": "./dist/index.mjs"
     },
-    "./preload": {
-      "types": "./dist/preload.d.ts",
-      "require": "./dist/preload-auto.cjs",
-      "import": "./dist/preload.mjs"
+    "./instrument": {
+      "types": "./dist/instrument.d.ts",
+      "require": "./dist/instrument.cjs",
+      "import": "./dist/instrument.mjs"
+    },
+    "./vite-plugin": {
+      "types": "./dist/vite-plugin.d.ts",
+      "require": "./dist/vite-plugin.cjs",
+      "import": "./dist/vite-plugin.mjs"
+    },
+    "./webpack-plugin": {
+      "types": "./dist/webpack-plugin.d.ts",
+      "require": "./dist/webpack-plugin.cjs",
+      "import": "./dist/webpack-plugin.mjs"
     }
   },
   "typesVersions": {
     "*": {
-      "preload": [
-        "./dist/preload.d.ts"
+      "instrument": [
+        "./dist/instrument.d.ts"
+      ],
+      "vite-plugin": [
+        "./dist/vite-plugin.d.ts"
+      ],
+      "webpack-plugin": [
+        "./dist/webpack-plugin.d.ts"
       ]
     }
   },
@@ -35,11 +51,22 @@
     "dist/wasm.chunk.cjs.map",
     "dist/wasm.chunk.mjs",
     "dist/wasm.chunk.mjs.map",
-    "dist/preload-auto.cjs",
-    "dist/preload-auto.cjs.map",
-    "dist/preload.d.ts",
-    "dist/preload.mjs",
-    "dist/preload.mjs.map",
+    "dist/instrument.cjs",
+    "dist/instrument.cjs.map",
+    "dist/instrument.mjs",
+    "dist/instrument.mjs.map",
+    "dist/instrument.d.ts",
+    "dist/vite-plugin.cjs",
+    "dist/vite-plugin.cjs.map",
+    "dist/vite-plugin.mjs",
+    "dist/vite-plugin.mjs.map",
+    "dist/vite-plugin.d.ts",
+    "dist/webpack-plugin.cjs",
+    "dist/webpack-plugin.cjs.map",
+    "dist/webpack-plugin.mjs",
+    "dist/webpack-plugin.mjs.map",
+    "dist/webpack-plugin.d.ts",
+    "dd-trace.tgz",
     "README.md",
     "LICENSE",
     "LICENSE-3rdparty.csv"
@@ -73,6 +100,7 @@
     "@eslint/js": "10.0.0",
     "@playwright/test": "1.58.2",
     "@rollup/plugin-commonjs": "29.0.0",
+    "@rollup/plugin-json": "6.1.0",
     "@rollup/plugin-node-resolve": "16.0.3",
     "@rollup/plugin-replace": "6.0.3",
     "@rollup/plugin-typescript": "12.1.2",
@@ -96,6 +124,9 @@
     "typescript": "5.9.3",
     "typescript-eslint": "8.57.0",
     "vitest": "4.0.18"
+  },
+  "dependencies": {
+    "dd-trace": "file:./dd-trace.tgz"
   },
   "peerDependencies": {
     "electron": ">=39"

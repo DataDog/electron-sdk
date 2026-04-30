@@ -25,6 +25,8 @@ interface ElectronAPI {
   generateUnhandledRejection: () => Promise<void>;
   crash: () => Promise<void>;
   mainFetchApi: () => Promise<unknown>;
+  mainFetchApiFetch: () => Promise<unknown>;
+  mainFetchApiNet: () => Promise<unknown>;
 }
 
 declare global {
@@ -193,3 +195,5 @@ if (rendererFetchBtn) {
 }
 
 setupDemoButton('main-fetch', 'main:fetch-api', () => window.electronAPI.mainFetchApi());
+setupDemoButton('main-fetch-fetch', 'main:fetch-api-fetch', () => window.electronAPI.mainFetchApiFetch());
+setupDemoButton('main-fetch-net', 'main:fetch-api-net', () => window.electronAPI.mainFetchApiNet());

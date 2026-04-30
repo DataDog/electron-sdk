@@ -7,8 +7,11 @@ import { UserActivityTracker } from './domain/UserActivityTracker';
 import type { ErrorOptions } from './domain/rum';
 import { callMonitored, startTelemetry } from './domain/telemetry';
 import { EventManager } from './event';
-import { BridgeHandler, registerPreload } from './bridge';
+import { BridgeHandler } from './bridge';
 import { Transport } from './transport';
+import { Tracing } from './domain/tracing/Tracing';
+import { ResourceConverter } from './domain/tracing/ResourceConverter';
+import { displayInfo } from './tools/display';
 
 let sessionManager: SessionManager | undefined;
 let eventManager: EventManager | undefined;
@@ -25,8 +28,8 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
     return false;
   }
 
-  // register preload early to avoid missing windows creation before init is complete
-  registerPreload();
+  const tracing = new Tracing();
+
   eventManager = new EventManager();
   const hooks = createFormatHooks();
 
@@ -37,6 +40,11 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   new Assembly(eventManager, hooks);
   new BridgeHandler(eventManager, config);
   new UserActivityTracker(eventManager);
+
+  if (tracing.enabled) {
+    new ResourceConverter(eventManager, hooks, config.env ?? '');
+    displayInfo('Tracing enabled');
+  }
 
   transport = await Transport.create(config, eventManager);
   const rum = await RumCollection.start(eventManager, hooks);
