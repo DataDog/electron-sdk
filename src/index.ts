@@ -42,7 +42,12 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   new UserActivityTracker(eventManager);
 
   if (tracing.enabled) {
-    new ResourceConverter(eventManager, hooks, config.env ?? '');
+    new ResourceConverter(eventManager, hooks, {
+      env: config.env ?? '',
+      service: config.service,
+      site: config.site,
+      proxy: config.proxy,
+    });
     displayInfo('Tracing enabled');
   }
 

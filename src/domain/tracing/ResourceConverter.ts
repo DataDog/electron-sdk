@@ -24,22 +24,14 @@ interface ExportedSpan {
 
 const DD_TRACE_SPAN_CHANNEL = 'datadog:apm:electron:export';
 
-function isSdkRequest(url: string): boolean {
-  try {
-    const hostname = new URL(url).hostname;
-    return hostname === '127.0.0.1' || hostname === 'localhost' || hostname.startsWith('browser-intake-');
-  } catch {
-    return false;
-  }
-}
-
 function isHttpSpan(span: ExportedSpan): boolean {
   return span.type === 'http' && !!span.meta['http.url'];
 }
 
-function spanToPayload(span: ExportedSpan, extraMeta?: Record<string, string>) {
+function spanToPayload(span: ExportedSpan, service: string, extraMeta?: Record<string, string>) {
   return {
     ...span,
+    service,
     trace_id: span.trace_id.toString(16),
     span_id: span.span_id.toString(16),
     parent_id: span.parent_id.toString(16),
@@ -67,15 +59,36 @@ function spanToResource(span: ExportedSpan): RawRumResource {
   };
 }
 
+export interface ResourceConverterConfig {
+  env: string;
+  service: string;
+  site: string;
+  proxy?: string;
+}
+
 export class ResourceConverter {
   private channel: DiagnosticsChannel.Channel;
   private onMessage: (message: unknown) => void;
+  private sdkHostnames: Set<string>;
+  private env: string;
+  private service: string;
 
   constructor(
     private eventManager: EventManager,
     private hooks: FormatHooks,
-    private env: string
+    config: ResourceConverterConfig
   ) {
+    this.env = config.env;
+    this.service = config.service;
+    this.sdkHostnames = new Set<string>();
+    this.sdkHostnames.add(`browser-intake-${config.site}`);
+    if (config.proxy) {
+      try {
+        this.sdkHostnames.add(new URL(config.proxy).hostname);
+      } catch {
+        // invalid proxy URL — skip
+      }
+    }
     this.channel = DiagnosticsChannel.channel(DD_TRACE_SPAN_CHANNEL);
 
     this.onMessage = (message: unknown) => {
@@ -87,7 +100,7 @@ export class ResourceConverter {
 
           for (const span of trace) {
             const url = span.meta['http.url'];
-            if (url && isSdkRequest(url)) {
+            if (url && this.isSdkRequest(url)) {
               continue;
             }
 
@@ -96,7 +109,7 @@ export class ResourceConverter {
             const hookResult = this.hooks.triggerSpan({ startTime });
             const extraMeta = hookResult !== DISCARDED ? hookResult : undefined;
 
-            const payload = spanToPayload(span, extraMeta);
+            const payload = spanToPayload(span, this.service, extraMeta);
             displayInfo(
               'Span received:',
               span.name,
@@ -138,6 +151,14 @@ export class ResourceConverter {
     };
 
     this.channel.subscribe(this.onMessage);
+  }
+
+  private isSdkRequest(url: string): boolean {
+    try {
+      return this.sdkHostnames.has(new URL(url).hostname);
+    } catch {
+      return false;
+    }
   }
 
   stop(): void {
