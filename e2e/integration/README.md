@@ -43,7 +43,7 @@ yarn test:integration --project=forge-webpack-packaged
 | `electron-vite`         | electron-vite CLI   | electron-builder |
 | `electron-builder-vite` | Vite (manual)       | electron-builder |
 
-All apps use `import '@datadog/electron-sdk/instrument'` before importing `electron` in their main process. This initializes dd-trace which automatically injects the preload script via BrowserWindow wrapping.
+All apps use `import '@datadog/electron-sdk/instrument'` before importing `electron` in their main process. This initializes dd-trace which automatically injects the preload script via BrowserWindow wrapping. Vite-based apps use `datadogVitePlugin` and webpack-based apps use `DatadogWebpackPlugin` to ensure correct module loading order and preload availability in packaged builds.
 
 ## Key design points
 

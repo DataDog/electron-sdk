@@ -58,6 +58,32 @@ import { app, BrowserWindow } from 'electron';
 
 This initializes dd-trace which automatically injects the preload script via BrowserWindow wrapping. No manual preload setup is needed.
 
+#### Bundler Plugins
+
+dd-trace hooks `require('electron')` at runtime, which requires correct module loading order. The SDK provides bundler plugins to ensure this works in all environments:
+
+**Vite** (including Electron Forge with Vite and electron-vite):
+
+```ts
+// vite.main.config.ts
+import { datadogVitePlugin } from '@datadog/electron-sdk/vite-plugin';
+
+export default defineConfig({
+  plugins: [datadogVitePlugin()],
+});
+```
+
+**Webpack** (including Electron Forge with Webpack):
+
+```ts
+// webpack.main.config.ts
+const { DatadogWebpackPlugin } = require('@datadog/electron-sdk/webpack-plugin');
+
+module.exports = {
+  plugins: [new DatadogWebpackPlugin()],
+};
+```
+
 ## API
 
 ### `init(config: InitConfiguration): Promise<boolean>`

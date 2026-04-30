@@ -126,9 +126,14 @@ Spans are enriched with electron context (`_dd.application.id`, `_dd.session.id`
 
 ### Preload injection
 
-dd-trace wraps `BrowserWindow` to automatically inject a preload script via `session.registerPreloadScript()`. This preload sets up the `DatadogEventBridge` in every renderer process. This works in both bundled and non-bundled environments because `electron` is always a runtime module (never bundled).
+dd-trace wraps `BrowserWindow` to automatically inject a preload script via `session.registerPreloadScript()`. This preload sets up the `DatadogEventBridge` in every renderer process.
 
-See `src/domain/tracing/` and `src/entries/instrument.ts`.
+For this to work, dd-trace must hook `require('electron')` **before** electron is loaded. This is straightforward in non-bundled environments but requires bundler plugins for Vite and Webpack:
+
+- **Vite** hoists all `require()` calls to the top of the bundle, breaking import order. The `datadogVitePlugin` (`@datadog/electron-sdk/vite-plugin`) fixes this by externalizing dd-trace, prepending initialization before hoisted requires, and copying dd-trace's runtime dependencies into the build output for packaged apps.
+- **Webpack** preserves module execution order (lazy evaluation via `__webpack_require__`), so the import order in source code is maintained. The `DatadogWebpackPlugin` (`@datadog/electron-sdk/webpack-plugin`) copies dd-trace's preload script into the webpack output at the fallback path dd-trace expects in packaged apps.
+
+See `src/domain/tracing/`, `src/entries/instrument.ts`, `src/entries/vite-plugin.ts`, and `src/entries/webpack-plugin.ts`.
 
 ## Two-Tier Configuration
 
