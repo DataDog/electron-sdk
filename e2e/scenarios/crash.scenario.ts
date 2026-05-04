@@ -1,9 +1,11 @@
-import { test, expect, launchAppManually } from '../lib/helpers';
+import { test, expect, launchAppManually, createUserDataDir, cleanupUserDataDir } from '../lib/helpers';
 import type { RumErrorEvent, RumViewEvent } from '@datadog/electron-sdk';
 
 test('emits a crash error event after a native crash', async ({ intake }) => {
+  const userDataDir = await createUserDataDir();
+
   // Phase 1: Launch and crash
-  const { electronApp: firstElectronApp, mainPage: firstMainPage } = await launchAppManually(intake);
+  const { electronApp: firstElectronApp, mainPage: firstMainPage } = await launchAppManually(intake, userDataDir);
   await firstMainPage.flushTransport();
   const viewEvents = await intake.getEventsByType('view');
   const sessionId = (viewEvents[0].body as RumViewEvent).session.id;
@@ -14,7 +16,7 @@ test('emits a crash error event after a native crash', async ({ intake }) => {
   intake.clear();
 
   // Phase 2: Relaunch and verify crash event
-  const { electronApp: secondElectronApp, mainPage: secondMainPage } = await launchAppManually(intake);
+  const { electronApp: secondElectronApp, mainPage: secondMainPage } = await launchAppManually(intake, userDataDir);
   try {
     await secondMainPage.flushTransport();
     // increase timeout to account for crash dump processing
@@ -33,5 +35,6 @@ test('emits a crash error event after a native crash', async ({ intake }) => {
     expect(error.error.meta).toBeDefined();
   } finally {
     await secondElectronApp.close();
+    await cleanupUserDataDir(userDataDir);
   }
 });

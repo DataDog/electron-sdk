@@ -1,6 +1,8 @@
 import { test as base, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import { join } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { Intake } from '../../lib/intake';
 import type { IntegrationApp, IntegrationMode } from '../../playwright.config';
 import type { InitConfiguration } from '@datadog/electron-sdk';
@@ -35,9 +37,11 @@ export const test = base.extend<IntegrationFixtures>({
 
   electronApp: async ({ app, mode, intake }, use) => {
     const appDir = join(__dirname, '../apps', app);
-    const electronApp = await launchApp(appDir, mode, intake);
+    const userDataDir = await mkdtemp(join(tmpdir(), 'electron-sdk-integration-'));
+    const electronApp = await launchApp(appDir, mode, intake, userDataDir);
     await use(electronApp);
     await electronApp.close();
+    await rm(userDataDir, { recursive: true, force: true });
   },
 
   window: async ({ electronApp }, use) => {
@@ -53,12 +57,19 @@ export const test = base.extend<IntegrationFixtures>({
  * Launches the integration app and returns the ElectronApplication handle.
  * Call this directly in tests that need to control the app lifecycle (e.g. crash tests).
  */
-export async function launchApp(appDir: string, mode: IntegrationMode, intake: Intake): Promise<ElectronApplication> {
+export async function launchApp(
+  appDir: string,
+  mode: IntegrationMode,
+  intake: Intake,
+  userDataDir: string
+): Promise<ElectronApplication> {
   const config = buildSdkConfig(intake);
+  const userDataArgs = [`--user-data-dir=${userDataDir}`];
 
   if (mode === 'packaged') {
     return electron.launch({
       executablePath: findPackagedBinary(appDir),
+      args: userDataArgs,
       env: { ...process.env, DD_SDK_CONFIG: JSON.stringify(config) } as Record<string, string>,
     });
   }
@@ -72,7 +83,7 @@ export async function launchApp(appDir: string, mode: IntegrationMode, intake: I
 
   return electron.launch({
     executablePath: electronPath,
-    args: [mainScript],
+    args: [mainScript, ...userDataArgs],
     env: { ...process.env, DD_SDK_CONFIG: JSON.stringify(config) } as Record<string, string>,
   });
 }

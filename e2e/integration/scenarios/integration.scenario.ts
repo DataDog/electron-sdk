@@ -4,6 +4,8 @@
  * Each test runs once per Playwright project (app × mode combination).
  */
 import { join } from 'node:path';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { test, expect, launchApp } from '../lib/integrationFixture';
 import type { RumErrorEvent, RumViewEvent } from '@datadog/electron-sdk';
 import { Intake, type ReceivedEvent } from '../../lib/intake';
@@ -65,10 +67,11 @@ test.describe('crash reporting across restart @integration', () => {
     // so we manage the intake manually to span both launches.
     const intake = new Intake();
     await intake.start();
+    const userDataDir = await mkdtemp(join(tmpdir(), 'electron-sdk-integration-'));
 
     try {
       // Phase 1: Launch, confirm SDK is running, then crash
-      const firstApp = await launchApp(appDir, mode, intake);
+      const firstApp = await launchApp(appDir, mode, intake, userDataDir);
       const firstWindow = await firstApp.firstWindow();
       await firstWindow.waitForLoadState('load');
       await firstWindow.waitForTimeout(500);
@@ -87,7 +90,7 @@ test.describe('crash reporting across restart @integration', () => {
       intake.clear();
 
       // Phase 2: Relaunch — crash dump is processed on startup, error event sent to intake
-      const secondApp = await launchApp(appDir, mode, intake);
+      const secondApp = await launchApp(appDir, mode, intake, userDataDir);
       try {
         const secondWindow = await secondApp.firstWindow();
         await secondWindow.waitForLoadState('load');
@@ -105,6 +108,7 @@ test.describe('crash reporting across restart @integration', () => {
       }
     } finally {
       await intake.stop();
+      await rm(userDataDir, { recursive: true, force: true });
     }
   });
 });

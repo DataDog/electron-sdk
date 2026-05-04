@@ -28,6 +28,7 @@ describe('BatchProducer', () => {
 
     fsMocks.access.mockResolvedValue(undefined);
     fsMocks.mkdir.mockResolvedValue(undefined);
+    fsMocks.readdir.mockResolvedValue([]);
     fsMocks.appendFile.mockResolvedValue(undefined);
     fsMocks.rename.mockResolvedValue(undefined);
   });
@@ -51,6 +52,47 @@ describe('BatchProducer', () => {
       await BatchProducer.create(config);
 
       expect(fsMocks.mkdir).not.toHaveBeenCalled();
+    });
+
+    it('rotates orphaned .tmp files from previous sessions to .log', async () => {
+      fsMocks.readdir.mockResolvedValueOnce(['batch-111.tmp', 'batch-222.tmp']);
+
+      await BatchProducer.create(config);
+
+      expect(fsMocks.rename).toHaveBeenCalledWith(
+        path.join(config.trackPath, 'batch-111.tmp'),
+        path.join(config.trackPath, 'batch-111.log')
+      );
+      expect(fsMocks.rename).toHaveBeenCalledWith(
+        path.join(config.trackPath, 'batch-222.tmp'),
+        path.join(config.trackPath, 'batch-222.log')
+      );
+    });
+
+    it('does not rename non-.tmp files when rotating orphaned batches', async () => {
+      fsMocks.readdir.mockResolvedValueOnce(['batch-111.log', 'other.txt', 'batch-222.tmp']);
+
+      await BatchProducer.create(config);
+
+      expect(fsMocks.rename).toHaveBeenCalledTimes(1);
+      expect(fsMocks.rename).toHaveBeenCalledWith(
+        path.join(config.trackPath, 'batch-222.tmp'),
+        path.join(config.trackPath, 'batch-222.log')
+      );
+    });
+
+    it('handles readdir failure gracefully when rotating orphaned batches', async () => {
+      fsMocks.readdir.mockRejectedValueOnce(new Error('ENOENT'));
+
+      await expect(BatchProducer.create(config)).resolves.toBeDefined();
+    });
+
+    it('handles individual rename failure gracefully when rotating orphaned batches', async () => {
+      fsMocks.readdir.mockResolvedValueOnce(['batch-111.tmp', 'batch-222.tmp']);
+      fsMocks.rename.mockRejectedValueOnce(new Error('rename failed'));
+
+      await expect(BatchProducer.create(config)).resolves.toBeDefined();
+      expect(fsMocks.rename).toHaveBeenCalledTimes(2);
     });
   });
 
