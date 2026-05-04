@@ -2,6 +2,7 @@
   "name": "electron-sdk-playground",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "yarn@4.12.0",
   "description": "Playground for testing @datadog/electron-sdk",
   "main": "./dist/main.js",
   "scripts": {
