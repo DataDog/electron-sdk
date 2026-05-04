@@ -27,7 +27,8 @@
     },
     {
       "description": "Ignore all packages from the internal Datadog registry",
-      "matchRegistryUrls": ["registry.ddbuild.io"],
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["registry.ddbuild.io/**"],
       "enabled": false
     }
   ]
