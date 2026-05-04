@@ -8,6 +8,11 @@ import {
   _generateTelemetryError,
   _flushTransport,
   stopSession,
+  startOperation,
+  succeedOperation,
+  failOperation,
+  type FailureReason,
+  type FeatureOperationOptions,
   type InitConfiguration,
 } from '@datadog/electron-sdk';
 
@@ -80,6 +85,21 @@ void app.whenReady().then(async () => {
   ipcMain.handle('generateManualError', (_event, startTime?: number) => {
     addError(new Error('test manual error'), { context: { foo: 'bar' }, startTime });
   });
+
+  ipcMain.handle('startOperation', (_event, name: string, options?: FeatureOperationOptions) => {
+    startOperation(name, options);
+  });
+
+  ipcMain.handle('succeedOperation', (_event, name: string, options?: FeatureOperationOptions) => {
+    succeedOperation(name, options);
+  });
+
+  ipcMain.handle(
+    'failOperation',
+    (_event, name: string, failureReason: FailureReason, options?: FeatureOperationOptions) => {
+      failOperation(name, failureReason, options);
+    }
+  );
 
   ipcMain.handle('flushTransport', async () => {
     await _flushTransport();

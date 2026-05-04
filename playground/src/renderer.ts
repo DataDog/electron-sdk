@@ -25,6 +25,13 @@ interface ElectronAPI {
   generateUnhandledRejection: () => Promise<void>;
   crash: () => Promise<void>;
   mainFetchApi: () => Promise<unknown>;
+  startOperation: (name: string, options?: { operationKey?: string }) => Promise<void>;
+  succeedOperation: (name: string, options?: { operationKey?: string }) => Promise<void>;
+  failOperation: (
+    name: string,
+    failureReason: 'error' | 'abandoned' | 'other',
+    options?: { operationKey?: string }
+  ) => Promise<void>;
 }
 
 declare global {
@@ -193,3 +200,68 @@ if (rendererFetchBtn) {
 }
 
 setupDemoButton('main-fetch', 'main:fetch-api', () => window.electronAPI.mainFetchApi());
+
+// --- Operation Monitoring demo buttons ---
+
+setupDemoButton('op-start', 'main:start-operation(checkout)', () => window.electronAPI.startOperation('checkout'));
+setupDemoButton('op-succeed', 'main:succeed-operation(checkout)', () =>
+  window.electronAPI.succeedOperation('checkout')
+);
+setupDemoButton('op-fail', 'main:fail-operation(checkout, error)', () =>
+  window.electronAPI.failOperation('checkout', 'error')
+);
+setupDemoButton('op-keyed-start', 'main:start-operation(upload/photo_1)', () =>
+  window.electronAPI.startOperation('upload', { operationKey: 'photo_1' })
+);
+setupDemoButton('op-keyed-succeed', 'main:succeed-operation(upload/photo_1)', () =>
+  window.electronAPI.succeedOperation('upload', { operationKey: 'photo_1' })
+);
+
+// Simulate 5 parallel file uploads with different operation_keys, then complete
+// each in a random order — mirrors a real upload-batch flow where individual
+// uploads finish at unpredictable times.
+async function runParallelUploads(): Promise<void> {
+  const FAILURE_REASONS = ['error', 'abandoned', 'other'] as const;
+  const keys = Array.from({ length: 5 }, (_, i) => `photo_${i + 1}`);
+
+  // Fire all start IPC calls in parallel so the SDK observes them as concurrent.
+  await Promise.all(
+    keys.map(async (key) => {
+      await window.electronAPI.startOperation('upload', { operationKey: key });
+      logIpcCall(`main:start-operation(upload/${key})`, 'done');
+    })
+  );
+
+  // Shuffle to complete in a random order.
+  const completionOrder = [...keys].sort(() => Math.random() - 0.5);
+
+  // Each completion fires after its own random delay, in parallel.
+  await Promise.all(
+    completionOrder.map(async (key) => {
+      // Random delay 50–500ms to simulate variable upload duration.
+      await new Promise<void>((resolve) => setTimeout(resolve, 50 + Math.floor(Math.random() * 450)));
+
+      // ~70% succeed, ~30% fail with a random failure_reason.
+      if (Math.random() < 0.7) {
+        await window.electronAPI.succeedOperation('upload', { operationKey: key });
+        logIpcCall(`main:succeed-operation(upload/${key})`, 'done');
+      } else {
+        const reason = FAILURE_REASONS[Math.floor(Math.random() * FAILURE_REASONS.length)];
+        await window.electronAPI.failOperation('upload', reason, { operationKey: key });
+        logIpcCall(`main:fail-operation(upload/${key}, ${reason})`, 'done');
+      }
+    })
+  );
+}
+
+const parallelBtn = document.getElementById('op-parallel-uploads') as HTMLButtonElement | null;
+if (parallelBtn) {
+  parallelBtn.addEventListener('click', () => {
+    parallelBtn.disabled = true;
+    void runParallelUploads()
+      .catch((err) => logIpcCall('parallel-uploads', 'error', 0, String(err)))
+      .finally(() => {
+        parallelBtn.disabled = false;
+      });
+  });
+}
