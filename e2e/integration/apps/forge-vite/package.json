@@ -26,6 +26,6 @@
     "@types/node": "24.10.11",
     "electron": "40.2.1",
     "typescript": "5.9.3",
-    "vite": "8.0.3"
+    "vite": "8.0.5"
   }
 }
