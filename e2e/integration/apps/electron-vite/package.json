@@ -2,6 +2,7 @@
   "name": "electron-vite",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "yarn@4.12.0",
   "main": "out/main/index.js",
   "integration": {
     "devMain": "out/main/index.js",
