@@ -2,7 +2,18 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as https from 'node:https';
-import { _flushTransport, _generateTelemetryError, getInternalContext, init, stopSession } from '@datadog/electron-sdk';
+import {
+  init,
+  stopSession,
+  _flushTransport,
+  _generateTelemetryError,
+  getInternalContext,
+  startOperation,
+  succeedOperation,
+  failOperation,
+  type FailureReason,
+  type FeatureOperationOptions,
+} from '@datadog/electron-sdk';
 import { loadWindowState, saveWindowState } from './main/windowState';
 import { setupHotReload } from './main/hotReload';
 import { buildRumExplorerUrl } from './main/utils';
@@ -101,6 +112,23 @@ ipcMain.handle('main:fetch-api', async () => {
 ipcMain.handle('crash', () => {
   process.crash();
 });
+
+// --- Operation Monitoring demo handlers ---
+
+ipcMain.handle('main:start-operation', (_event, name: string, options?: FeatureOperationOptions) => {
+  startOperation(name, options);
+});
+
+ipcMain.handle('main:succeed-operation', (_event, name: string, options?: FeatureOperationOptions) => {
+  succeedOperation(name, options);
+});
+
+ipcMain.handle(
+  'main:fail-operation',
+  (_event, name: string, failureReason: FailureReason, options?: FeatureOperationOptions) => {
+    failOperation(name, failureReason, options);
+  }
+);
 
 const ACTIVE_ENV = 'staging';
 const CONF = {

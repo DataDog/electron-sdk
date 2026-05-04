@@ -40,6 +40,34 @@ await init({
 - **RUM Views** — One view per main process instance
 - **RUM Errors** — Capture Node errors and crashes in main process
 - **Renderer Bridge** — Capture RUM events from renderer processes via the browser SDK
+- **Operation Monitoring** _(experimental)_ — Track start / succeed / fail steps of critical user-facing workflows
+
+### Operation Monitoring _(experimental)_
+
+Operation Monitoring lets you track the lifecycle of critical user-facing workflows (login, checkout, file upload, video playback, …) by emitting paired `start` / `end` steps. The backend correlates the steps by `name` (and optional `operationKey`) and exposes them as a single Operation in the RUM UI.
+
+> ⚗️ This API is in preview and the signatures may change before stable release.
+
+```ts
+import { startOperation, succeedOperation, failOperation } from '@datadog/electron-sdk';
+
+// Simple operation
+startOperation('checkout');
+try {
+  await runCheckout();
+  succeedOperation('checkout');
+} catch (error) {
+  failOperation('checkout', 'error');
+}
+
+// Parallel operations sharing a name — distinguished by `operationKey`
+startOperation('upload', { operationKey: 'profile_pic' });
+startOperation('upload', { operationKey: 'cover_photo' });
+succeedOperation('upload', { operationKey: 'profile_pic' });
+failOperation('upload', 'abandoned', { operationKey: 'cover_photo' });
+```
+
+The renderer process keeps using `@datadog/browser-rum` directly (with the `feature_operation_vital` experimental flag enabled on its init). API signatures match exactly, so you can start an operation in one process and complete it in the other — the backend correlates steps by `name` + `operationKey`.
 
 ### Renderer Process Support
 
@@ -80,6 +108,35 @@ try {
   addError(error, { context: { component: 'sync' } });
 }
 ```
+
+### `startOperation(name: string, options?: FeatureOperationOptions): void`
+
+Start a RUM Operation step. Pair every `startOperation` with exactly one `succeedOperation` or `failOperation`. Use `options.operationKey` to distinguish parallel operations sharing the same `name`.
+
+> Note: `name` is required and should only contain letters, digits, `_`, `.`, `@`, `$`, `-`.
+
+### `succeedOperation(name: string, options?: FeatureOperationOptions): void`
+
+Record the successful completion of a RUM Operation. Pass the same `name` (and `operationKey`, if any) used to start it.
+
+### `failOperation(name: string, failureReason: FailureReason, options?: FeatureOperationOptions): void`
+
+Record the failure of a RUM Operation. `failureReason` must be one of `'error' | 'abandoned' | 'other'`.
+
+```ts
+type FailureReason = 'error' | 'abandoned' | 'other';
+
+interface FeatureOperationOptions {
+  /** Distinguishes parallel operations sharing the same `name`. */
+  operationKey?: string;
+  /** Free-form attributes merged into the event's `context`. */
+  context?: Record<string, unknown>;
+  /** Free-form description attached to `vital.description`. */
+  description?: string;
+}
+```
+
+> **Deprecated aliases.** The early-preview names `startFeatureOperation` / `succeedFeatureOperation` / `failFeatureOperation` are kept as deprecated aliases for backwards compatibility. They forward to the un-prefixed names above and emit a one-time runtime warning. They will be removed in the next major release — migrate to `startOperation` / `succeedOperation` / `failOperation`.
 
 ### Configuration Options
 
