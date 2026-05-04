@@ -2,6 +2,29 @@
 
 All notable changes to `@datadog/electron-sdk` are documented here.
 
+## [0.2.0] - 2026-05-04
+
+### ✨ Features
+
+- ⚗️ [RUM-15521] add RUM Operations API to the main process (#102)
+
+### 🐛 Bug Fixes
+
+- 🐛 recover orphaned .tmp batch files on init (#104)
+- 🐛 [RUM-15689] fix view date to use start time instead of update time (#97)
+
+### Internal
+
+- ✅ [RUM-15484] bootstrap integration test infrastructure (#91)
+- 🔥 remove `_generateActivity` and clean up e2e infrastructure (#90)
+- 👷 Update dependency electron to v41.1.0 [SECURITY] (#110)
+- 👷 Update dependency vite to v8.0.5 [SECURITY] (#109)
+- 👷 Configure Renovate (#92)
+- 👷 fix renovate config and integration app yarn version (#112)
+- 👷 skip lockfile updates for integration apps in renovate (#113)
+- 👷 restore integration apps yarn.lock after packaging (#114)
+- 👷 [RUM-15055] fix npm publish OIDC auth after v0.1.3 (#89)
+
 ## [0.1.3] - 2026-04-08
 
 ### Internal
