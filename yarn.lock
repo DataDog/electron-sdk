@@ -91,7 +91,7 @@ __metadata:
     "@vitest/coverage-v8": "npm:4.0.18"
     "@vitest/ui": "npm:4.0.18"
     concurrently: "npm:9.2.1"
-    electron: "npm:40.2.1"
+    electron: "npm:41.1.0"
     eslint: "npm:10.0.2"
     eslint-config-prettier: "npm:10.1.8"
     eslint-plugin-prettier: "npm:5.5.5"
@@ -1642,16 +1642,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"electron@npm:40.2.1":
-  version: 40.2.1
-  resolution: "electron@npm:40.2.1"
+"electron@npm:41.1.0":
+  version: 41.1.0
+  resolution: "electron@npm:41.1.0"
   dependencies:
     "@electron/get": "npm:^2.0.0"
     "@types/node": "npm:^24.9.0"
     extract-zip: "npm:^2.0.1"
   bin:
     electron: cli.js
-  checksum: 10c0/2964ba273a8e880a2c6a27dcd553a13d0d3c5af8b8bda510999034fbe52326ed181dc7edc803923bc0fac4aee5e7f5edf0bf8dca941aa7e20389f05d2bc44376
+  checksum: 10c0/8ed4cc8f664f1ebe4ddfb94f7280f1b58bc12702c90774854ba5812e64fe4cc2509f3dabaa2ed8ecaa629f65e3dc54e3c69a16eefed1f8d809cea672e5d87965
   languageName: node
   linkType: hard
 
