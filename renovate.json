@@ -11,13 +11,7 @@
   "prConcurrentLimit": 5,
   "prHourlyLimit": 1,
   "ignorePaths": ["rum-events-format/**", "**/node_modules/**"],
-  "ignoreDeps": [
-    "minidump",
-    "minidump-common",
-    "minidump-processor",
-    "minidump-unwind",
-    "breakpad-symbols"
-  ],
+  "ignoreDeps": ["minidump", "minidump-common", "minidump-processor", "minidump-unwind", "breakpad-symbols"],
   "packageRules": [
     {
       "description": "Catch-all: group all minor/patch updates",
