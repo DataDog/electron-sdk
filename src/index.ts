@@ -1,21 +1,23 @@
-import { MainAssembly, RendererPipeline, createFormatHooks, registerCommonContext } from './assembly';
+import type { AccountInfo, UserInfo } from './assembly';
+import { createFormatHooks, MainAssembly, registerCommonContext, RendererPipeline, UserContext } from './assembly';
 import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
+import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './domain/rum';
 import { RumCollection } from './domain/rum';
 import { SessionManager } from './domain/session';
-import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './domain/rum';
 import { callMonitored, startTelemetry } from './domain/telemetry';
+import { SpanProcessor } from './domain/tracing/SpanProcessor';
+import { Tracing } from './domain/tracing/Tracing';
+import { ProfilingCollection } from './domain/profiling';
 import { EventManager } from './event';
 import { Transport } from './transport';
-import { Tracing } from './domain/tracing/Tracing';
-import { SpanProcessor } from './domain/tracing/SpanProcessor';
-import { ProfilingCollection } from './domain/profiling';
 
 let sessionManager: SessionManager | undefined;
 let eventManager: EventManager | undefined;
 let transport: Transport | undefined;
 let rumApi: ReturnType<RumCollection['getApi']> | undefined;
 let tracing: Tracing | undefined;
+let userContext: UserContext | undefined;
 
 /**
  * Internal SDK context
@@ -48,6 +50,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   const hooks = createFormatHooks();
 
   registerCommonContext(config, hooks);
+  userContext = new UserContext(hooks);
   startTelemetry(eventManager, config);
   sessionManager = await SessionManager.start(eventManager, hooks, config);
 
@@ -72,6 +75,86 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
  */
 export function stopSession(): void {
   callMonitored(() => sessionManager?.expire());
+}
+
+/**
+ * Set the user information. The user info is attached to all subsequent RUM events.
+ * @param user - The user information containing at least an `id`.
+ */
+export function setUserInfo(user: UserInfo): void {
+  callMonitored(() => userContext?.setUserInfo(user));
+}
+
+/**
+ * Return a copy of the current user information, or `undefined` if none is set.
+ */
+export function getUserInfo(): UserInfo | undefined {
+  return userContext?.getUserInfo();
+}
+
+/**
+ * Clear all user information.
+ */
+export function clearUserInfo(): void {
+  callMonitored(() => userContext?.clearUserInfo());
+}
+
+/**
+ * Set a single property on the current user.
+ * Standard keys (`id`, `name`, `email`) update the corresponding field;
+ * any other key is stored in `extraInfo`.
+ * Requires `setUserInfo` to have been called first; otherwise the call is ignored.
+ */
+export function setUserInfoProperty(key: string, value: unknown): void {
+  callMonitored(() => userContext?.setUserInfoProperty(key, value));
+}
+
+/**
+ * Remove a single property from the current user.
+ * Requires `setUserInfo` to have been called first; otherwise the call is ignored.
+ */
+export function removeUserInfoProperty(key: string): void {
+  callMonitored(() => userContext?.removeUserInfoProperty(key));
+}
+
+/**
+ * Set the account information. The account info is attached to all subsequent RUM events.
+ * @param accountInfo - The account information containing at least an `id`.
+ */
+export function setAccountInfo(accountInfo: AccountInfo): void {
+  callMonitored(() => userContext?.setAccountInfo(accountInfo));
+}
+
+/**
+ * Return a copy of the current account information, or `undefined` if none is set.
+ */
+export function getAccountInfo(): AccountInfo | undefined {
+  return userContext?.getAccountInfo();
+}
+
+/**
+ * Clear all account information.
+ */
+export function clearAccountInfo(): void {
+  callMonitored(() => userContext?.clearAccountInfo());
+}
+
+/**
+ * Set a single property on the current account.
+ * Standard keys (`id`, `name`) update the corresponding field;
+ * any other key is stored in `extraInfo`.
+ * Requires `setAccountInfo` to have been called first; otherwise the call is ignored.
+ */
+export function setAccountInfoProperty(key: string, value: unknown): void {
+  callMonitored(() => userContext?.setAccountInfoProperty(key, value));
+}
+
+/**
+ * Remove a single property from the current account.
+ * Requires `setAccountInfo` to have been called first; otherwise the call is ignored.
+ */
+export function removeAccountInfoProperty(key: string): void {
+  callMonitored(() => userContext?.removeAccountInfoProperty(key));
 }
 
 /**
@@ -187,6 +270,7 @@ export function getInternalContext(): InternalContext | undefined {
   return { session_id: sessionId };
 }
 
+export type { AccountInfo, UserInfo } from './assembly';
 export type { InitConfiguration } from './config';
 export type {
   FailureReason,
