@@ -8,7 +8,6 @@ Real User Monitoring for Electron applications.
 
 ### Prerequisites
 
-- Node.js 25+
 - Electron 39+
 
 ### Install
