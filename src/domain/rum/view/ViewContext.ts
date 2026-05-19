@@ -28,7 +28,10 @@ export class ViewContext {
 
   static async init(
     hooks: FormatHooks,
-    { expireDelay = SESSION_TIME_OUT_DELAY, viewName = 'main process' }: { expireDelay?: number; viewName?: string } = {}
+    {
+      expireDelay = SESSION_TIME_OUT_DELAY,
+      viewName = 'main process',
+    }: { expireDelay?: number; viewName?: string } = {}
   ): Promise<ViewContext> {
     const filePath = path.join(app.getPath('userData'), VIEW_HISTORY_FILE_NAME);
     const history = await DiskValueHistory.init<string>({ filePath, expireDelay });
