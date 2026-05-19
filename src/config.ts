@@ -40,6 +40,7 @@ export interface InitConfiguration {
   uploadFrequency?: UploadFrequency;
   defaultPrivacyLevel?: DefaultPrivacyLevel;
   allowedWebViewHosts?: string[];
+  initialViewName?: string;
 }
 
 export interface Configuration {
@@ -55,6 +56,7 @@ export interface Configuration {
   uploadFrequency?: UploadFrequency;
   defaultPrivacyLevel: DefaultPrivacyLevel;
   allowedWebViewHosts: string[];
+  initialViewName?: string;
 }
 
 function validateRequiredString(value: unknown, fieldName: string): string | undefined {
@@ -147,5 +149,6 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     telemetrySampleRate: validateTelemetrySampleRate(initConfig.telemetrySampleRate),
     defaultPrivacyLevel: validateDefaultPrivacyLevel(initConfig.defaultPrivacyLevel),
     allowedWebViewHosts: validateAllowedWebViewHosts(initConfig.allowedWebViewHosts),
+    initialViewName: validateOptionalString(initConfig.initialViewName),
   };
 }

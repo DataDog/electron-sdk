@@ -11,8 +11,8 @@ export class RumCollection {
     private readonly operationCollection: OperationCollection
   ) {}
 
-  static async start(eventManager: EventManager, hooks: FormatHooks): Promise<RumCollection> {
-    const viewCollection = await ViewCollection.start(eventManager, hooks);
+  static async start(eventManager: EventManager, hooks: FormatHooks, viewName?: string): Promise<RumCollection> {
+    const viewCollection = await ViewCollection.start(eventManager, hooks, viewName);
     const errorCollection = new ErrorCollection(eventManager);
     const operationCollection = new OperationCollection(eventManager);
     CrashCollection.start(eventManager);

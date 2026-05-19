@@ -54,11 +54,12 @@ export class ViewCollection {
 
   constructor(
     private readonly eventManager: EventManager,
-    private readonly hooks: FormatHooks
+    private readonly hooks: FormatHooks,
+    private readonly viewName?: string
   ) {}
 
-  static async start(eventManager: EventManager, hooks: FormatHooks): Promise<ViewCollection> {
-    const collection = new ViewCollection(eventManager, hooks);
+  static async start(eventManager: EventManager, hooks: FormatHooks, viewName?: string): Promise<ViewCollection> {
+    const collection = new ViewCollection(eventManager, hooks, viewName);
     await collection.init();
     return collection;
   }
@@ -68,7 +69,7 @@ export class ViewCollection {
     this.scheduleViewUpdate = throttled;
     this.cancelScheduledViewUpdate = cancel;
 
-    this.viewContext = await ViewContext.init(this.hooks);
+    this.viewContext = await ViewContext.init(this.hooks, { viewName: this.viewName });
     this.createNewView();
 
     this.lifecycleSubscription = this.eventManager.registerHandler<LifecycleEvent>({

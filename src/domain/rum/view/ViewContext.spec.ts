@@ -38,14 +38,14 @@ describe('ViewContext', () => {
   describe('before add()', () => {
     it('RUM hook returns DISCARDED', async () => {
       const hooks = createFormatHooks();
-      await ViewContext.init(hooks, EXPIRE_DELAY);
+      await ViewContext.init(hooks, { expireDelay: EXPIRE_DELAY });
 
       expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toBe(DISCARDED);
     });
 
     it('telemetry hook returns SKIPPED (undefined)', async () => {
       const hooks = createFormatHooks();
-      await ViewContext.init(hooks, EXPIRE_DELAY);
+      await ViewContext.init(hooks, { expireDelay: EXPIRE_DELAY });
 
       expect(hooks.triggerTelemetry({ startTime: T0 })).toBeUndefined();
     });
@@ -54,7 +54,7 @@ describe('ViewContext', () => {
   describe('after add()', () => {
     it('RUM hook returns id, name, url', async () => {
       const hooks = createFormatHooks();
-      const context = await ViewContext.init(hooks, EXPIRE_DELAY);
+      const context = await ViewContext.init(hooks, { expireDelay: EXPIRE_DELAY });
 
       context.add(VIEW_ID);
 
@@ -63,9 +63,20 @@ describe('ViewContext', () => {
       });
     });
 
+    it('RUM hook uses custom viewName when provided', async () => {
+      const hooks = createFormatHooks();
+      const context = await ViewContext.init(hooks, { expireDelay: EXPIRE_DELAY, viewName: 'bits-gui' });
+
+      context.add(VIEW_ID);
+
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toMatchObject({
+        view: { id: VIEW_ID, name: 'bits-gui', url: 'electron://main-process' },
+      });
+    });
+
     it('telemetry hook returns only id', async () => {
       const hooks = createFormatHooks();
-      const context = await ViewContext.init(hooks, EXPIRE_DELAY);
+      const context = await ViewContext.init(hooks, { expireDelay: EXPIRE_DELAY });
 
       context.add(VIEW_ID);
 
@@ -74,7 +85,7 @@ describe('ViewContext', () => {
 
     it('reflects the latest add()', async () => {
       const hooks = createFormatHooks();
-      const context = await ViewContext.init(hooks, EXPIRE_DELAY);
+      const context = await ViewContext.init(hooks, { expireDelay: EXPIRE_DELAY });
       const newViewId = 'view-2';
 
       context.add(VIEW_ID); // at T0
@@ -90,7 +101,7 @@ describe('ViewContext', () => {
   describe('after close()', () => {
     it('RUM hook still attributes events during the view period', async () => {
       const hooks = createFormatHooks();
-      const context = await ViewContext.init(hooks, EXPIRE_DELAY);
+      const context = await ViewContext.init(hooks, { expireDelay: EXPIRE_DELAY });
 
       context.add(VIEW_ID); // at T0 = 0
       vi.advanceTimersByTime(10); // time is now 10
@@ -104,7 +115,7 @@ describe('ViewContext', () => {
 
     it('RUM hook returns DISCARDED for events before the view started', async () => {
       const hooks = createFormatHooks();
-      const context = await ViewContext.init(hooks, EXPIRE_DELAY);
+      const context = await ViewContext.init(hooks, { expireDelay: EXPIRE_DELAY });
 
       vi.advanceTimersByTime(10); // advance to T10
       context.add(VIEW_ID); // view started at T10
@@ -116,7 +127,7 @@ describe('ViewContext', () => {
 
     it('telemetry hook still attributes events during the view period', async () => {
       const hooks = createFormatHooks();
-      const context = await ViewContext.init(hooks, EXPIRE_DELAY);
+      const context = await ViewContext.init(hooks, { expireDelay: EXPIRE_DELAY });
 
       context.add(VIEW_ID); // at T0 = 0
       vi.advanceTimersByTime(10);
