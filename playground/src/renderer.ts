@@ -32,6 +32,8 @@ interface ElectronAPI {
     failureReason: 'error' | 'abandoned' | 'other',
     options?: { operationKey?: string }
   ) => Promise<void>;
+  openRumExplorer: () => Promise<void>;
+  flushTransport: () => Promise<void>;
 }
 
 declare global {
@@ -126,6 +128,13 @@ const crashBtn = document.getElementById('crash-btn') as HTMLButtonElement;
 crashBtn.addEventListener('click', () => {
   void window.electronAPI.crash();
 });
+
+// Handle open in RUM Explorer button click
+const openRumExplorerBtn = document.getElementById('open-rum-explorer') as HTMLButtonElement;
+openRumExplorerBtn.addEventListener('click', () => {
+  void window.electronAPI.openRumExplorer();
+});
+
 // --- IPC Activity Log ---
 
 const ipcLog = document.getElementById('ipc-log') as HTMLDivElement;

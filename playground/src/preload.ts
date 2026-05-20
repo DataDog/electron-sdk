@@ -16,4 +16,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('main:succeed-operation', name, options),
   failOperation: (name: string, failureReason: 'error' | 'abandoned' | 'other', options?: { operationKey?: string }) =>
     ipcRenderer.invoke('main:fail-operation', name, failureReason, options),
+  openRumExplorer: () => ipcRenderer.invoke('open-rum-explorer'),
+  flushTransport: () => ipcRenderer.invoke('flush-transport'),
 });
