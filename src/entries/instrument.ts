@@ -22,7 +22,8 @@ try {
   const tracer = (_require('dd-trace') as { default: typeof import('dd-trace').default }).default;
 
   tracer.init({
-    experimental: { exporter: 'electron' },
+    // TODO: remove cast when dd-trace releases a fix
+    experimental: { exporter: 'electron' as 'datadog' },
   });
 } catch {
   // dd-trace not available — no-op
