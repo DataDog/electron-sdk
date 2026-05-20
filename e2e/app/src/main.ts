@@ -1,5 +1,5 @@
 import '@datadog/electron-sdk/instrument';
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, net } from 'electron';
 import * as http from 'node:http';
 import * as fs from 'node:fs';
 import { join } from 'node:path';
@@ -20,6 +20,8 @@ import {
 const isDebugMode = process.env.PWDEBUG === '1';
 let mainWindow: BrowserWindow | null = null;
 let rendererHttpServer: http.Server | null = null;
+
+const noop = () => undefined;
 
 function startRendererHttpServer(): Promise<number> {
   return new Promise((resolve) => {
@@ -100,6 +102,39 @@ void app.whenReady().then(async () => {
     (_event, name: string, failureReason: FailureReason, options?: FeatureOperationOptions) => {
       failOperation(name, failureReason, options);
     }
+  );
+
+  ipcMain.handle('mainFetch', async (_event, url: string) => {
+    const res = await fetch(url);
+    await res.text();
+    return res.status;
+  });
+
+  ipcMain.handle(
+    'mainHttpRequest',
+    (_event, url: string) =>
+      new Promise<number>((resolve, reject) => {
+        const req = http.request(url, (res) => {
+          res.on('data', noop);
+          res.on('end', () => resolve(res.statusCode ?? 0));
+        });
+        req.on('error', reject);
+        req.end();
+      })
+  );
+
+  ipcMain.handle(
+    'mainNetRequest',
+    (_event, url: string) =>
+      new Promise<number>((resolve, reject) => {
+        const req = net.request(url);
+        req.on('response', (res) => {
+          res.on('data', noop);
+          res.on('end', () => resolve(res.statusCode));
+        });
+        req.on('error', reject);
+        req.end();
+      })
   );
 
   ipcMain.handle('flushTransport', async () => {

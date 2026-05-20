@@ -17,6 +17,7 @@ let sessionManager: SessionManager | undefined;
 let eventManager: EventManager | undefined;
 let transport: Transport | undefined;
 let rumApi: ReturnType<RumCollection['getApi']> | undefined;
+let tracing: Tracing | undefined;
 
 /**
  * Initialize the Electron SDK
@@ -28,7 +29,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
     return false;
   }
 
-  const tracing = new Tracing();
+  tracing = new Tracing();
 
   eventManager = new EventManager();
   const hooks = createFormatHooks();
@@ -150,6 +151,7 @@ export function failFeatureOperation(
  * Internal API to flush all pending batches to the intake
  */
 export async function _flushTransport(): Promise<void> {
+  await tracing?.flush();
   await transport?.flush();
 }
 
@@ -168,6 +170,7 @@ export type {
   FailureReason,
   FeatureOperationOptions,
   RumErrorEvent,
+  RumResourceEvent,
   RumViewEvent,
   RumVitalEvent,
   RumVitalOperationStepEvent,

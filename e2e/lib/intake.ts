@@ -1,5 +1,12 @@
 import * as http from 'node:http';
 
+/**
+ * Fake Datadog intake used to assert what the SDK sends.
+ *
+ * The SDK is configured (via `proxy`) to POST events to this server instead of the real Datadog endpoint.
+ * Tests read back the captured events through `getEventsByType`, `waitForEventCount`, and `assertNoNewEvents`
+ * to verify SDK behavior end-to-end.
+ */
 export interface ReceivedEvent {
   timestamp: number;
   body: unknown;

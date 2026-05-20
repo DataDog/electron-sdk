@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { Intake } from './intake';
+import { TestServer } from './testServer';
 import { MainPage } from './mainPage';
 import type { InitConfiguration } from '@datadog/electron-sdk';
 
@@ -10,11 +11,32 @@ import type { InitConfiguration } from '@datadog/electron-sdk';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const electronPath = require(join(__dirname, '../app/node_modules/electron')) as string;
 
+// Variables forwarded to the Electron child process. Keep this list minimal:
+// system essentials for the binary to launch, plus the few flags the test app
+// and Playwright themselves read. Anything else is intentionally dropped to avoid
+// leaking variables that change behavior (e.g. OTEL_TRACES_EXPORTER=otlp would
+// make dd-trace switch off the experimental electron exporter the SDK relies on).
+const HOST_ENV_ALLOWLIST = [
+  'PATH',
+  'HOME',
+  'USER',
+  'LOGNAME',
+  'SHELL',
+  'TMPDIR',
+  'LANG',
+  'LC_ALL',
+  'DISPLAY',
+  'XAUTHORITY',
+  'CI',
+  'PWDEBUG',
+];
+
 export interface TestFixtures {
   electronApp: ElectronApplication;
   window: Page;
   mainPage: MainPage;
   intake: Intake;
+  testServer: TestServer;
   rumBrowserSdk: Record<string, unknown> | null;
 }
 
@@ -30,6 +52,17 @@ export const test = base.extend<TestFixtures>({
       await intake.start();
       await use(intake);
       await intake.stop();
+    },
+    { option: true },
+  ],
+
+  testServer: [
+    // eslint-disable-next-line no-empty-pattern
+    async ({}, use) => {
+      const testServer = new TestServer();
+      await testServer.start();
+      await use(testServer);
+      await testServer.stop();
     },
     { option: true },
   ],
@@ -62,9 +95,13 @@ async function launchApp(
   userDataDir: string,
   rumBrowserSdk: Record<string, unknown> | null = null
 ): Promise<ElectronApplication> {
-  const env: Record<string, string> = {
-    ...process.env,
-  } as Record<string, string>;
+  const env: Record<string, string> = {};
+  for (const key of HOST_ENV_ALLOWLIST) {
+    const value = process.env[key];
+    if (value !== undefined) {
+      env[key] = value;
+    }
+  }
 
   const electronSdkConfig: InitConfiguration = {
     site: 'datadoghq.com',
