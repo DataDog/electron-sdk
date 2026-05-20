@@ -2,6 +2,7 @@
   "name": "electron-sdk-playground",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "yarn@4.12.0",
   "description": "Playground for testing @datadog/electron-sdk",
   "main": "./dist/main.js",
   "scripts": {
@@ -19,7 +20,7 @@
     "@types/node": "25.5.0",
     "chokidar": "5.0.0",
     "concurrently": "9.2.1",
-    "electron": "39.1.1",
+    "electron": "41.1.0",
     "electron-reloader": "1.2.3",
     "esbuild": "0.27.3",
     "typescript": "5.9.3"
