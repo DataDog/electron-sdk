@@ -2,7 +2,59 @@
 
 Describes general patterns with examples — detailed component documentation lives as JSDoc on the classes themselves (e.g., `SessionManager`, `ViewCollection`).
 
-## Overview
+## Monitoring Architecture
+
+```mermaid
+graph TB
+    subgraph Electron App
+        subgraph Renderer Process
+            BP[Browser SDK]
+        end
+
+        subgraph Main Process
+            DDT[dd-trace]
+            SDK[Electron SDK]
+        end
+    end
+
+    DD[(Datadog)]
+
+    %% Browser SDK → Electron SDK via bridge
+    BP -->|"RUM events<br/>(IPC bridge)"| SDK
+
+    %% dd-trace → Electron SDK via diagnostic channel
+    DDT -->|"HTTP spans<br/>IPC spans<br/>(diagnostics_channel)"| SDK
+
+    %% Electron SDK internal sources
+    SDK -->|"span → resource conversion<br/>RUM data collection<br/>RUM APIs<br/>session + main process view"| SDK
+
+    %% Electron SDK → Datadog
+    SDK -->|"enriched events<br/>(HTTP)"| DD
+
+    %% Styling
+    classDef sdk fill:#fce8e6,stroke:#d93025
+    classDef trace fill:#e6f4ea,stroke:#137333
+    classDef browser fill:#fef7e0,stroke:#e37400
+    classDef ext fill:#f3e8fd,stroke:#7627bb
+
+    class BP browser
+    class DDT trace
+    class SDK sdk
+    class DD ext
+```
+
+### Main Process
+
+The Electron SDK captures RUM sessions, collects RUM events, and forwards them to Datadog, enriching events from dd-trace and the Browser SDK with RUM and Electron context along the way. dd-trace instruments network requests, command executions, and IPC calls, then forwards spans to the Electron SDK through the `diagnostics_channel`.
+
+More details in the [How tracing works](#how-tracing-works) section.
+
+### Renderer Process
+
+dd-trace exposes a `DatadogEventBridge` to every renderer process via a preload script. When present, the Browser SDK detects the bridge and routes events through IPC to the Electron SDK instead of sending them directly to Datadog servers.
+More details in the [Preload injection](#preload-injection) section.
+
+## Event Pipeline
 
 ```mermaid
 flowchart LR
@@ -42,27 +94,27 @@ flowchart LR
     BC -. "send" .-> INT[HTTP intake]
 ```
 
-## Event Pipeline
+### Event Manager
 
 The `EventManager` provides a handler-based pipeline for processing events.
 
-### Event Kinds
+#### Event Kinds
 
 - **`RawEvent`** — Emitted by domain code, contains event-specific data, a source (`MAIN` | `RENDERER`), and a format (`RUM` | `TELEMETRY`).
 - **`ServerEvent`** — Ready for transport, tagged with a track (`RUM` | `LOGS`).
 - **`LifecycleEvent`** — Internal signals (e.g., `END_USER_ACTIVITY`, `SESSION_RENEW`), not sent to intake.
 
-### Handler Pattern
+#### Handler Pattern
 
 Handlers register on `EventManager` with `canHandle` (type guard) and `handle` (processing + optional `notify` callback to emit derived events).
 
 See `src/event/` and `src/domain/assembly.ts`.
 
-## Assembly and Format Hooks
+### Assembly and Format Hooks
 
 The `Assembly` handler transforms `RawEvent` into `ServerEvent` by enriching raw data with contextual properties via format hooks.
 
-### Format Hooks
+#### Format Hooks
 
 `createFormatHooks()` creates per-format hook pairs (`registerRum`/`triggerRum`, `registerTelemetry`/`triggerTelemetry`). Each hook callback can return:
 
@@ -87,6 +139,11 @@ See `src/domain/telemetry/`.
 ## APM Tracing (dd-trace integration)
 
 The SDK integrates with dd-trace (bundled) for span collection, HTTP resource tracing, and automatic preload injection.
+
+dd-trace links:
+
+- [electron-plugin](https://github.com/DataDog/dd-trace-js/tree/master/packages/datadog-plugin-electron/src)
+- [electron instrumentation](https://github.com/DataDog/dd-trace-js/tree/master/packages/datadog-plugin-electron/src)
 
 ### Instrumentation (`@datadog/electron-sdk/instrument`)
 
@@ -122,7 +179,7 @@ All spans → Transport → /api/v2/spans
 HTTP spans → Assembly → Transport → /api/v2/rum (as RUM resources)
 ```
 
-Spans are enriched with electron context (`_dd.application.id`, `_dd.session.id`, `_dd.view.id`) via the span assembly hook. Trace and span IDs are converted to **hexadecimal strings** for the spans intake.
+All spans are enriched with electron context (`_dd.application.id`, `_dd.session.id`, `_dd.view.id`) via the span assembly hook. Trace and span IDs are converted to **hexadecimal strings** for the spans intake.
 
 ### Preload injection
 
@@ -132,6 +189,7 @@ For this to work, dd-trace must hook `require('electron')` **before** electron i
 
 - **Vite** hoists all `require()` calls to the top of the bundle, breaking import order. The `datadogVitePlugin` (`@datadog/electron-sdk/vite-plugin`) fixes this by externalizing dd-trace, prepending initialization before hoisted requires, and copying dd-trace's runtime dependencies into the build output for packaged apps.
 - **Webpack** preserves module execution order (lazy evaluation via `__webpack_require__`), so the import order in source code is maintained. The `DatadogWebpackPlugin` (`@datadog/electron-sdk/webpack-plugin`) copies dd-trace's preload script into the webpack output at the fallback path dd-trace expects in packaged apps.
+- **ESBuild** TODO
 
 See `src/domain/tracing/`, `src/entries/instrument.ts`, `src/entries/vite-plugin.ts`, and `src/entries/webpack-plugin.ts`.
 
