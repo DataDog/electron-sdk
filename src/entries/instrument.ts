@@ -13,9 +13,13 @@
  * - Vite: datadogVitePlugin from '@datadog/electron-sdk/vite-plugin'
  * - Webpack: DatadogWebpackPlugin from '@datadog/electron-sdk/webpack-plugin'
  */
+import { createRequire } from 'node:module';
+
+// Support both CJS (__filename) and ESM (import.meta.url) contexts
+const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
+
 try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const tracer = (require('dd-trace') as { default: typeof import('dd-trace').default }).default;
+  const tracer = (_require('dd-trace') as { default: typeof import('dd-trace').default }).default;
 
   tracer.init({
     experimental: { exporter: 'electron' },

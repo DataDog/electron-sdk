@@ -1,12 +1,15 @@
+import { createRequire } from 'node:module';
 import { addError } from '../telemetry';
+
+// Support both CJS (__filename) and ESM (import.meta.url) contexts
+const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
 
 export class Tracing {
   enabled = false;
 
   constructor() {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const tracer = (require('dd-trace') as { default: typeof import('dd-trace').default }).default;
+      const tracer = (_require('dd-trace') as { default: typeof import('dd-trace').default }).default;
 
       // dd-trace is initialized early via @datadog/electron-sdk/instrument (before require('electron')).
       // tracer.init() is a no-op if already initialized, so we only configure plugins here.
