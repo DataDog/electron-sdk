@@ -1,6 +1,6 @@
 export function computeIntakeUrlForTrack(site: string, trackType: string, proxy?: string): string {
   if (proxy) {
-    return proxy;
+    return `${proxy}?ddforward=${encodeURIComponent(`/api/v2/${trackType}`)}`;
   }
   // For sites with subdomains (e.g., us3.datadoghq.com), replace the first dot with a dash
   const parts = site.split('.');

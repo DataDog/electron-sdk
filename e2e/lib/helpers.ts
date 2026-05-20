@@ -105,7 +105,7 @@ async function launchApp(
 
   const electronSdkConfig: InitConfiguration = {
     site: 'datadoghq.com',
-    proxy: `http://localhost:${intake.getPort()}/api/v2/rum`,
+    proxy: `http://localhost:${intake.getPort()}`,
     clientToken: 'test-client-token',
     service: 'e2e-test-app',
     applicationId: 'e2e-test-app-id',
