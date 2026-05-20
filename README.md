@@ -8,7 +8,6 @@ Real User Monitoring for Electron applications.
 
 ### Prerequisites
 
-- Node.js 25+
 - Electron 39+
 
 ### Install
@@ -19,9 +18,53 @@ yarn add @datadog/electron-sdk
 npm install @datadog/electron-sdk
 ```
 
-### Initialize
+### Setup
 
-Call `init` in your **main process** before creating any browser windows:
+The Electron SDK uses dd-trace under the hood to monitor the main process and relies on the browser SDK to monitor renderer processes.
+
+```mermaid
+graph TB
+    subgraph Electron Application
+        subgraph Renderer Process
+            BP[Browser SDK]
+        end
+
+        subgraph Main Process
+            DDT[dd-trace]
+            SDK[Electron SDK]
+        end
+    end
+
+    DD[(Datadog)]
+    BP --> SDK
+    DDT --> SDK
+    SDK --> DD
+
+    %% Styling
+    classDef sdk fill:#fce8e6,stroke:#d93025
+    classDef trace fill:#e6f4ea,stroke:#137333
+    classDef browser fill:#fef7e0,stroke:#e37400
+    classDef ext fill:#f3e8fd,stroke:#7627bb
+
+    class BP browser
+    class DDT trace
+    class SDK sdk
+    class DD ext
+```
+
+#### Main process setup
+
+Import the instrumentation entry point **before** `electron` in your main process:
+
+```ts
+// src/main.ts
+import '@datadog/electron-sdk/instrument';
+import { app, BrowserWindow } from 'electron';
+```
+
+This initializes dd-trace and automatically instruments the needed APIs.
+
+Then initialize the Electron SDK by calling `init` before creating any browser windows:
 
 ```ts
 import { init } from '@datadog/electron-sdk';
@@ -34,12 +77,55 @@ await init({
 });
 ```
 
+#### Renderer process setup
+
+In order to monitor the renderer process, you must [set up the Browser SDK](https://docs.datadoghq.com/real_user_monitoring/application_monitoring/browser/setup/) in pages loaded by the renderer.
+
+#### Bundler plugins
+
+dd-trace instruments `require('electron')` at runtime, which requires correct module loading order. The SDK provides bundler plugins to ensure this works in all environments:
+
+**Vite** (including Electron Forge with Vite and electron-vite):
+
+```ts
+// vite config
+import { datadogVitePlugin } from '@datadog/electron-sdk/vite-plugin';
+
+export default defineConfig({
+  plugins: [datadogVitePlugin()],
+});
+```
+
+**Webpack** (including Electron Forge with Webpack):
+
+```ts
+// webpack config
+const { DatadogWebpackPlugin } = require('@datadog/electron-sdk/webpack-plugin');
+
+module.exports = {
+  plugins: [new DatadogWebpackPlugin()],
+};
+```
+
+**ESBuild**
+
+```ts
+// esbuild config
+import { datadogEsbuildPlugin } from '@datadog/electron-sdk/esbuild-plugin';
+
+await esbuild.build({
+  plugins: [datadogEsbuildPlugin()],
+});
+```
+
 ## Available Features
 
 - **Sessions** — Session-based event grouping
 - **RUM Views** — One view per main process instance
 - **RUM Errors** — Capture Node errors and crashes in main process
-- **Renderer Bridge** — Capture RUM events from renderer processes via the browser SDK
+- **RUM Resources** — Capture RUM resources from main process network calls
+- **Traces** — Capture traces for network calls, command execution, IPC messages on main process
+- **Renderer Events** — Capture RUM events from renderer processes via the browser SDK
 - **Operation Monitoring** _(experimental)_ — Track start / succeed / fail steps of critical user-facing workflows
 
 ### Operation Monitoring _(experimental)_
@@ -68,49 +154,6 @@ failOperation('upload', 'abandoned', { operationKey: 'cover_photo' });
 ```
 
 The renderer process keeps using `@datadog/browser-rum` directly (with the `feature_operation_vital` experimental flag enabled on its init). API signatures match exactly, so you can start an operation in one process and complete it in the other — the backend correlates steps by `name` + `operationKey`.
-
-### Renderer Process Support
-
-In order to monitor the renderer process, the [Browser SDK](https://docs.datadoghq.com/real_user_monitoring/application_monitoring/browser/setup/) must be setup in pages loaded by the renderer.
-The Electron SDK exposes a `DatadogEventBridge` to every renderer process via a preload script. When present, the Browser SDK detects the bridge and routes events through IPC to the Electron SDK instead of sending them directly to Datadog servers.
-
-#### Setup
-
-Import the instrumentation entry point **before** `electron` in your main process:
-
-```ts
-// src/main.ts
-import '@datadog/electron-sdk/instrument';
-import { app, BrowserWindow } from 'electron';
-```
-
-This initializes dd-trace which automatically injects the preload script via BrowserWindow wrapping. No manual preload setup is needed.
-
-#### Bundler Plugins
-
-dd-trace hooks `require('electron')` at runtime, which requires correct module loading order. The SDK provides bundler plugins to ensure this works in all environments:
-
-**Vite** (including Electron Forge with Vite and electron-vite):
-
-```ts
-// vite.main.config.ts
-import { datadogVitePlugin } from '@datadog/electron-sdk/vite-plugin';
-
-export default defineConfig({
-  plugins: [datadogVitePlugin()],
-});
-```
-
-**Webpack** (including Electron Forge with Webpack):
-
-```ts
-// webpack.main.config.ts
-const { DatadogWebpackPlugin } = require('@datadog/electron-sdk/webpack-plugin');
-
-module.exports = {
-  plugins: [new DatadogWebpackPlugin()],
-};
-```
 
 ## API
 
