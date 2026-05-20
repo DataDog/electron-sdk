@@ -135,6 +135,33 @@ const config = [
     },
     plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
   },
+  // esbuild plugin: injects dd-trace init banner and externalizes dependencies
+  {
+    input: 'src/entries/esbuild-plugin.ts',
+    output: [
+      {
+        file: 'dist/esbuild-plugin.cjs',
+        format: 'cjs',
+        sourcemap: true,
+      },
+      {
+        file: 'dist/esbuild-plugin.mjs',
+        format: 'esm',
+        sourcemap: true,
+      },
+    ],
+    external: ['electron'],
+    plugins: sharedPlugins,
+  },
+  // TypeScript declarations: esbuild-plugin
+  {
+    input: 'src/entries/esbuild-plugin.ts',
+    output: {
+      file: 'dist/esbuild-plugin.d.ts',
+      format: 'esm',
+    },
+    plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
+  },
 ];
 
 export default config;

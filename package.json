@@ -26,6 +26,11 @@
       "types": "./dist/webpack-plugin.d.ts",
       "require": "./dist/webpack-plugin.cjs",
       "import": "./dist/webpack-plugin.mjs"
+    },
+    "./esbuild-plugin": {
+      "types": "./dist/esbuild-plugin.d.ts",
+      "require": "./dist/esbuild-plugin.cjs",
+      "import": "./dist/esbuild-plugin.mjs"
     }
   },
   "typesVersions": {
@@ -38,6 +43,9 @@
       ],
       "webpack-plugin": [
         "./dist/webpack-plugin.d.ts"
+      ],
+      "esbuild-plugin": [
+        "./dist/esbuild-plugin.d.ts"
       ]
     }
   },
@@ -66,6 +74,11 @@
     "dist/webpack-plugin.mjs",
     "dist/webpack-plugin.mjs.map",
     "dist/webpack-plugin.d.ts",
+    "dist/esbuild-plugin.cjs",
+    "dist/esbuild-plugin.cjs.map",
+    "dist/esbuild-plugin.mjs",
+    "dist/esbuild-plugin.mjs.map",
+    "dist/esbuild-plugin.d.ts",
     "dd-trace.tgz",
     "README.md",
     "LICENSE",
