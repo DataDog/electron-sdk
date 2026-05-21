@@ -17,6 +17,12 @@ ipcMain.handle('crash', () => {
   process.crash();
 });
 
+ipcMain.handle('mainFetch', async (_event, url: string) => {
+  const res = await fetch(url);
+  await res.text();
+  return res.status;
+});
+
 void app.whenReady().then(async () => {
   mainWindow = new BrowserWindow({
     width: 800,
