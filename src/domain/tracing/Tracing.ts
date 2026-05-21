@@ -22,7 +22,7 @@ export class Tracing {
 
       // dd-trace is initialized early via @datadog/electron-sdk/instrument (before require('electron')).
       // tracer.init() is a no-op if already initialized, so we only configure plugins here.
-      // Service/env/version are set by ResourceConverter on each span payload,
+      // Service/env/version are set by SpanProcessor on each span payload,
       // overriding dd-trace's defaults with the SDK config values.
       // @ts-expect-error electron plugin exists in dd-trace but is not in the type definitions
       tracer.use('electron');

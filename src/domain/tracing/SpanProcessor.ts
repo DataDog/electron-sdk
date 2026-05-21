@@ -60,7 +60,14 @@ function spanToResource(span: ExportedSpan): RawRumResource {
   };
 }
 
-export class ResourceConverter {
+/**
+ * Subscribes to dd-trace's diagnostics channel and processes exported spans:
+ * 1. Filters out SDK-internal requests (intake / proxy)
+ * 2. Enriches spans with electron context (application, session, view)
+ * 3. Emits RUM resource events for HTTP spans
+ * 4. Emits span envelopes to the span intake
+ */
+export class SpanProcessor {
   private channel: DiagnosticsChannel.Channel;
   private onMessage: (message: unknown) => void;
   private sdkHostname: string;
@@ -80,54 +87,66 @@ export class ResourceConverter {
     this.onMessage = monitor((message: unknown) => {
       const traces = message as ExportedSpan[][];
       for (const trace of traces) {
-        const processedSpans: ReturnType<typeof spanToPayload>[] = [];
-
-        for (const span of trace) {
-          const url = span.meta['http.url'];
-          if (url && this.isSdkRequest(url)) {
-            continue;
-          }
-
-          // Enrich span meta with electron context (application, session, view)
-          const startTime = (span.start / 1e6) as TimeStamp;
-          const hookResult = this.hooks.triggerSpan({ startTime });
-          const extraMeta = hookResult !== DISCARDED ? hookResult : undefined;
-
-          const payload = spanToPayload(span, this.service, extraMeta);
-          processedSpans.push(payload);
-
-          // Additionally convert HTTP spans to RUM resources
-          if (isHttpSpan(span)) {
-            this.eventManager.notify({
-              kind: EventKind.RAW,
-              source: EventSource.MAIN,
-              format: EventFormat.RUM,
-              data: spanToResource(span),
-              startTime,
-            });
-          }
-        }
-
-        // Send the trace envelope to the span intake
-        if (processedSpans.length > 0) {
-          this.eventManager.notify({
-            kind: EventKind.SERVER,
-            track: EventTrack.SPANS,
-            data: { env: this.env, spans: processedSpans },
-          });
-        }
+        this.processTrace(trace);
       }
     });
 
     this.channel.subscribe(this.onMessage);
   }
 
-  private isSdkRequest(url: string): boolean {
+  private processTrace(trace: ExportedSpan[]): void {
+    const processedSpans: ReturnType<typeof spanToPayload>[] = [];
+
+    for (const span of trace) {
+      if (this.isSdkRequest(span)) {
+        continue;
+      }
+
+      const enrichedPayload = this.enrichSpan(span);
+      processedSpans.push(enrichedPayload);
+
+      if (isHttpSpan(span)) {
+        this.emitResource(span);
+      }
+    }
+
+    this.emitTraceEnvelope(processedSpans);
+  }
+
+  private isSdkRequest(span: ExportedSpan): boolean {
+    const url = span.meta['http.url'];
+    if (!url) return false;
     try {
       return new URL(url).hostname === this.sdkHostname;
     } catch {
       return false;
     }
+  }
+
+  private enrichSpan(span: ExportedSpan): ReturnType<typeof spanToPayload> {
+    const startTime = (span.start / 1e6) as TimeStamp;
+    const hookResult = this.hooks.triggerSpan({ startTime });
+    const extraMeta = hookResult !== DISCARDED ? hookResult : undefined;
+    return spanToPayload(span, this.service, extraMeta);
+  }
+
+  private emitResource(span: ExportedSpan): void {
+    this.eventManager.notify({
+      kind: EventKind.RAW,
+      source: EventSource.MAIN,
+      format: EventFormat.RUM,
+      data: spanToResource(span),
+      startTime: (span.start / 1e6) as TimeStamp,
+    });
+  }
+
+  private emitTraceEnvelope(spans: ReturnType<typeof spanToPayload>[]): void {
+    if (spans.length === 0) return;
+    this.eventManager.notify({
+      kind: EventKind.SERVER,
+      track: EventTrack.SPANS,
+      data: { env: this.env, spans },
+    });
   }
 
   stop(): void {

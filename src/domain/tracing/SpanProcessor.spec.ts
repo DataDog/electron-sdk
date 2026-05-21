@@ -5,7 +5,7 @@ import { EventFormat, EventKind, EventManager, EventSource, EventTrack } from '.
 import type { Event, RawRumEvent, ServerSpansEvent } from '../../event';
 import { createFormatHooks, type FormatHooks } from '../../assembly';
 import type { Configuration } from '../../config';
-import { ResourceConverter } from './ResourceConverter';
+import { SpanProcessor } from './SpanProcessor';
 
 vi.mock('../telemetry', () => ({
   monitor:
@@ -43,10 +43,10 @@ function createSpan(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe('ResourceConverter', () => {
+describe('SpanProcessor', () => {
   let eventManager: EventManager;
   let hooks: FormatHooks;
-  let converter: ResourceConverter;
+  let processor: SpanProcessor;
   let collected: Event[];
 
   beforeEach(() => {
@@ -60,7 +60,7 @@ describe('ResourceConverter', () => {
       handle: (event) => collected.push(event),
     });
 
-    converter = new ResourceConverter(eventManager, hooks, {
+    processor = new SpanProcessor(eventManager, hooks, {
       env: 'test',
       service: 'test-service',
       site: 'datadoghq.com',
@@ -68,7 +68,7 @@ describe('ResourceConverter', () => {
   });
 
   afterEach(() => {
-    converter.stop();
+    processor.stop();
   });
 
   function publish(traces: unknown[][]) {
@@ -159,8 +159,8 @@ describe('ResourceConverter', () => {
     });
 
     it('should filter out requests to subdomain intake hostnames (e.g. us3.datadoghq.com)', () => {
-      converter.stop();
-      converter = new ResourceConverter(eventManager, hooks, {
+      processor.stop();
+      processor = new SpanProcessor(eventManager, hooks, {
         env: 'test',
         service: 'test-service',
         site: 'us3.datadoghq.com',
@@ -177,8 +177,8 @@ describe('ResourceConverter', () => {
     });
 
     it('should filter out requests to the configured proxy hostname', () => {
-      converter.stop();
-      converter = new ResourceConverter(eventManager, hooks, {
+      processor.stop();
+      processor = new SpanProcessor(eventManager, hooks, {
         env: 'test',
         service: 'test-service',
         site: 'datadoghq.com',
@@ -276,7 +276,7 @@ describe('ResourceConverter', () => {
 
   describe('stop', () => {
     it('should unsubscribe from the diagnostics channel', () => {
-      converter.stop();
+      processor.stop();
       publish([[createSpan()]]);
 
       expect(collected).toHaveLength(0);

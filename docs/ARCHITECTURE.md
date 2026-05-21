@@ -161,10 +161,12 @@ This entry point initializes dd-trace with the `electron` exporter and silently 
 
 ### How tracing works
 
-dd-trace's `electron` exporter publishes normalized spans to a Node.js diagnostics channel (`datadog:apm:electron:export`) instead of sending them to a local Datadog Agent. The `ResourceConverter` subscribes to this channel and:
+dd-trace's `electron` exporter publishes normalized spans to a Node.js diagnostics channel (`datadog:apm:electron:export`) instead of sending them to a local Datadog Agent. The `SpanProcessor` subscribes to this channel and:
 
-1. Forwards **all spans** to the spans intake (`/api/v2/spans`) grouped per trace in `{ env, spans }` envelopes
-2. Additionally converts **HTTP spans** into `RawRumResource` events for the RUM intake
+1. **Filters** SDK-internal requests (intake/proxy) to prevent self-reporting loops
+2. **Enriches** all spans with electron context (application, session, view)
+3. **Emits** RUM resource events for HTTP spans
+4. **Forwards** all spans to the spans intake grouped per trace
 
 ```
 Instrumented code (fetch, net.request, ipcMain.handle, http)
@@ -173,7 +175,7 @@ dd-trace creates spans
     ↓
 ElectronExporter → diagnostics channel 'datadog:apm:electron:export'
     ↓
-ResourceConverter (enriches with electron context, groups by trace)
+SpanProcessor (filters, enriches, emits)
     ↓
 All spans → Transport → /api/v2/spans
 HTTP spans → Assembly → Transport → /api/v2/rum (as RUM resources)

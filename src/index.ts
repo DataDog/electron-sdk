@@ -10,7 +10,7 @@ import { EventManager } from './event';
 import { BridgeHandler } from './bridge';
 import { Transport } from './transport';
 import { Tracing } from './domain/tracing/Tracing';
-import { ResourceConverter } from './domain/tracing/ResourceConverter';
+import { SpanProcessor } from './domain/tracing/SpanProcessor';
 import { displayInfo } from './tools/display';
 
 let sessionManager: SessionManager | undefined;
@@ -43,7 +43,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   new UserActivityTracker(eventManager);
 
   if (tracing.enabled) {
-    new ResourceConverter(eventManager, hooks, config);
+    new SpanProcessor(eventManager, hooks, config);
     displayInfo('Tracing enabled');
   }
 
