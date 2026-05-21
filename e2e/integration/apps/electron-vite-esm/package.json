@@ -1,0 +1,30 @@
+{
+  "name": "electron-vite-esm",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "yarn@4.12.0",
+  "main": "out/main/index.mjs",
+  "integration": {
+    "devMain": "out/main/index.mjs",
+    "packagedBinary": {
+      "darwin-arm64": "out/mac-arm64/electron-vite-esm.app/Contents/MacOS/electron-vite-esm",
+      "darwin-x64": "out/mac/electron-vite-esm.app/Contents/MacOS/electron-vite-esm",
+      "linux": "out/linux-unpacked/electron-vite-esm",
+      "win32": "out/win-unpacked/electron-vite-esm.exe"
+    }
+  },
+  "scripts": {
+    "package": "electron-vite build && electron-builder --dir --publish never"
+  },
+  "dependencies": {
+    "@datadog/browser-rum": "6.32.0",
+    "@datadog/electron-sdk": "file:../../integration-sdk.tgz"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.11",
+    "electron": "41.1.0",
+    "electron-builder": "26.8.1",
+    "electron-vite": "5.0.0",
+    "typescript": "5.9.3"
+  }
+}
