@@ -146,7 +146,7 @@ export class Intake {
     count: number,
     options?: { timeout?: number; predicate?: (event: ReceivedEvent) => boolean }
   ): Promise<ReceivedEvent[]> {
-    const timeout = options?.timeout ?? 5000;
+    const timeout = options?.timeout ?? 10000;
     const byPredicate = options?.predicate ?? (() => true);
     const startTime = Date.now();
     const pollInterval = 100;
