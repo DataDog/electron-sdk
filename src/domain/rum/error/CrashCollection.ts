@@ -111,12 +111,27 @@ function buildCrashErrorEvent(crashReport: CrashReport, crashTime: TimeStamp): R
         process: app.getName(),
         exception_type: crashReport.crash_info.type,
       },
-      source_type: crashReport.system_info.os as RumErrorEvent['error']['source_type'],
+      source_type: mapOsToSourceType(crashReport.system_info.os),
       stack: crashedThread?.stack,
       threads,
       binary_images: formatBinaryImages(crashReport),
     },
   };
+}
+
+const OS_TO_SOURCE_TYPE: Record<string, RumErrorEvent['error']['source_type']> = {
+  mac: 'macos',
+  linux: 'linux',
+  windows: 'windows',
+};
+
+function mapOsToSourceType(os: string): RumErrorEvent['error']['source_type'] {
+  const sourceType = OS_TO_SOURCE_TYPE[os];
+  if (!sourceType) {
+    addError(new Error(`Unknown OS reported by minidump processor: ${os}`));
+    return os as RumErrorEvent['error']['source_type'];
+  }
+  return sourceType;
 }
 
 /**
