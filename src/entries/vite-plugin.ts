@@ -31,7 +31,7 @@ import { fileURLToPath } from 'node:url';
 interface VitePlugin {
   name: string;
   config?: () => { build: { rollupOptions: { external: RegExp[] } } };
-  renderChunk?: (code: string, chunk: { isEntry: boolean }) => string | null;
+  renderChunk?: (code: string, chunk: { isEntry: boolean }, options: { format: string }) => string | null;
   generateBundle?: () => void;
   writeBundle?: (options: { dir?: string }) => void;
 }
@@ -40,11 +40,35 @@ interface PluginContext {
   emitFile: (file: { type: string; fileName: string; source: string | Uint8Array }) => void;
 }
 
-const BANNER = 'try { require("node:module").createRequire(__filename)("@datadog/electron-sdk/instrument"); } catch {}';
+const DD_TRACE_PRELOAD = 'dd-trace/packages/datadog-instrumentations/src/electron/preload.js';
 
 // dd-trace resolves its preload at: join(__dirname, 'electron', 'preload.js')
 // When bundled, __dirname is the output directory, so we emit the file there.
 const DD_TRACE_PRELOAD_PATH = 'electron/preload.js';
+
+const CJS_BANNER =
+  'try { require("node:module").createRequire(__filename)("@datadog/electron-sdk/instrument"); } catch {}';
+
+// ESM banner: initialize dd-trace and register the preload script directly.
+// In ESM, static imports are loaded before module code evaluates, so dd-trace's
+// IITM hooks cannot intercept `import 'electron'` for automatic BrowserWindow
+// wrapping. The direct preload registration achieves the same result.
+const ESM_BANNER = `
+import { createRequire as __ddCR } from "module";
+try {
+  const __ddR = __ddCR(import.meta.url);
+  __ddR("@datadog/electron-sdk/instrument");
+  const __ddP = __ddR.resolve("${DD_TRACE_PRELOAD}");
+  const { app: __ddApp, session: __ddSes } = __ddR("electron");
+  const __ddReg = () => {
+    try {
+      __ddSes.defaultSession.registerPreloadScript({ type: "frame", filePath: __ddP });
+    } catch {}
+  };
+  if (__ddApp.isReady()) __ddReg();
+  else __ddApp.once("ready", __ddReg);
+} catch {}
+`.trim();
 
 export function datadogVitePlugin(): VitePlugin {
   let preloadSource: string | undefined;
@@ -71,9 +95,10 @@ export function datadogVitePlugin(): VitePlugin {
         },
       };
     },
-    renderChunk(code, chunk) {
+    renderChunk(code, chunk, options) {
       if (!chunk.isEntry) return null;
-      return `${BANNER}\n${code}`;
+      const banner = options.format === 'es' ? ESM_BANNER : CJS_BANNER;
+      return `${banner}\n${code}`;
     },
     generateBundle(this: PluginContext) {
       if (preloadSource) {
