@@ -196,6 +196,35 @@ describe('SpanProcessor', () => {
       expect(collected.length).toBeGreaterThan(0);
     });
 
+    it('should filter spans whose resource contains the intake hostname', () => {
+      const span = createSpan({
+        type: 'dns',
+        resource: 'browser-intake-datadoghq.com',
+        meta: {},
+      });
+      publish([[span]]);
+
+      expect(collected).toHaveLength(0);
+    });
+
+    it('should filter spans whose resource contains the proxy hostname', () => {
+      processor.stop();
+      processor = new SpanProcessor(eventManager, hooks, {
+        env: 'test',
+        service: 'test-service',
+        site: 'datadoghq.com',
+        proxy: 'http://localhost:9999/api/v2/rum',
+      } as Configuration);
+      const span = createSpan({
+        type: 'tls',
+        resource: 'tls.connect localhost:9999',
+        meta: {},
+      });
+      publish([[span]]);
+
+      expect(collected).toHaveLength(0);
+    });
+
     it('should not filter external HTTP requests', () => {
       const span = createSpan({ meta: { 'http.url': 'https://api.example.com/data', 'http.method': 'GET' } });
       publish([[span]]);

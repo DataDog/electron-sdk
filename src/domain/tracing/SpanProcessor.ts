@@ -70,7 +70,7 @@ function spanToResource(span: ExportedSpan): RawRumResource {
 export class SpanProcessor {
   private channel: DiagnosticsChannel.Channel;
   private onMessage: (message: unknown) => void;
-  private sdkHostname: string;
+  private intakeHostname: string;
   private env: string;
   private service: string;
 
@@ -81,7 +81,7 @@ export class SpanProcessor {
   ) {
     this.env = config.env ?? '';
     this.service = config.service;
-    this.sdkHostname = computeIntakeHostname(config.site, config.proxy);
+    this.intakeHostname = computeIntakeHostname(config.site, config.proxy);
     this.channel = DiagnosticsChannel.channel(DD_TRACE_SPAN_CHANNEL);
 
     this.onMessage = monitor((message: unknown) => {
@@ -98,7 +98,7 @@ export class SpanProcessor {
     const processedSpans: ReturnType<typeof spanToPayload>[] = [];
 
     for (const span of trace) {
-      if (this.isSdkRequest(span)) {
+      if (this.isIntakeRequest(span)) {
         continue;
       }
 
@@ -113,11 +113,14 @@ export class SpanProcessor {
     this.emitTraceEnvelope(processedSpans);
   }
 
-  private isSdkRequest(span: ExportedSpan): boolean {
+  private isIntakeRequest(span: ExportedSpan): boolean {
+    if (span.resource?.includes(this.intakeHostname)) {
+      return true;
+    }
     const url = span.meta['http.url'];
     if (!url) return false;
     try {
-      return new URL(url).hostname === this.sdkHostname;
+      return new URL(url).hostname === this.intakeHostname;
     } catch {
       return false;
     }
