@@ -54,7 +54,7 @@ function retrieveNpmDeps(packageJsonFile: { content: any }, field: 'dependencies
       }
       return dependency;
     })
-    .filter((dependency) => !dependency.includes('@datadog'));
+    .filter((dependency) => !dependency.includes('@datadog') && !dependency.includes('dd-trace'));
 }
 
 function retrieveCargoDeps(section: 'dependencies' | 'dev-dependencies'): string[] {
