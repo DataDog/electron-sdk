@@ -1,10 +1,11 @@
-import { DISCARDED, generateUUID, type TimeStamp } from '@datadog/browser-core';
+import { DISCARDED, generateUUID, type ServerDuration, type TimeStamp } from '@datadog/browser-core';
 import * as DiagnosticsChannel from 'node:diagnostics_channel';
 import { type FormatHooks } from '../../assembly';
+import { type Configuration } from '../../config';
 import { EventFormat, EventKind, EventManager, EventSource, EventTrack } from '../../event';
+import { computeIntakeHostname } from '../../transport';
 import { RawResourceMethod, RawRumResource } from '../rum';
-import { addError } from '../telemetry';
-import { displayInfo } from '../../tools/display';
+import { monitor } from '../telemetry';
 
 interface ExportedSpan {
   trace_id: { toString: (radix?: number) => string };
@@ -42,10 +43,10 @@ function spanToPayload(span: ExportedSpan, service: string, extraMeta?: Record<s
 function spanToResource(span: ExportedSpan): RawRumResource {
   return {
     type: 'resource',
-    date: span.start / 1e6, // ns → ms
+    date: (span.start / 1e6) as TimeStamp, // ns → ms
     resource: {
       id: generateUUID(),
-      duration: span.duration, // already in ns
+      duration: span.duration as ServerDuration, // already in ns
       type: 'native',
       method: (span.meta['http.method'] as RawResourceMethod) || 'GET',
       status_code: Number(span.meta['http.status_code']) || 0,
@@ -59,103 +60,71 @@ function spanToResource(span: ExportedSpan): RawRumResource {
   };
 }
 
-export interface ResourceConverterConfig {
-  env: string;
-  service: string;
-  site: string;
-  proxy?: string;
-}
-
 export class ResourceConverter {
   private channel: DiagnosticsChannel.Channel;
   private onMessage: (message: unknown) => void;
-  private sdkHostnames: Set<string>;
+  private sdkHostname: string;
   private env: string;
   private service: string;
 
   constructor(
     private eventManager: EventManager,
     private hooks: FormatHooks,
-    config: ResourceConverterConfig
+    config: Configuration
   ) {
-    this.env = config.env;
+    this.env = config.env ?? '';
     this.service = config.service;
-    this.sdkHostnames = new Set<string>();
-    this.sdkHostnames.add(`browser-intake-${config.site}`);
-    if (config.proxy) {
-      try {
-        this.sdkHostnames.add(new URL(config.proxy).hostname);
-      } catch {
-        // invalid proxy URL — skip
-      }
-    }
+    this.sdkHostname = computeIntakeHostname(config.site, config.proxy);
     this.channel = DiagnosticsChannel.channel(DD_TRACE_SPAN_CHANNEL);
 
-    this.onMessage = (message: unknown) => {
-      try {
-        const traces = message as ExportedSpan[][];
+    this.onMessage = monitor((message: unknown) => {
+      const traces = message as ExportedSpan[][];
+      for (const trace of traces) {
+        const processedSpans: ReturnType<typeof spanToPayload>[] = [];
 
-        for (const trace of traces) {
-          const processedSpans: ReturnType<typeof spanToPayload>[] = [];
-
-          for (const span of trace) {
-            const url = span.meta['http.url'];
-            if (url && this.isSdkRequest(url)) {
-              continue;
-            }
-
-            // Enrich span meta with electron context (application, session, view)
-            const startTime = (span.start / 1e6) as TimeStamp;
-            const hookResult = this.hooks.triggerSpan({ startTime });
-            const extraMeta = hookResult !== DISCARDED ? hookResult : undefined;
-
-            const payload = spanToPayload(span, this.service, extraMeta);
-            displayInfo(
-              'Span received:',
-              span.name,
-              `type=${span.type}`,
-              `trace_id=${payload.trace_id}`,
-              `span_id=${payload.span_id}`
-            );
-            processedSpans.push(payload);
-
-            // Additionally convert HTTP spans to RUM resources
-            if (isHttpSpan(span)) {
-              displayInfo(
-                '  → Converting to RUM resource:',
-                span.meta['http.method'],
-                url,
-                `(${span.meta['http.status_code']})`
-              );
-              this.eventManager.notify({
-                kind: EventKind.RAW,
-                source: EventSource.MAIN,
-                format: EventFormat.RUM,
-                data: spanToResource(span),
-              });
-            }
+        for (const span of trace) {
+          const url = span.meta['http.url'];
+          if (url && this.isSdkRequest(url)) {
+            continue;
           }
 
-          // Send the trace envelope to the span intake
-          if (processedSpans.length > 0) {
+          // Enrich span meta with electron context (application, session, view)
+          const startTime = (span.start / 1e6) as TimeStamp;
+          const hookResult = this.hooks.triggerSpan({ startTime });
+          const extraMeta = hookResult !== DISCARDED ? hookResult : undefined;
+
+          const payload = spanToPayload(span, this.service, extraMeta);
+          processedSpans.push(payload);
+
+          // Additionally convert HTTP spans to RUM resources
+          if (isHttpSpan(span)) {
             this.eventManager.notify({
-              kind: EventKind.SERVER,
-              track: EventTrack.SPANS,
-              data: { env: this.env, spans: processedSpans },
+              kind: EventKind.RAW,
+              source: EventSource.MAIN,
+              format: EventFormat.RUM,
+              data: spanToResource(span),
+              startTime,
             });
           }
         }
-      } catch (error) {
-        addError(error);
+
+        // Send the trace envelope to the span intake
+        if (processedSpans.length > 0) {
+          this.eventManager.notify({
+            kind: EventKind.SERVER,
+            track: EventTrack.SPANS,
+            data: { env: this.env, spans: processedSpans },
+          });
+        }
       }
-    };
+    });
 
     this.channel.subscribe(this.onMessage);
   }
 
   private isSdkRequest(url: string): boolean {
     try {
-      return this.sdkHostnames.has(new URL(url).hostname);
+      return new URL(url).hostname === this.sdkHostname;
     } catch {
       return false;
     }

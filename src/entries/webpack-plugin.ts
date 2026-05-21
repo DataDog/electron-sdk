@@ -105,7 +105,7 @@ function copyPackageTree(pkg: string, destModules: string, visited: Set<string>)
       copyPackageTree(dep, destModules, visited);
     }
   } catch {
-    // Package not found — skip
+    console.warn(`[datadog] Failed to copy package '${pkg}' to build output`);
   }
 }
 
@@ -152,7 +152,9 @@ export class DatadogWebpackPlugin {
         mkdirSync(destDir, { recursive: true });
         copyFileSync(src, join(destDir, 'preload.js'));
       } catch {
-        // dd-trace not found — skip
+        console.warn(
+          '[datadog] dd-trace not found — the preload script will not be bundled and monitoring will not work'
+        );
       }
 
       // Copy externalized packages into node_modules alongside the bundle

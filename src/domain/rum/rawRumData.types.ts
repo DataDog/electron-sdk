@@ -73,10 +73,10 @@ export type RawResourceMethod = 'POST' | 'GET' | 'HEAD' | 'PUT' | 'DELETE' | 'PA
 
 export interface RawRumResource extends RecursivePartial<RumResourceEvent> {
   type: 'resource';
-  date: number;
+  date: TimeStamp;
   resource: {
     id: string;
-    duration: number;
+    duration: ServerDuration;
     type: 'native';
     method?: RawResourceMethod;
     status_code: number;

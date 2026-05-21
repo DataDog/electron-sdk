@@ -26,5 +26,5 @@ try {
     experimental: { exporter: 'electron' as 'datadog' },
   });
 } catch {
-  // dd-trace not available — no-op
+  console.warn('[datadog] dd-trace not found — monitoring will not work');
 }

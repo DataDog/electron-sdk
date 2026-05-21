@@ -81,7 +81,7 @@ export function datadogVitePlugin(): VitePlugin {
     const preloadPath = _require.resolve('dd-trace/packages/datadog-instrumentations/src/electron/preload.js');
     preloadSource = readFileSync(preloadPath, 'utf8');
   } catch {
-    // dd-trace not found — skip preload copy
+    console.warn('[datadog] dd-trace not found — the preload script will not be bundled and monitoring will not work');
   }
 
   return {
@@ -146,7 +146,7 @@ export function datadogVitePlugin(): VitePlugin {
             copyPackageTree(dep);
           }
         } catch {
-          // Package not found — skip
+          console.warn(`[datadog] Failed to copy package '${pkg}' to build output`);
         }
       }
 

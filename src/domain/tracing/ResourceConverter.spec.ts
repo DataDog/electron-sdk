@@ -4,19 +4,19 @@ import { DISCARDED, SKIPPED } from '@datadog/browser-core';
 import { EventFormat, EventKind, EventManager, EventSource, EventTrack } from '../../event';
 import type { Event, RawRumEvent, ServerSpansEvent } from '../../event';
 import { createFormatHooks, type FormatHooks } from '../../assembly';
+import type { Configuration } from '../../config';
 import { ResourceConverter } from './ResourceConverter';
 
-const { mockAddError, mockDisplayInfo } = vi.hoisted(() => ({
-  mockAddError: vi.fn(),
-  mockDisplayInfo: vi.fn(),
-}));
-
 vi.mock('../telemetry', () => ({
-  addError: mockAddError,
-}));
-
-vi.mock('../../tools/display', () => ({
-  displayInfo: mockDisplayInfo,
+  monitor:
+    (fn: (...args: unknown[]) => unknown) =>
+    (...args: unknown[]) => {
+      try {
+        return fn(...args);
+      } catch {
+        return undefined;
+      }
+    },
 }));
 
 const DD_TRACE_SPAN_CHANNEL = 'datadog:apm:electron:export';
@@ -64,7 +64,7 @@ describe('ResourceConverter', () => {
       env: 'test',
       service: 'test-service',
       site: 'datadoghq.com',
-    });
+    } as Configuration);
   });
 
   afterEach(() => {
@@ -158,6 +158,24 @@ describe('ResourceConverter', () => {
       expect(collected).toHaveLength(0);
     });
 
+    it('should filter out requests to subdomain intake hostnames (e.g. us3.datadoghq.com)', () => {
+      converter.stop();
+      converter = new ResourceConverter(eventManager, hooks, {
+        env: 'test',
+        service: 'test-service',
+        site: 'us3.datadoghq.com',
+      } as Configuration);
+      publish([
+        [
+          createSpan({
+            meta: { 'http.url': 'https://browser-intake-us3-datadoghq.com/api/v2/rum', 'http.method': 'POST' },
+          }),
+        ],
+      ]);
+
+      expect(collected).toHaveLength(0);
+    });
+
     it('should filter out requests to the configured proxy hostname', () => {
       converter.stop();
       converter = new ResourceConverter(eventManager, hooks, {
@@ -165,7 +183,7 @@ describe('ResourceConverter', () => {
         service: 'test-service',
         site: 'datadoghq.com',
         proxy: 'http://localhost:9999/api/v2/rum',
-      });
+      } as Configuration);
       publish([[createSpan({ meta: { 'http.url': 'http://localhost:9999/api/v2/rum', 'http.method': 'POST' } })]]);
 
       expect(collected).toHaveLength(0);
@@ -266,11 +284,11 @@ describe('ResourceConverter', () => {
   });
 
   describe('error handling', () => {
-    it('should report errors via telemetry', () => {
-      // Publish a malformed message to trigger an error
-      DiagnosticsChannel.channel(DD_TRACE_SPAN_CHANNEL).publish('not an array');
-
-      expect(mockAddError).toHaveBeenCalledOnce();
+    it('should not throw on malformed messages (errors caught by monitor)', () => {
+      // Publish a malformed message — monitor() swallows the error
+      expect(() => {
+        DiagnosticsChannel.channel(DD_TRACE_SPAN_CHANNEL).publish('not an array');
+      }).not.toThrow();
     });
   });
 });

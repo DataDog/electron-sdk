@@ -1,5 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { computeIntakeUrlForTrack } from './utils';
+import { computeIntakeHostname, computeIntakeUrlForTrack } from './utils';
+
+describe('computeIntakeHostname', () => {
+  it('returns the intake hostname for a simple site', () => {
+    expect(computeIntakeHostname('datadoghq.com')).toBe('browser-intake-datadoghq.com');
+  });
+
+  it('normalizes subdomain sites', () => {
+    expect(computeIntakeHostname('us3.datadoghq.com')).toBe('browser-intake-us3-datadoghq.com');
+  });
+
+  it('returns the proxy hostname when proxy is set', () => {
+    expect(computeIntakeHostname('datadoghq.com', 'http://localhost:9999/api')).toBe('localhost');
+  });
+});
 
 describe('computeIntakeUrlForTrack', () => {
   it('generates intakeUrl for rum track', () => {
