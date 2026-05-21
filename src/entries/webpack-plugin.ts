@@ -1,17 +1,21 @@
 /**
  * Webpack plugin for Electron apps using the Datadog Electron SDK.
  *
- * This plugin handles three concerns for packaged Electron apps:
+ * This plugin handles four concerns for packaged Electron apps:
  *
- * 1. Externalizes dd-trace and @datadog/electron-sdk so they remain as runtime
+ * 1. Prepends dd-trace initialization (via @datadog/electron-sdk/instrument)
+ *    as a banner to the main entry, so the user doesn't need to manually
+ *    import '@datadog/electron-sdk/instrument'.
+ *
+ * 2. Externalizes dd-trace and @datadog/electron-sdk so they remain as runtime
  *    requires (not bundled), avoiding issues with dd-trace's dynamic requires,
  *    native modules, and optional peer dependencies.
  *
- * 2. Excludes dd-trace and @datadog/electron-sdk from @vercel/webpack-asset-
+ * 3. Excludes dd-trace and @datadog/electron-sdk from @vercel/webpack-asset-
  *    relocator-loader, which would otherwise break dd-trace's internal module
  *    resolution (createRequire, dynamic _require.resolve).
  *
- * 3. Copies dd-trace, @datadog/electron-sdk, and their transitive dependencies
+ * 4. Copies dd-trace, @datadog/electron-sdk, and their transitive dependencies
  *    into the webpack output's node_modules so they are available at runtime
  *    in packaged apps where the project's node_modules is absent.
  *
@@ -33,12 +37,19 @@ interface Rule {
   use?: string | { loader?: string } | (string | { loader?: string })[];
 }
 
+type BannerPluginConstructor = new (options: { banner: string; raw: boolean; entryOnly: boolean }) => {
+  apply: (compiler: Compiler) => void;
+};
+
 interface Compiler {
   options: {
     externals?: unknown;
     module: {
       rules: (Rule | { oneOf?: Rule[] })[];
     };
+  };
+  webpack: {
+    BannerPlugin: BannerPluginConstructor;
   };
   hooks: {
     afterEmit: {
@@ -110,6 +121,14 @@ export class DatadogWebpackPlugin {
     } else {
       compiler.options.externals = [existing as RegExp, ...ddTraceExternals];
     }
+
+    // Prepend dd-trace initialization banner so the user doesn't need to
+    // manually import '@datadog/electron-sdk/instrument'
+    new compiler.webpack.BannerPlugin({
+      banner: 'try{require("@datadog/electron-sdk/instrument")}catch{}',
+      raw: true,
+      entryOnly: true,
+    }).apply(compiler);
 
     // Exclude dd-trace and @datadog/electron-sdk from the asset-relocator-loader
     for (const rule of compiler.options.module.rules) {

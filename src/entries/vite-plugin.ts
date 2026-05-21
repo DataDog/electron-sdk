@@ -9,8 +9,9 @@
  * This plugin:
  * 1. Externalizes dd-trace and the electron-sdk so they remain as runtime
  *    requires (not bundled), preserving module hook mechanics.
- * 2. Prepends the dd-trace initialization to the very top of the main process
- *    entry chunk, ensuring hooks are registered before any hoisted requires.
+ * 2. Prepends dd-trace initialization (via @datadog/electron-sdk/instrument)
+ *    to the very top of the main process entry chunk, ensuring hooks are
+ *    registered before any hoisted requires. No manual import needed.
  * 3. Copies dd-trace and @datadog/electron-sdk into the build output's
  *    node_modules so they are available at runtime in packaged apps.
  *
@@ -39,11 +40,7 @@ interface PluginContext {
   emitFile: (file: { type: string; fileName: string; source: string | Uint8Array }) => void;
 }
 
-const BANNER = [
-  'try {',
-  '  require("node:module").createRequire(__filename)("dd-trace").default.init({ experimental: { exporter: "electron" } });',
-  '} catch {}',
-].join(' ');
+const BANNER = 'try { require("node:module").createRequire(__filename)("@datadog/electron-sdk/instrument"); } catch {}';
 
 // dd-trace resolves its preload at: join(__dirname, 'electron', 'preload.js')
 // When bundled, __dirname is the output directory, so we emit the file there.

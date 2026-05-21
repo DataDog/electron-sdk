@@ -1,4 +1,3 @@
-import '@datadog/electron-sdk/instrument';
 import { join } from 'node:path';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { _flushTransport, init, type InitConfiguration } from '@datadog/electron-sdk';
