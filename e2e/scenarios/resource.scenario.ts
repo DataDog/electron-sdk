@@ -1,5 +1,10 @@
 import { test, expect } from '../lib/helpers';
 import type { RumResourceEvent, RumViewEvent } from '@datadog/electron-sdk';
+import { Span } from '../lib/intake';
+
+function matchResourceTraceId(resource: RumResourceEvent) {
+  return (span: Span) => BigInt(`0x${span.trace_id}`) === BigInt(resource._dd.trace_id!);
+}
 
 test('emits a resource event for a main-process fetch', async ({ mainPage, intake, testServer }) => {
   await mainPage.flushTransport();
@@ -22,6 +27,12 @@ test('emits a resource event for a main-process fetch', async ({ mainPage, intak
   expect(resource.view.id).toBe(view.view.id);
   expect(resource._dd.trace_id).toBeDefined();
   expect(resource._dd.span_id).toBeDefined();
+
+  const span = await intake.waitForSpan(matchResourceTraceId(resource));
+  expect(span.meta['_dd.application.id']).toBe(view.application.id);
+  expect(span.meta['_dd.session.id']).toBe(view.session.id);
+  expect(span.meta['_dd.view.id']).toBe(view.view.id);
+  expect(span.service).toBe('e2e-test-app');
 });
 
 test('emits a resource event for a main-process http.request', async ({ mainPage, intake, testServer }) => {
@@ -45,6 +56,12 @@ test('emits a resource event for a main-process http.request', async ({ mainPage
   expect(resource.view.id).toBe(view.view.id);
   expect(resource._dd.trace_id).toBeDefined();
   expect(resource._dd.span_id).toBeDefined();
+
+  const span = await intake.waitForSpan(matchResourceTraceId(resource));
+  expect(span.meta['_dd.application.id']).toBe(view.application.id);
+  expect(span.meta['_dd.session.id']).toBe(view.session.id);
+  expect(span.meta['_dd.view.id']).toBe(view.view.id);
+  expect(span.service).toBe('e2e-test-app');
 });
 
 test('emits a resource event for a main-process net.request', async ({ mainPage, intake, testServer }) => {
@@ -68,6 +85,12 @@ test('emits a resource event for a main-process net.request', async ({ mainPage,
   expect(resource.view.id).toBe(view.view.id);
   expect(resource._dd.trace_id).toBeDefined();
   expect(resource._dd.span_id).toBeDefined();
+
+  const span = await intake.waitForSpan(matchResourceTraceId(resource));
+  expect(span.meta['_dd.application.id']).toBe(view.application.id);
+  expect(span.meta['_dd.session.id']).toBe(view.session.id);
+  expect(span.meta['_dd.view.id']).toBe(view.view.id);
+  expect(span.service).toBe('e2e-test-app');
 });
 
 test('does not emit a resource event for SDK intake traffic', async ({ mainPage, intake }) => {
