@@ -4,6 +4,8 @@ import type { IntegrationFixtures } from './integration/lib/integrationFixture';
 const INTEGRATION_APPS = [
   'forge-webpack',
   'forge-vite',
+  'forge-esbuild-cjs',
+  'forge-esbuild-esm',
   'electron-vite',
   'electron-vite-esm',
   'electron-builder-vite',
