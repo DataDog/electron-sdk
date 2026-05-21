@@ -141,6 +141,8 @@ void app.whenReady().then(async () => {
     await _flushTransport();
   });
 
+  ipcMain.handle('ping', () => 'pong');
+
   ipcMain.handle('crash', () => {
     process.crash();
   });

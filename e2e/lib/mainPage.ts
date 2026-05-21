@@ -14,6 +14,7 @@ interface ElectronAppWindow {
     mainHttpRequest: (url: string) => Promise<number>;
     mainNetRequest: (url: string) => Promise<number>;
     flushTransport: () => Promise<void>;
+    ping: () => Promise<string>;
     openBridgeFileWindow: () => Promise<void>;
     openBridgeFileWindowNoIsolation: () => Promise<void>;
     openBridgeHttpWindow: () => Promise<void>;
@@ -109,6 +110,10 @@ export class MainPage {
       (u) => (globalThis as unknown as ElectronAppWindow).electronAPI.mainNetRequest(u),
       url
     );
+  }
+
+  async mainPing(): Promise<string> {
+    return await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.ping());
   }
 
   async flushTransport() {

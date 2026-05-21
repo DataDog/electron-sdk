@@ -180,13 +180,14 @@ export class Intake {
       await new Promise((resolve) => setTimeout(resolve, pollInterval));
     }
 
-    const spanSummary = this.traces
-      .flatMap((e) => e.spans)
-      .map((s) => `name=${s.name} trace_id=${s.trace_id}`)
-      .join(', ');
-
     throw new Error(
-      `Timed out waiting for a matching span after ${timeout}ms. Received spans: [${spanSummary || 'none'}]`
+      `Timed out waiting for a matching span after ${timeout}ms. Received spans: [${
+        JSON.stringify(
+          this.traces.flatMap((e) => e.spans),
+          null,
+          2
+        ) || 'none'
+      }]`
     );
   }
 

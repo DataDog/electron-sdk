@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   mainNetRequest: (url: string) => ipcRenderer.invoke('mainNetRequest', url),
   flushTransport: () => ipcRenderer.invoke('flushTransport'),
   crash: () => ipcRenderer.invoke('crash'),
+  ping: () => ipcRenderer.invoke('ping'),
   openBridgeFileWindow: () => ipcRenderer.invoke('openBridgeFileWindow'),
   openBridgeFileWindowNoIsolation: () => ipcRenderer.invoke('openBridgeFileWindowNoIsolation'),
   openBridgeHttpWindow: () => ipcRenderer.invoke('openBridgeHttpWindow'),
