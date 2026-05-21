@@ -4,7 +4,7 @@ import { type FormatHooks } from '../../assembly';
 import { type Configuration } from '../../config';
 import { EventFormat, EventKind, EventManager, EventSource, EventTrack } from '../../event';
 import { computeIntakeHostname } from '../../transport';
-import { RawResourceMethod, RawRumResource } from '../rum';
+import { RawRumResource } from '../rum';
 import { monitor } from '../telemetry';
 
 interface ExportedSpan {
@@ -48,7 +48,7 @@ function spanToResource(span: ExportedSpan): RawRumResource {
       id: generateUUID(),
       duration: span.duration as ServerDuration, // already in ns
       type: 'native',
-      method: (span.meta['http.method'] as RawResourceMethod) || 'GET',
+      method: (span.meta['http.method'] as RawRumResource['resource']['method']) || 'GET',
       status_code: Number(span.meta['http.status_code']) || 0,
       url: span.meta['http.url'],
     },

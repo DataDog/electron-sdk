@@ -69,8 +69,6 @@ export interface RawRumVital extends RecursivePartial<RumVitalOperationStepEvent
   };
 }
 
-export type RawResourceMethod = 'POST' | 'GET' | 'HEAD' | 'PUT' | 'DELETE' | 'PATCH' | 'TRACE' | 'OPTIONS' | 'CONNECT';
-
 export interface RawRumResource extends RecursivePartial<RumResourceEvent> {
   type: 'resource';
   date: TimeStamp;
@@ -78,7 +76,7 @@ export interface RawRumResource extends RecursivePartial<RumResourceEvent> {
     id: string;
     duration: ServerDuration;
     type: 'native';
-    method?: RawResourceMethod;
+    method?: RumResourceEvent['resource']['method'];
     status_code: number;
     url: string;
   };
