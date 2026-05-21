@@ -22,7 +22,7 @@ describe('BatchConsumer', () => {
 
   beforeEach(() => {
     fsMocks.reset();
-    vi.mocked(getUserAgent).mockReset().mockResolvedValue(TEST_USER_AGENT);
+    vi.mocked(getUserAgent).mockReset().mockReturnValue(TEST_USER_AGENT);
     consumer = new BatchConsumer(config);
 
     global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
