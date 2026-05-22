@@ -76,7 +76,9 @@ describe('SessionContext', () => {
       context.add('session-abc');
 
       expect(hooks.triggerSpan({ startTime: T0 })).toMatchObject({
-        '_dd.session.id': 'session-abc',
+        meta: {
+          '_dd.session.id': 'session-abc',
+        },
       });
     });
 
@@ -142,7 +144,9 @@ describe('SessionContext', () => {
 
       // event at T0 (during active period) is still attributed
       expect(hooks.triggerSpan({ startTime: T0 })).toMatchObject({
-        '_dd.session.id': 'session-abc',
+        meta: {
+          '_dd.session.id': 'session-abc',
+        },
       });
     });
 

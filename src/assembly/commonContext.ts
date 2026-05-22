@@ -26,6 +26,8 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
   }));
 
   hooks.registerSpan(() => ({
-    '_dd.application.id': configuration.applicationId,
+    meta: {
+      '_dd.application.id': configuration.applicationId,
+    },
   }));
 }

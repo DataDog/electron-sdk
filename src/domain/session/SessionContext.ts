@@ -28,7 +28,7 @@ export class SessionContext {
     hooks.registerSpan((params) => {
       const id = this.history.find(params.startTime);
       if (id === undefined) return DISCARDED;
-      return { '_dd.session.id': id };
+      return { meta: { '_dd.session.id': id } };
     });
   }
 

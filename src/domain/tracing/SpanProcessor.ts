@@ -1,4 +1,4 @@
-import { DISCARDED, generateUUID, type ServerDuration, type TimeStamp } from '@datadog/browser-core';
+import { combine, DISCARDED, generateUUID, type ServerDuration, type TimeStamp } from '@datadog/browser-core';
 import * as DiagnosticsChannel from 'node:diagnostics_channel';
 import { type FormatHooks } from '../../assembly';
 import { type Configuration } from '../../config';
@@ -6,8 +6,12 @@ import { EventFormat, EventKind, EventManager, EventSource, EventTrack } from '.
 import { computeIntakeHostname } from '../../transport';
 import { RawRumResource } from '../rum';
 import { monitor } from '../telemetry';
+import { RawSpanData, RawTraceData } from './rawTracingData.types';
 
-interface ExportedSpan {
+/**
+ * Structure of spans exported by dd-trace electron exporter.
+ */
+export interface ExportedSpan {
   trace_id: { toString: (radix?: number) => string };
   span_id: { toString: (radix?: number) => string };
   parent_id: { toString: (radix?: number) => string };
@@ -24,41 +28,6 @@ interface ExportedSpan {
 }
 
 const DD_TRACE_SPAN_CHANNEL = 'datadog:apm:electron:export';
-
-function isHttpSpan(span: ExportedSpan): boolean {
-  return span.type === 'http' && !!span.meta['http.url'];
-}
-
-function spanToPayload(span: ExportedSpan, service: string, extraMeta?: Record<string, string>) {
-  return {
-    ...span,
-    service,
-    trace_id: span.trace_id.toString(16),
-    span_id: span.span_id.toString(16),
-    parent_id: span.parent_id.toString(16),
-    meta: { ...span.meta, ...extraMeta },
-  };
-}
-
-function spanToResource(span: ExportedSpan): RawRumResource {
-  return {
-    type: 'resource',
-    date: (span.start / 1e6) as TimeStamp, // ns → ms
-    resource: {
-      id: generateUUID(),
-      duration: span.duration as ServerDuration, // already in ns
-      type: 'native',
-      method: (span.meta['http.method'] as RawRumResource['resource']['method']) || 'GET',
-      status_code: Number(span.meta['http.status_code']) || 0,
-      url: span.meta['http.url'],
-    },
-    _dd: {
-      trace_id: span.trace_id.toString(10),
-      span_id: span.span_id.toString(10),
-      format_version: 2,
-    },
-  };
-}
 
 /**
  * Subscribes to dd-trace's diagnostics channel and processes exported spans:
@@ -95,22 +64,27 @@ export class SpanProcessor {
   }
 
   private processTrace(trace: ExportedSpan[]): void {
-    const processedSpans: ReturnType<typeof spanToPayload>[] = [];
+    const processedSpans: RawSpanData[] = [];
 
-    for (const span of trace) {
-      if (this.isIntakeRequest(span)) {
+    for (const exportedSpan of trace) {
+      if (this.isIntakeRequest(exportedSpan)) {
+        continue;
+      }
+      const span = toRawSpan(exportedSpan, this.service);
+      const hookResult = this.hooks.triggerSpan({ startTime: span.start });
+      if (hookResult === DISCARDED) {
         continue;
       }
 
-      const enrichedPayload = this.enrichSpan(span);
-      processedSpans.push(enrichedPayload);
+      processedSpans.push(combine(span, hookResult));
 
       if (isHttpSpan(span)) {
-        this.emitResource(span);
+        this.emitResource(spanToResource(span, exportedSpan));
       }
     }
 
-    this.emitTraceEnvelope(processedSpans);
+    const processedTrace = { env: this.env, spans: processedSpans };
+    this.emitServerSpansEvent(processedTrace);
   }
 
   private isIntakeRequest(span: ExportedSpan): boolean {
@@ -126,33 +100,62 @@ export class SpanProcessor {
     }
   }
 
-  private enrichSpan(span: ExportedSpan): ReturnType<typeof spanToPayload> {
-    const startTime = (span.start / 1e6) as TimeStamp;
-    const hookResult = this.hooks.triggerSpan({ startTime });
-    const extraMeta = hookResult !== DISCARDED ? hookResult : undefined;
-    return spanToPayload(span, this.service, extraMeta);
-  }
-
-  private emitResource(span: ExportedSpan): void {
+  private emitResource(resource: RawRumResource): void {
     this.eventManager.notify({
       kind: EventKind.RAW,
       source: EventSource.MAIN,
       format: EventFormat.RUM,
-      data: spanToResource(span),
-      startTime: (span.start / 1e6) as TimeStamp,
+      data: resource,
+      startTime: resource.date,
     });
   }
 
-  private emitTraceEnvelope(spans: ReturnType<typeof spanToPayload>[]): void {
-    if (spans.length === 0) return;
+  private emitServerSpansEvent(trace: RawTraceData): void {
+    if (trace.spans.length === 0) return;
     this.eventManager.notify({
       kind: EventKind.SERVER,
       track: EventTrack.SPANS,
-      data: { env: this.env, spans },
+      data: trace,
     });
   }
 
   stop(): void {
     this.channel.unsubscribe(this.onMessage);
   }
+}
+
+function isHttpSpan(span: RawSpanData): boolean {
+  return span.type === 'http' && !!span.meta['http.url'];
+}
+
+function toRawSpan(exportedSpan: ExportedSpan, service: string) {
+  return {
+    ...exportedSpan,
+    service,
+    start: (exportedSpan.start / 1e6) as TimeStamp,
+    duration: exportedSpan.duration as ServerDuration,
+    trace_id: exportedSpan.trace_id.toString(16),
+    span_id: exportedSpan.span_id.toString(16),
+    parent_id: exportedSpan.parent_id.toString(16),
+  };
+}
+
+function spanToResource(span: RawSpanData, exportedSpan: ExportedSpan): RawRumResource {
+  return {
+    type: 'resource',
+    date: span.start,
+    resource: {
+      id: generateUUID(),
+      duration: span.duration,
+      type: 'native',
+      method: (span.meta['http.method'] as RawRumResource['resource']['method']) || 'GET',
+      status_code: Number(span.meta['http.status_code']) || 0,
+      url: span.meta['http.url'],
+    },
+    _dd: {
+      trace_id: exportedSpan.trace_id.toString(10),
+      span_id: exportedSpan.span_id.toString(10),
+      format_version: 2,
+    },
+  };
 }

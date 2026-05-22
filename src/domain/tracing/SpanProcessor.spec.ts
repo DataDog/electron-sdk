@@ -5,7 +5,7 @@ import { EventFormat, EventKind, EventManager, EventSource, EventTrack } from '.
 import type { Event, RawRumEvent, ServerSpansEvent } from '../../event';
 import { createFormatHooks, type FormatHooks } from '../../assembly';
 import type { Configuration } from '../../config';
-import { SpanProcessor } from './SpanProcessor';
+import { ExportedSpan, SpanProcessor } from './SpanProcessor';
 
 vi.mock('../telemetry', () => ({
   monitor:
@@ -21,7 +21,7 @@ vi.mock('../telemetry', () => ({
 
 const DD_TRACE_SPAN_CHANNEL = 'datadog:apm:electron:export';
 
-function createSpan(overrides: Record<string, unknown> = {}) {
+function createSpan(overrides: Partial<ExportedSpan> = {}) {
   return {
     trace_id: BigInt(123),
     span_id: BigInt(456),
@@ -275,7 +275,7 @@ describe('SpanProcessor', () => {
 
   describe('context enrichment', () => {
     it('should enrich span meta with hook results', () => {
-      hooks.registerSpan(() => ({ '_dd.application.id': 'app-123', '_dd.session.id': 'sess-456' }));
+      hooks.registerSpan(() => ({ meta: { '_dd.application.id': 'app-123', '_dd.session.id': 'sess-456' } }));
       publish([[createSpan()]]);
 
       const serverEvent = collected.find((e) => e.kind === EventKind.SERVER) as ServerSpansEvent;
@@ -284,13 +284,12 @@ describe('SpanProcessor', () => {
       expect(payload.spans[0].meta['_dd.session.id']).toBe('sess-456');
     });
 
-    it('should not enrich when hooks return DISCARDED', () => {
+    it('should not emit server spans event when hooks return DISCARDED', () => {
       hooks.registerSpan(() => DISCARDED);
       publish([[createSpan()]]);
 
       const serverEvent = collected.find((e) => e.kind === EventKind.SERVER) as ServerSpansEvent;
-      const payload = serverEvent.data as { spans: { meta: Record<string, string> }[] };
-      expect(payload.spans[0].meta['_dd.application.id']).toBeUndefined();
+      expect(serverEvent).toBeUndefined();
     });
 
     it('should not enrich when hooks return SKIPPED', () => {

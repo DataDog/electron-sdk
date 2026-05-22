@@ -77,7 +77,9 @@ describe('ViewContext', () => {
       context.add(VIEW_ID);
 
       expect(hooks.triggerSpan({ startTime: T0 })).toMatchObject({
-        '_dd.view.id': VIEW_ID,
+        meta: {
+          '_dd.view.id': VIEW_ID,
+        },
       });
     });
 
@@ -142,7 +144,9 @@ describe('ViewContext', () => {
 
       // event at T0 (during active period) is still attributed
       expect(hooks.triggerSpan({ startTime: T0 })).toMatchObject({
-        '_dd.view.id': VIEW_ID,
+        meta: {
+          '_dd.view.id': VIEW_ID,
+        },
       });
     });
 
