@@ -27,7 +27,7 @@ export class ViewContext {
 
     hooks.registerSpan((params) => {
       const id = this.history.find(params.startTime);
-      if (id === undefined) return SKIPPED;
+      if (id === undefined) return DISCARDED;
       return { '_dd.view.id': id };
     });
   }
