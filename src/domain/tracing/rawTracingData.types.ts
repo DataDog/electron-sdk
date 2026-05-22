@@ -1,12 +1,14 @@
-import { ServerDuration, TimeStamp } from '@datadog/browser-core';
+import { ServerDuration } from '@datadog/browser-core';
 
 export interface RawTraceData {
   env: string;
   spans: RawSpanData[];
 }
 
+export type NsTimeStamp = number & { t: 'Epoch time in nanoseconds' };
+
 export interface RawSpanData {
-  start: TimeStamp;
+  start: NsTimeStamp;
   duration: ServerDuration;
   trace_id: string;
   span_id: string;

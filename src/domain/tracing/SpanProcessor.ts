@@ -6,7 +6,7 @@ import { EventFormat, EventKind, EventManager, EventSource, EventTrack } from '.
 import { computeIntakeHostname } from '../../transport';
 import { RawRumResource } from '../rum';
 import { monitor } from '../telemetry';
-import { RawSpanData, RawTraceData } from './rawTracingData.types';
+import { NsTimeStamp, RawSpanData, RawTraceData } from './rawTracingData.types';
 
 /**
  * Structure of spans exported by dd-trace electron exporter.
@@ -22,8 +22,8 @@ export interface ExportedSpan {
   error: number;
   meta: Record<string, string>;
   metrics: Record<string, number>;
-  start: number;
-  duration: number;
+  start: NsTimeStamp;
+  duration: ServerDuration;
   [key: string]: unknown;
 }
 
@@ -71,15 +71,15 @@ export class SpanProcessor {
         continue;
       }
       const span = toRawSpan(exportedSpan, this.service);
-      const hookResult = this.hooks.triggerSpan({ startTime: span.start });
+      const hookResult = this.hooks.triggerSpan({ startTime: toTimeStamp(span.start) });
       if (hookResult === DISCARDED) {
         continue;
       }
 
       processedSpans.push(combine(span, hookResult));
 
-      if (isHttpSpan(span)) {
-        this.emitResource(spanToResource(span, exportedSpan));
+      if (isHttpSpan(exportedSpan)) {
+        this.emitResource(spanToResource(exportedSpan));
       }
     }
 
@@ -124,33 +124,33 @@ export class SpanProcessor {
   }
 }
 
-function isHttpSpan(span: RawSpanData): boolean {
+function isHttpSpan(span: ExportedSpan): boolean {
   return span.type === 'http' && !!span.meta['http.url'];
 }
 
-function toRawSpan(exportedSpan: ExportedSpan, service: string) {
+function toRawSpan(exportedSpan: ExportedSpan, service: string): RawSpanData {
   return {
     ...exportedSpan,
     service,
-    start: (exportedSpan.start / 1e6) as TimeStamp,
-    duration: exportedSpan.duration as ServerDuration,
+    start: exportedSpan.start,
+    duration: exportedSpan.duration,
     trace_id: exportedSpan.trace_id.toString(16),
     span_id: exportedSpan.span_id.toString(16),
     parent_id: exportedSpan.parent_id.toString(16),
   };
 }
 
-function spanToResource(span: RawSpanData, exportedSpan: ExportedSpan): RawRumResource {
+function spanToResource(exportedSpan: ExportedSpan): RawRumResource {
   return {
     type: 'resource',
-    date: span.start,
+    date: toTimeStamp(exportedSpan.start),
     resource: {
       id: generateUUID(),
-      duration: span.duration,
+      duration: exportedSpan.duration,
       type: 'native',
-      method: (span.meta['http.method'] as RawRumResource['resource']['method']) || 'GET',
-      status_code: Number(span.meta['http.status_code']) || 0,
-      url: span.meta['http.url'],
+      method: (exportedSpan.meta['http.method'] as RawRumResource['resource']['method']) || 'GET',
+      status_code: Number(exportedSpan.meta['http.status_code']) || 0,
+      url: exportedSpan.meta['http.url'],
     },
     _dd: {
       trace_id: exportedSpan.trace_id.toString(10),
@@ -158,4 +158,8 @@ function spanToResource(span: RawSpanData, exportedSpan: ExportedSpan): RawRumRe
       format_version: 2,
     },
   };
+}
+
+function toTimeStamp(nsTimeStamp: NsTimeStamp): TimeStamp {
+  return (nsTimeStamp / 1e6) as TimeStamp;
 }
