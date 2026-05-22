@@ -28,6 +28,7 @@ export class Tracing {
       tracer.use('electron');
       tracer.use('http');
 
+      // TODO(RUM-16445) discuss a more reliable way to flush the exporter
       const internalExporter = (tracer as unknown as TracerInternals)._tracer?._exporter;
       if (internalExporter && typeof (internalExporter as ExporterWithFlush).flush === 'function') {
         this.exporter = internalExporter as ExporterWithFlush;
