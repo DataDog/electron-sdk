@@ -79,7 +79,6 @@
     "dist/esbuild-plugin.mjs",
     "dist/esbuild-plugin.mjs.map",
     "dist/esbuild-plugin.d.ts",
-    "dd-trace.tgz",
     "README.md",
     "LICENSE",
     "LICENSE-3rdparty.csv"
