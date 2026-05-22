@@ -142,8 +142,9 @@ The SDK integrates with dd-trace (bundled) for span collection, HTTP resource tr
 
 dd-trace links:
 
-- [electron-plugin](https://github.com/DataDog/dd-trace-js/tree/master/packages/datadog-plugin-electron/src)
-- [electron instrumentation](https://github.com/DataDog/dd-trace-js/tree/master/packages/datadog-plugin-electron/src)
+- [electron plugin (net, ipc)](https://github.com/DataDog/dd-trace-js/tree/master/packages/datadog-plugin-electron/src)
+- [electron instrumentation (preload bridge)](https://github.com/DataDog/dd-trace-js/tree/master/packages/datadog-instrumentations/src/electron)
+- [electron exporter](https://github.com/DataDog/dd-trace-js/blob/master/packages/dd-trace/src/exporters/electron/index.js)
 
 ### Instrumentation (`@datadog/electron-sdk/instrument`)
 
