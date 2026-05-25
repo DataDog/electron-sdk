@@ -11,7 +11,6 @@ import { BridgeHandler } from './bridge';
 import { Transport } from './transport';
 import { Tracing } from './domain/tracing/Tracing';
 import { SpanProcessor } from './domain/tracing/SpanProcessor';
-import { displayInfo } from './tools/display';
 
 let sessionManager: SessionManager | undefined;
 let eventManager: EventManager | undefined;
@@ -44,7 +43,6 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   if (tracing.enabled) {
     new SpanProcessor(eventManager, hooks, config);
-    displayInfo('Tracing enabled');
   }
 
   transport = await Transport.create(config, eventManager);
