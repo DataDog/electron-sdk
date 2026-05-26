@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module';
 import { addError } from '../telemetry';
+import { patchIpcHandleContext, patchFetchContext } from './tracingPatches';
 
 // Support both CJS (__filename) and ESM (import.meta.url) contexts
 const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
@@ -27,6 +28,9 @@ export class Tracing {
       // @ts-expect-error electron plugin exists in dd-trace but is not in the type definitions
       tracer.use('electron');
       tracer.use('http');
+
+      patchIpcHandleContext(tracer);
+      patchFetchContext(tracer);
 
       // TODO(RUM-16445) discuss a more reliable way to flush the exporter
       const internalExporter = (tracer as unknown as TracerInternals)._tracer?._exporter;
