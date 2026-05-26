@@ -32,6 +32,8 @@ interface ElectronAPI {
     failureReason: 'error' | 'abandoned' | 'other',
     options?: { operationKey?: string }
   ) => Promise<void>;
+  mainFetchApiFetch: () => Promise<unknown>;
+  mainFetchApiNet: () => Promise<unknown>;
 }
 
 declare global {
@@ -200,6 +202,8 @@ if (rendererFetchBtn) {
 }
 
 setupDemoButton('main-fetch', 'main:fetch-api', () => window.electronAPI.mainFetchApi());
+setupDemoButton('main-fetch-fetch', 'main:fetch-api-fetch', () => window.electronAPI.mainFetchApiFetch());
+setupDemoButton('main-fetch-net', 'main:fetch-api-net', () => window.electronAPI.mainFetchApiNet());
 
 // --- Operation Monitoring demo buttons ---
 

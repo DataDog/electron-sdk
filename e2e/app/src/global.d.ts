@@ -12,6 +12,7 @@ declare global {
       generateUnhandledRejection: () => Promise<void>;
       generateManualError: (startTime?: number) => Promise<void>;
       crash: () => Promise<void>;
+      ping: () => Promise<string>;
       openBridgeFileWindow: () => Promise<void>;
       openBridgeFileWindowNoIsolation: () => Promise<void>;
       openBridgeHttpWindow: () => Promise<void>;

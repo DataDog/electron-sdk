@@ -7,13 +7,16 @@ import { UserActivityTracker } from './domain/UserActivityTracker';
 import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './domain/rum';
 import { callMonitored, startTelemetry } from './domain/telemetry';
 import { EventManager } from './event';
-import { BridgeHandler, registerPreload } from './bridge';
+import { BridgeHandler } from './bridge';
 import { Transport } from './transport';
+import { Tracing } from './domain/tracing/Tracing';
+import { SpanProcessor } from './domain/tracing/SpanProcessor';
 
 let sessionManager: SessionManager | undefined;
 let eventManager: EventManager | undefined;
 let transport: Transport | undefined;
 let rumApi: ReturnType<RumCollection['getApi']> | undefined;
+let tracing: Tracing | undefined;
 
 /**
  * Initialize the Electron SDK
@@ -25,8 +28,8 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
     return false;
   }
 
-  // register preload early to avoid missing windows creation before init is complete
-  registerPreload();
+  tracing = new Tracing();
+
   eventManager = new EventManager();
   const hooks = createFormatHooks();
 
@@ -37,6 +40,10 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   new Assembly(eventManager, hooks);
   new BridgeHandler(eventManager, config);
   new UserActivityTracker(eventManager);
+
+  if (tracing.enabled) {
+    new SpanProcessor(eventManager, hooks, config);
+  }
 
   transport = await Transport.create(config, eventManager);
   const rum = await RumCollection.start(eventManager, hooks);
@@ -137,6 +144,7 @@ export function failFeatureOperation(
  * Internal API to flush all pending batches to the intake
  */
 export async function _flushTransport(): Promise<void> {
+  await tracing?.flush();
   await transport?.flush();
 }
 
@@ -155,6 +163,7 @@ export type {
   FailureReason,
   FeatureOperationOptions,
   RumErrorEvent,
+  RumResourceEvent,
   RumViewEvent,
   RumVitalEvent,
   RumVitalOperationStepEvent,

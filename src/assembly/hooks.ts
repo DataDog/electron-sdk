@@ -1,6 +1,7 @@
 import { combine, DISCARDED, SKIPPED, type RecursivePartial, type TimeStamp } from '@datadog/browser-core';
 import type { RumEvent } from '../domain/rum';
 import type { TelemetryEvent } from '../domain/telemetry';
+import { RawSpanData } from '../domain/tracing/rawTracingData.types';
 
 export type RumEventType = RumEvent['type'];
 
@@ -10,6 +11,10 @@ export interface RumAssembleParams {
 }
 
 export interface TelemetryAssembleParams {
+  startTime: TimeStamp;
+}
+
+export interface SpanAssembleParams {
   startTime: TimeStamp;
 }
 
@@ -58,11 +63,14 @@ export type FormatHooks = ReturnType<typeof createFormatHooks>;
 export function createFormatHooks() {
   const rumHook = createAssembleHook<RumAssembleParams, RecursivePartial<RumEvent>>();
   const telemetryHook = createAssembleHook<TelemetryAssembleParams, RecursivePartial<TelemetryEvent>>();
+  const spanHook = createAssembleHook<SpanAssembleParams, RecursivePartial<RawSpanData>>();
 
   return {
     registerRum: rumHook.register,
     registerTelemetry: telemetryHook.register,
+    registerSpan: spanHook.register,
     triggerRum: rumHook.trigger,
     triggerTelemetry: telemetryHook.trigger,
+    triggerSpan: spanHook.trigger,
   };
 }

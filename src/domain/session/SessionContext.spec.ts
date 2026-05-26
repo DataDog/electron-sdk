@@ -42,6 +42,13 @@ describe('SessionContext', () => {
       expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toBe(DISCARDED);
     });
 
+    it('span hook returns DISCARDED', async () => {
+      const hooks = createFormatHooks();
+      await SessionContext.init(hooks, EXPIRE_DELAY);
+
+      expect(hooks.triggerSpan({ startTime: T0 })).toBe(DISCARDED);
+    });
+
     it('telemetry hook returns SKIPPED (undefined)', async () => {
       const hooks = createFormatHooks();
       await SessionContext.init(hooks, EXPIRE_DELAY);
@@ -59,6 +66,19 @@ describe('SessionContext', () => {
 
       expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toMatchObject({
         session: { id: 'session-abc' },
+      });
+    });
+
+    it('span hook returns the session id', async () => {
+      const hooks = createFormatHooks();
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
+
+      context.add('session-abc');
+
+      expect(hooks.triggerSpan({ startTime: T0 })).toMatchObject({
+        meta: {
+          '_dd.session.id': 'session-abc',
+        },
       });
     });
 
@@ -112,6 +132,34 @@ describe('SessionContext', () => {
 
       // event at T0 (before session started at T10) → DISCARDED
       expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toBe(DISCARDED);
+    });
+
+    it('span hook still attributes events during the session period (crash attribution)', async () => {
+      const hooks = createFormatHooks();
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
+
+      context.add('session-abc'); // at T0 = 0
+      vi.advanceTimersByTime(10); // time is now 10
+      context.close(); // closed at T10
+
+      // event at T0 (during active period) is still attributed
+      expect(hooks.triggerSpan({ startTime: T0 })).toMatchObject({
+        meta: {
+          '_dd.session.id': 'session-abc',
+        },
+      });
+    });
+
+    it('span hook returns DISCARDED for events before the session started', async () => {
+      const hooks = createFormatHooks();
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
+
+      vi.advanceTimersByTime(10); // advance to T10
+      context.add('session-abc'); // session started at T10
+      context.close();
+
+      // event at T0 (before session started at T10) → DISCARDED
+      expect(hooks.triggerSpan({ startTime: T0 })).toBe(DISCARDED);
     });
 
     it('telemetry hook still attributes events during the session period', async () => {
