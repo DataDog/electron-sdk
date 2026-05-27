@@ -2,6 +2,31 @@
 
 All notable changes to `@datadog/electron-sdk` are documented here.
 
+## [0.3.0] - 2026-05-27
+
+### ✨ Features
+
+- [RUM-15104] Add main-process resource tracking and tracing via `dd-trace` integration (#95). Preload injection is now handled by `dd-trace` instead of the SDK's `registerPreload()`, and new bundler plugins (`DatadogWebpackPlugin`, `datadogVitePlugin`, `datadogEsbuildPlugin`) are provided for Vite, Webpack, and esbuild.
+
+### 🐛 Bug Fixes
+
+- 🐛 fix crash source_type mapping (#127)
+
+### ⚠️ Breaking Changes
+
+- The old `registerPreload()` (which deferred `session.registerPreloadScript()` to `app.whenReady()`) and the bundled `preload-auto.cjs` bridge have been removed. dd-trace wraps `BrowserWindow` at require-time to inject its own preload script automatically.
+- Apps must import `@datadog/electron-sdk/instrument` before `electron` — either directly in the main entry file (e.g. `import '@datadog/electron-sdk/instrument'` as the first import in `main.ts`), or via one of the new bundler plugins which prepend dd-trace initialization as a banner.
+- When using **Vite**, **Webpack**, or **esbuild**, the corresponding bundler plugin is mandatory. These plugins ensure dd-trace and `@datadog/electron-sdk` are externalized and correctly initialized before application code runs.
+- For **ESM output** (esbuild/vite with `format: "esm"`), the bundler plugins register dd-trace's preload script directly via `session.defaultSession.registerPreloadScript()` on `app.ready`, since ESM's two-phase module loading prevents dd-trace's `BrowserWindow` wrapping from taking effect.
+
+### Internal
+
+- 👷 Update dependency eslint-plugin-unicorn to v64 (#122)
+- 👷 Update actions/checkout action to v6 (#118)
+- 👷 Update actions/setup-node action to v6 (#119)
+- 👷: migrate Renovate config (#117)
+- 👷 Update dependency webpack to v5.104.1 [SECURITY] (#115)
+
 ## [0.2.0] - 2026-05-04
 
 ### ✨ Features
