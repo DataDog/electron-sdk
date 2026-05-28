@@ -2,7 +2,7 @@
   "name": "e2e-test-app",
   "version": "1.0.0",
   "private": true,
-  "packageManager": "yarn@4.12.0",
+  "packageManager": "yarn@4.15.0",
   "main": "dist/main.js",
   "scripts": {
     "build": "yarn build:ts && mkdir -p ./dist && yarn build:bridge-window && yarn build:main-window",
@@ -11,12 +11,12 @@
     "build:bridge-window": "esbuild src/bridge-window.ts --bundle --format=esm --outfile=dist/bridge-window.js --sourcemap && cp src/bridge-window.html dist/"
   },
   "dependencies": {
-    "@datadog/browser-rum": "6.30.1",
+    "@datadog/browser-rum": "6.33.0",
     "@datadog/electron-sdk": "portal:../.."
   },
   "devDependencies": {
-    "electron": "41.1.0",
-    "esbuild": "0.27.3",
+    "electron": "41.7.0",
+    "esbuild": "0.28.0",
     "typescript": "5.9.3"
   }
 }
