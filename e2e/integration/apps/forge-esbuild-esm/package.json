@@ -25,7 +25,7 @@
   "devDependencies": {
     "@electron-forge/cli": "7.11.1",
     "@types/node": "24.10.11",
-    "electron": "41.1.0",
+    "electron": "42.2.0",
     "esbuild": "0.27.3",
     "typescript": "5.9.3"
   }
