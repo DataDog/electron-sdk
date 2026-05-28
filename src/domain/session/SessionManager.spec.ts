@@ -6,14 +6,9 @@ vi.mock('electron', () => ({
   },
 }));
 
-import * as display from '../../tools/display';
-vi.mock('../../tools/display', () => ({
-  displayError: vi.fn(),
-}));
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { type TimeStamp } from '@datadog/browser-core';
-import { SessionManager, SESSION_EXPIRATION_DELAY, SESSION_FILE_NAME } from './SessionManager';
+import { SessionManager, SESSION_EXPIRATION_DELAY } from './SessionManager';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
 
 const T0 = 0 as TimeStamp;
@@ -21,10 +16,6 @@ import { EventManager, EventKind, LifecycleKind, type LifecycleEvent } from '../
 import { createFormatHooks, type FormatHooks } from '../../assembly';
 
 const mfs = mockFs();
-
-function mockNoSessionFile() {
-  mfs.access.mockRejectedValue(new Error('ENOENT'));
-}
 
 describe('sessionManager', () => {
   let eventManager: EventManager;
@@ -53,69 +44,14 @@ describe('sessionManager', () => {
   });
 
   describe('session creation', () => {
-    it('creates new session when no file exists', async () => {
-      mockNoSessionFile();
-
+    it('creates new session on start', async () => {
       sessionManager = await SessionManager.start(eventManager, hooks);
 
       expect(sessionManager.getSession().id).toMatch(/^[0-9a-f-]+$/);
       expect(sessionManager.getSession().status).toBe('active');
-      expect(mfs.writeFile).toHaveBeenCalledWith(
-        expect.stringContaining(SESSION_FILE_NAME),
-        expect.any(String),
-        'utf-8'
-      );
 
       // no session renew event on initial session creation
       expect(lifecycleEvents).not.toContain(LifecycleKind.SESSION_RENEW);
-    });
-
-    it('creates new session on launch even if a valid session exists', async () => {
-      const now = Date.now();
-      const existingState = {
-        id: 'existing-session-id',
-        created: now - 1000,
-        lastActivity: now - 1000,
-      };
-
-      mfs.readFile.mockResolvedValue(JSON.stringify(existingState));
-
-      sessionManager = await SessionManager.start(eventManager, hooks);
-
-      expect(sessionManager.getSession().id).not.toBe('existing-session-id');
-      expect(sessionManager.getSession().status).toBe('active');
-    });
-
-    it('creates new session when existing is expired (inactivity)', async () => {
-      const now = Date.now();
-      const existingState = {
-        id: 'expired-session-id',
-        created: now - SESSION_EXPIRATION_DELAY - 1000,
-        lastActivity: now - SESSION_EXPIRATION_DELAY - 1000,
-      };
-
-      mfs.readFile.mockResolvedValue(JSON.stringify(existingState));
-
-      sessionManager = await SessionManager.start(eventManager, hooks);
-
-      expect(sessionManager.getSession().id).not.toBe('expired-session-id');
-      expect(sessionManager.getSession().status).toBe('active');
-    });
-
-    it('creates new session when existing is expired (session timeout)', async () => {
-      const now = Date.now();
-      const existingState = {
-        id: 'timed-out-session-id',
-        created: now - SESSION_TIME_OUT_DELAY - 1000,
-        lastActivity: now - 1000,
-      };
-
-      mfs.readFile.mockResolvedValue(JSON.stringify(existingState));
-
-      sessionManager = await SessionManager.start(eventManager, hooks);
-
-      expect(sessionManager.getSession().id).not.toBe('timed-out-session-id');
-      expect(sessionManager.getSession().status).toBe('active');
     });
 
     it('closes previous session history entry on new launch', async () => {
@@ -144,8 +80,6 @@ describe('sessionManager', () => {
 
   describe('session expiration', () => {
     it('expires session after inactivity delay', async () => {
-      mockNoSessionFile();
-
       sessionManager = await SessionManager.start(eventManager, hooks);
 
       expect(sessionManager.getSession().status).toBe('active');
@@ -153,30 +87,16 @@ describe('sessionManager', () => {
       await vi.advanceTimersByTimeAsync(SESSION_EXPIRATION_DELAY);
 
       expect(sessionManager.getSession().status).toBe('expired');
-      expect(mfs.unlink).toHaveBeenCalled();
       expect(lifecycleEvents).toContain(LifecycleKind.SESSION_EXPIRED);
     });
 
     it('resets inactivity timer on activity', async () => {
-      const now = Date.now();
-      mockNoSessionFile();
-
       sessionManager = await SessionManager.start(eventManager, hooks);
 
       const sessionId = sessionManager.getSession().id;
 
       // Advance time but not enough to expire
       await vi.advanceTimersByTimeAsync(SESSION_EXPIRATION_DELAY - 1000);
-
-      // Simulate activity - need to mock readFile for the updateActivity call
-      mfs.access.mockResolvedValue(undefined);
-      mfs.readFile.mockResolvedValue(
-        JSON.stringify({
-          id: sessionId,
-          created: now,
-          lastActivity: now + SESSION_EXPIRATION_DELAY - 1000,
-        })
-      );
 
       eventManager.notify({
         kind: EventKind.LIFECYCLE,
@@ -192,32 +112,18 @@ describe('sessionManager', () => {
     });
 
     it('expires session after session timeout regardless of activity', async () => {
-      const startTime = Date.now();
-      mockNoSessionFile();
-
       sessionManager = await SessionManager.start(eventManager, hooks);
 
       const sessionId = sessionManager.getSession().id;
       expect(sessionId).toBeDefined();
 
       // Keep session alive with activity, but eventually hit session timeout
-      // We need to keep refreshing activity to prevent inactivity timeout
       const activityIntervals = Math.floor(SESSION_TIME_OUT_DELAY / (SESSION_EXPIRATION_DELAY / 2));
 
       for (let i = 0; i < activityIntervals - 1; i++) {
-        // Advance time but not enough to trigger inactivity expiration
         await vi.advanceTimersByTimeAsync(SESSION_EXPIRATION_DELAY / 2);
 
         if (sessionManager.getSession().status === 'active') {
-          // Simulate activity to reset inactivity timer
-          mfs.access.mockResolvedValue(undefined);
-          mfs.readFile.mockResolvedValue(
-            JSON.stringify({
-              id: sessionId,
-              created: startTime,
-              lastActivity: Date.now(),
-            })
-          );
           eventManager.notify({
             kind: EventKind.LIFECYCLE,
             lifecycle: LifecycleKind.END_USER_ACTIVITY,
@@ -226,20 +132,15 @@ describe('sessionManager', () => {
         }
       }
 
-      // Session should still be alive (we've been keeping it active)
       expect(sessionManager.getSession().status).toBe('active');
 
-      // Advance past session timeout
       await vi.advanceTimersByTimeAsync(SESSION_EXPIRATION_DELAY);
 
-      // Session should be expired due to session timeout
       expect(sessionManager.getSession().status).toBe('expired');
       expect(lifecycleEvents).toContain(LifecycleKind.SESSION_EXPIRED);
     });
 
     it('creates new session on activity when expired', async () => {
-      mockNoSessionFile();
-
       sessionManager = await SessionManager.start(eventManager, hooks);
 
       const originalSessionId = sessionManager.getSession().id;
@@ -265,46 +166,8 @@ describe('sessionManager', () => {
     });
   });
 
-  describe('error handling', () => {
-    it('handles file read errors gracefully', async () => {
-      mfs.access.mockResolvedValue(undefined);
-      mfs.readFile.mockRejectedValue(new Error('Read error'));
-
-      sessionManager = await SessionManager.start(eventManager, hooks);
-
-      // Should create a new session despite read error
-
-      expect(sessionManager.getSession().status).toBe('active');
-    });
-
-    it('handles file write errors gracefully', async () => {
-      mockNoSessionFile();
-      mfs.writeFile.mockRejectedValue(new Error('Write error'));
-
-      sessionManager = await SessionManager.start(eventManager, hooks);
-
-      // Session should still be created in memory
-
-      expect(sessionManager.getSession().status).toBe('active');
-      expect(display.displayError).toHaveBeenCalledWith('Failed to save session state:', expect.any(Error));
-    });
-
-    it('handles JSON parse errors gracefully', async () => {
-      mfs.access.mockResolvedValue(undefined);
-      mfs.readFile.mockResolvedValue('invalid json');
-
-      sessionManager = await SessionManager.start(eventManager, hooks);
-
-      // Should create a new session despite parse error
-
-      expect(sessionManager.getSession().status).toBe('active');
-    });
-  });
-
   describe('expire', () => {
     it('sets session status to expired and clears timers', async () => {
-      mockNoSessionFile();
-
       sessionManager = await SessionManager.start(eventManager, hooks);
 
       expect(sessionManager.getSession().status).toBe('active');
@@ -312,15 +175,12 @@ describe('sessionManager', () => {
       sessionManager.expire();
 
       expect(sessionManager.getSession().status).toBe('expired');
-      expect(mfs.unlink).toHaveBeenCalled();
       expect(lifecycleEvents).toContain(LifecycleKind.SESSION_EXPIRED);
     });
   });
 
   describe('hook registration', () => {
     it('RUM hook returns session id immediately after start()', async () => {
-      mockNoSessionFile();
-
       sessionManager = await SessionManager.start(eventManager, hooks);
 
       const result = hooks.triggerRum({ eventType: 'view', startTime: T0 });
@@ -328,8 +188,6 @@ describe('sessionManager', () => {
     });
 
     it('telemetry hook returns session id immediately after start()', async () => {
-      mockNoSessionFile();
-
       sessionManager = await SessionManager.start(eventManager, hooks);
 
       const result = hooks.triggerTelemetry({ startTime: T0 });
@@ -339,8 +197,6 @@ describe('sessionManager', () => {
 
   describe('getSession', () => {
     it('should not allow to mutate the current session', async () => {
-      mockNoSessionFile();
-
       sessionManager = await SessionManager.start(eventManager, hooks);
 
       const session = sessionManager.getSession();

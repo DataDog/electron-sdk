@@ -1,16 +1,11 @@
-import { app } from 'electron';
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
 import { deepClone, generateUUID, ONE_MINUTE, type Subscription } from '@datadog/browser-core';
 import { type EndUserActivityEvent, EventKind, EventManager, LifecycleKind } from '../../event';
 import type { FormatHooks } from '../../assembly';
-import { addError, setTimeout } from '../telemetry';
-import { displayError } from '../../tools/display';
+import { setTimeout } from '../telemetry';
 import { SessionContext } from './SessionContext';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
 
 export const SESSION_EXPIRATION_DELAY = 15 * ONE_MINUTE;
-export const SESSION_FILE_NAME = '_dd_s';
 
 export interface Session {
   id: string;
@@ -20,18 +15,8 @@ export interface Session {
 export type SessionStatus = 'active' | 'expired';
 
 /**
- * Session state stored on disk
- */
-interface SessionState {
-  id: string;
-  created: number;
-  lastActivity: number;
-}
-
-/**
  * Track session lifecycle
  * - on start, always create a new Session
- * - store the Session on SESSION_FILE_NAME
  * - after SESSION_EXPIRATION_DELAY without activity, expire the Session
  * - after SESSION_TIME_OUT_DELAY if the Session is still active, expire the Session
  * - on activity, if the Session is expired, create a new Session
@@ -73,56 +58,41 @@ export class SessionManager {
   private async init(): Promise<void> {
     this.sessionContext = await SessionContext.init(this.hooks);
     this.sessionContext.close();
-    await this.createNewSession();
+    this.createNewSession();
 
     this.activitySubscription = this.eventManager.registerHandler<EndUserActivityEvent>({
       canHandle: (event): event is EndUserActivityEvent =>
         event.kind === EventKind.LIFECYCLE && event.lifecycle === LifecycleKind.END_USER_ACTIVITY,
       handle: () => {
-        this.updateActivity().catch(addError);
+        this.updateActivity();
       },
     });
   }
 
-  private async createNewSession(): Promise<void> {
+  private createNewSession(): void {
     const now = Date.now();
-    const state: SessionState = {
-      id: generateUUID(),
-      created: now,
-      lastActivity: now,
-    };
+    const id = generateUUID();
 
-    this.currentSession = { id: state.id, status: 'active' };
-    this.sessionContext.add(state.id);
-    await saveSessionState(state);
+    this.currentSession = { id, status: 'active' };
+    this.sessionContext.add(id);
 
     this.scheduleInactivityTimeout();
-    this.scheduleSessionTimeout(state.created);
+    this.scheduleSessionTimeout(now);
   }
 
   private expireSession(): void {
     this.clearTimers();
     this.currentSession.status = 'expired';
     this.sessionContext.close();
-    deleteSessionFile().catch(addError);
     this.eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
   }
 
-  private async updateActivity(): Promise<void> {
+  private updateActivity(): void {
     if (this.currentSession.status === 'expired') {
-      await this.createNewSession();
+      this.createNewSession();
       this.eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
       return;
     }
-
-    const state = await loadSessionState();
-    if (!state || state.id !== this.currentSession.id) {
-      addError(new Error('SessionManager: Invalid session state'));
-      return;
-    }
-
-    state.lastActivity = Date.now();
-    await saveSessionState(state);
 
     this.scheduleInactivityTimeout();
   }
@@ -153,38 +123,5 @@ export class SessionManager {
       clearTimeout(this.sessionTimeoutId);
       this.sessionTimeoutId = undefined;
     }
-  }
-}
-
-function getSessionFilePath(): string {
-  return path.join(app.getPath('userData'), SESSION_FILE_NAME);
-}
-
-async function loadSessionState(): Promise<SessionState | undefined> {
-  try {
-    const filePath = getSessionFilePath();
-    await fs.access(filePath);
-    const content = await fs.readFile(filePath, 'utf-8');
-    return JSON.parse(content) as SessionState;
-  } catch {
-    return undefined;
-  }
-}
-
-async function saveSessionState(state: SessionState): Promise<void> {
-  try {
-    const filePath = getSessionFilePath();
-    await fs.writeFile(filePath, JSON.stringify(state), 'utf-8');
-  } catch (error) {
-    displayError('Failed to save session state:', error);
-  }
-}
-
-async function deleteSessionFile(): Promise<void> {
-  try {
-    const filePath = getSessionFilePath();
-    await fs.unlink(filePath);
-  } catch {
-    // File might not exist, ignore error
   }
 }
