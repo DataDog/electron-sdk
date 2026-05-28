@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 // Expose IPC API to renderer process
 contextBridge.exposeInMainWorld('electronAPI', {
-  getSessionFile: () => ipcRenderer.invoke('get-session-file'),
+  getInternalContext: () => ipcRenderer.invoke('get-internal-context'),
   stopSession: () => ipcRenderer.invoke('stop-session'),
   generateTelemetryError: () => ipcRenderer.invoke('generateTelemetryError'),
   generateUncaughtException: () => ipcRenderer.invoke('generateUncaughtException'),
