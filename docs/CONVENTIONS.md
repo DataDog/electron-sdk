@@ -4,6 +4,69 @@
 
 Update relevant code documentation (JSDoc comments, inline comments) when modifying function behavior. Keep documentation in sync with implementation.
 
+### Public API JSDoc
+
+Public exports in `src/index.ts` are the customer's first contact with the SDK and surface in IDEs as autocompletion / hover docs. Keep the JSDoc focused on the **API contract**, not the implementation.
+
+- Describe what the function does, what each parameter means, and what gets emitted on the wire.
+- Mark experimental/preview status (`@experimental`) and deprecations (`@deprecated`).
+- Cross-link to the README "feature" section with `@see README "<section name>"` for usage walkthroughs, parallel-operation patterns, and error semantics.
+- **Do not put implementation reasoning in JSDoc** — internal scope routing, why local tracking is or isn't done, IPC bridge mechanics, etc. belong in `docs/ARCHITECTURE.md` or in a comment above the implementation, not in the public surface. Customers don't need it; they need to know how to call the function.
+
+### `@deprecated` aliases
+
+When renaming a public API after it has shipped (even as preview), keep the old name as a deprecated alias rather than breaking consumers:
+
+- Tag the old export with `@deprecated Use <newName> instead.` JSDoc — IDEs surface the strikethrough at the call site.
+- Have the old function delegate to the new one and emit a one-time runtime warning per method (track which warnings have fired in a `Set<string>` on the owning class).
+- Drop the deprecated alias in the next major release.
+
+See the `*FeatureOperation` → `*Operation` rename in `OperationCollection.ts` for the canonical implementation.
+
+## Public API Checklist
+
+When adding or renaming a top-level export from `src/index.ts`, every change below MUST land in the same PR:
+
+- [ ] `src/index.ts` — export with full JSDoc (contract + `@experimental`/`@deprecated` if applicable).
+- [ ] Domain implementation (`src/domain/.../*Collection.ts`) — actual behavior + unit tests.
+- [ ] **`README.md`** — usage example under the matching `## API` subsection. Public docs live here; don't put walkthroughs in JSDoc.
+- [ ] **Playground** — IPC handler + button so the new API is exercisable locally without writing a one-off Electron app.
+- [ ] **e2e harness** (`e2e/app/src/main.ts`, `e2e/app/src/preload.ts`, `e2e/lib/mainPage.ts`) + at least one scenario in `e2e/scenarios/` exercising the API end-to-end against the local intake mock.
+- [ ] If the public surface changes, **rebuild `dist/`** before typechecking the playground / e2e: they consume `@datadog/electron-sdk` via portal/yarn workspace and read from `dist/index.d.ts`. Stale dist is the most common cause of "Module has no exported member 'X'" after a rename.
+
+## Defensive Input Validation at the Public API
+
+TypeScript signatures only constrain TS callers. JS callers (and consumers compiling with looser settings) can pass anything. For public APIs that route into the event pipeline:
+
+- Use `unknown` for the validation function's signature even if the public function is typed: `function validateArgs(method, name: unknown, options: unknown): boolean`.
+- Use `@datadog/browser-core`'s `isIndexableObject(value)` to narrow `unknown` to a record shape before reading properties.
+- Define small reusable type guards co-located with the validator: `function isValidString(value: unknown): value is string { return typeof value === 'string' && value.trim().length > 0 }`.
+- Reject and log via `displayError` (drop the event); see "displayError vs displayWarn" below.
+- Pin the runtime contract with tests that bypass the type system (`badValue as unknown as ExpectedType`) — see `OperationCollection.spec.ts` "rejects non-object … as options" cases.
+
+## Derive Types from Generated Schemas
+
+`src/domain/rum/rumEvent.types.ts` is auto-generated from `rum-events-format` schemas. When a domain-internal type needs to mirror a schema field's enum or shape, **derive** it rather than duplicating the literals:
+
+```ts
+// good — single source of truth
+type StepType = NonNullable<RumVitalOperationStepEvent['vital']>['step_type'];
+
+// avoid — drifts when the schema changes
+type StepType = 'start' | 'end' | 'update' | 'retry';
+```
+
+Schema regenerations propagate automatically. See `src/domain/rum/rawRumData.types.ts` for `RawRumVital` derivation pattern.
+
+## `displayError` vs `displayWarn`
+
+`src/tools/display.ts` exports both:
+
+- **`displayError`** — the SDK is **dropping** the event or refusing to do something the customer asked. Examples: blank operation `name`, non-object `options`, invalid `failureReason`. Customer needs to fix this for the data to flow.
+- **`displayWarn`** — the SDK is **still emitting** the event but flagging something suspicious. Examples: operation `name` doesn't match the backend's character-set regex (backend is the source of truth, so we emit and let it decide). Customer may want to fix this but their data isn't being lost.
+
+Match the existing convention; don't escalate a warning to an error or vice versa without considering the drop-vs-emit semantics.
+
 ## File I/O
 
 Use async `node:fs/promises` APIs for file operations in production code:
