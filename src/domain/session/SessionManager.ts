@@ -30,8 +30,8 @@ interface SessionState {
 
 /**
  * Track session lifecycle
+ * - on start, always create a new Session
  * - store the Session on SESSION_FILE_NAME
- * - on start, if no Session is already active, create a new Session
  * - after SESSION_EXPIRATION_DELAY without activity, expire the Session
  * - after SESSION_TIME_OUT_DELAY if the Session is still active, expire the Session
  * - on activity, if the Session is expired, create a new Session
@@ -71,22 +71,9 @@ export class SessionManager {
   }
 
   private async init(): Promise<void> {
-    const now = Date.now();
-    const existingState = await loadSessionState();
-
     this.sessionContext = await SessionContext.init(this.hooks);
-
-    if (existingState && isSessionValid(existingState, now)) {
-      this.currentSession = { id: existingState.id, status: 'active' };
-      this.sessionContext.add(existingState.id);
-      existingState.lastActivity = now;
-      await saveSessionState(existingState);
-      this.scheduleInactivityTimeout();
-      this.scheduleSessionTimeout(existingState.created);
-    } else {
-      this.sessionContext.close();
-      await this.createNewSession();
-    }
+    this.sessionContext.close();
+    await this.createNewSession();
 
     this.activitySubscription = this.eventManager.registerHandler<EndUserActivityEvent>({
       canHandle: (event): event is EndUserActivityEvent =>
@@ -171,12 +158,6 @@ export class SessionManager {
 
 function getSessionFilePath(): string {
   return path.join(app.getPath('userData'), SESSION_FILE_NAME);
-}
-
-function isSessionValid(state: SessionState, now: number): boolean {
-  const isNotExpired = now - state.lastActivity < SESSION_EXPIRATION_DELAY;
-  const isNotTimedOut = now - state.created < SESSION_TIME_OUT_DELAY;
-  return isNotExpired && isNotTimedOut;
 }
 
 async function loadSessionState(): Promise<SessionState | undefined> {

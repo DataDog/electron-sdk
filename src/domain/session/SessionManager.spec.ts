@@ -70,7 +70,7 @@ describe('sessionManager', () => {
       expect(lifecycleEvents).not.toContain(LifecycleKind.SESSION_RENEW);
     });
 
-    it('resumes valid existing session', async () => {
+    it('creates new session on launch even if a valid session exists', async () => {
       const now = Date.now();
       const existingState = {
         id: 'existing-session-id',
@@ -82,7 +82,7 @@ describe('sessionManager', () => {
 
       sessionManager = await SessionManager.start(eventManager, hooks);
 
-      expect(sessionManager.getSession().id).toBe('existing-session-id');
+      expect(sessionManager.getSession().id).not.toBe('existing-session-id');
       expect(sessionManager.getSession().status).toBe('active');
     });
 
@@ -118,31 +118,26 @@ describe('sessionManager', () => {
       expect(sessionManager.getSession().status).toBe('active');
     });
 
-    it('closes previous session history entry on restart when session expired', async () => {
+    it('closes previous session history entry on new launch', async () => {
       vi.setSystemTime(1000);
       const now = Date.now();
-      const expiredState = {
-        id: 'expired-session-id',
-        created: now - SESSION_EXPIRATION_DELAY - 1000,
-        lastActivity: now - SESSION_EXPIRATION_DELAY - 1000,
-      };
-      mfs.readFile
-        .mockResolvedValueOnce(JSON.stringify(expiredState)) // _dd_s
-        .mockResolvedValueOnce(JSON.stringify([{ startTime: 0, endTime: null, value: 'expired-session-id' }])); // _dd_session_history
+      mfs.readFile.mockResolvedValueOnce(
+        JSON.stringify([{ startTime: 0, endTime: null, value: 'previous-session-id' }])
+      ); // _dd_session_history
 
       sessionManager = await SessionManager.start(eventManager, hooks);
 
       const newSessionId = sessionManager.getSession().id;
-      expect(newSessionId).not.toBe('expired-session-id');
+      expect(newSessionId).not.toBe('previous-session-id');
 
-      // Event at T_now (after restart) → new session
+      // Event at T_now (after relaunch) → new session
       expect(hooks.triggerRum({ eventType: 'view', startTime: now as TimeStamp })).toMatchObject({
         session: { id: newSessionId },
       });
 
-      // Event at T0 (before restart, within old session) → old session (crash attribution)
+      // Event at T0 (before relaunch, within previous session) → old session (crash attribution)
       expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toMatchObject({
-        session: { id: 'expired-session-id' },
+        session: { id: 'previous-session-id' },
       });
     });
   });
