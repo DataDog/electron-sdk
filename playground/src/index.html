@@ -78,17 +78,15 @@
       }
 
       #session-content {
+        display: block;
         background: rgba(0, 0, 0, 0.3);
-        padding: 15px;
-        border-radius: 8px;
+        padding: 8px 14px;
+        border-radius: 6px;
         font-family: 'Courier New', monospace;
-        font-size: 14px;
-        white-space: pre-wrap;
-        word-break: break-all;
+        font-size: 13px;
         margin: 0;
-        min-height: 80px;
-        max-height: 200px;
-        overflow-y: auto;
+        text-align: center;
+        letter-spacing: 0.5px;
       }
 
       .note {
@@ -170,8 +168,8 @@
       <p>Testing @datadog/electron-sdk</p>
 
       <div class="session-section">
-        <h2>Session File Content:</h2>
-        <pre id="session-content">Loading...</pre>
+        <h2>Session ID:</h2>
+        <code id="session-content">Loading...</code>
       </div>
 
       <div class="section-label">SDK Actions</div>
