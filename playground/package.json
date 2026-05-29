@@ -17,6 +17,7 @@
     "@datadog/electron-sdk": "portal:.."
   },
   "devDependencies": {
+    "@playwright/test": "1.52.0",
     "@types/node": "25.5.0",
     "chokidar": "5.0.0",
     "concurrently": "9.2.1",

@@ -140,6 +140,9 @@
   "dependencies": {
     "dd-trace": "5.103.0"
   },
+  "resolutions": {
+    "dd-trace": "portal:../dd-trace-js"
+  },
   "peerDependencies": {
     "electron": ">=39"
   },

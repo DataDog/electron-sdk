@@ -34,6 +34,10 @@ interface ElectronAPI {
   ) => Promise<void>;
   mainFetchApiFetch: () => Promise<unknown>;
   mainFetchApiNet: () => Promise<unknown>;
+  flushTransport: () => Promise<void>;
+  demoGetData: () => Promise<{ value: number }>;
+  demoTriggerPush: () => Promise<void>;
+  onPushNotification: (cb: (data: unknown) => void) => void;
 }
 
 declare global {
@@ -204,6 +208,24 @@ if (rendererFetchBtn) {
 setupDemoButton('main-fetch', 'main:fetch-api', () => window.electronAPI.mainFetchApi());
 setupDemoButton('main-fetch-fetch', 'main:fetch-api-fetch', () => window.electronAPI.mainFetchApiFetch());
 setupDemoButton('main-fetch-net', 'main:fetch-api-net', () => window.electronAPI.mainFetchApiNet());
+
+// --- IPC Span Demo ---
+
+// Register RUM context provider so the dd-trace preload can read view/action IDs at IPC call time.
+// In production this would live in the browser-sdk's Electron bridge initialization.
+const bridge = (
+  window as unknown as { DatadogEventBridge?: { registerRumContextProvider?: (fn: () => string) => void } }
+).DatadogEventBridge;
+if (bridge?.registerRumContextProvider) {
+  bridge.registerRumContextProvider(() => JSON.stringify(datadogRum.getInternalContext()));
+}
+
+window.electronAPI.onPushNotification((data) => {
+  logIpcCall('demo:push-notification', 'done', 0, JSON.stringify(data));
+});
+
+setupDemoButton('demo-get-data', 'demo:get-data', () => window.electronAPI.demoGetData());
+setupDemoButton('demo-trigger-push', 'demo:trigger-push', () => window.electronAPI.demoTriggerPush());
 
 // --- Operation Monitoring demo buttons ---
 

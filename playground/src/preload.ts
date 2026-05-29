@@ -17,4 +17,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('main:fail-operation', name, failureReason, options),
   mainFetchApiFetch: () => ipcRenderer.invoke('main:fetch-api-fetch'),
   mainFetchApiNet: () => ipcRenderer.invoke('main:fetch-api-net'),
+  flushTransport: () => ipcRenderer.invoke('flush-transport'),
+  demoGetData: () => ipcRenderer.invoke('demo:get-data'),
+  demoTriggerPush: () => ipcRenderer.invoke('demo:trigger-push'),
+  onPushNotification: (cb: (data: unknown) => void) =>
+    ipcRenderer.on('demo:push-notification', (_event, data) => cb(data as unknown)),
 });

@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "lib": ["ES2020", "DOM"],
+    "types": ["node"],
+    "composite": true,
+    "emitDeclarationOnly": true
+  },
+  "include": ["test/**/*.ts", "../e2e/lib/intake.ts"],
+  "exclude": ["node_modules"]
+}

@@ -9,12 +9,15 @@ import {
   init,
   stopSession,
   _generateTelemetryError,
+  _flushTransport,
   startOperation,
   succeedOperation,
   failOperation,
   type FailureReason,
   type FeatureOperationOptions,
 } from '@datadog/electron-sdk';
+
+const isTestMode = process.env.DD_TEST_MODE === '1';
 import { loadWindowState, saveWindowState } from './main/windowState';
 import { setupHotReload } from './main/hotReload';
 
@@ -32,6 +35,7 @@ function createWindow() {
     height: savedState?.height ?? 768,
     x: savedState?.x,
     y: savedState?.y,
+    show: !isTestMode,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -120,6 +124,21 @@ ipcMain.handle('crash', () => {
   process.crash();
 });
 
+// Flush dd-trace exporter + SDK transport — used by tests before asserting spans
+ipcMain.handle('flush-transport', async () => {
+  await _flushTransport();
+});
+
+// Demo: Renderer → Main (ipcRenderer.invoke scenario)
+ipcMain.handle('demo:get-data', () => {
+  return { value: 42 };
+});
+
+// Demo: Main → Renderer (webContents.send scenario)
+ipcMain.handle('demo:trigger-push', () => {
+  mainWindow?.webContents.send('demo:push-notification', { msg: 'hello' });
+});
+
 // --- Operation Monitoring demo handlers ---
 
 ipcMain.handle('main:start-operation', (_event, name: string, options?: FeatureOperationOptions) => {
@@ -153,9 +172,10 @@ void app.whenReady().then(async () => {
     },
   };
   const result = await init({
-    ...CONF.staging,
+    ...CONF.prod,
     service: 'electron-playground',
     env: 'dev',
+    ...(process.env.DD_SDK_PROXY ? { proxy: process.env.DD_SDK_PROXY } : {}),
   });
   console.log('SDK init result:', result);
 
