@@ -3,7 +3,13 @@ import { type TimeStamp } from '@datadog/js-core/time';
 import { combine, isIndexableObject, type RecursivePartial } from '@datadog/js-core/util';
 import { DISCARDED } from '@datadog/js-core/assembly';
 import { EventKind, EventSource, EventTrack, LifecycleKind, EventFormat } from '../event';
-import type { EventManager, ServerRumEvent, BrowserProfileEvent, BrowserProfilerTrace } from '../event';
+import type {
+  EventManager,
+  ServerRumEvent,
+  BrowserProfileEvent,
+  BrowserProfilerTrace,
+  RawReplayEvent,
+} from '../event';
 import { isEmptyObject } from '@datadog/browser-core';
 import { monitor, addError as addTelemetryError } from '../domain/telemetry';
 import { BRIDGE_CHANNEL, setBridgeConfig, type BridgeOptions } from '../common';
@@ -11,11 +17,12 @@ import type { FormatHooks } from './hooks';
 import type { RumEvent } from '../domain/rum';
 import { Configuration } from '../config';
 
-type BridgeEventType = 'rum' | 'log' | 'internal_telemetry' | 'profile';
+type BridgeEventType = 'rum' | 'log' | 'internal_telemetry' | 'profile' | 'record';
 
 interface BridgeEvent {
   eventType: BridgeEventType;
   event: unknown;
+  view?: { id: string };
 }
 
 /**
@@ -42,7 +49,10 @@ export class RendererPipeline {
       // Capabilities are resolved once here and advertised globally, not per session. Bridge mode has no
       // channel to notify the renderer on session renew/expire or capability changes, so the browser SDK
       // cannot adjust its per-session behavior (e.g. stop profiling a sampled-out session). Out of scope for now.
-      capabilities: config.profilingSampleRate > 0 ? ['profiles'] : [],
+      capabilities: [
+        ...(config.profilingSampleRate > 0 ? ['profiles'] : []),
+        ...(config.sessionReplaySampleRate > 0 ? ['records'] : []),
+      ],
     };
 
     ipcMain.on(
@@ -94,6 +104,15 @@ export class RendererPipeline {
         });
         break;
       }
+      case 'record':
+        this.eventManager.notify({
+          kind: EventKind.RAW,
+          source: EventSource.RENDERER,
+          format: EventFormat.REPLAY,
+          data: bridgeEvent.event,
+          view: bridgeEvent.view,
+        } as RawReplayEvent);
+        break;
       default:
         addTelemetryError(new Error(`Unhandled bridge event type: ${String(bridgeEvent.eventType)}`));
     }

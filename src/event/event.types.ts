@@ -4,10 +4,11 @@ import { RawRumData, RumEvent } from '../domain/rum';
 import type { TimeStamp } from '@datadog/js-core/time';
 import { RawTraceData } from '../domain/tracing/rawTracingData.types';
 import type { BrowserProfileEvent, BrowserProfilerTrace } from '../domain/profiling';
+import type { ReplaySegmentPayload } from '../domain/replay';
 
 export type { BrowserProfileEvent, BrowserProfilerTrace };
 
-export type RawEvent = RawRumEvent | RawTelemetryEvent | RawProfileEvent;
+export type RawEvent = RawRumEvent | RawTelemetryEvent | RawProfileEvent | RawReplayEvent;
 
 export interface RawRumEvent {
   kind: typeof EventKind.RAW;
@@ -23,19 +24,30 @@ export interface RawTelemetryEvent {
   startTime?: TimeStamp;
 }
 
+export interface RawReplayEvent {
+  kind: typeof EventKind.RAW;
+  source: typeof EventSource.RENDERER;
+  track: typeof EventTrack.REPLAY;
+  format: typeof EventFormat.REPLAY;
+  data: unknown;
+  view?: { id: string };
+  startTime?: TimeStamp;
+}
+
 export type ServerEvent =
   | ServerRumEvent
   | ServerTelemetryEvent
   | ServerLogsEvent
   | ServerSpansEvent
-  | ServerProfileEvent;
+  | ServerProfileEvent
+  | ServerReplayEvent;
 
 /**
  * Server events transported as newline-delimited JSON, i.e. every {@link ServerEvent} whose
  * `data` is the full payload to serialize. Excludes {@link ServerProfileEvent}, which carries
  * an additional `trace` field and is transported as a multipart profile.
  */
-export type StandardServerEvent = Exclude<ServerEvent, ServerProfileEvent>;
+export type StandardServerEvent = Exclude<ServerEvent, ServerProfileEvent | ServerReplayEvent>;
 
 export interface ServerRumEvent {
   kind: typeof EventKind.SERVER;
@@ -78,6 +90,12 @@ export interface ServerProfileEvent {
   track: typeof EventTrack.PROFILE;
   data: BrowserProfileEvent;
   trace: BrowserProfilerTrace;
+}
+
+export interface ServerReplayEvent {
+  kind: typeof EventKind.SERVER;
+  track: typeof EventTrack.REPLAY;
+  data: ReplaySegmentPayload;
 }
 
 export interface EndUserActivityEvent {
