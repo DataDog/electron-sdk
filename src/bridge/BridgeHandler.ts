@@ -1,15 +1,16 @@
 import { ipcMain } from 'electron';
 import { DefaultPrivacyLevel } from '@datadog/browser-core';
 import { EventKind, EventSource, EventFormat } from '../event';
-import type { EventManager, RawRumEvent } from '../event';
+import type { EventManager, RawRumEvent, RawReplayEvent } from '../event';
 import { monitor, addError as addTelemetryError } from '../domain/telemetry';
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
 
-type BridgeEventType = 'rum' | 'log' | 'internal_telemetry';
+type BridgeEventType = 'rum' | 'log' | 'internal_telemetry' | 'record';
 
 interface BridgeEvent {
   eventType: BridgeEventType;
   event: unknown;
+  view?: { id: string };
 }
 
 export interface BridgeOptions {
@@ -64,6 +65,14 @@ export class BridgeHandler {
           format: EventFormat.RUM,
           data: bridgeEvent.event,
         } as RawRumEvent);
+        break;
+      case 'record':
+        this.eventManager.notify({
+          kind: EventKind.RAW,
+          format: EventFormat.REPLAY,
+          data: bridgeEvent.event,
+          view: bridgeEvent.view,
+        } as RawReplayEvent);
         break;
       case 'log':
         // TODO(RUM-15047)

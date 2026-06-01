@@ -4,6 +4,7 @@ import type { RawRumEvent } from '../event';
 import type { FormatHooks } from './hooks';
 import { RumEvent } from '../domain/rum';
 import { TelemetryEvent } from '../domain/telemetry';
+import type { ViewReplayStats } from '../domain/replay';
 
 /**
  * Transforms RawEvents into ServerEvents by enriching them with contextual
@@ -20,7 +21,8 @@ import { TelemetryEvent } from '../domain/telemetry';
 export class Assembly {
   constructor(
     private eventManager: EventManager,
-    private hooks: FormatHooks
+    private hooks: FormatHooks,
+    private getViewReplayStats?: (viewId: string) => ViewReplayStats | undefined
   ) {
     this.eventManager.registerHandler<RawEvent>({
       canHandle: (event) => event.kind === EventKind.RAW,
@@ -35,6 +37,11 @@ export class Assembly {
 
   /** Route to the appropriate assembly strategy based on event source. */
   private assembleToServerEvent(event: RawEvent): ServerEvent | DISCARDED {
+    // Replay events are handled by ReplayCollection, not Assembly
+    if (event.format === EventFormat.REPLAY) {
+      return DISCARDED;
+    }
+
     if (event.format === EventFormat.RUM && event.source === EventSource.RENDERER) {
       return this.assembleRendererRumEvent(event);
     }
@@ -59,10 +66,31 @@ export class Assembly {
     }
 
     const { session, application, view } = hookResult ?? {};
+
+    // For view events, inject main-process replay stats so the backend sees
+    // the correct segments_count and has_replay instead of the browser SDK's
+    // zero values (bridge mode doesn't track segments in the renderer).
+    const rendererViewId = (event.data as { view?: { id?: string } }).view?.id;
+    const replayStats =
+      event.data.type === 'view' && rendererViewId ? this.getViewReplayStats?.(rendererViewId) : undefined;
+
     const mainProcessAttributes = {
-      session: { id: session?.id },
+      session: {
+        id: session?.id,
+        ...(replayStats ? { has_replay: true } : {}),
+      },
       application: { id: application?.id },
       container: { view: { id: view?.id }, source: 'electron' },
+      ...(replayStats
+        ? {
+            _dd: {
+              replay_stats: {
+                segments_count: replayStats.segments_count,
+                segments_total_raw_size: replayStats.segments_total_raw_size,
+              },
+            },
+          }
+        : {}),
     };
 
     return {

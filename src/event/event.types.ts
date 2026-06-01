@@ -3,8 +3,9 @@ import { RawTelemetryData, TelemetryEvent } from '../domain/telemetry';
 import { RawRumData, RumEvent } from '../domain/rum';
 import type { TimeStamp } from '@datadog/browser-core';
 import { RawTraceData } from '../domain/tracing/rawTracingData.types';
+import type { ReplaySegmentPayload } from '../domain/replay';
 
-export type RawEvent = RawRumEvent | RawTelemetryEvent;
+export type RawEvent = RawRumEvent | RawTelemetryEvent | RawReplayEvent;
 
 export interface RawRumEvent {
   kind: typeof EventKind.RAW;
@@ -22,7 +23,22 @@ export interface RawTelemetryEvent {
   startTime?: TimeStamp;
 }
 
-export type ServerEvent = ServerRumEvent | ServerTelemetryEvent | ServerLogsEvent | ServerSpansEvent;
+export interface RawReplayEvent {
+  kind: typeof EventKind.RAW;
+  source: typeof EventSource.RENDERER;
+  track: typeof EventTrack.REPLAY;
+  format: typeof EventFormat.REPLAY;
+  data: unknown;
+  view?: { id: string };
+  startTime?: TimeStamp;
+}
+
+export type ServerEvent =
+  | ServerRumEvent
+  | ServerTelemetryEvent
+  | ServerLogsEvent
+  | ServerSpansEvent
+  | ServerReplayEvent;
 
 export interface ServerRumEvent {
   kind: typeof EventKind.SERVER;
@@ -47,6 +63,12 @@ export interface ServerSpansEvent {
   kind: typeof EventKind.SERVER;
   track: typeof EventTrack.SPANS;
   data: RawTraceData;
+}
+
+export interface ServerReplayEvent {
+  kind: typeof EventKind.SERVER;
+  track: typeof EventTrack.REPLAY;
+  data: ReplaySegmentPayload;
 }
 
 export interface EndUserActivityEvent {
