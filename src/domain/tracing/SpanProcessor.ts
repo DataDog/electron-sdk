@@ -76,7 +76,7 @@ export class SpanProcessor {
         continue;
       }
 
-      processedSpans.push(combine(span, hookResult));
+      processedSpans.push(combine(hookResult, span));
 
       if (isHttpSpan(exportedSpan)) {
         this.emitResource(spanToResource(exportedSpan));

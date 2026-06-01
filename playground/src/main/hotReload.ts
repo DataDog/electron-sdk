@@ -2,6 +2,8 @@ import { app } from 'electron';
 import * as path from 'node:path';
 
 export function setupHotReload(): void {
+  if (process.env.DD_TEST_MODE === '1') return;
+
   // Watch playground files - delay startup to avoid initial compilation triggers
   try {
     setTimeout(() => {

@@ -1,6 +1,20 @@
 import type { Page } from '@playwright/test';
 import { test, expect, flushTransport } from './helpers';
-import type { Intake } from '../../e2e/lib/intake';
+import type { Intake, ReceivedEvent } from '../../e2e/lib/intake';
+
+interface ViewContextBody {
+  view: { id: string; url?: string };
+  session: { id: string };
+}
+
+function isMainProcessView(e: ReceivedEvent): boolean {
+  return (e.body as { view?: { url?: string } }).view?.url === 'electron://main-process';
+}
+
+async function getMainView(intake: Intake): Promise<ViewContextBody> {
+  const events = await intake.waitForEventCount('view', 1, { timeout: 10_000, predicate: isMainProcessView });
+  return events[0].body as ViewContextBody;
+}
 
 // Establish session/view before any span assertions — mirrors e2e/scenarios/span.scenario.ts.
 // Without a view in the main-process ViewContext, SpanProcessor discards all spans.
@@ -13,20 +27,27 @@ async function waitForSession(window: Page, intake: Intake): Promise<void> {
 // testing renderer-side spans. This should pass even before dd-trace changes.
 test('sanity: ipcMain span is emitted for demo:get-data', async ({ window, intake }) => {
   await waitForSession(window, intake);
+  const mainView = await getMainView(intake);
 
   await window.click('#demo-get-data');
   await flushTransport(window);
 
-  const span = await intake.waitForSpan((s) => s.name === 'electron.main.handle' && s.resource === 'demo:get-data', {
-    timeout: 10_000,
-  });
+  const mainSpan = await intake.waitForSpan(
+    (s) => s.name === 'electron.main.handle' && s.resource === 'demo:get-data',
+    {
+      timeout: 10_000,
+    }
+  );
 
-  expect(span.service).toBeTruthy();
-  expect(span.trace_id).toBeTruthy();
+  expect(mainSpan.service).toBeTruthy();
+  expect(mainSpan.trace_id).toBeTruthy();
+  expect(mainSpan.meta['_dd.view.id']).toBe(mainView.view.id);
+  expect(mainSpan.meta['_dd.session.id']).toBe(mainView.session.id);
 });
 
 test('renderer→main: ipcRenderer.invoke creates linked spans', async ({ window, intake }) => {
   await waitForSession(window, intake);
+  const mainView = await getMainView(intake);
   intake.clear();
 
   await window.click('#demo-get-data');
@@ -43,6 +64,15 @@ test('renderer→main: ipcRenderer.invoke creates linked spans', async ({ window
 
   expect(rendererSpan.trace_id).toBe(mainSpan.trace_id);
   expect(mainSpan.parent_id).toBe(rendererSpan.span_id);
+
+  // renderer span carries renderer process view id (distinct from main process view)
+  expect(rendererSpan.meta['_dd.view.id']).toBeTruthy();
+  expect(rendererSpan.meta['_dd.view.id']).not.toBe(mainSpan.meta['_dd.view.id']);
+  // renderer and main spans share the same session
+  expect(rendererSpan.meta['_dd.session.id']).toBe(mainSpan.meta['_dd.session.id']);
+  // main span carries main process view id and session id
+  expect(mainSpan.meta['_dd.view.id']).toBe(mainView.view.id);
+  expect(mainSpan.meta['_dd.session.id']).toBe(mainView.session.id);
 });
 
 test('renderer span carries RUM view context', async ({ window, intake }) => {
@@ -56,8 +86,14 @@ test('renderer span carries RUM view context', async ({ window, intake }) => {
     (s) => s.name === 'electron.renderer.invoke' && s.resource === 'demo:get-data',
     { timeout: 10_000 }
   );
+  const mainSpan = await intake.waitForSpan(
+    (s) => s.name === 'electron.main.handle' && s.resource === 'demo:get-data',
+    { timeout: 5_000 }
+  );
 
+  // renderer span carries a distinct renderer process view id, not the main process one
   expect(rendererSpan.meta?.['_dd.view.id']).toBeTruthy();
+  expect(rendererSpan.meta?.['_dd.view.id']).not.toBe(mainSpan.meta['_dd.view.id']);
 });
 
 test('main→renderer: webContents.send creates linked spans', async ({ window, intake }) => {
@@ -71,6 +107,11 @@ test('main→renderer: webContents.send creates linked spans', async ({ window, 
     (s) => s.name === 'electron.main.send' && s.resource === 'demo:push-notification',
     { timeout: 10_000 }
   );
+
+  // The renderer.receive span is generated asynchronously after the first flush.
+  // A second flush ensures the batched span is sent to the intake.
+  await flushTransport(window);
+
   const rendererReceiveSpan = await intake.waitForSpan(
     (s) => s.name === 'electron.renderer.receive' && s.resource === 'demo:push-notification',
     { timeout: 5_000 }

@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import { addError } from '../telemetry';
 import { patchIpcHandleContext, patchFetchContext } from './tracingPatches';
+import { RendererSpanCollector } from './RendererSpanCollector';
 
 // Support both CJS (__filename) and ESM (import.meta.url) contexts
 const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
@@ -16,6 +17,7 @@ interface TracerInternals {
 export class Tracing {
   enabled = false;
   private exporter: ExporterWithFlush | undefined;
+  private rendererSpanCollector: RendererSpanCollector | undefined;
 
   constructor() {
     try {
@@ -25,7 +27,6 @@ export class Tracing {
       // tracer.init() is a no-op if already initialized, so we only configure plugins here.
       // Service/env/version are set by SpanProcessor on each span payload,
       // overriding dd-trace's defaults with the SDK config values.
-      // @ts-expect-error electron plugin exists in dd-trace but is not in the type definitions
       tracer.use('electron');
       tracer.use('http');
 
@@ -39,6 +40,7 @@ export class Tracing {
       }
 
       this.enabled = true;
+      this.rendererSpanCollector = new RendererSpanCollector();
     } catch (error) {
       addError(error);
     }
@@ -47,6 +49,10 @@ export class Tracing {
   // dd-trace's electron exporter batches spans on a flushInterval (2s by default).
   // Flushing it before the SDK transport ensures any pending HTTP spans become RUM resource events synchronously,
   // so _flushTransport() captures them in one shot.
+  stop(): void {
+    this.rendererSpanCollector?.stop();
+  }
+
   async flush(): Promise<void> {
     if (!this.exporter) {
       return;
