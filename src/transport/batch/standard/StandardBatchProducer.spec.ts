@@ -1,9 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import path from 'node:path';
+<<<<<<<< HEAD:src/transport/batch/standard/StandardBatchProducer.spec.ts
 import type { StandardBatchProducerConfig as ProducerConfig } from './StandardBatchProducer';
 import { mockFs } from '../../../mocks.specUtil';
 import { StandardBatchProducer } from './StandardBatchProducer';
 import { display } from '../../../tools/display';
+========
+import type { BatchProducerConfig as ProducerConfig } from '../types';
+import { mockFs } from '../../../mocks.specUtil';
+import { GenericBatchProducer } from './GenericBatchProducer';
+>>>>>>>> fb1f12c (Refactor transport to make BatchProducer/Consumer extensible for new transport strategies):src/transport/batch/generic/GenericBatchProducer.spec.ts
 
 vi.mock('node:fs/promises');
 vi.mock('../../../tools/display', () => ({
@@ -45,7 +51,11 @@ describe('StandardBatchProducer', () => {
     it('creates track directory when missing', async () => {
       fsMocks.access.mockRejectedValueOnce(new Error('ENOENT'));
 
+<<<<<<<< HEAD:src/transport/batch/standard/StandardBatchProducer.spec.ts
       await StandardBatchProducer.create(config);
+========
+      await GenericBatchProducer.create(config);
+>>>>>>>> fb1f12c (Refactor transport to make BatchProducer/Consumer extensible for new transport strategies):src/transport/batch/generic/GenericBatchProducer.spec.ts
 
       expect(fsMocks.mkdir).toHaveBeenCalledWith(config.trackPath, { recursive: true });
     });
@@ -53,7 +63,11 @@ describe('StandardBatchProducer', () => {
     it('does not create directory when it exists', async () => {
       fsMocks.access.mockResolvedValueOnce(undefined);
 
+<<<<<<<< HEAD:src/transport/batch/standard/StandardBatchProducer.spec.ts
       await StandardBatchProducer.create(config);
+========
+      await GenericBatchProducer.create(config);
+>>>>>>>> fb1f12c (Refactor transport to make BatchProducer/Consumer extensible for new transport strategies):src/transport/batch/generic/GenericBatchProducer.spec.ts
 
       expect(fsMocks.mkdir).not.toHaveBeenCalled();
     });
@@ -61,7 +75,11 @@ describe('StandardBatchProducer', () => {
     it('rotates orphaned .tmp files from previous sessions to .log', async () => {
       fsMocks.readdir.mockResolvedValueOnce(['batch-111.tmp', 'batch-222.tmp']);
 
+<<<<<<<< HEAD:src/transport/batch/standard/StandardBatchProducer.spec.ts
       await StandardBatchProducer.create(config);
+========
+      await GenericBatchProducer.create(config);
+>>>>>>>> fb1f12c (Refactor transport to make BatchProducer/Consumer extensible for new transport strategies):src/transport/batch/generic/GenericBatchProducer.spec.ts
 
       expect(fsMocks.rename).toHaveBeenCalledWith(
         path.join(config.trackPath, 'batch-111.tmp'),
@@ -76,7 +94,11 @@ describe('StandardBatchProducer', () => {
     it('does not rename non-.tmp files when rotating orphaned batches', async () => {
       fsMocks.readdir.mockResolvedValueOnce(['batch-111.log', 'other.txt', 'batch-222.tmp']);
 
+<<<<<<<< HEAD:src/transport/batch/standard/StandardBatchProducer.spec.ts
       await StandardBatchProducer.create(config);
+========
+      await GenericBatchProducer.create(config);
+>>>>>>>> fb1f12c (Refactor transport to make BatchProducer/Consumer extensible for new transport strategies):src/transport/batch/generic/GenericBatchProducer.spec.ts
 
       expect(fsMocks.rename).toHaveBeenCalledTimes(1);
       expect(fsMocks.rename).toHaveBeenCalledWith(
@@ -88,21 +110,33 @@ describe('StandardBatchProducer', () => {
     it('handles readdir failure gracefully when rotating orphaned batches', async () => {
       fsMocks.readdir.mockRejectedValueOnce(new Error('ENOENT'));
 
+<<<<<<<< HEAD:src/transport/batch/standard/StandardBatchProducer.spec.ts
       await expect(StandardBatchProducer.create(config)).resolves.toBeDefined();
+========
+      await expect(GenericBatchProducer.create(config)).resolves.toBeDefined();
+>>>>>>>> fb1f12c (Refactor transport to make BatchProducer/Consumer extensible for new transport strategies):src/transport/batch/generic/GenericBatchProducer.spec.ts
     });
 
     it('handles individual rename failure gracefully when rotating orphaned batches', async () => {
       fsMocks.readdir.mockResolvedValueOnce(['batch-111.tmp', 'batch-222.tmp']);
       fsMocks.rename.mockRejectedValueOnce(new Error('rename failed'));
 
+<<<<<<<< HEAD:src/transport/batch/standard/StandardBatchProducer.spec.ts
       await expect(StandardBatchProducer.create(config)).resolves.toBeDefined();
+========
+      await expect(GenericBatchProducer.create(config)).resolves.toBeDefined();
+>>>>>>>> fb1f12c (Refactor transport to make BatchProducer/Consumer extensible for new transport strategies):src/transport/batch/generic/GenericBatchProducer.spec.ts
       expect(fsMocks.rename).toHaveBeenCalledTimes(2);
     });
   });
 
   describe('post() + write queue', () => {
     it('serializes each post as JSON + newline and appends to the same .tmp file until rotation', async () => {
+<<<<<<<< HEAD:src/transport/batch/standard/StandardBatchProducer.spec.ts
       const producer = await StandardBatchProducer.create(config);
+========
+      const producer = await GenericBatchProducer.create(config);
+>>>>>>>> fb1f12c (Refactor transport to make BatchProducer/Consumer extensible for new transport strategies):src/transport/batch/generic/GenericBatchProducer.spec.ts
 
       producer.post({ data: { a: 1 } });
       producer.post({ data: { b: 2 } });
@@ -116,7 +150,11 @@ describe('StandardBatchProducer', () => {
     });
 
     it('writes posts in call order', async () => {
+<<<<<<<< HEAD:src/transport/batch/standard/StandardBatchProducer.spec.ts
       const producer = await StandardBatchProducer.create(config);
+========
+      const producer = await GenericBatchProducer.create(config);
+>>>>>>>> fb1f12c (Refactor transport to make BatchProducer/Consumer extensible for new transport strategies):src/transport/batch/generic/GenericBatchProducer.spec.ts
 
       producer.post({ data: { order: 1 } });
       producer.post({ data: { order: 2 } });
@@ -135,7 +173,11 @@ describe('StandardBatchProducer', () => {
       vi.mocked(display.error).mockClear();
       fsMocks.appendFile.mockRejectedValueOnce(new Error('write failed')).mockResolvedValueOnce(undefined);
 
+<<<<<<<< HEAD:src/transport/batch/standard/StandardBatchProducer.spec.ts
       const producer = await StandardBatchProducer.create(config);
+========
+      const producer = await GenericBatchProducer.create(config);
+>>>>>>>> fb1f12c (Refactor transport to make BatchProducer/Consumer extensible for new transport strategies):src/transport/batch/generic/GenericBatchProducer.spec.ts
 
       producer.post({ data: { bad: true } });
       producer.post({ data: { good: true } });
@@ -148,7 +190,11 @@ describe('StandardBatchProducer', () => {
 
   describe('rotation behavior', () => {
     it('flush() renames current batch from .tmp to .log', async () => {
+<<<<<<<< HEAD:src/transport/batch/standard/StandardBatchProducer.spec.ts
       const producer = await StandardBatchProducer.create(config);
+========
+      const producer = await GenericBatchProducer.create(config);
+>>>>>>>> fb1f12c (Refactor transport to make BatchProducer/Consumer extensible for new transport strategies):src/transport/batch/generic/GenericBatchProducer.spec.ts
 
       producer.post({ data: { event: 'test' } });
       await producer.flush();
@@ -160,7 +206,11 @@ describe('StandardBatchProducer', () => {
     });
 
     it('flush() does nothing if no data was ever written', async () => {
+<<<<<<<< HEAD:src/transport/batch/standard/StandardBatchProducer.spec.ts
       const producer = await StandardBatchProducer.create(config);
+========
+      const producer = await GenericBatchProducer.create(config);
+>>>>>>>> fb1f12c (Refactor transport to make BatchProducer/Consumer extensible for new transport strategies):src/transport/batch/generic/GenericBatchProducer.spec.ts
 
       await producer.flush();
 
@@ -171,7 +221,11 @@ describe('StandardBatchProducer', () => {
     it('rotates due to size limit BEFORE appending when current batch already has data', async () => {
       const small = makeConfig({ batchSize: 20 });
 
+<<<<<<<< HEAD:src/transport/batch/standard/StandardBatchProducer.spec.ts
       const producer = await StandardBatchProducer.create(small);
+========
+      const producer = await GenericBatchProducer.create(small);
+>>>>>>>> fb1f12c (Refactor transport to make BatchProducer/Consumer extensible for new transport strategies):src/transport/batch/generic/GenericBatchProducer.spec.ts
 
       const { dateNow } = await import('@datadog/js-core/time');
       vi.mocked(dateNow)
@@ -201,7 +255,11 @@ describe('StandardBatchProducer', () => {
 
       fsMocks.rename.mockRejectedValueOnce(new Error('rename failed'));
 
+<<<<<<<< HEAD:src/transport/batch/standard/StandardBatchProducer.spec.ts
       const producer = await StandardBatchProducer.create(config);
+========
+      const producer = await GenericBatchProducer.create(config);
+>>>>>>>> fb1f12c (Refactor transport to make BatchProducer/Consumer extensible for new transport strategies):src/transport/batch/generic/GenericBatchProducer.spec.ts
 
       producer.post({ data: { first: true } });
       await producer.flush();
@@ -224,7 +282,11 @@ describe('StandardBatchProducer', () => {
       // So we make create succeed and then fail for the subsequent access.
       fsMocks.access.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('ENOENT'));
 
+<<<<<<<< HEAD:src/transport/batch/standard/StandardBatchProducer.spec.ts
       const producer = await StandardBatchProducer.create(config);
+========
+      const producer = await GenericBatchProducer.create(config);
+>>>>>>>> fb1f12c (Refactor transport to make BatchProducer/Consumer extensible for new transport strategies):src/transport/batch/generic/GenericBatchProducer.spec.ts
 
       producer.post({ data: { event: 'test' } });
       await producer.flush();
@@ -233,7 +295,11 @@ describe('StandardBatchProducer', () => {
     });
 
     it('does not mkdir when access succeeds during a write', async () => {
+<<<<<<<< HEAD:src/transport/batch/standard/StandardBatchProducer.spec.ts
       const producer = await StandardBatchProducer.create(config);
+========
+      const producer = await GenericBatchProducer.create(config);
+>>>>>>>> fb1f12c (Refactor transport to make BatchProducer/Consumer extensible for new transport strategies):src/transport/batch/generic/GenericBatchProducer.spec.ts
 
       producer.post({ data: { event: 'test' } });
       await producer.flush();
