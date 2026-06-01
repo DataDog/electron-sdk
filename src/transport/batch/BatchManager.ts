@@ -1,18 +1,10 @@
 import { setTimeout } from '@datadog/browser-core';
-import path from 'node:path';
 import type { Configuration } from '../../config';
 import { addError } from '../../domain/telemetry';
-import { EventTrack } from '../../event';
-import { computeIntakeUrlForTrack } from '../utils';
 import { BatchConsumer } from './BatchConsumer';
 import { BatchProducer } from './BatchProducer';
-
-interface BatchManagerConfig {
-  path: string;
-  trackType: EventTrack;
-  batchSize: number;
-  uploadFrequency: number;
-}
+import { BatchFactory } from './BatchFactory';
+import type { BatchConfig } from './types';
 
 /**
  * Coordinates a {@link BatchProducer} and {@link BatchConsumer} pair for a single track type.
@@ -33,16 +25,10 @@ export class BatchManager {
   }
 
   /** Creates and fully initializes a BatchManager instance. */
-  static async create(config: Configuration, batchConfig: BatchManagerConfig) {
-    const { clientToken } = config;
-    const { path: configPath, trackType, batchSize, uploadFrequency } = batchConfig;
+  static async create(config: Configuration, batchConfig: BatchConfig) {
+    const { uploadFrequency } = batchConfig;
 
-    const trackPath = path.join(configPath, trackType);
-    const intakeUrl = computeIntakeUrlForTrack(config.site, trackType, config.proxy);
-
-    const producer = await BatchProducer.create({ trackPath, batchSize });
-    const consumer = new BatchConsumer({ trackPath, intakeUrl, clientToken });
-
+    const { producer, consumer } = await BatchFactory.create(config, batchConfig);
     const manager = new BatchManager(producer, consumer, uploadFrequency);
     manager.start();
 

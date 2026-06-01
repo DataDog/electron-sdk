@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import path from 'node:path';
-import { BatchProducer } from './BatchProducer';
-import type { ProducerConfig } from './BatchProducer';
-import { mockFs } from '../../mocks.specUtil';
+import type { BatchProducerConfig as ProducerConfig } from '../types';
+import { mockFs } from '../../../mocks.specUtil';
+import { GenericBatchProducer } from './GenericBatchProducer';
 
 vi.mock('node:fs/promises');
 const fsMocks = mockFs();
@@ -41,7 +41,7 @@ describe('BatchProducer', () => {
     it('creates track directory when missing', async () => {
       fsMocks.access.mockRejectedValueOnce(new Error('ENOENT'));
 
-      await BatchProducer.create(config);
+      await GenericBatchProducer.create(config);
 
       expect(fsMocks.mkdir).toHaveBeenCalledWith(config.trackPath, { recursive: true });
     });
@@ -49,7 +49,7 @@ describe('BatchProducer', () => {
     it('does not create directory when it exists', async () => {
       fsMocks.access.mockResolvedValueOnce(undefined);
 
-      await BatchProducer.create(config);
+      await GenericBatchProducer.create(config);
 
       expect(fsMocks.mkdir).not.toHaveBeenCalled();
     });
@@ -57,7 +57,7 @@ describe('BatchProducer', () => {
     it('rotates orphaned .tmp files from previous sessions to .log', async () => {
       fsMocks.readdir.mockResolvedValueOnce(['batch-111.tmp', 'batch-222.tmp']);
 
-      await BatchProducer.create(config);
+      await GenericBatchProducer.create(config);
 
       expect(fsMocks.rename).toHaveBeenCalledWith(
         path.join(config.trackPath, 'batch-111.tmp'),
@@ -72,7 +72,7 @@ describe('BatchProducer', () => {
     it('does not rename non-.tmp files when rotating orphaned batches', async () => {
       fsMocks.readdir.mockResolvedValueOnce(['batch-111.log', 'other.txt', 'batch-222.tmp']);
 
-      await BatchProducer.create(config);
+      await GenericBatchProducer.create(config);
 
       expect(fsMocks.rename).toHaveBeenCalledTimes(1);
       expect(fsMocks.rename).toHaveBeenCalledWith(
@@ -84,21 +84,21 @@ describe('BatchProducer', () => {
     it('handles readdir failure gracefully when rotating orphaned batches', async () => {
       fsMocks.readdir.mockRejectedValueOnce(new Error('ENOENT'));
 
-      await expect(BatchProducer.create(config)).resolves.toBeDefined();
+      await expect(GenericBatchProducer.create(config)).resolves.toBeDefined();
     });
 
     it('handles individual rename failure gracefully when rotating orphaned batches', async () => {
       fsMocks.readdir.mockResolvedValueOnce(['batch-111.tmp', 'batch-222.tmp']);
       fsMocks.rename.mockRejectedValueOnce(new Error('rename failed'));
 
-      await expect(BatchProducer.create(config)).resolves.toBeDefined();
+      await expect(GenericBatchProducer.create(config)).resolves.toBeDefined();
       expect(fsMocks.rename).toHaveBeenCalledTimes(2);
     });
   });
 
   describe('post() + write queue', () => {
     it('serializes each post as JSON + newline and appends to the same .tmp file until rotation', async () => {
-      const producer = await BatchProducer.create(config);
+      const producer = await GenericBatchProducer.create(config);
 
       producer.post({ a: 1 });
       producer.post({ b: 2 });
@@ -112,7 +112,7 @@ describe('BatchProducer', () => {
     });
 
     it('writes posts in call order', async () => {
-      const producer = await BatchProducer.create(config);
+      const producer = await GenericBatchProducer.create(config);
 
       producer.post({ order: 1 });
       producer.post({ order: 2 });
@@ -130,7 +130,7 @@ describe('BatchProducer', () => {
     it('swallows appendFile errors and keeps queue processing subsequent posts', async () => {
       fsMocks.appendFile.mockRejectedValueOnce(new Error('write failed')).mockResolvedValueOnce(undefined);
 
-      const producer = await BatchProducer.create(config);
+      const producer = await GenericBatchProducer.create(config);
 
       producer.post({ bad: true });
       producer.post({ good: true });
@@ -142,7 +142,7 @@ describe('BatchProducer', () => {
 
   describe('rotation behavior', () => {
     it('flush() renames current batch from .tmp to .log', async () => {
-      const producer = await BatchProducer.create(config);
+      const producer = await GenericBatchProducer.create(config);
 
       producer.post({ event: 'test' });
       await producer.flush();
@@ -154,7 +154,7 @@ describe('BatchProducer', () => {
     });
 
     it('flush() does nothing if no data was ever written', async () => {
-      const producer = await BatchProducer.create(config);
+      const producer = await GenericBatchProducer.create(config);
 
       await producer.flush();
 
@@ -165,7 +165,7 @@ describe('BatchProducer', () => {
     it('rotates due to size limit BEFORE appending when current batch already has data', async () => {
       const small = makeConfig({ batchSize: 20 });
 
-      const producer = await BatchProducer.create(small);
+      const producer = await GenericBatchProducer.create(small);
 
       const { dateNow } = await import('@datadog/browser-core');
       vi.mocked(dateNow)
@@ -195,7 +195,7 @@ describe('BatchProducer', () => {
 
       fsMocks.rename.mockRejectedValueOnce(new Error('rename failed'));
 
-      const producer = await BatchProducer.create(config);
+      const producer = await GenericBatchProducer.create(config);
 
       producer.post({ first: true });
       await producer.flush();
@@ -218,7 +218,7 @@ describe('BatchProducer', () => {
       // So we make create succeed and then fail for the subsequent access.
       fsMocks.access.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('ENOENT'));
 
-      const producer = await BatchProducer.create(config);
+      const producer = await GenericBatchProducer.create(config);
 
       producer.post({ event: 'test' });
       await producer.flush();
@@ -227,7 +227,7 @@ describe('BatchProducer', () => {
     });
 
     it('does not mkdir when access succeeds during a write', async () => {
-      const producer = await BatchProducer.create(config);
+      const producer = await GenericBatchProducer.create(config);
 
       producer.post({ event: 'test' });
       await producer.flush();
