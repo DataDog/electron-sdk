@@ -1,8 +1,11 @@
 import path from 'node:path';
 import type { Configuration } from '../../config';
+import { EventTrack } from '../../event';
 import { computeIntakeUrlForTrack } from '../utils';
 import { GenericBatchConsumer } from './generic/GenericBatchConsumer';
 import { GenericBatchProducer } from './generic/GenericBatchProducer';
+import { ReplayBatchConsumer } from './replay/ReplayBatchConsumer';
+import { ReplayBatchProducer } from './replay/ReplayBatchProducer';
 import type { BatchConsumerConfig, BatchConfig, BatchProducerConfig } from './types';
 import type { BatchConsumer } from './BatchConsumer';
 import type { BatchProducer } from './BatchProducer';
@@ -29,8 +32,14 @@ export class BatchFactory {
     const trackPath = path.join(configPath, trackType);
     const intakeUrl = computeIntakeUrlForTrack(config.site, trackType, config.proxy);
 
-    // TODO: handle other batch types (e.g. session replay)
-    return BatchFactory.createGenericBatch({ trackPath, batchSize }, { trackPath, intakeUrl, clientToken });
+    const producerConfig: BatchProducerConfig = { trackPath, batchSize };
+    const consumerConfig: BatchConsumerConfig = { trackPath, intakeUrl, clientToken };
+
+    if (trackType === EventTrack.REPLAY) {
+      return BatchFactory.createReplayBatch(producerConfig, consumerConfig);
+    }
+
+    return BatchFactory.createGenericBatch(producerConfig, consumerConfig);
   }
 
   /**
@@ -43,6 +52,20 @@ export class BatchFactory {
   ): Promise<{ producer: BatchProducer; consumer: BatchConsumer }> {
     const producer = await GenericBatchProducer.create(producerConfig);
     const consumer = new GenericBatchConsumer(consumerConfig);
+
+    return { producer, consumer };
+  }
+
+  /**
+   * Builds a replay producer (one atomic file per compressed segment) paired with
+   * a multipart/form-data consumer for the session replay intake.
+   */
+  private static async createReplayBatch(
+    producerConfig: BatchProducerConfig,
+    consumerConfig: BatchConsumerConfig
+  ): Promise<{ producer: BatchProducer; consumer: BatchConsumer }> {
+    const producer = await ReplayBatchProducer.create(producerConfig);
+    const consumer = new ReplayBatchConsumer(consumerConfig);
 
     return { producer, consumer };
   }

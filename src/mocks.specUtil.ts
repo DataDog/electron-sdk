@@ -37,6 +37,7 @@ export function createTestConfiguration(overrides: Partial<Configuration> = {}):
     clientToken: 'test-token',
     applicationId: 'test-app-id',
     sessionSampleRate: 100,
+    sessionReplaySampleRate: 100,
     profilingSampleRate: 100,
     telemetrySampleRate: 100,
     defaultPrivacyLevel: 'mask',
