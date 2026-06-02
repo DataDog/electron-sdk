@@ -59,9 +59,15 @@ function buildExportedSpan(meta: RendererSpanMetadata, rumContext: Record<string
   };
 
   const view = (rumContext as { view?: { id?: string } } | undefined)?.view;
-  const action = (rumContext as { action?: { id?: string } } | undefined)?.action;
+  const userAction = (rumContext as { user_action?: { id?: string | string[] } } | undefined)?.user_action;
   if (view?.id) spanMeta['_dd.view.id'] = view.id;
-  if (action?.id) spanMeta['_dd.action.id'] = action.id;
+  if (userAction?.id) {
+    const actionId = userAction.id;
+    // user_action.id can be an array when the rage-click detection clone is active alongside
+    // the original click. The original click (last element, inserted first into the history)
+    // is the one that produces the intake action event — use it for span linking.
+    spanMeta['_dd.action.id'] = Array.isArray(actionId) ? actionId[actionId.length - 1] : actionId;
+  }
 
   return {
     trace_id: makeId(meta.traceId),

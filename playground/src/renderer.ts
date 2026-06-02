@@ -214,10 +214,12 @@ setupDemoButton('main-fetch-net', 'main:fetch-api-net', () => window.electronAPI
 // Register RUM context provider so the dd-trace preload can read view/action IDs at IPC call time.
 // In production this would live in the browser-sdk's Electron bridge initialization.
 const bridge = (
-  window as unknown as { DatadogEventBridge?: { registerRumContextProvider?: (fn: () => string) => void } }
+  window as unknown as {
+    DatadogEventBridge?: { registerRumContextProvider?: (fn: (startTime: number) => string) => void };
+  }
 ).DatadogEventBridge;
 if (bridge?.registerRumContextProvider) {
-  bridge.registerRumContextProvider(() => JSON.stringify(datadogRum.getInternalContext()));
+  bridge.registerRumContextProvider((startTime) => JSON.stringify(datadogRum.getInternalContext(startTime)));
 }
 
 window.electronAPI.onPushNotification((data) => {
