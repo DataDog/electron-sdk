@@ -1,0 +1,93 @@
+diff --git a/packages/datadog-instrumentations/src/electron/preload.js b/packages/datadog-instrumentations/src/electron/preload.js
+index df62472e9f5b6b671afad3720edc3c24668e074b..864f70e2aa6097cc6b05d3a7e6e325c18d96d713 100644
+--- a/packages/datadog-instrumentations/src/electron/preload.js
++++ b/packages/datadog-instrumentations/src/electron/preload.js
+@@ -1,42 +1,66 @@
+-'use strict'
++"use strict";
+ 
+ // eslint-disable-next-line n/no-missing-require
+-const { contextBridge, ipcRenderer } = require('electron')
++const { contextBridge, ipcRenderer } = require("electron");
+ 
+-const BRIDGE_CHANNEL = 'datadog:bridge-send'
+-const CONFIG_CHANNEL = 'datadog:bridge-config'
++const BRIDGE_CHANNEL = "datadog:bridge-send";
++const CONFIG_CHANNEL = "datadog:bridge-config";
+ 
+ // Privacy levels matching @datadog/browser-core DefaultPrivacyLevel
+-const MASK = 'mask'
++const MASK = "mask";
+ 
+-const config = ipcRenderer.sendSync(CONFIG_CHANNEL)
++const bridgeState = {
++  defaultPrivacyLevel: MASK,
++  allowedHosts: [location.hostname],
++};
+ 
+-const defaultPrivacyLevel = config?.defaultPrivacyLevel ?? MASK
+-const configuredHosts = config?.allowedWebViewHosts ?? []
+-// eslint-disable-next-line no-undef
+-const allowedHosts = [...new Set([location.hostname, ...configuredHosts])]
++function applyConfig(config) {
++  bridgeState.defaultPrivacyLevel = config?.defaultPrivacyLevel ?? MASK;
++
++  bridgeState.allowedHosts = [
++    ...new Set([location.hostname, ...(config?.allowedWebViewHosts ?? [])]),
++  ];
++}
++
++async function loadConfigWithRetry() {
++  const maxAttempts = 50;
++  const retryDelayMs = 100;
++
++  for (let attempt = 0; attempt < maxAttempts; attempt++) {
++    try {
++      const config = await ipcRenderer.invoke(CONFIG_CHANNEL);
++      applyConfig(config);
++      return;
++    } catch {
++      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
++    }
++  }
++
++  // Keep safe defaults if config never becomes available.
++}
+ 
+ const bridge = {
+-  getCapabilities () {
+-    return '[]'
++  getCapabilities() {
++    return '["records"]';
+   },
+-  getPrivacyLevel () {
+-    return defaultPrivacyLevel
++  getPrivacyLevel() {
++    return bridgeState.defaultPrivacyLevel;
+   },
+-  getAllowedWebViewHosts () {
+-    return JSON.stringify(allowedHosts)
++  getAllowedWebViewHosts() {
++    return JSON.stringify(bridgeState.allowedHosts);
+   },
+-  send (msg) {
+-    ipcRenderer.send(BRIDGE_CHANNEL, msg)
++  send(msg) {
++    ipcRenderer.send(BRIDGE_CHANNEL, msg);
+   },
+-}
++};
+ 
+ // Support both contextIsolation enabled (default) and disabled
+-
+-window.DatadogEventBridge = bridge
++window.DatadogEventBridge = bridge;
+ 
+ try {
+-  contextBridge.exposeInMainWorld('DatadogEventBridge', bridge)
++  contextBridge.exposeInMainWorld("DatadogEventBridge", bridge);
+ } catch {
+   // exposeInMainWorld throws when contextIsolation is disabled
+ }
++
++loadConfigWithRetry();
