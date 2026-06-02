@@ -3,11 +3,11 @@ import '@datadog/electron-sdk/instrument';
 
 import { app, BrowserWindow, ipcMain, net } from 'electron';
 import * as path from 'node:path';
-import * as fs from 'node:fs';
 import * as https from 'node:https';
 import {
   init,
   stopSession,
+  getInternalContext,
   _generateTelemetryError,
   startOperation,
   succeedOperation,
@@ -19,10 +19,6 @@ import { loadWindowState, saveWindowState } from './main/windowState';
 import { setupHotReload } from './main/hotReload';
 
 let mainWindow: BrowserWindow | null = null;
-
-function getSessionFilePath(): string {
-  return path.join(app.getPath('userData'), '_dd_s');
-}
 
 function createWindow() {
   const savedState = loadWindowState();
@@ -53,20 +49,8 @@ function createWindow() {
   });
 }
 
-// IPC handler to get session file content
-ipcMain.handle('get-session-file', () => {
-  const sessionFilePath = getSessionFilePath();
-  try {
-    if (fs.existsSync(sessionFilePath)) {
-      const content = fs.readFileSync(sessionFilePath, 'utf-8');
-      return content;
-    }
-    return null;
-  } catch (error) {
-    console.error('Error reading session file:', error);
-    return null;
-  }
-});
+// IPC handler to get internal context
+ipcMain.handle('get-internal-context', () => getInternalContext());
 
 ipcMain.handle('stop-session', () => {
   stopSession();
