@@ -138,7 +138,7 @@
     "vitest": "4.0.18"
   },
   "dependencies": {
-    "dd-trace": "5.103.0"
+    "dd-trace": "patch:dd-trace@npm%3A5.103.0#~/.yarn/patches/dd-trace-npm-5.103.0-bcd76a72f0.patch"
   },
   "peerDependencies": {
     "electron": ">=39"
