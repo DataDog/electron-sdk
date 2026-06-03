@@ -1,25 +1,20 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { getUserAgent } from '../userAgent';
-
-export interface ConsumerConfig {
-  trackPath: string;
-  intakeUrl: string;
-  clientToken: string;
-}
+import type { BatchConsumerConfig } from './types';
 
 /**
  * Reads rotated `.log` batch files from disk, parses their newline-delimited JSON
  * content, and uploads the events to the Datadog intake endpoint.
  * Successfully uploaded files are deleted from disk.
  */
-export class BatchConsumer {
-  private trackPath: string;
-  private intakeUrl: string;
-  private clientToken: string;
-  private userAgent: string | undefined;
+export abstract class BatchConsumer {
+  protected trackPath: string;
+  protected intakeUrl: string;
+  protected clientToken: string;
+  protected userAgent: string | undefined;
 
-  constructor(config: ConsumerConfig) {
+  constructor(config: BatchConsumerConfig) {
     this.trackPath = config.trackPath;
     this.intakeUrl = config.intakeUrl;
     this.clientToken = config.clientToken;
@@ -39,7 +34,7 @@ export class BatchConsumer {
   }
 
   /** Returns sorted paths of all `.log` files in the track directory. */
-  private async getLogFiles() {
+  protected async getLogFiles() {
     try {
       await fs.access(this.trackPath);
       const files = await fs.readdir(this.trackPath);
@@ -53,7 +48,7 @@ export class BatchConsumer {
   }
 
   /** Reads a batch file and returns its non-empty lines. */
-  private async readBatchFile(filePath: string) {
+  protected async readBatchFile(filePath: string) {
     try {
       const content = await fs.readFile(filePath, 'utf8');
       return content.split('\n').filter((line) => line.trim().length > 0);
@@ -63,49 +58,5 @@ export class BatchConsumer {
   }
 
   /** Parses a batch file's JSON lines and POSTs them to the intake. Deletes the file on success. */
-  private async uploadBatch(filePath: string) {
-    const lines = await this.readBatchFile(filePath);
-
-    if (lines.length === 0) {
-      try {
-        await fs.unlink(filePath);
-      } catch {
-        // Ignore deletion errors for empty files
-      }
-      return true;
-    }
-
-    const events = lines
-      .map((line) => {
-        try {
-          return JSON.parse(line) as unknown;
-        } catch {
-          return null;
-        }
-      })
-      .filter((item) => item !== null);
-
-    const body = JSON.stringify(events);
-
-    try {
-      const response = await fetch(this.intakeUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'DD-API-KEY': this.clientToken,
-          'User-Agent': this.userAgent!,
-        },
-        body,
-      });
-
-      if (response.ok) {
-        await fs.unlink(filePath);
-        return true;
-      }
-
-      return false;
-    } catch {
-      return false;
-    }
-  }
+  protected abstract uploadBatch(filePath: string): Promise<boolean>;
 }

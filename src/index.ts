@@ -1,7 +1,9 @@
+import { app } from 'electron';
 import { Assembly, createFormatHooks, registerCommonContext } from './assembly';
 import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
 import { RumCollection } from './domain/rum';
+import { ReplayCollection } from './domain/replay';
 import { SessionManager } from './domain/session';
 import { UserActivityTracker } from './domain/UserActivityTracker';
 import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './domain/rum';
@@ -17,6 +19,7 @@ let eventManager: EventManager | undefined;
 let transport: Transport | undefined;
 let rumApi: ReturnType<RumCollection['getApi']> | undefined;
 let tracing: Tracing | undefined;
+let segmentCollection: ReplayCollection | undefined;
 
 /**
  * Internal SDK context
@@ -45,7 +48,8 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   startTelemetry(eventManager, config);
   sessionManager = await SessionManager.start(eventManager, hooks);
 
-  new Assembly(eventManager, hooks);
+  segmentCollection = new ReplayCollection(eventManager, config, sessionManager);
+  new Assembly(eventManager, hooks, (viewId) => segmentCollection?.getViewReplayStats(viewId));
   new BridgeHandler(eventManager, config);
   new UserActivityTracker(eventManager);
 
@@ -56,6 +60,20 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   transport = await Transport.create(config, eventManager);
   const rum = await RumCollection.start(eventManager, hooks);
   rumApi = rum.getApi();
+
+  // Flush the final in-flight replay segment (and other transports) before
+  // the process exits. `preventDefault` defers the quit so the async flush
+  // can complete; the 5-second fallback ensures we never hang. Using `once`
+  // so the handler removes itself — when _flushTransport calls app.quit()
+  // the second quit propagates without re-entering here.
+  app.once('before-quit', (event: Electron.Event) => {
+    event.preventDefault();
+    const fallback = setTimeout(() => app.quit(), 5000);
+    void _flushTransport().finally(() => {
+      clearTimeout(fallback);
+      app.quit();
+    });
+  });
 
   return true;
 }
@@ -153,6 +171,7 @@ export function failFeatureOperation(
  */
 export async function _flushTransport(): Promise<void> {
   await tracing?.flush();
+  await segmentCollection?.stop();
   await transport?.flush();
 }
 

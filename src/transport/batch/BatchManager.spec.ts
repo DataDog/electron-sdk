@@ -1,38 +1,25 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { BatchManager } from './BatchManager';
-import { BatchConsumer } from './BatchConsumer';
 import { EventTrack } from '../../event';
 import { BatchSizes, BatchUploadFrequencies } from '../../config';
 import { createTestConfiguration } from '../../mocks.specUtil';
 
-const { mockProducerPost, mockProducerFlush, mockConsumerUpload, mockProducerCreate } = vi.hoisted(() => {
+const { mockProducerPost, mockProducerFlush, mockConsumerUpload, mockFactoryCreate } = vi.hoisted(() => {
   const mockProducerPost = vi.fn();
   const mockProducerFlush = vi.fn().mockResolvedValue(undefined);
   const mockConsumerUpload = vi.fn().mockResolvedValue(undefined);
-  const mockProducerCreate = vi.fn().mockResolvedValue({
-    post: mockProducerPost,
-    flush: mockProducerFlush,
+  const mockFactoryCreate = vi.fn().mockResolvedValue({
+    producer: { post: mockProducerPost, flush: mockProducerFlush },
+    consumer: { upload: mockConsumerUpload },
   });
 
-  return { mockProducerPost, mockProducerFlush, mockConsumerUpload, mockProducerCreate };
+  return { mockProducerPost, mockProducerFlush, mockConsumerUpload, mockFactoryCreate };
 });
 
-vi.mock('./BatchProducer', () => ({
-  BatchProducer: {
-    create: mockProducerCreate,
+vi.mock('./BatchFactory', () => ({
+  BatchFactory: {
+    create: mockFactoryCreate,
   },
-}));
-
-vi.mock('./BatchConsumer', () => ({
-  BatchConsumer: vi.fn().mockImplementation(function () {
-    return {
-      upload: mockConsumerUpload,
-    };
-  }),
-}));
-
-vi.mock('../utils', () => ({
-  computeIntakeUrlForTrack: vi.fn(() => 'https://mock-intake.com/api/v2/rum'),
 }));
 
 interface BatchManagerConfig {
@@ -67,23 +54,10 @@ describe('BatchManager', () => {
   });
 
   describe('create', () => {
-    it('should create BatchProducer with correct config', async () => {
+    it('should delegate creation to BatchFactory with the full config', async () => {
       await BatchManager.create(config, batchConfig);
 
-      expect(mockProducerCreate).toHaveBeenCalledWith({
-        trackPath: '/mock/path/rum',
-        batchSize: BatchSizes.MEDIUM,
-      });
-    });
-
-    it('should create BatchConsumer with correct config', async () => {
-      await BatchManager.create(config, batchConfig);
-
-      expect(BatchConsumer).toHaveBeenCalledWith({
-        trackPath: '/mock/path/rum',
-        intakeUrl: 'https://mock-intake.com/api/v2/rum',
-        clientToken: 'test-token',
-      });
+      expect(mockFactoryCreate).toHaveBeenCalledWith(config, batchConfig);
     });
 
     it('should start the upload cycle', async () => {

@@ -5,15 +5,17 @@ import { BridgeHandler } from './BridgeHandler';
 import type { BridgeOptions } from './BridgeHandler';
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
 
-const { mockIpcMainOn, mockAddError } = vi.hoisted(() => {
+const { mockIpcMainOn, mockIpcMainHandle, mockAddError } = vi.hoisted(() => {
   const mockIpcMainOn = vi.fn();
+  const mockIpcMainHandle = vi.fn();
   const mockAddError = vi.fn();
-  return { mockIpcMainOn, mockAddError };
+  return { mockIpcMainOn, mockIpcMainHandle, mockAddError };
 });
 
 vi.mock('electron', () => ({
   ipcMain: {
     on: mockIpcMainOn,
+    handle: mockIpcMainHandle,
   },
 }));
 
@@ -49,25 +51,24 @@ describe('BridgeHandler', () => {
     expect(mockIpcMainOn).toHaveBeenCalledWith(BRIDGE_CHANNEL, expect.any(Function));
   });
 
-  it('should register an IPC listener on the config channel', () => {
-    expect(mockIpcMainOn).toHaveBeenCalledWith(CONFIG_CHANNEL, expect.any(Function));
+  it('should register an IPC handler on the config channel', () => {
+    expect(mockIpcMainHandle).toHaveBeenCalledWith(CONFIG_CHANNEL, expect.any(Function));
   });
 
-  it('should return bridge options via event.returnValue on config channel', () => {
+  it('should return bridge options from the config channel handler', () => {
     const options: BridgeOptions = { defaultPrivacyLevel: 'allow', allowedWebViewHosts: ['example.com'] };
     vi.clearAllMocks();
 
-    const handlers: Record<string, (event: unknown) => void> = {};
-    mockIpcMainOn.mockImplementation((channel: string, callback: (event: unknown) => void) => {
-      handlers[channel] = callback;
+    let configHandler: (() => BridgeOptions) | undefined;
+    mockIpcMainHandle.mockImplementation((channel: string, callback: () => BridgeOptions) => {
+      if (channel === CONFIG_CHANNEL) {
+        configHandler = callback;
+      }
     });
 
     new BridgeHandler(eventManager, options);
 
-    const event = { returnValue: undefined as unknown };
-    handlers[CONFIG_CHANNEL](event);
-
-    expect(event.returnValue).toEqual(options);
+    expect(configHandler?.()).toEqual(options);
   });
 
   describe('rum events', () => {
