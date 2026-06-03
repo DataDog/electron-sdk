@@ -14,6 +14,13 @@ export interface ReceivedEvent {
   ddforward: string;
 }
 
+export interface ReplaySegment {
+  timestamp: number;
+  /** Parsed JSON from the multipart `event` field — segment metadata + size fields. */
+  metadata: Record<string, unknown>;
+  headers: Record<string, string>;
+}
+
 export interface Trace {
   env: string;
   spans: Span[];
@@ -40,6 +47,7 @@ const byType = (type: string) => (event: ReceivedEvent) => (event.body as { type
 export class Intake {
   private server: http.Server | null = null;
   private rumEvents: ReceivedEvent[] = [];
+  private replaySegments: ReplaySegment[] = [];
   private traces: Trace[] = [];
   private profilingRequests: ProfilingRequest[] = [];
   private port = 0;
@@ -54,6 +62,31 @@ export class Intake {
         headers,
         ddforward,
       });
+    }
+  }
+
+  private storeReplaySegment(rawBody: Buffer, headers: Record<string, string>) {
+    const contentType = headers['content-type'] ?? '';
+    const boundaryMatch = /boundary=([^\s;]+)/.exec(contentType);
+    if (!boundaryMatch) return;
+
+    const boundary = `--${boundaryMatch[1]}`;
+    const body = rawBody.toString('utf8');
+    const parts = body.split(boundary).slice(1); // skip preamble
+
+    for (const part of parts) {
+      if (part.startsWith('--')) continue; // final boundary
+      const [rawHeaders, ...bodyLines] = part.replace(/^\r\n/, '').split('\r\n\r\n');
+      const disposition = rawHeaders ?? '';
+      if (!disposition.includes('name="event"')) continue;
+
+      try {
+        const eventJson = bodyLines.join('\r\n\r\n').replace(/\r\n$/, '');
+        const metadata = JSON.parse(eventJson) as Record<string, unknown>;
+        this.replaySegments.push({ timestamp: Date.now(), metadata, headers });
+      } catch {
+        // malformed event part — ignore
+      }
     }
   }
 
@@ -92,10 +125,10 @@ export class Intake {
           return;
         }
 
-        let body = '';
+        const chunks: Buffer[] = [];
 
         req.on('data', (chunk: Buffer) => {
-          body += chunk.toString();
+          chunks.push(chunk);
         });
 
         if (ddforward.startsWith('/api/v2/profile')) {
@@ -117,18 +150,28 @@ export class Intake {
         }
 
         req.on('end', () => {
-          try {
-            const parsedBody: unknown = JSON.parse(body);
-            const headers: Record<string, string> = {};
+          const rawBody = Buffer.concat(chunks);
+          const headers: Record<string, string> = {};
 
-            for (const [key, value] of Object.entries(req.headers)) {
-              if (typeof value === 'string') {
-                headers[key.toLowerCase()] = value;
-              } else if (Array.isArray(value)) {
-                headers[key.toLowerCase()] = value.join(', ');
-              }
+          for (const [key, value] of Object.entries(req.headers)) {
+            if (typeof value === 'string') {
+              headers[key.toLowerCase()] = value;
+            } else if (Array.isArray(value)) {
+              headers[key.toLowerCase()] = value.join(', ');
             }
+          }
 
+          const isMultipart = (headers['content-type'] ?? '').includes('multipart/form-data');
+
+          if (ddforward.startsWith('/api/v2/replay') || isMultipart) {
+            this.storeReplaySegment(rawBody, headers);
+            res.writeHead(202, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: 'accepted' }));
+            return;
+          }
+
+          try {
+            const parsedBody: unknown = JSON.parse(rawBody.toString());
             if (ddforward.startsWith('/api/v2/spans')) {
               this.storeTraces(parsedBody);
             } else {
@@ -278,8 +321,30 @@ export class Intake {
     }
   }
 
+  async waitForReplaySegment(options?: {
+    timeout?: number;
+    predicate?: (segment: ReplaySegment) => boolean;
+  }): Promise<ReplaySegment> {
+    const timeout = options?.timeout ?? 10000;
+    const predicate = options?.predicate ?? (() => true);
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeout) {
+      const match = this.replaySegments.find(predicate);
+      if (match) return match;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    throw new Error(`Timed out waiting for a replay segment after ${timeout}ms.`);
+  }
+
+  getReplaySegments(): ReplaySegment[] {
+    return [...this.replaySegments];
+  }
+
   clear(): void {
     this.rumEvents = [];
+    this.replaySegments = [];
     this.traces = [];
     this.profilingRequests = [];
     this.quotaDecision = 'quota_ok';
