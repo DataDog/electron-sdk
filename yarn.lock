@@ -81,6 +81,7 @@ __metadata:
   resolution: "@datadog/electron-sdk@workspace:."
   dependencies:
     "@datadog/browser-core": "npm:6.26.0"
+    "@datadog/js-core": "npm:0.0.1"
     "@eslint/js": "npm:10.0.0"
     "@playwright/test": "npm:1.58.2"
     "@rollup/plugin-commonjs": "npm:29.0.0"
@@ -120,6 +121,13 @@ __metadata:
   dependencies:
     spark-md5: "npm:^3.0.2"
   checksum: 10c0/fb8500a90ca89c2125f6500a029c7df9ee23c831837aa4771d8898496908c9c250094eb36459c45badb5f1ca49a0da242b09a4f7cb9705b707811f2088cdc9c3
+  languageName: node
+  linkType: hard
+
+"@datadog/js-core@npm:0.0.1":
+  version: 0.0.1
+  resolution: "@datadog/js-core@npm:0.0.1"
+  checksum: 10c0/68d0a421f867cac67b6f785da526ddeb7e7d712b014b379b23533a67e6d43fba464a721e15b0ed623c0048a629edd624ed7d5eceedb6ebf2e293bf982adcd92e
   languageName: node
   linkType: hard
 
