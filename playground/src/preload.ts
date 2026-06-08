@@ -19,4 +19,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   mainFetchApiNet: () => ipcRenderer.invoke('main:fetch-api-net'),
   openRumExplorer: () => ipcRenderer.invoke('open-rum-explorer'),
   flushTransport: () => ipcRenderer.invoke('flush-transport'),
+  openProfilingWindow: () => ipcRenderer.invoke('open-profiling-window'),
 });

@@ -36,6 +36,7 @@ interface ElectronAPI {
   mainFetchApiNet: () => Promise<unknown>;
   openRumExplorer: () => Promise<void>;
   flushTransport: () => Promise<void>;
+  openProfilingWindow: () => Promise<void>;
 }
 
 declare global {
@@ -196,6 +197,13 @@ if (rendererFetchBtn) {
       .finally(() => {
         rendererFetchBtn.disabled = false;
       });
+  });
+}
+
+const profilingWindowBtn = document.getElementById('open-profiling-window') as HTMLButtonElement | null;
+if (profilingWindowBtn) {
+  profilingWindowBtn.addEventListener('click', () => {
+    void window.electronAPI.openProfilingWindow();
   });
 }
 

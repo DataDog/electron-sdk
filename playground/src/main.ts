@@ -3,6 +3,8 @@ import '@datadog/electron-sdk/instrument';
 
 import { app, BrowserWindow, ipcMain, net, shell } from 'electron';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
+import * as http from 'node:http';
 import * as https from 'node:https';
 import {
   init,
@@ -51,6 +53,39 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+}
+
+function startProfilingHttpServer(): Promise<number> {
+  return new Promise((resolve) => {
+    const server = http.createServer((_req, res) => {
+      const url = _req.url ?? '/';
+      if (url === '/' || url.endsWith('.html')) {
+        const html = fs.readFileSync(path.join(__dirname, 'profiling-window.html'), 'utf-8');
+        res.writeHead(200, { 'Content-Type': 'text/html', 'Document-Policy': 'js-profiling' });
+        res.end(html);
+      } else if (url.endsWith('.js')) {
+        const js = fs.readFileSync(path.join(__dirname, 'profiling-window.js'), 'utf-8');
+        res.writeHead(200, { 'Content-Type': 'application/javascript' });
+        res.end(js);
+      } else if (url.endsWith('.js.map')) {
+        try {
+          const map = fs.readFileSync(path.join(__dirname, 'profiling-window.js.map'), 'utf-8');
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(map);
+        } catch {
+          res.writeHead(404);
+          res.end();
+        }
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+    server.listen(0, () => {
+      const addr = server.address() as { port: number };
+      resolve(addr.port);
+    });
   });
 }
 
@@ -107,6 +142,16 @@ ipcMain.handle('main:fetch-api-net', async () => {
 // IPC handler to crash the main process
 ipcMain.handle('crash', () => {
   process.crash();
+});
+
+ipcMain.handle('open-profiling-window', async () => {
+  const port = await startProfilingHttpServer();
+  const win = new BrowserWindow({
+    width: 600,
+    height: 500,
+    webPreferences: { contextIsolation: true, nodeIntegration: false },
+  });
+  void win.loadURL(`http://localhost:${port}`);
 });
 
 // --- Operation Monitoring demo handlers ---
