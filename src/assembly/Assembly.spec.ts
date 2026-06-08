@@ -11,6 +11,7 @@ import {
   EventSource,
   EventTrack,
   type RawRumEvent,
+  type RawProfileEvent,
   type ServerEvent,
 } from '../event';
 import type { RumEvent, RawRumData } from '../domain/rum';
@@ -196,5 +197,29 @@ describe('Assembly — renderer events', () => {
     } as unknown as RawRumEvent);
 
     expect(capturedStartTime).toBe(12345);
+  });
+});
+
+describe('renderer profile events', () => {
+  it('does not assemble profile events (handled by ProfilingCollection)', () => {
+    const eventManager = new EventManager();
+    const hooks = createFormatHooks();
+    const serverEvents: ServerEvent[] = [];
+    eventManager.registerHandler<ServerEvent>({
+      canHandle: (event): event is ServerEvent => event.kind === EventKind.SERVER,
+      handle: (event) => serverEvents.push(event),
+    });
+
+    new Assembly(eventManager, hooks);
+
+    eventManager.notify({
+      kind: EventKind.RAW,
+      source: EventSource.RENDERER,
+      format: EventFormat.PROFILE,
+      data: { application: { id: 'dummy' } },
+      trace: { samples: [] },
+    } as unknown as RawProfileEvent);
+
+    expect(serverEvents).toHaveLength(0);
   });
 });

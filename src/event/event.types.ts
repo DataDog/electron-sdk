@@ -3,8 +3,11 @@ import { RawTelemetryData, TelemetryEvent } from '../domain/telemetry';
 import { RawRumData, RumEvent } from '../domain/rum';
 import type { TimeStamp } from '@datadog/js-core/time';
 import { RawTraceData } from '../domain/tracing/rawTracingData.types';
+import type { BrowserProfileEvent, BrowserProfilerTrace } from '../domain/profiling';
 
-export type RawEvent = RawRumEvent | RawTelemetryEvent;
+export type { BrowserProfileEvent, BrowserProfilerTrace };
+
+export type RawEvent = RawRumEvent | RawTelemetryEvent | RawProfileEvent;
 
 export interface RawRumEvent {
   kind: typeof EventKind.RAW;
@@ -22,7 +25,12 @@ export interface RawTelemetryEvent {
   startTime?: TimeStamp;
 }
 
-export type ServerEvent = ServerRumEvent | ServerTelemetryEvent | ServerLogsEvent | ServerSpansEvent;
+export type ServerEvent =
+  | ServerRumEvent
+  | ServerTelemetryEvent
+  | ServerLogsEvent
+  | ServerSpansEvent
+  | ServerProfileEvent;
 
 export interface ServerRumEvent {
   kind: typeof EventKind.SERVER;
@@ -47,6 +55,21 @@ export interface ServerSpansEvent {
   kind: typeof EventKind.SERVER;
   track: typeof EventTrack.SPANS;
   data: RawTraceData;
+}
+
+export interface RawProfileEvent {
+  kind: typeof EventKind.RAW;
+  source: typeof EventSource.RENDERER;
+  format: typeof EventFormat.PROFILE;
+  data: BrowserProfileEvent;
+  trace: BrowserProfilerTrace;
+}
+
+export interface ServerProfileEvent {
+  kind: typeof EventKind.SERVER;
+  track: typeof EventTrack.PROFILE;
+  data: BrowserProfileEvent;
+  trace: BrowserProfilerTrace;
 }
 
 export interface EndUserActivityEvent {

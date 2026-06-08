@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EventFormat, EventKind, EventManager, EventSource } from '../event';
-import type { RawRumEvent } from '../event';
+import type { RawRumEvent, RawProfileEvent } from '../event';
 import { BridgeHandler } from './BridgeHandler';
 import type { BridgeOptions } from './BridgeHandler';
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
@@ -108,6 +108,31 @@ describe('BridgeHandler', () => {
       simulateIpcMessage(JSON.stringify({ eventType: 'internal_telemetry', event: {} }));
 
       expect(spy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('profile events', () => {
+    it('emits a RawProfileEvent with data and trace from the bridge payload', () => {
+      const collected: RawProfileEvent[] = [];
+      eventManager.registerHandler<RawProfileEvent>({
+        canHandle: (event): event is RawProfileEvent =>
+          event.kind === EventKind.RAW && event.format === EventFormat.PROFILE,
+        handle: (event) => collected.push(event),
+      });
+
+      const profileData = { application: { id: 'dummy-app' }, session: {}, date: 1234567890 };
+      const traceData = { resources: [], frames: [], stacks: [], samples: [] };
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'profile', event: { profile: profileData, trace: traceData } }));
+
+      expect(collected).toHaveLength(1);
+      expect(collected[0]).toEqual({
+        kind: EventKind.RAW,
+        source: EventSource.RENDERER,
+        format: EventFormat.PROFILE,
+        data: profileData,
+        trace: traceData,
+      });
     });
   });
 

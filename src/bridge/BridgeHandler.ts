@@ -1,11 +1,11 @@
 import { ipcMain } from 'electron';
 import { DefaultPrivacyLevel } from '@datadog/browser-core';
 import { EventKind, EventSource, EventFormat } from '../event';
-import type { EventManager, RawRumEvent } from '../event';
+import type { EventManager, RawRumEvent, RawProfileEvent, BrowserProfileEvent, BrowserProfilerTrace } from '../event';
 import { monitor, addError as addTelemetryError } from '../domain/telemetry';
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
 
-type BridgeEventType = 'rum' | 'log' | 'internal_telemetry';
+type BridgeEventType = 'rum' | 'log' | 'internal_telemetry' | 'profile';
 
 interface BridgeEvent {
   eventType: BridgeEventType;
@@ -65,6 +65,17 @@ export class BridgeHandler {
           data: bridgeEvent.event,
         } as RawRumEvent);
         break;
+      case 'profile': {
+        const payload = bridgeEvent.event as { profile: BrowserProfileEvent; trace: BrowserProfilerTrace };
+        this.eventManager.notify({
+          kind: EventKind.RAW,
+          source: EventSource.RENDERER,
+          format: EventFormat.PROFILE,
+          data: payload.profile,
+          trace: payload.trace,
+        } as RawProfileEvent);
+        break;
+      }
       case 'log':
         // TODO(RUM-15047)
         break;

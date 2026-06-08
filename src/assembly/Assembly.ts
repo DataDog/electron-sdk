@@ -1,7 +1,9 @@
 import { timeStampNow, TimeStamp } from '@datadog/js-core/time';
 import { combine, DISCARDED, type RecursivePartial } from '@datadog/browser-core';
-import { EventFormat, EventKind, EventManager, EventSource, EventTrack, type RawEvent, ServerEvent } from '../event';
-import type { RawRumEvent } from '../event';
+import { EventFormat, EventKind, EventManager, EventSource, EventTrack, ServerEvent } from '../event';
+import type { RawRumEvent, RawTelemetryEvent } from '../event';
+
+type AssemblableRawEvent = RawRumEvent | RawTelemetryEvent;
 import type { FormatHooks } from './hooks';
 import { RumEvent } from '../domain/rum';
 import { TelemetryEvent } from '../domain/telemetry';
@@ -23,8 +25,9 @@ export class Assembly {
     private eventManager: EventManager,
     private hooks: FormatHooks
   ) {
-    this.eventManager.registerHandler<RawEvent>({
-      canHandle: (event) => event.kind === EventKind.RAW,
+    this.eventManager.registerHandler<AssemblableRawEvent>({
+      canHandle: (event): event is AssemblableRawEvent =>
+        event.kind === EventKind.RAW && event.format !== EventFormat.PROFILE,
       handle: (event, notify) => {
         const result = this.assembleToServerEvent(event);
         if (result !== DISCARDED) {
@@ -35,7 +38,7 @@ export class Assembly {
   }
 
   /** Route to the appropriate assembly strategy based on event source. */
-  private assembleToServerEvent(event: RawEvent): ServerEvent | DISCARDED {
+  private assembleToServerEvent(event: AssemblableRawEvent): ServerEvent | DISCARDED {
     if (event.format === EventFormat.RUM && event.source === EventSource.RENDERER) {
       return this.assembleRendererRumEvent(event);
     }
@@ -80,7 +83,7 @@ export class Assembly {
    * hook chain (commonContext, session, view), producing a complete
    * ServerEvent ready for transport.
    */
-  private assembleMainProcessEvent(event: RawEvent): ServerEvent | DISCARDED {
+  private assembleMainProcessEvent(event: AssemblableRawEvent): ServerEvent | DISCARDED {
     const startTime = event.startTime ?? timeStampNow();
 
     if (event.format === EventFormat.RUM) {
