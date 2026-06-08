@@ -16,6 +16,7 @@ export interface BatchProducerConfig {
 export abstract class BatchProducer {
   protected trackPath: string;
   protected writeQueue: Promise<void> = Promise.resolve();
+  private fileSequence = 0;
 
   protected constructor(config: BatchProducerConfig) {
     this.trackPath = config.trackPath;
@@ -64,9 +65,9 @@ export abstract class BatchProducer {
     }
   }
 
-  /** Generates a timestamp-based `.tmp` file name for a new batch. */
+  /** Generates a unique `.tmp` file name for a new batch. */
   protected generateBatchFileName() {
-    return `batch-${dateNow()}.tmp`;
+    return `batch-${dateNow()}-${++this.fileSequence}.tmp`;
   }
 
   /** Renames a `.tmp` batch file to `.log` so the consumer can pick it up. */

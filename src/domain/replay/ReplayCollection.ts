@@ -143,7 +143,7 @@ export class ReplayCollection {
       });
 
       const data = Buffer.from(flushResult.serializedSegment, 'utf8');
-      this.pendingFlush = this.deflate.compressSegment(data).then(
+      const segmentFlush = this.deflate.compressSegment(data).then(
         monitor((compressed: Buffer) => {
           this.eventManager.notify({
             kind: EventKind.SERVER,
@@ -156,6 +156,11 @@ export class ReplayCollection {
           });
         })
       );
+      // Chain rather than replace so stop() awaits all in-flight compressions.
+      // Without this, a SESSION_EXPIRED flush followed by a new-session flush
+      // before the first compression completes would overwrite pendingFlush,
+      // causing stop() to miss the expired session's last segment on quit.
+      this.pendingFlush = Promise.all([this.pendingFlush, segmentFlush]).then(() => undefined);
     }
 
     this.segment = null;

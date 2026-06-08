@@ -104,7 +104,7 @@ describe('BatchProducer', () => {
       producer.post({ b: 2 });
       await producer.flush();
 
-      const tmp = path.join(config.trackPath, 'batch-1234567890.tmp');
+      const tmp = path.join(config.trackPath, 'batch-1234567890-1.tmp');
 
       expect(fsMocks.appendFile).toHaveBeenCalledTimes(2);
       expect(fsMocks.appendFile).toHaveBeenNthCalledWith(1, tmp, `{"a":1}\n`, 'utf8');
@@ -147,8 +147,8 @@ describe('BatchProducer', () => {
       producer.post({ event: 'test' });
       await producer.flush();
 
-      const tmp = path.join(config.trackPath, 'batch-1234567890.tmp');
-      const log = path.join(config.trackPath, 'batch-1234567890.log');
+      const tmp = path.join(config.trackPath, 'batch-1234567890-1.tmp');
+      const log = path.join(config.trackPath, 'batch-1234567890-1.log');
 
       expect(fsMocks.rename).toHaveBeenCalledWith(tmp, log);
     });
@@ -176,10 +176,10 @@ describe('BatchProducer', () => {
       producer.post({ x: '123' });
       await producer.flush();
 
-      const tmp1 = path.join(small.trackPath, 'batch-111.tmp');
-      const log1 = path.join(small.trackPath, 'batch-111.log');
-      const tmp2 = path.join(small.trackPath, 'batch-222.tmp');
-      const log2 = path.join(small.trackPath, 'batch-222.log');
+      const tmp1 = path.join(small.trackPath, 'batch-111-1.tmp');
+      const log1 = path.join(small.trackPath, 'batch-111-1.log');
+      const tmp2 = path.join(small.trackPath, 'batch-222-2.tmp');
+      const log2 = path.join(small.trackPath, 'batch-222-2.log');
 
       expect(fsMocks.appendFile).toHaveBeenCalledTimes(2);
       expect(fsMocks.appendFile).toHaveBeenNthCalledWith(1, tmp1, `{"x":"123"}\n`, 'utf8');
@@ -203,8 +203,8 @@ describe('BatchProducer', () => {
       producer.post({ second: true });
       await producer.flush();
 
-      const tmp1 = path.join(config.trackPath, 'batch-1000.tmp');
-      const tmp2 = path.join(config.trackPath, 'batch-2000.tmp');
+      const tmp1 = path.join(config.trackPath, 'batch-1000-1.tmp');
+      const tmp2 = path.join(config.trackPath, 'batch-2000-2.tmp');
 
       const appendedFiles = fsMocks.appendFile.mock.calls.map((c) => String(c[0]));
       expect(appendedFiles).toContain(tmp1);
