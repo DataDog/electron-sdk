@@ -38,6 +38,8 @@ export interface TestFixtures {
   intake: Intake;
   testServer: TestServer;
   rumBrowserSdk: Record<string, unknown> | null;
+  initialIntakeQuotaDecision: 'quota_ok' | 'quota_ko';
+  sdkConfigOverrides: Partial<InitConfiguration> | null;
 }
 
 /**
@@ -45,11 +47,13 @@ export interface TestFixtures {
  * Automatically launches the app before each test and closes it after.
  */
 export const test = base.extend<TestFixtures>({
+  initialIntakeQuotaDecision: ['quota_ok', { option: true }],
+
   intake: [
-    // eslint-disable-next-line no-empty-pattern
-    async ({}, use) => {
+    async ({ initialIntakeQuotaDecision }, use) => {
       const intake = new Intake();
       await intake.start();
+      intake.setQuotaResponse(initialIntakeQuotaDecision);
       await use(intake);
       await intake.stop();
     },
@@ -67,9 +71,9 @@ export const test = base.extend<TestFixtures>({
     { option: true },
   ],
 
-  electronApp: async ({ intake, rumBrowserSdk }, use) => {
+  electronApp: async ({ intake, rumBrowserSdk, sdkConfigOverrides }, use) => {
     const userDataDir = await createUserDataDir();
-    const electronApp = await launchApp(intake, userDataDir, rumBrowserSdk);
+    const electronApp = await launchApp(intake, userDataDir, rumBrowserSdk, sdkConfigOverrides);
     await use(electronApp);
     await electronApp.close();
     await cleanupUserDataDir(userDataDir);
@@ -88,12 +92,15 @@ export const test = base.extend<TestFixtures>({
   },
 
   rumBrowserSdk: [null, { option: true }],
+
+  sdkConfigOverrides: [null, { option: true }],
 });
 
 async function launchApp(
   intake: Intake,
   userDataDir: string,
-  rumBrowserSdk: Record<string, unknown> | null = null
+  rumBrowserSdk: Record<string, unknown> | null = null,
+  sdkConfigOverrides: Partial<InitConfiguration> | null = null
 ): Promise<ElectronApplication> {
   const env: Record<string, string> = {};
   for (const key of HOST_ENV_ALLOWLIST) {
@@ -111,9 +118,12 @@ async function launchApp(
     applicationId: 'e2e-test-app-id',
     env: 'test',
     version: '1.0.0',
+    sessionSampleRate: 100,
+    profilingSampleRate: 100,
     telemetrySampleRate: 100,
     defaultPrivacyLevel: 'mask',
     allowedWebViewHosts: [],
+    ...sdkConfigOverrides,
   };
   env.DD_ELECTRON_SDK_CONFIG = JSON.stringify(electronSdkConfig);
 
@@ -138,7 +148,16 @@ async function launchApp(
 
 async function waitForWindowLoaded(electronApp: ElectronApplication): Promise<{ window: Page }> {
   const window = await electronApp.firstWindow();
-  window.on('console', (msg) => console.log('Browser console:', msg.text()));
+  window.on('console', (msg) => {
+    const text = msg.text();
+    // The main window is served over file://, which cannot carry the `Document-Policy: js-profiling` header,
+    // so the Browser SDK profiler always fails to start there. That failure is expected in this setup;
+    // drop its noise (the bridge windows that actually profile are served over app:// / http with the header).
+    if (text.includes('js-profiling') || text.includes('Profiler startup failed')) {
+      return;
+    }
+    console.log('Browser console:', text);
+  });
   await window.waitForLoadState('load');
   await window.waitForTimeout(500);
   return { window };

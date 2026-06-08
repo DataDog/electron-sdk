@@ -29,13 +29,21 @@ export interface Span {
   [key: string]: unknown;
 }
 
+export interface ProfilingRequest {
+  timestamp: number;
+  contentType: string;
+  headers: Record<string, string>;
+}
+
 const byType = (type: string) => (event: ReceivedEvent) => (event.body as { type?: string }).type === type;
 
 export class Intake {
   private server: http.Server | null = null;
   private rumEvents: ReceivedEvent[] = [];
   private traces: Trace[] = [];
+  private profilingRequests: ProfilingRequest[] = [];
   private port = 0;
+  private quotaDecision: 'quota_ok' | 'quota_ko' = 'quota_ok';
 
   private storeRumEvents(parsedBody: unknown, headers: Record<string, string>, ddforward: string) {
     const items = Array.isArray(parsedBody) ? (parsedBody as unknown[]) : [parsedBody];
@@ -56,9 +64,28 @@ export class Intake {
     }
   }
 
+  setQuotaResponse(decision: 'quota_ok' | 'quota_ko'): void {
+    this.quotaDecision = decision;
+  }
+
   async start(port = 0): Promise<number> {
     return new Promise((resolve, reject) => {
       this.server = http.createServer((req, res) => {
+        const url = new URL(req.url ?? '/', 'http://localhost');
+        const ddforward = url.searchParams.get('ddforward') ?? '';
+        const ddforwardSubdomain = url.searchParams.get('ddforwardSubdomain') ?? '';
+
+        if (req.method === 'GET' && ddforwardSubdomain === 'quota') {
+          const admitted = this.quotaDecision === 'quota_ok';
+          // Mirror the real quota API: `reason` is an admission reason, not the decision itself
+          // (a denial reports why, e.g. `quota_exceeded`).
+          const reason = admitted ? 'quota_ok' : 'quota_exceeded';
+          req.resume();
+          res.writeHead(admitted ? 200 : 429, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ data: { attributes: { admitted, reason } } }));
+          return;
+        }
+
         if (req.method !== 'POST') {
           res.writeHead(404, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Not found' }));
@@ -70,6 +97,24 @@ export class Intake {
         req.on('data', (chunk: Buffer) => {
           body += chunk.toString();
         });
+
+        if (ddforward.startsWith('/api/v2/profile')) {
+          req.resume();
+          req.on('end', () => {
+            const headers: Record<string, string> = {};
+            for (const [key, value] of Object.entries(req.headers)) {
+              if (typeof value === 'string') headers[key.toLowerCase()] = value;
+            }
+            this.profilingRequests.push({
+              timestamp: Date.now(),
+              contentType: req.headers['content-type'] ?? '',
+              headers,
+            });
+            res.writeHead(200);
+            res.end();
+          });
+          return;
+        }
 
         req.on('end', () => {
           try {
@@ -83,8 +128,6 @@ export class Intake {
                 headers[key.toLowerCase()] = value.join(', ');
               }
             }
-
-            const ddforward = new URL(req.url ?? '/', 'http://localhost').searchParams.get('ddforward') ?? '';
 
             if (ddforward.startsWith('/api/v2/spans')) {
               this.storeTraces(parsedBody);
@@ -211,9 +254,35 @@ export class Intake {
     return this.traces.flatMap((trace) => trace.spans).filter(predicate);
   }
 
+  getProfilingRequests(): ProfilingRequest[] {
+    return [...this.profilingRequests];
+  }
+
+  async waitForProfilingRequest(options?: { timeout?: number }): Promise<ProfilingRequest[]> {
+    const timeout = options?.timeout ?? 10000;
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeout) {
+      if (this.profilingRequests.length > 0) return [...this.profilingRequests];
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error(`Timed out waiting for profiling request after ${timeout}ms`);
+  }
+
+  async assertNoProfilingRequest(duration = 1000): Promise<void> {
+    const startTime = Date.now();
+    while (Date.now() - startTime < duration) {
+      if (this.profilingRequests.length > 0) {
+        throw new Error(`Expected no profiling requests but received ${this.profilingRequests.length}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+
   clear(): void {
     this.rumEvents = [];
     this.traces = [];
+    this.profilingRequests = [];
+    this.quotaDecision = 'quota_ok';
   }
 
   getPort(): number {
