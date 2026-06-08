@@ -94,7 +94,6 @@ describe('BatchManager', () => {
 
       expect(mockProducerCreate).toHaveBeenCalledWith({
         trackPath: '/mock/path/replay',
-        batchSize: BatchSizes.MEDIUM,
       });
       expect(ReplayBatchConsumer).toHaveBeenCalledWith(expect.objectContaining({ trackPath: '/mock/path/replay' }));
     });

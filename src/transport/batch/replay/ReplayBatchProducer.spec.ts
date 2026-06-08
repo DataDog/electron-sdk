@@ -14,7 +14,6 @@ const fsMocks = mockFs();
 
 const config: BatchProducerConfig = {
   trackPath: '/mock/replay',
-  batchSize: 1024 * 1024,
 };
 
 function makePayload(overrides: Partial<ReplaySegmentPayload> = {}): ReplaySegmentPayload {

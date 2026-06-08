@@ -6,25 +6,19 @@ import path from 'node:path';
 export interface BatchProducerConfig {
   /** Absolute path to the directory where batch files are written. */
   trackPath: string;
-  /** Maximum byte size of a single batch file before it is rotated. */
-  batchSize: number;
 }
 
 /**
  * Writes serialized event data to `.tmp` batch files on disk.
- * When the current file exceeds {@link BatchProducerConfig.batchSize}, it is rotated
- * (renamed from `.tmp` to `.log`) so the {@link BatchConsumer} can pick it up.
+ * Subclasses implement {@link writeData} to control how each event is serialized and
+ * when files are rotated.
  */
 export abstract class BatchProducer {
   protected trackPath: string;
-  protected batchSize: number;
-  protected currentBatchFile: string | null = null;
-  protected currentBatchSize = 0;
   protected writeQueue: Promise<void> = Promise.resolve();
 
   protected constructor(config: BatchProducerConfig) {
     this.trackPath = config.trackPath;
-    this.batchSize = config.batchSize;
   }
 
   /** Enqueues data to be appended to the current batch file. Writes are serialized. */
@@ -36,10 +30,15 @@ export abstract class BatchProducer {
       });
   }
 
-  /** Waits for pending writes to complete and rotates the current batch file. */
+  /** Waits for all pending writes to complete. */
   async flush() {
     await this.writeQueue;
-    await this.rotateBatch();
+  }
+
+  /** Ensures the track directory exists and rotates any orphaned `.tmp` files from prior sessions. */
+  protected async initialize() {
+    await this.ensureTrackDirectoryExists();
+    await this.rotateOrphanedBatches();
   }
 
   /** Creates the track directory if it does not already exist. */
@@ -70,24 +69,6 @@ export abstract class BatchProducer {
     return `batch-${dateNow()}.tmp`;
   }
 
-  /** Returns the full path to the current batch file, creating a new name if needed. */
-  protected getCurrentBatchPath() {
-    if (!this.currentBatchFile) {
-      this.currentBatchFile = this.generateBatchFileName();
-    }
-    return path.join(this.trackPath, this.currentBatchFile);
-  }
-
-  /** Renames the current `.tmp` batch file to `.log` and resets the batch state. */
-  protected async rotateBatch() {
-    if (!this.currentBatchFile) {
-      return;
-    }
-    await this.renameBatchFile(this.currentBatchFile);
-    this.currentBatchFile = null;
-    this.currentBatchSize = 0;
-  }
-
   /** Renames a `.tmp` batch file to `.log` so the consumer can pick it up. */
   protected async renameBatchFile(file: string) {
     const tmpPath = path.join(this.trackPath, file);
@@ -101,6 +82,5 @@ export abstract class BatchProducer {
     }
   }
 
-  /** Serializes data as a JSON line and appends it to the current batch file, rotating first if the size limit would be exceeded. */
   protected abstract writeData(data: unknown): Promise<void>;
 }

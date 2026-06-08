@@ -10,6 +10,7 @@ import { BatchProducer } from './BatchProducer';
 import type { BatchProducerConfig } from './BatchProducer';
 import { StandardBatchConsumer } from './standard/StandardBatchConsumer';
 import { StandardBatchProducer } from './standard/StandardBatchProducer';
+import type { StandardBatchProducerConfig } from './standard/StandardBatchProducer';
 import { ReplayBatchConsumer } from './replay/ReplayBatchConsumer';
 import { ReplayBatchProducer } from './replay/ReplayBatchProducer';
 import type { BatchConfig } from './batchConfig.types';
@@ -107,16 +108,17 @@ export class BatchManager {
     const trackPath = path.join(configPath, trackType);
     const intakeUrl = computeIntakeUrlForTrack(config.site, trackType, config.proxy);
 
-    const producerConfig: BatchProducerConfig = { trackPath, batchSize };
+    const baseProducerConfig: BatchProducerConfig = { trackPath };
     const consumerConfig: BatchConsumerConfig = { trackPath, intakeUrl, clientToken };
 
     if (trackType === EventTrack.REPLAY) {
-      const producer = await ReplayBatchProducer.create(producerConfig);
+      const producer = await ReplayBatchProducer.create(baseProducerConfig);
       const consumer = new ReplayBatchConsumer(consumerConfig);
       return { producer, consumer };
     }
 
-    const producer = await StandardBatchProducer.create(producerConfig);
+    const standardProducerConfig: StandardBatchProducerConfig = { trackPath, batchSize };
+    const producer = await StandardBatchProducer.create(standardProducerConfig);
     const consumer = new StandardBatchConsumer(consumerConfig);
     return { producer, consumer };
   }

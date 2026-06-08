@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import path from 'node:path';
-import type { BatchProducerConfig as ProducerConfig } from '../BatchProducer';
+import type { StandardBatchProducerConfig as ProducerConfig } from './StandardBatchProducer';
 import { mockFs } from '../../../mocks.specUtil';
 import { StandardBatchProducer } from './StandardBatchProducer';
 

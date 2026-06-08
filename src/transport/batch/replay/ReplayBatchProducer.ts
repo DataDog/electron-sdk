@@ -20,8 +20,7 @@ export class ReplayBatchProducer extends BatchProducer {
   /** Creates and fully initializes a ReplayBatchProducer. */
   static async create(config: BatchProducerConfig): Promise<ReplayBatchProducer> {
     const producer = new ReplayBatchProducer(config);
-    await producer.ensureTrackDirectoryExists();
-    await producer.rotateOrphanedBatches();
+    await producer.initialize();
     return producer;
   }
 
@@ -32,7 +31,6 @@ export class ReplayBatchProducer extends BatchProducer {
 
     const fileName = this.generateBatchFileName();
     const tmpPath = path.join(this.trackPath, fileName);
-    const logPath = tmpPath.replace(/\.tmp$/, '.log');
 
     const metadataWithSizes = {
       ...metadata,
@@ -42,6 +40,6 @@ export class ReplayBatchProducer extends BatchProducer {
 
     const content = `${JSON.stringify(metadataWithSizes)}\n${compressed.toString('base64')}\n`;
     await fs.writeFile(tmpPath, content, 'utf8');
-    await fs.rename(tmpPath, logPath);
+    await this.renameBatchFile(fileName);
   }
 }
