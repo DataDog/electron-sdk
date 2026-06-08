@@ -31,7 +31,7 @@ function startRendererHttpServer(): Promise<number> {
 
       if (_req.url === '/' || _req.url?.endsWith('.html')) {
         const html = fs.readFileSync(htmlPath, 'utf-8');
-        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.writeHead(200, { 'Content-Type': 'text/html', 'Document-Policy': 'js-profiling' });
         res.end(html);
       } else if (_req.url?.endsWith('.js')) {
         const js = fs.readFileSync(jsPath, 'utf-8');

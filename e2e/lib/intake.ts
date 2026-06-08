@@ -28,12 +28,19 @@ export interface Span {
   [key: string]: unknown;
 }
 
+export interface ProfilingRequest {
+  timestamp: number;
+  contentType: string;
+  headers: Record<string, string>;
+}
+
 const byType = (type: string) => (event: ReceivedEvent) => (event.body as { type?: string }).type === type;
 
 export class Intake {
   private server: http.Server | null = null;
   private rumEvents: ReceivedEvent[] = [];
   private traces: Trace[] = [];
+  private profilingRequests: ProfilingRequest[] = [];
   private port = 0;
 
   private storeRumEvents(parsedBody: unknown, headers: Record<string, string>) {
@@ -69,6 +76,26 @@ export class Intake {
           body += chunk.toString();
         });
 
+        const ddforward = new URL(req.url ?? '/', 'http://localhost').searchParams.get('ddforward') ?? '';
+
+        if (ddforward === '/api/v2/profile') {
+          req.resume();
+          req.on('end', () => {
+            const headers: Record<string, string> = {};
+            for (const [key, value] of Object.entries(req.headers)) {
+              if (typeof value === 'string') headers[key.toLowerCase()] = value;
+            }
+            this.profilingRequests.push({
+              timestamp: Date.now(),
+              contentType: req.headers['content-type'] ?? '',
+              headers,
+            });
+            res.writeHead(200);
+            res.end();
+          });
+          return;
+        }
+
         req.on('end', () => {
           try {
             const parsedBody: unknown = JSON.parse(body);
@@ -81,8 +108,6 @@ export class Intake {
                 headers[key.toLowerCase()] = value.join(', ');
               }
             }
-
-            const ddforward = new URL(req.url ?? '/', 'http://localhost').searchParams.get('ddforward') ?? '';
 
             if (ddforward.startsWith('/api/v2/spans')) {
               this.storeTraces(parsedBody);
@@ -204,9 +229,24 @@ export class Intake {
     }
   }
 
+  getProfilingRequests(): ProfilingRequest[] {
+    return [...this.profilingRequests];
+  }
+
+  async waitForProfilingRequest(options?: { timeout?: number }): Promise<ProfilingRequest[]> {
+    const timeout = options?.timeout ?? 10000;
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeout) {
+      if (this.profilingRequests.length > 0) return [...this.profilingRequests];
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error(`Timed out waiting for profiling request after ${timeout}ms`);
+  }
+
   clear(): void {
     this.rumEvents = [];
     this.traces = [];
+    this.profilingRequests = [];
   }
 
   getPort(): number {
