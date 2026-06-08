@@ -4,7 +4,6 @@ import type { RawRumEvent } from '../event';
 import type { FormatHooks } from './hooks';
 import { RumEvent } from '../domain/rum';
 import { TelemetryEvent } from '../domain/telemetry';
-import type { ViewReplayStats } from '../domain/replay';
 
 /**
  * Transforms RawEvents into ServerEvents by enriching them with contextual
@@ -14,15 +13,15 @@ import type { ViewReplayStats } from '../domain/replay';
  * - **Main-process events**: fully assembled by combining raw data with all
  *   registered hook results (commonContext, session, view).
  * - **Renderer events**: arrive pre-assembled by `@datadog/browser-rum` in
- *   the renderer process. Only `session.id` and `application.id` are
- *   overridden from the main process; the renderer's own view, source,
- *   service, and other attributes are preserved.
+ *   the renderer process. Main-process hooks receive the event source and
+ *   renderer view ID so they can inject additional attributes (e.g. replay
+ *   stats). Only the hook results are applied; the renderer's own view,
+ *   source, service, and other attributes are preserved.
  */
 export class Assembly {
   constructor(
     private eventManager: EventManager,
-    private hooks: FormatHooks,
-    private getViewReplayStats?: (viewId: string) => ViewReplayStats | undefined
+    private hooks: FormatHooks
   ) {
     this.eventManager.registerHandler<RawEvent>({
       canHandle: (event) => event.kind === EventKind.RAW,
@@ -51,46 +50,32 @@ export class Assembly {
 
   /**
    * Renderer RUM events arrive already assembled by `@datadog/browser-rum`.
-   * Only `session.id` and `application.id` are overridden from the main
-   * process hooks, preserving the renderer's own view, source, and other
-   * attributes.
+   * Hooks receive the event source and renderer view ID so they can contribute
+   * additional attributes (e.g. replay stats). Only targeted fields from the
+   * hook results are applied; the renderer's own source, service, view, and
+   * other attributes are preserved.
    */
   private assembleRendererRumEvent(event: RawRumEvent): ServerEvent | DISCARDED {
+    const rendererViewId = (event.data as { view?: { id?: string } }).view?.id;
+
     const hookResult = this.hooks.triggerRum({
       eventType: event.data.type,
       startTime: event.data.date as TimeStamp,
+      source: EventSource.RENDERER,
+      rendererViewId,
     });
 
     if (hookResult === DISCARDED) {
       return DISCARDED;
     }
 
-    const { session, application, view } = hookResult ?? {};
-
-    // For view events, inject main-process replay stats so the backend sees
-    // the correct segments_count and has_replay instead of the browser SDK's
-    // zero values (bridge mode doesn't track segments in the renderer).
-    const rendererViewId = (event.data as { view?: { id?: string } }).view?.id;
-    const replayStats =
-      event.data.type === 'view' && rendererViewId ? this.getViewReplayStats?.(rendererViewId) : undefined;
+    const { session, application, view, _dd } = hookResult ?? {};
 
     const mainProcessAttributes = {
-      session: {
-        id: session?.id,
-        ...(replayStats ? { has_replay: true } : {}),
-      },
+      session,
       application: { id: application?.id },
       container: { view: { id: view?.id }, source: 'electron' },
-      ...(replayStats
-        ? {
-            _dd: {
-              replay_stats: {
-                segments_count: replayStats.segments_count,
-                segments_total_raw_size: replayStats.segments_total_raw_size,
-              },
-            },
-          }
-        : {}),
+      ...(_dd ? { _dd } : {}),
     };
 
     return {
@@ -114,6 +99,7 @@ export class Assembly {
       const hookResult = this.hooks.triggerRum({
         eventType: event.data.type,
         startTime,
+        source: EventSource.MAIN,
       });
       if (hookResult !== DISCARDED) {
         return {

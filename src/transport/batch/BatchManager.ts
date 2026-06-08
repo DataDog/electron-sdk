@@ -1,10 +1,18 @@
+import path from 'node:path';
 import { setTimeout } from '@datadog/browser-core';
 import type { Configuration } from '../../config';
+import { EventTrack } from '../../event';
 import { addError } from '../../domain/telemetry';
+import { computeIntakeUrlForTrack } from '../utils';
 import { BatchConsumer } from './BatchConsumer';
+import type { BatchConsumerConfig } from './BatchConsumer';
 import { BatchProducer } from './BatchProducer';
-import { BatchFactory } from './BatchFactory';
-import type { BatchConfig } from './types';
+import type { BatchProducerConfig } from './BatchProducer';
+import { StandardBatchConsumer } from './standard/StandardBatchConsumer';
+import { StandardBatchProducer } from './standard/StandardBatchProducer';
+import { ReplayBatchConsumer } from './replay/ReplayBatchConsumer';
+import { ReplayBatchProducer } from './replay/ReplayBatchProducer';
+import type { BatchConfig } from './batchConfig.types';
 
 /**
  * Coordinates a {@link BatchProducer} and {@link BatchConsumer} pair for a single track type.
@@ -28,7 +36,7 @@ export class BatchManager {
   static async create(config: Configuration, batchConfig: BatchConfig) {
     const { uploadFrequency } = batchConfig;
 
-    const { producer, consumer } = await BatchFactory.create(config, batchConfig);
+    const { producer, consumer } = await BatchManager.createProducerConsumerPair(config, batchConfig);
     const manager = new BatchManager(producer, consumer, uploadFrequency);
     manager.start();
 
@@ -83,5 +91,33 @@ export class BatchManager {
     } finally {
       this.isUploading = false;
     }
+  }
+
+  /**
+   * Creates the appropriate {@link BatchProducer} / {@link BatchConsumer} pair for the
+   * given track type. Add a new branch here when introducing a new transport strategy.
+   */
+  private static async createProducerConsumerPair(
+    config: Configuration,
+    batchConfig: BatchConfig
+  ): Promise<{ producer: BatchProducer; consumer: BatchConsumer }> {
+    const { clientToken } = config;
+    const { path: configPath, trackType, batchSize } = batchConfig;
+
+    const trackPath = path.join(configPath, trackType);
+    const intakeUrl = computeIntakeUrlForTrack(config.site, trackType, config.proxy);
+
+    const producerConfig: BatchProducerConfig = { trackPath, batchSize };
+    const consumerConfig: BatchConsumerConfig = { trackPath, intakeUrl, clientToken };
+
+    if (trackType === EventTrack.REPLAY) {
+      const producer = await ReplayBatchProducer.create(producerConfig);
+      const consumer = new ReplayBatchConsumer(consumerConfig);
+      return { producer, consumer };
+    }
+
+    const producer = await StandardBatchProducer.create(producerConfig);
+    const consumer = new StandardBatchConsumer(consumerConfig);
+    return { producer, consumer };
   }
 }

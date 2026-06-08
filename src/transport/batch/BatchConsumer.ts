@@ -1,7 +1,16 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { getUserAgent } from '../userAgent';
-import type { BatchConsumerConfig } from './types';
+
+/** Configuration for a {@link BatchConsumer} instance. */
+export interface BatchConsumerConfig {
+  /** Absolute path to the directory where batch files are read from. */
+  trackPath: string;
+  /** Full intake URL to POST batch data to. */
+  intakeUrl: string;
+  /** Datadog client token sent as `DD-API-KEY`. */
+  clientToken: string;
+}
 
 /**
  * Reads rotated `.log` batch files from disk, parses their newline-delimited JSON
@@ -57,6 +66,37 @@ export abstract class BatchConsumer {
     }
   }
 
-  /** Parses a batch file's JSON lines and POSTs them to the intake. Deletes the file on success. */
-  protected abstract uploadBatch(filePath: string): Promise<boolean>;
+  /**
+   * Reads a batch file, delegates request construction to {@link buildRequest},
+   * sends it, and deletes the file on success.
+   * If {@link buildRequest} returns `null` the file is deleted without a network call
+   * (empty or malformed batch — nothing to send).
+   */
+  protected async uploadBatch(filePath: string): Promise<boolean> {
+    const lines = await this.readBatchFile(filePath);
+    const request = this.buildRequest(lines);
+
+    if (!request) {
+      await fs.unlink(filePath).catch(() => undefined);
+      return true;
+    }
+
+    try {
+      const response = await fetch(request);
+      if (response.ok) {
+        await fs.unlink(filePath);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Builds the HTTP {@link Request} for the given batch file lines.
+   * Return `null` if the lines produce no sendable payload — the base class
+   * will delete the file and skip the network call.
+   */
+  protected abstract buildRequest(lines: string[]): Request | null;
 }

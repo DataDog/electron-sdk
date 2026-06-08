@@ -1,13 +1,13 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { BatchProducer } from '../BatchProducer';
-import type { BatchProducerConfig } from '../types';
+import type { BatchProducerConfig } from '../BatchProducer';
 import type { ReplaySegmentPayload } from '../../../domain/replay';
 
 /**
  * Concrete {@link BatchProducer} for session replay segments.
  *
- * Unlike the generic producer, each call to {@link writeData} writes one
+ * Unlike the standard producer, each call to {@link writeData} writes one
  * complete, atomic file per segment (no append/rotation by size). Each file
  * contains two lines:
  *   - Line 1: JSON metadata + size fields (consumed by the multipart 'event' part)

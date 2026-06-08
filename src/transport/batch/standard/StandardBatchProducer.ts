@@ -1,19 +1,19 @@
 import fs from 'node:fs/promises';
 import { BatchProducer } from '../BatchProducer';
-import type { BatchProducerConfig } from '../types';
+import type { BatchProducerConfig } from '../BatchProducer';
 
 /**
  * Concrete {@link BatchProducer} that serializes events as newline-delimited JSON
  * and appends them to `.tmp` batch files on disk.
  */
-export class GenericBatchProducer extends BatchProducer {
+export class StandardBatchProducer extends BatchProducer {
   /**
-   * Creates and fully initializes a GenericBatchProducer.
+   * Creates and fully initializes a StandardBatchProducer.
    * Ensures the track directory exists and rotates any orphaned `.tmp` files
    * left from previous sessions.
    */
   static async create(config: BatchProducerConfig): Promise<BatchProducer> {
-    const producer = new GenericBatchProducer(config);
+    const producer = new StandardBatchProducer(config);
     await producer.ensureTrackDirectoryExists();
     await producer.rotateOrphanedBatches();
 

@@ -98,7 +98,7 @@ describe('Transport', () => {
       await transport.flush();
 
       // RUM + SPANS + REPLAY
-      expect(mockBatchFlush).toHaveBeenCalledTimes(3);
+      expect(mockBatchFlush).toHaveBeenCalledTimes(transport['tracks'].length);
     });
   });
 

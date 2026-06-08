@@ -1,4 +1,3 @@
-import fs from 'node:fs/promises';
 import { generateUUID } from '@datadog/browser-core';
 import { BatchConsumer } from '../BatchConsumer';
 
@@ -7,18 +6,17 @@ declare const __SDK_VERSION__: string;
 /**
  * Concrete {@link BatchConsumer} for session replay segments.
  *
- * Reads the two-line format written by {@link ReplayBatchProducer} and sends
- * a multipart/form-data POST to the Datadog session replay intake:
+ * Reads the two-line format written by {@link ReplayBatchProducer} and builds a
+ * multipart/form-data POST to the Datadog session replay intake:
  *   - `segment`: deflate-compressed binary blob
  *   - `event`: JSON metadata including raw/compressed size fields
+ *
+ * File I/O, sending, and deletion on success are handled by {@link BatchConsumer}.
  */
 export class ReplayBatchConsumer extends BatchConsumer {
-  protected async uploadBatch(filePath: string): Promise<boolean> {
-    const lines = await this.readBatchFile(filePath);
-
+  protected buildRequest(lines: string[]): Request | null {
     if (lines.length < 2) {
-      await fs.unlink(filePath).catch(() => undefined);
-      return true;
+      return null;
     }
 
     const metadataWithSizes = JSON.parse(lines[0]) as Record<string, unknown>;
@@ -31,6 +29,10 @@ export class ReplayBatchConsumer extends BatchConsumer {
     formData.append('segment', new Blob([compressed], { type: 'application/octet-stream' }), `${sessionId}-${start}`);
     formData.append('event', new Blob([JSON.stringify(metadataWithSizes)], { type: 'application/json' }));
 
+    // The replay intake uses browser SDK conventions: auth and metadata as URL
+    // query params, not headers. ddsource and dd-evp-origin are 'browser' because
+    // the records originate from @datadog/browser-rum in the renderer — the backend
+    // uses these values to determine how to parse and stitch the compressed segments.
     const params = new URLSearchParams({
       ddsource: 'browser',
       ddtags: `sdk_version:${__SDK_VERSION__}`,
@@ -40,21 +42,10 @@ export class ReplayBatchConsumer extends BatchConsumer {
       'dd-request-id': generateUUID(),
     });
 
-    try {
-      const response = await fetch(`${this.intakeUrl}?${params.toString()}`, {
-        method: 'POST',
-        headers: { 'User-Agent': this.userAgent! },
-        body: formData,
-      });
-
-      if (response.ok) {
-        await fs.unlink(filePath);
-        return true;
-      }
-
-      return false;
-    } catch {
-      return false;
-    }
+    return new Request(`${this.intakeUrl}?${params.toString()}`, {
+      method: 'POST',
+      headers: { 'User-Agent': this.userAgent! },
+      body: formData,
+    });
   }
 }

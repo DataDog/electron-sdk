@@ -3,11 +3,11 @@ import { Assembly, createFormatHooks, registerCommonContext } from './assembly';
 import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
 import { RumCollection } from './domain/rum';
-import { ReplayCollection } from './domain/replay';
+import { ReplayCollection, registerReplayContext } from './domain/replay';
 import { SessionManager } from './domain/session';
 import { UserActivityTracker } from './domain/UserActivityTracker';
 import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './domain/rum';
-import { callMonitored, startTelemetry } from './domain/telemetry';
+import { callMonitored, monitor, startTelemetry } from './domain/telemetry';
 import { EventManager } from './event';
 import { BridgeHandler } from './bridge';
 import { Transport } from './transport';
@@ -41,7 +41,8 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   sessionManager = await SessionManager.start(eventManager, hooks);
 
   segmentCollection = new ReplayCollection(eventManager, config, sessionManager);
-  new Assembly(eventManager, hooks, (viewId) => segmentCollection?.getViewReplayStats(viewId));
+  registerReplayContext(hooks, (viewId) => segmentCollection?.getViewReplayStats(viewId));
+  new Assembly(eventManager, hooks);
   new BridgeHandler(eventManager, config);
   new UserActivityTracker(eventManager);
 
@@ -53,21 +54,30 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   const rum = await RumCollection.start(eventManager, hooks);
   rumApi = rum.getApi();
 
-  // Flush the final in-flight replay segment (and other transports) before
-  // the process exits. `preventDefault` defers the quit so the async flush
-  // can complete; the 5-second fallback ensures we never hang. Using `once`
-  // so the handler removes itself — when _flushTransport calls app.quit()
-  // the second quit propagates without re-entering here.
-  app.once('before-quit', (event: Electron.Event) => {
-    event.preventDefault();
-    const fallback = setTimeout(() => app.quit(), 5000);
-    void _flushTransport().finally(() => {
-      clearTimeout(fallback);
-      app.quit();
-    });
-  });
+  setupBeforeQuitHandler();
 
   return true;
+}
+
+/**
+ * Registers a one-time `before-quit` handler that flushes pending transport
+ * data before allowing the process to exit. `preventDefault` defers the quit
+ * while the async flush runs; a 5-second fallback ensures the app never hangs.
+ * Using `once` means the handler removes itself — when `_flushTransport` calls
+ * `app.quit()` the second quit propagates without re-entering this handler.
+ */
+function setupBeforeQuitHandler(): void {
+  app.once(
+    'before-quit',
+    monitor((event: Electron.Event) => {
+      event.preventDefault();
+      const fallback = setTimeout(() => app.quit(), 5000);
+      void _flushTransport().finally(() => {
+        clearTimeout(fallback);
+        app.quit();
+      });
+    })
+  );
 }
 
 /**

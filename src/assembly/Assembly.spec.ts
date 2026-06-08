@@ -196,4 +196,85 @@ describe('Assembly — renderer events', () => {
 
     expect(capturedStartTime).toBe(12345);
   });
+
+  it('passes source: RENDERER and rendererViewId to hooks for renderer events', () => {
+    const { eventManager, hooks } = setup();
+    let capturedSource: string | undefined;
+    let capturedRendererViewId: string | undefined;
+
+    hooks.registerRum((params) => {
+      capturedSource = params.source;
+      capturedRendererViewId = params.rendererViewId;
+      return SKIPPED;
+    });
+
+    eventManager.notify({
+      kind: EventKind.RAW,
+      source: EventSource.RENDERER,
+      format: EventFormat.RUM,
+      data: {
+        type: 'view',
+        session: { id: 'renderer-session' },
+        application: { id: 'renderer-app' },
+        view: { id: 'renderer-view-xyz' },
+      },
+    } as unknown as RawRumEvent);
+
+    expect(capturedSource).toBe(EventSource.RENDERER);
+    expect(capturedRendererViewId).toBe('renderer-view-xyz');
+  });
+
+  it('applies _dd attributes from hooks to renderer events', () => {
+    const { eventManager, hooks } = setup();
+    const collected: ServerEvent[] = [];
+    eventManager.registerHandler<ServerEvent>({
+      canHandle: (event): event is ServerEvent => event.kind === EventKind.SERVER,
+      handle: (event) => collected.push(event),
+    });
+
+    hooks.registerRum(() => ({
+      _dd: { replay_stats: { segments_count: 2, segments_total_raw_size: 512 } },
+    }));
+
+    eventManager.notify({
+      kind: EventKind.RAW,
+      source: EventSource.RENDERER,
+      format: EventFormat.RUM,
+      data: {
+        type: 'view',
+        session: { id: 'renderer-session' },
+        application: { id: 'renderer-app' },
+        view: { id: 'renderer-view' },
+      },
+    } as unknown as RawRumEvent);
+
+    expect(collected).toHaveLength(1);
+    const data = collected[0].data as Record<string, unknown>;
+    expect((data['_dd'] as Record<string, unknown>)?.['replay_stats']).toMatchObject({
+      segments_count: 2,
+      segments_total_raw_size: 512,
+    });
+  });
+
+  it('passes source: MAIN to hooks for main-process events', () => {
+    const eventManager = new EventManager();
+    const hooks = createFormatHooks();
+    let capturedSource: string | undefined;
+
+    hooks.registerRum((params) => {
+      capturedSource = params.source;
+      return SKIPPED;
+    });
+
+    new Assembly(eventManager, hooks);
+
+    eventManager.notify({
+      kind: EventKind.RAW,
+      source: EventSource.MAIN,
+      format: EventFormat.RUM,
+      data: RAW_ERROR_DATA,
+    });
+
+    expect(capturedSource).toBe(EventSource.MAIN);
+  });
 });

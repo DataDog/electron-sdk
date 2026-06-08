@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import path from 'node:path';
-import type { BatchProducerConfig } from '../types';
+import type { BatchProducerConfig } from '../BatchProducer';
 import { mockFs } from '../../../mocks.specUtil';
 import { ReplayBatchProducer } from './ReplayBatchProducer';
 import type { ReplaySegmentPayload, SegmentMetadata } from '../../../domain/replay';

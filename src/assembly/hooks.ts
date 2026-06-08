@@ -2,12 +2,17 @@ import { combine, DISCARDED, SKIPPED, type RecursivePartial, type TimeStamp } fr
 import type { RumEvent } from '../domain/rum';
 import type { TelemetryEvent } from '../domain/telemetry';
 import { RawSpanData } from '../domain/tracing/rawTracingData.types';
+import type { EventSource } from '../event';
 
 export type RumEventType = RumEvent['type'];
 
 export interface RumAssembleParams {
   eventType: RumEventType;
   startTime: TimeStamp;
+  /** The source of the event (main process or renderer). Available to hooks that need to behave differently per source. */
+  source?: EventSource;
+  /** For renderer events: the view ID reported by the renderer's browser-rum SDK. */
+  rendererViewId?: string;
 }
 
 export interface TelemetryAssembleParams {

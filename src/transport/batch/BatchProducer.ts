@@ -1,7 +1,14 @@
 import { dateNow } from '@datadog/browser-core';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { BatchProducerConfig } from './types';
+
+/** Configuration for a {@link BatchProducer} instance. */
+export interface BatchProducerConfig {
+  /** Absolute path to the directory where batch files are written. */
+  trackPath: string;
+  /** Maximum byte size of a single batch file before it is rotated. */
+  batchSize: number;
+}
 
 /**
  * Writes serialized event data to `.tmp` batch files on disk.
