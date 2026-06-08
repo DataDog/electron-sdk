@@ -2,6 +2,7 @@ import { Assembly, createFormatHooks, registerCommonContext } from './assembly';
 import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
 import { RumCollection } from './domain/rum';
+import { ProfilingCollection } from './domain/profiling';
 import { SessionManager } from './domain/session';
 import { UserActivityTracker } from './domain/UserActivityTracker';
 import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './domain/rum';
@@ -53,6 +54,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   sessionManager = await SessionManager.start(eventManager, hooks);
 
   new Assembly(eventManager, hooks);
+  new ProfilingCollection(eventManager, sessionManager, config);
   new BridgeHandler(eventManager, config);
   new UserActivityTracker(eventManager);
 

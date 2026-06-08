@@ -534,8 +534,7 @@ export type TelemetryCommonFeaturesUsage =
   | ClearAccount
   | AddFeatureFlagEvaluation
   | AddOperationStepVital
-  | GraphQLRequest
-  | AddViewLoadingTime;
+  | GraphQLRequest;
 /**
  * Schema of browser specific features usage
  */
@@ -543,15 +542,11 @@ export type TelemetryBrowserFeaturesUsage =
   | StartSessionReplayRecording
   | StartDurationVital
   | StopDurationVital
-  | AddDurationVital
-  | StartAction
-  | StopAction
-  | StartResource
-  | StopResource;
+  | AddDurationVital;
 /**
  * Schema of mobile specific features usage
  */
-export type TelemetryMobileFeaturesUsage = TrackWebView | AndroidNetworkInstrumentation;
+export type TelemetryMobileFeaturesUsage = AddViewLoadingTime | TrackWebView;
 
 /**
  * Schema of common properties of Telemetry events
@@ -590,8 +585,7 @@ export interface CommonTelemetryProperties {
     | 'react-native'
     | 'unity'
     | 'kotlin-multiplatform'
-    | 'electron'
-    | 'rum-cpp';
+    | 'electron';
   /**
    * The version of the SDK generating the telemetry event
    */
@@ -894,25 +888,6 @@ export interface GraphQLRequest {
   feature: 'graphql-request';
   [k: string]: unknown;
 }
-export interface AddViewLoadingTime {
-  /**
-   * addViewLoadingTime API
-   */
-  feature: 'addViewLoadingTime';
-  /**
-   * Whether the view is not available
-   */
-  no_view?: boolean;
-  /**
-   * Whether the available view is not active
-   */
-  no_active_view?: boolean;
-  /**
-   * Whether this call overwrote a previously set loading time
-   */
-  overwritten?: boolean;
-  [k: string]: unknown;
-}
 export interface StartSessionReplayRecording {
   /**
    * startSessionReplayRecording API
@@ -945,32 +920,23 @@ export interface AddDurationVital {
   feature: 'add-duration-vital';
   [k: string]: unknown;
 }
-export interface StartAction {
+export interface AddViewLoadingTime {
   /**
-   * startAction API
+   * addViewLoadingTime API
    */
-  feature: 'start-action';
-  [k: string]: unknown;
-}
-export interface StopAction {
+  feature: 'addViewLoadingTime';
   /**
-   * stopAction API
+   * Whether the view is not available
    */
-  feature: 'stop-action';
-  [k: string]: unknown;
-}
-export interface StartResource {
+  no_view: boolean;
   /**
-   * startResource API
+   * Whether the available view is not active
    */
-  feature: 'start-resource';
-  [k: string]: unknown;
-}
-export interface StopResource {
+  no_active_view: boolean;
   /**
-   * stopResource API
+   * Whether the loading time was overwritten
    */
-  feature: 'stop-resource';
+  overwritten: boolean;
   [k: string]: unknown;
 }
 export interface TrackWebView {
@@ -978,16 +944,5 @@ export interface TrackWebView {
    * trackWebView API
    */
   feature: 'trackWebView';
-  [k: string]: unknown;
-}
-export interface AndroidNetworkInstrumentation {
-  /**
-   * Android network instrumentation
-   */
-  feature: 'androidNetworkInstrumentation';
-  /**
-   * The network instrumentation API used
-   */
-  type: 'CRONET' | 'OKHTTP';
   [k: string]: unknown;
 }
