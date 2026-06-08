@@ -1,8 +1,10 @@
 import { app } from 'electron';
 
 import { BatchSizes, BatchUploadFrequencies, type Configuration } from '../config';
-import { EventKind, EventTrack, type EventManager, type ServerEvent } from '../event';
+import { EventKind, EventTrack, type EventManager, type ServerEvent, type ServerProfileEvent } from '../event';
 import { BatchManager } from './batch';
+import { ProfileBatchManager } from './batch/profiling';
+import type { ProfileData } from './batch/profiling';
 
 /**
  * Orchestrates event transport by routing server events from registered domains
@@ -11,6 +13,7 @@ import { BatchManager } from './batch';
 export class Transport {
   private tracks: EventTrack[] = [EventTrack.RUM, EventTrack.SPANS];
   private batchManagers: BatchManager[] = [];
+  private profileBatchManager: ProfileBatchManager | null = null;
   private basePath: string;
 
   private constructor(
@@ -26,6 +29,7 @@ export class Transport {
     for (const track of transport.tracks) {
       await transport.setupTrackBatching(track);
     }
+    await transport.setupProfilingBatching();
 
     return transport;
   }
@@ -67,8 +71,27 @@ export class Transport {
     });
   }
 
+  private async setupProfilingBatching(): Promise<void> {
+    const uploadFrequency = this.config.uploadFrequency
+      ? BatchUploadFrequencies[this.config.uploadFrequency]
+      : BatchUploadFrequencies.NORMAL;
+
+    this.profileBatchManager = await ProfileBatchManager.create(this.config, {
+      path: this.basePath,
+      uploadFrequency,
+    });
+
+    this.eventManager.registerHandler<ServerProfileEvent>({
+      canHandle: (event): event is ServerProfileEvent =>
+        event.kind === EventKind.SERVER && event.track === EventTrack.PROFILE,
+      handle: (event) => {
+        this.profileBatchManager!.post({ event: event.data, trace: event.trace } as ProfileData);
+      },
+    });
+  }
+
   /** Flushes all batch managers, rotating pending data and triggering uploads. */
   async flush() {
-    await Promise.all(this.batchManagers.map((m) => m.flush()));
+    await Promise.all([...this.batchManagers.map((m) => m.flush()), this.profileBatchManager?.flush()]);
   }
 }

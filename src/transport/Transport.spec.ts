@@ -11,7 +11,7 @@ vi.mock('electron', () => ({
   },
 }));
 
-const { mockBatchPost, mockBatchFlush, mockBatchCreate } = vi.hoisted(() => {
+const { mockBatchPost, mockBatchFlush, mockBatchCreate, mockProfileCreate } = vi.hoisted(() => {
   const mockBatchPost = vi.fn();
   const mockBatchFlush = vi.fn().mockResolvedValue(undefined);
   const mockBatchCreate = vi.fn().mockResolvedValue({
@@ -19,13 +19,24 @@ const { mockBatchPost, mockBatchFlush, mockBatchCreate } = vi.hoisted(() => {
     flush: mockBatchFlush,
     stop: vi.fn(),
   });
+  const mockProfileCreate = vi.fn().mockResolvedValue({
+    post: vi.fn(),
+    flush: vi.fn().mockResolvedValue(undefined),
+    stop: vi.fn(),
+  });
 
-  return { mockBatchPost, mockBatchFlush, mockBatchCreate };
+  return { mockBatchPost, mockBatchFlush, mockBatchCreate, mockProfileCreate };
 });
 
 vi.mock('./batch', () => ({
   BatchManager: {
     create: mockBatchCreate,
+  },
+}));
+
+vi.mock('./batch/profiling', () => ({
+  ProfileBatchManager: {
+    create: mockProfileCreate,
   },
 }));
 
