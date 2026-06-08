@@ -3,11 +3,13 @@ import path from 'node:path';
 import type { BatchProducerConfig } from '../BatchProducer';
 import { mockFs } from '../../../mocks.specUtil';
 import { ReplayBatchProducer } from './ReplayBatchProducer';
+import { CreationReason } from '../../../domain/replay';
 import type { ReplaySegmentPayload, SegmentMetadata } from '../../../domain/replay';
 
 vi.mock('node:fs/promises');
 vi.mock('@datadog/browser-core', () => ({
   dateNow: vi.fn(() => 1234567890),
+  ONE_SECOND: 1000,
 }));
 
 const fsMocks = mockFs();
@@ -27,7 +29,7 @@ function makePayload(overrides: Partial<ReplaySegmentPayload> = {}): ReplaySegme
     has_full_snapshot: true,
     index_in_view: 0,
     source: 'browser',
-    creation_reason: 'init',
+    creation_reason: CreationReason.INIT,
   };
   return {
     metadata,

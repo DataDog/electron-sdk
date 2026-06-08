@@ -1,4 +1,5 @@
 import zlib from 'node:zlib';
+import { monitor } from '../domain/telemetry';
 
 // ZLIB header for default compression (CMF=0x78, FLG=0x9C).
 // Prepended to continuation segments (index > 0) which don't have a header
@@ -55,7 +56,7 @@ export class StreamingDeflate {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
 
-      const onData = (chunk: Buffer) => chunks.push(chunk);
+      const onData = monitor((chunk: Buffer) => chunks.push(chunk));
       // eslint-disable-next-line prefer-const
       let onError: (err: Error) => void;
 
@@ -65,37 +66,40 @@ export class StreamingDeflate {
         if (onError) this.stream.off('error', onError);
       };
 
-      onError = (err) => {
+      onError = monitor((err: Error) => {
         cleanup();
         reject(err);
-      };
+      });
 
       this.stream.on('data', onData);
       this.stream.once('error', onError);
 
       this.stream.write(data);
-      this.stream.flush(zlib.constants.Z_FULL_FLUSH, () => {
-        cleanup();
+      this.stream.flush(
+        zlib.constants.Z_FULL_FLUSH,
+        monitor(() => {
+          cleanup();
 
-        const parts: Buffer[] = [];
+          const parts: Buffer[] = [];
 
-        if (!this.isFirstSegment) {
-          // Segment 0 already has the ZLIB header from zlib.createDeflate().
-          // Segments 1..N are continuations with no header — prepend one so
-          // the backend's header-stripping doesn't corrupt actual deflate data.
-          parts.push(ZLIB_HEADER);
-        }
-        this.isFirstSegment = false;
+          if (!this.isFirstSegment) {
+            // Segment 0 already has the ZLIB header from zlib.createDeflate().
+            // Segments 1..N are continuations with no header — prepend one so
+            // the backend's header-stripping doesn't corrupt actual deflate data.
+            parts.push(ZLIB_HEADER);
+          }
+          this.isFirstSegment = false;
 
-        parts.push(Buffer.concat(chunks));
+          parts.push(Buffer.concat(chunks));
 
-        // Append the Pako-compatible trailer: DEFLATE final empty block +
-        // 4-byte big-endian Adler-32 of all raw data compressed so far.
-        parts.push(DEFLATE_FINAL_BLOCK);
-        parts.push(this.adler32ToBuffer());
+          // Append the Pako-compatible trailer: DEFLATE final empty block +
+          // 4-byte big-endian Adler-32 of all raw data compressed so far.
+          parts.push(DEFLATE_FINAL_BLOCK);
+          parts.push(this.adler32ToBuffer());
 
-        resolve(Buffer.concat(parts));
-      });
+          resolve(Buffer.concat(parts));
+        })
+      );
     });
   }
 

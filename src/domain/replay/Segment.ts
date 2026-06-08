@@ -12,12 +12,17 @@ export interface SegmentContext {
   view: { id: string };
 }
 
-export type CreationReason =
-  | 'init'
-  | 'segment_duration_limit'
-  | 'segment_bytes_limit'
-  | 'view_change'
-  | 'session_renew';
+export const CreationReason = {
+  INIT: 'init',
+  SEGMENT_DURATION_LIMIT: 'segment_duration_limit',
+  SEGMENT_BYTES_LIMIT: 'segment_bytes_limit',
+  VIEW_CHANGE: 'view_change',
+  BEFORE_UNLOAD: 'before_unload',
+  VISIBILITY_HIDDEN: 'visibility_hidden',
+  PAGE_FROZEN: 'page_frozen',
+} as const;
+
+export type CreationReason = (typeof CreationReason)[keyof typeof CreationReason];
 
 /** Record type constants from the browser SDK's rrweb-based recording. */
 const FULL_SNAPSHOT_TYPE = 2;
@@ -63,6 +68,7 @@ export interface BrowserRecord {
 export class Segment {
   private records: BrowserRecord[] = [];
   private metadata: SegmentMetadata;
+  private _estimatedSize = 0;
 
   constructor(context: SegmentContext, creationReason: CreationReason, indexInView: number) {
     this.metadata = {
@@ -85,18 +91,12 @@ export class Segment {
     return this.records.length === 0;
   }
 
-  /** Estimated byte size of the serialized records (pre-compression). */
   get estimatedSize(): number {
-    // Rough estimate: stringify each record. This avoids re-serializing on every add.
-    // We sum individual record sizes + overhead for the wrapping segment structure.
-    let size = 0;
-    for (const record of this.records) {
-      size += JSON.stringify(record).length;
-    }
-    return size;
+    return this._estimatedSize;
   }
 
   addRecord(record: BrowserRecord): void {
+    this._estimatedSize += JSON.stringify(record).length;
     this.records.push(record);
     this.metadata.start = Math.min(this.metadata.start, record.timestamp);
     this.metadata.end = Math.max(this.metadata.end, record.timestamp);

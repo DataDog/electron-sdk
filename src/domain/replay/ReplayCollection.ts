@@ -1,14 +1,19 @@
-import { ONE_SECOND } from '@datadog/browser-core';
+import { ONE_SECOND, setTimeout, clearTimeout } from '@datadog/browser-core';
 import { EventFormat, EventKind, EventTrack, LifecycleKind } from '../../event';
 import type { EventManager, RawReplayEvent, LifecycleEvent } from '../../event';
 import type { Configuration } from '../../config';
 import type { SessionManager } from '../session';
 import { monitor } from '../telemetry';
-import { Segment, type BrowserRecord, type CreationReason, type SegmentContext } from './Segment';
-import { StreamingDeflate } from './StreamingDeflate';
+import { CreationReason, Segment, type BrowserRecord, type SegmentContext } from './Segment';
+import { StreamingDeflate } from '../../tools/StreamingDeflate';
 
+// Matches the browser SDK flush cadence.
 const SEGMENT_DURATION_LIMIT = 5 * ONE_SECOND;
-const SEGMENT_BYTES_LIMIT = 60_000;
+
+// 10 MB matches the iOS SDK (DatadogSessionReplay maxObjectSize). The browser
+// SDK caps at 60 KB because of browser fetch/IPC body-size constraints that do
+// not apply in the Electron main process.
+const SEGMENT_BYTES_LIMIT = 10 * 1024 * 1024;
 
 /**
  * Orchestrates session replay segment collection in the main process.
@@ -32,10 +37,10 @@ export interface ViewReplayStats {
 export class ReplayCollection {
   private segment: Segment | null = null;
   private currentViewId: string | undefined;
-  private nextCreationReason: CreationReason = 'init';
+  private nextCreationReason: CreationReason = CreationReason.INIT;
   private segmentIndexPerView = new Map<string, number>();
   private viewReplayStats = new Map<string, ViewReplayStats>();
-  private flushTimeoutId: ReturnType<typeof globalThis.setTimeout> | null = null;
+  private flushTimeoutId: ReturnType<typeof setTimeout> | null = null;
   // One persistent deflate stream per session — required so the backend can
   // stitch all segments into a single valid ZLIB stream for the replay player.
   private deflate = new StreamingDeflate();
@@ -51,7 +56,7 @@ export class ReplayCollection {
       canHandle: (event): event is RawReplayEvent =>
         event.kind === EventKind.RAW && 'format' in event && event.format === EventFormat.REPLAY,
       handle: monitor((event: RawReplayEvent) => {
-        this.onRecord(event.data as BrowserRecord, event.view?.id);
+        this.onRecord(event.data, event.view.id);
       }),
     });
 
@@ -59,9 +64,15 @@ export class ReplayCollection {
       canHandle: (event): event is LifecycleEvent => event.kind === EventKind.LIFECYCLE,
       handle: monitor((event: LifecycleEvent) => {
         if (event.lifecycle === LifecycleKind.SESSION_EXPIRED) {
-          this.flush('session_renew');
+          this.flush(CreationReason.INIT);
         } else if (event.lifecycle === LifecycleKind.SESSION_RENEW) {
-          this.nextCreationReason = 'session_renew';
+          // Fresh deflate context so the new session's segments form an
+          // independent ZLIB stream the backend can stitch separately.
+          this.deflate = new StreamingDeflate();
+          // All view data from the old session is obsolete — clear to prevent
+          // unbounded growth across long-lived sessions.
+          this.segmentIndexPerView.clear();
+          this.viewReplayStats.clear();
         }
       }),
     });
@@ -70,7 +81,7 @@ export class ReplayCollection {
   private onRecord(record: BrowserRecord, viewId: string | undefined): void {
     // Detect view change
     if (viewId && this.currentViewId && viewId !== this.currentViewId) {
-      this.flush('view_change');
+      this.flush(CreationReason.VIEW_CHANGE);
     }
 
     if (viewId) {
@@ -85,14 +96,14 @@ export class ReplayCollection {
 
       const indexInView = this.getNextSegmentIndex(context.view.id);
       this.segment = new Segment(context, this.nextCreationReason, indexInView);
-      this.nextCreationReason = 'init';
+      this.nextCreationReason = CreationReason.INIT;
       this.scheduleFlush();
     }
 
     this.segment.addRecord(record);
 
     if (this.segment.estimatedSize > SEGMENT_BYTES_LIMIT) {
-      this.flush('segment_bytes_limit');
+      this.flush(CreationReason.SEGMENT_BYTES_LIMIT);
     }
   }
 
@@ -132,27 +143,23 @@ export class ReplayCollection {
       });
 
       const data = Buffer.from(flushResult.serializedSegment, 'utf8');
-      this.pendingFlush = this.deflate.compressSegment(data).then((compressed) => {
-        this.eventManager.notify({
-          kind: EventKind.SERVER,
-          track: EventTrack.REPLAY,
-          data: {
-            metadata: flushResult.metadata,
-            rawBytesCount: flushResult.rawBytesCount,
-            compressed,
-          },
-        });
-      });
+      this.pendingFlush = this.deflate.compressSegment(data).then(
+        monitor((compressed: Buffer) => {
+          this.eventManager.notify({
+            kind: EventKind.SERVER,
+            track: EventTrack.REPLAY,
+            data: {
+              metadata: flushResult.metadata,
+              rawBytesCount: flushResult.rawBytesCount,
+              compressed,
+            },
+          });
+        })
+      );
     }
 
     this.segment = null;
     this.nextCreationReason = reason;
-
-    // New session gets a fresh deflate context so its segments form an
-    // independent ZLIB stream.
-    if (reason === 'session_renew') {
-      this.deflate = new StreamingDeflate();
-    }
   }
 
   /**
@@ -167,14 +174,14 @@ export class ReplayCollection {
 
   private scheduleFlush(): void {
     this.clearFlushTimeout();
-    this.flushTimeoutId = globalThis.setTimeout(() => {
-      this.flush('segment_duration_limit');
+    this.flushTimeoutId = setTimeout(() => {
+      this.flush(CreationReason.SEGMENT_DURATION_LIMIT);
     }, SEGMENT_DURATION_LIMIT);
   }
 
   private clearFlushTimeout(): void {
     if (this.flushTimeoutId !== null) {
-      globalThis.clearTimeout(this.flushTimeoutId);
+      clearTimeout(this.flushTimeoutId);
       this.flushTimeoutId = null;
     }
   }

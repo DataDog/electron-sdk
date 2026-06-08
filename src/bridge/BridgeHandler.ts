@@ -1,9 +1,10 @@
-import { ipcMain } from 'electron';
 import { DefaultPrivacyLevel } from '@datadog/browser-core';
-import { EventKind, EventSource, EventFormat } from '../event';
-import type { EventManager, RawRumEvent, RawReplayEvent } from '../event';
-import { monitor, addError as addTelemetryError } from '../domain/telemetry';
+import { ipcMain } from 'electron';
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
+import type { BrowserRecord } from '../domain/replay';
+import { addError as addTelemetryError, monitor } from '../domain/telemetry';
+import type { EventManager, RawRumEvent } from '../event';
+import { EventFormat, EventKind, EventSource } from '../event';
 
 type BridgeEventType = 'rum' | 'log' | 'internal_telemetry' | 'record';
 
@@ -70,12 +71,17 @@ export class BridgeHandler {
         break;
 
       case 'record':
+        if (!bridgeEvent.view) {
+          addTelemetryError(new Error('Replay record missing view'));
+          break;
+        }
         this.eventManager.notify({
           kind: EventKind.RAW,
+          source: EventSource.RENDERER,
           format: EventFormat.REPLAY,
-          data: bridgeEvent.event,
+          data: bridgeEvent.event as BrowserRecord,
           view: bridgeEvent.view,
-        } as RawReplayEvent);
+        });
         break;
 
       case 'log':

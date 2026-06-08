@@ -4,6 +4,7 @@ import type { RawReplayEvent, ServerReplayEvent } from '../../event';
 import { ReplayCollection } from './ReplayCollection';
 import type { Configuration } from '../../config';
 import type { SessionManager } from '../session';
+import { CreationReason } from './Segment';
 import type { ReplaySegmentPayload } from './Segment';
 
 vi.mock('../telemetry', () => ({
@@ -11,7 +12,7 @@ vi.mock('../telemetry', () => ({
   monitor: (fn: Function) => fn,
 }));
 
-vi.mock('./StreamingDeflate', () => ({
+vi.mock('../../tools/StreamingDeflate', () => ({
   StreamingDeflate: class {
     compressSegment = vi.fn().mockResolvedValue(Buffer.from('compressed'));
   },
@@ -149,7 +150,7 @@ describe('ReplayCollection', () => {
       await Promise.resolve();
 
       expect(captured).toHaveLength(2);
-      expect(captured[1].metadata.creation_reason).toBe('view_change');
+      expect(captured[1].metadata.creation_reason).toBe(CreationReason.VIEW_CHANGE);
     });
   });
 
