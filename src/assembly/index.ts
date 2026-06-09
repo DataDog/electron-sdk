@@ -1,4 +1,4 @@
-export { Assembly } from './Assembly';
+export { MainAssembly } from './MainAssembly';
 export { RendererAssembly } from './RendererAssembly';
 export { createFormatHooks } from './hooks';
 export { registerCommonContext } from './commonContext';

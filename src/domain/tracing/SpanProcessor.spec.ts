@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as DiagnosticsChannel from 'node:diagnostics_channel';
 import { DISCARDED, SKIPPED } from '@datadog/browser-core';
-import { EventFormat, EventKind, EventManager, EventSource, EventTrack } from '../../event';
+import { EventFormat, EventKind, EventManager, EventTrack } from '../../event';
 import type { Event, RawRumEvent, ServerSpansEvent } from '../../event';
 import { createFormatHooks, type FormatHooks } from '../../assembly';
 import type { Configuration } from '../../config';
@@ -85,7 +85,6 @@ describe('SpanProcessor', () => {
 
       expect(rawEvents).toHaveLength(1);
       expect(rawEvents[0].format).toBe(EventFormat.RUM);
-      expect(rawEvents[0].source).toBe(EventSource.MAIN);
       expect((rawEvents[0].data as { type: string }).type).toBe('resource');
 
       expect(serverEvents).toHaveLength(1);

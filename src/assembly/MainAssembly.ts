@@ -16,7 +16,7 @@ import { TelemetryEvent } from '../domain/telemetry';
  * Transforms main-process RawEvents into ServerEvents by enriching them with
  * contextual attributes (session, application, view, etc.) via format hooks.
  */
-export class Assembly {
+export class MainAssembly {
   constructor(
     private eventManager: EventManager,
     private hooks: FormatHooks
@@ -56,6 +56,7 @@ export class Assembly {
         return {
           kind: EventKind.SERVER,
           track: EventTrack.RUM,
+          source: EventSource.MAIN,
           data: assembleData<TelemetryEvent>(event.data, hookResult),
         };
       }

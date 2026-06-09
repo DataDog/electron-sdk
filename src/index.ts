@@ -1,4 +1,4 @@
-import { Assembly, RendererAssembly, createFormatHooks, registerCommonContext } from './assembly';
+import { MainAssembly, RendererAssembly, createFormatHooks, registerCommonContext } from './assembly';
 import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
 import { RumCollection } from './domain/rum';
@@ -44,7 +44,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   startTelemetry(eventManager, config);
   sessionManager = await SessionManager.start(eventManager, hooks);
 
-  new Assembly(eventManager, hooks);
+  new MainAssembly(eventManager, hooks);
   new RendererAssembly(eventManager, hooks, config);
   new UserActivityTracker(eventManager);
 

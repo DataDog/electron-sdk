@@ -1,6 +1,6 @@
 import { beforeEach, describe, it, expect } from 'vitest';
 import { DISCARDED, type TimeStamp } from '@datadog/browser-core';
-import { Assembly } from './Assembly';
+import { MainAssembly } from './MainAssembly';
 import { createFormatHooks, type FormatHooks } from './hooks';
 import {
   EventFormat,
@@ -26,7 +26,7 @@ const RAW_TELEMETRY_DATA: RawTelemetryData = {
   telemetry: { type: 'log', status: 'error', message: 'sdk error' },
 };
 
-describe('Assembly', () => {
+describe('MainAssembly', () => {
   let eventManager: EventManager;
   let hooks: FormatHooks;
   let serverEvents: ServerEvent[];
@@ -59,7 +59,7 @@ describe('Assembly', () => {
       handle: (event) => serverEvents.push(event),
     });
 
-    new Assembly(eventManager, hooks);
+    new MainAssembly(eventManager, hooks);
   });
 
   it('favors raw event attributes over hook attributes', () => {

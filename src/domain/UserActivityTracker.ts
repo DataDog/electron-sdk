@@ -13,10 +13,7 @@ export class UserActivityTracker {
   constructor(eventManager: EventManager) {
     eventManager.registerHandler<ServerRumEvent>({
       canHandle: (event): event is ServerRumEvent =>
-        event.kind === EventKind.SERVER &&
-        event.track === EventTrack.RUM &&
-        'source' in event &&
-        event.source === EventSource.RENDERER,
+        event.kind === EventKind.SERVER && event.track === EventTrack.RUM && event.source === EventSource.RENDERER,
       handle: (event, notify) => {
         const { data } = event;
         if (data.type === 'action' && data.action.type === 'click') {

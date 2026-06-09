@@ -103,7 +103,6 @@ export class SpanProcessor {
   private emitResource(resource: RawRumResource): void {
     this.eventManager.notify({
       kind: EventKind.RAW,
-      source: EventSource.MAIN,
       format: EventFormat.RUM,
       data: resource,
       startTime: resource.date,
@@ -115,6 +114,7 @@ export class SpanProcessor {
     this.eventManager.notify({
       kind: EventKind.SERVER,
       track: EventTrack.SPANS,
+      source: EventSource.MAIN,
       data: trace,
     });
   }
