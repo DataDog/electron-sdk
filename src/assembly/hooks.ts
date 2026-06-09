@@ -18,6 +18,16 @@ export interface SpanAssembleParams {
   startTime: TimeStamp;
 }
 
+export interface RendererAssembleParams {
+  startTime: TimeStamp;
+}
+
+export interface RendererHookResult {
+  session?: { id?: string };
+  application?: { id?: string };
+  view?: { id?: string };
+}
+
 type AssembleCallback<Params, Result> = (params: Params) => Result | typeof DISCARDED | typeof SKIPPED;
 
 /**
@@ -64,13 +74,16 @@ export function createFormatHooks() {
   const rumHook = createAssembleHook<RumAssembleParams, RecursivePartial<RumEvent>>();
   const telemetryHook = createAssembleHook<TelemetryAssembleParams, RecursivePartial<TelemetryEvent>>();
   const spanHook = createAssembleHook<SpanAssembleParams, RecursivePartial<RawSpanData>>();
+  const rendererHook = createAssembleHook<RendererAssembleParams, RendererHookResult>();
 
   return {
     registerRum: rumHook.register,
     registerTelemetry: telemetryHook.register,
     registerSpan: spanHook.register,
+    registerRenderer: rendererHook.register,
     triggerRum: rumHook.trigger,
     triggerTelemetry: telemetryHook.trigger,
     triggerSpan: spanHook.trigger,
+    triggerRenderer: rendererHook.trigger,
   };
 }

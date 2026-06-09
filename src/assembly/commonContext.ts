@@ -30,4 +30,8 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
       '_dd.application.id': configuration.applicationId,
     },
   }));
+
+  hooks.registerRenderer(() => ({
+    application: { id: configuration.applicationId },
+  }));
 }

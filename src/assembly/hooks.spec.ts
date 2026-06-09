@@ -105,4 +105,17 @@ describe('createFormatHooks', () => {
       expect(hooks.triggerTelemetry({ startTime: T0 })).toEqual({ date: 222 });
     });
   });
+
+  describe('triggerRenderer', () => {
+    it('combines results from multiple registered callbacks', () => {
+      const hooks = createFormatHooks();
+      hooks.registerRenderer(() => ({ session: { id: 'sess-1' } }));
+      hooks.registerRenderer(() => ({ application: { id: 'app-1' } }));
+
+      expect(hooks.triggerRenderer({ startTime: T100 })).toEqual({
+        session: { id: 'sess-1' },
+        application: { id: 'app-1' },
+      });
+    });
+  });
 });

@@ -30,6 +30,12 @@ export class ViewContext {
       if (id === undefined) return DISCARDED;
       return { meta: { '_dd.view.id': id } };
     });
+
+    hooks.registerRenderer((params) => {
+      const id = this.history.find(params.startTime);
+      if (id === undefined) return DISCARDED;
+      return { view: { id } };
+    });
   }
 
   static async init(hooks: FormatHooks, expireDelay = SESSION_TIME_OUT_DELAY): Promise<ViewContext> {
