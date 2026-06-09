@@ -100,8 +100,8 @@ The `EventManager` provides a handler-based pipeline for processing events.
 
 #### Event Kinds
 
-- **`RawEvent`** — Emitted by domain code, contains event-specific data, a source (`MAIN` | `RENDERER`), and a format (`RUM` | `TELEMETRY`).
-- **`ServerEvent`** — Ready for transport, tagged with a track (`RUM` | `LOGS`).
+- **`RawEvent`** — Emitted by main-process domain code, contains event-specific data and a format (`RUM` | `TELEMETRY`). Renderer events bypass this kind entirely (see `RendererPipeline`).
+- **`ServerEvent`** — Ready for transport, tagged with a track (`RUM` | `LOGS` | `SPANS`) and a source (`MAIN` | `RENDERER`).
 - **`LifecycleEvent`** — Internal signals (e.g., `END_USER_ACTIVITY`, `SESSION_RENEW`), not sent to intake.
 
 #### Handler Pattern
@@ -112,19 +112,22 @@ See `src/event/` and `src/domain/assembly.ts`.
 
 ### Assembly and Format Hooks
 
-The `Assembly` handler transforms `RawEvent` into `ServerEvent` by enriching raw data with contextual properties via format hooks.
+Two handlers transform events into `ServerEvent`s:
+
+- **`MainAssembly`** — handles `RawEvent`s (always main-process originated), enriches them via `triggerRum` / `triggerTelemetry` hooks, and emits `ServerEvent`s with `source: MAIN`.
+- **`RendererPipeline`** — owns the renderer IPC channel, receives pre-assembled RUM events from the Browser SDK, enriches them via the `triggerRenderer` hook, and emits `ServerRumEvent`s with `source: RENDERER` directly — bypassing the `RawEvent` pipeline entirely.
 
 #### Format Hooks
 
-`createFormatHooks()` creates per-format hook pairs (`registerRum`/`triggerRum`, `registerTelemetry`/`triggerTelemetry`). Each hook callback can return:
+`createFormatHooks()` creates per-format hook pairs (`registerRum`/`triggerRum`, `registerTelemetry`/`triggerTelemetry`, `registerRenderer`/`triggerRenderer`). Each hook callback can return:
 
 - **Partial data** — merged into the event via `combine()`
 - **`DISCARDED`** — drops the event entirely
 - **`SKIPPED`** — this callback has nothing to contribute
 
-Hooks are used by different parts of the SDK to attach their context (e.g., `registerCommonContext` adds `session`, `application`, `service`; `sessionManager` adds `session.id`).
+Hooks are used by different parts of the SDK to attach their context (e.g., `registerCommonContext` adds `application`, `service`; `sessionContext` adds `session.id`; `viewContext` adds `view.id`).
 
-See `src/domain/hooks/` and `src/domain/commonContext.ts`.
+See `src/assembly/` and `src/assembly/commonContext.ts`.
 
 ## SDK Telemetry
 
