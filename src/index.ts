@@ -1,4 +1,4 @@
-import { Assembly, createFormatHooks, registerCommonContext } from './assembly';
+import { Assembly, RendererAssembly, createFormatHooks, registerCommonContext } from './assembly';
 import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
 import { RumCollection } from './domain/rum';
@@ -7,7 +7,6 @@ import { UserActivityTracker } from './domain/UserActivityTracker';
 import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './domain/rum';
 import { callMonitored, startTelemetry } from './domain/telemetry';
 import { EventManager } from './event';
-import { BridgeHandler } from './bridge';
 import { Transport } from './transport';
 import { Tracing } from './domain/tracing/Tracing';
 import { SpanProcessor } from './domain/tracing/SpanProcessor';
@@ -46,7 +45,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   sessionManager = await SessionManager.start(eventManager, hooks);
 
   new Assembly(eventManager, hooks);
-  new BridgeHandler(eventManager, config);
+  new RendererAssembly(eventManager, hooks, config);
   new UserActivityTracker(eventManager);
 
   if (tracing.enabled) {

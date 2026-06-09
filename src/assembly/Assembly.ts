@@ -1,21 +1,20 @@
-import { combine, DISCARDED, timeStampNow, type RecursivePartial, TimeStamp } from '@datadog/browser-core';
-import { EventFormat, EventKind, EventManager, EventSource, EventTrack, type RawEvent, ServerEvent } from '../event';
-import type { RawRumEvent } from '../event';
+import { combine, DISCARDED, timeStampNow, type RecursivePartial } from '@datadog/browser-core';
+import {
+  EventFormat,
+  EventKind,
+  EventManager,
+  EventSource,
+  EventTrack,
+  type RawEvent,
+  type ServerEvent,
+} from '../event';
 import type { FormatHooks } from './hooks';
 import { RumEvent } from '../domain/rum';
 import { TelemetryEvent } from '../domain/telemetry';
 
 /**
- * Transforms RawEvents into ServerEvents by enriching them with contextual
- * attributes (session, application, view, etc.) via format hooks.
- *
- * Handles two sources differently:
- * - **Main-process events**: fully assembled by combining raw data with all
- *   registered hook results (commonContext, session, view).
- * - **Renderer events**: arrive pre-assembled by `@datadog/browser-rum` in
- *   the renderer process. Only `session.id` and `application.id` are
- *   overridden from the main process; the renderer's own view, source,
- *   service, and other attributes are preserved.
+ * Transforms main-process RawEvents into ServerEvents by enriching them with
+ * contextual attributes (session, application, view, etc.) via format hooks.
  */
 export class Assembly {
   constructor(
@@ -25,7 +24,7 @@ export class Assembly {
     this.eventManager.registerHandler<RawEvent>({
       canHandle: (event) => event.kind === EventKind.RAW,
       handle: (event, notify) => {
-        const result = this.assembleToServerEvent(event);
+        const result = this.assembleMainProcessEvent(event);
         if (result !== DISCARDED) {
           notify(result);
         }
@@ -33,52 +32,6 @@ export class Assembly {
     });
   }
 
-  /** Route to the appropriate assembly strategy based on event source. */
-  private assembleToServerEvent(event: RawEvent): ServerEvent | DISCARDED {
-    if (event.format === EventFormat.RUM && event.source === EventSource.RENDERER) {
-      return this.assembleRendererRumEvent(event);
-    }
-
-    return this.assembleMainProcessEvent(event);
-  }
-
-  /**
-   * Renderer RUM events arrive already assembled by `@datadog/browser-rum`.
-   * Only `session.id` and `application.id` are overridden from the main
-   * process hooks, preserving the renderer's own view, source, and other
-   * attributes.
-   */
-  private assembleRendererRumEvent(event: RawRumEvent): ServerEvent | DISCARDED {
-    const hookResult = this.hooks.triggerRum({
-      eventType: event.data.type,
-      startTime: event.data.date as TimeStamp,
-    });
-
-    if (hookResult === DISCARDED) {
-      return DISCARDED;
-    }
-
-    const { session, application, view } = hookResult ?? {};
-    const mainProcessAttributes = {
-      session: { id: session?.id },
-      application: { id: application?.id },
-      container: { view: { id: view?.id }, source: 'electron' },
-    };
-
-    return {
-      kind: EventKind.SERVER,
-      track: EventTrack.RUM,
-      source: EventSource.RENDERER,
-      // override some renderer event attributes by main process attributes
-      data: combine(event.data, mainProcessAttributes) as RumEvent,
-    };
-  }
-
-  /**
-   * Main-process events are assembled by combining raw data with the full
-   * hook chain (commonContext, session, view), producing a complete
-   * ServerEvent ready for transport.
-   */
   private assembleMainProcessEvent(event: RawEvent): ServerEvent | DISCARDED {
     const startTime = event.startTime ?? timeStampNow();
 

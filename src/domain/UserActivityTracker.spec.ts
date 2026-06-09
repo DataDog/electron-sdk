@@ -1,61 +1,61 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { EventManager, EventKind, EventSource, EventFormat, LifecycleKind, type LifecycleEvent } from '../event';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { EventKind, EventManager, EventSource, EventTrack, LifecycleKind } from '../event';
+import type { LifecycleEvent, ServerRumEvent } from '../event';
 import { UserActivityTracker } from './UserActivityTracker';
-import type { RumActionEvent } from './rum';
+import type { RumEvent } from './rum';
+
+function makeServerRumEvent(data: Partial<RumEvent>): ServerRumEvent {
+  return {
+    kind: EventKind.SERVER,
+    track: EventTrack.RUM,
+    source: EventSource.RENDERER,
+    data: data as RumEvent,
+  };
+}
 
 describe('UserActivityTracker', () => {
   let eventManager: EventManager;
-  let lifecycleEvents: string[];
+  let lifecycleEvents: LifecycleEvent[];
 
   beforeEach(() => {
     eventManager = new EventManager();
     lifecycleEvents = [];
+
     eventManager.registerHandler<LifecycleEvent>({
       canHandle: (event): event is LifecycleEvent => event.kind === EventKind.LIFECYCLE,
-      handle: (event) => lifecycleEvents.push(event.lifecycle),
+      handle: (event) => lifecycleEvents.push(event),
     });
+
     new UserActivityTracker(eventManager);
   });
 
-  function notifyRendererRumEvent(data: unknown) {
+  it('emits END_USER_ACTIVITY for a renderer click action', () => {
+    eventManager.notify(makeServerRumEvent({ type: 'action', action: { type: 'click' } }));
+
+    expect(lifecycleEvents).toHaveLength(1);
+    expect(lifecycleEvents[0]).toEqual({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.END_USER_ACTIVITY });
+  });
+
+  it('does not emit for non-click actions', () => {
+    eventManager.notify(makeServerRumEvent({ type: 'action', action: { type: 'tap' } }));
+
+    expect(lifecycleEvents).toHaveLength(0);
+  });
+
+  it('does not emit for non-action events', () => {
+    eventManager.notify(makeServerRumEvent({ type: 'error' }));
+
+    expect(lifecycleEvents).toHaveLength(0);
+  });
+
+  it('does not emit for MAIN source events', () => {
     eventManager.notify({
-      kind: EventKind.RAW,
-      source: EventSource.RENDERER,
-      format: EventFormat.RUM,
-      data,
-    } as never);
-  }
-
-  function makeClickAction(): Partial<RumActionEvent> {
-    return { type: 'action', action: { type: 'click' } };
-  }
-
-  it('emits END_USER_ACTIVITY when a renderer click action is received', () => {
-    notifyRendererRumEvent(makeClickAction());
-
-    expect(lifecycleEvents).toContain(LifecycleKind.END_USER_ACTIVITY);
-  });
-
-  it('does not emit END_USER_ACTIVITY for a non-click renderer action', () => {
-    notifyRendererRumEvent({ type: 'action', action: { type: 'custom' } });
-
-    expect(lifecycleEvents).not.toContain(LifecycleKind.END_USER_ACTIVITY);
-  });
-
-  it('does not emit END_USER_ACTIVITY for a non-action renderer event', () => {
-    notifyRendererRumEvent({ type: 'view' });
-
-    expect(lifecycleEvents).not.toContain(LifecycleKind.END_USER_ACTIVITY);
-  });
-
-  it('does not emit END_USER_ACTIVITY for a main process RAW event', () => {
-    eventManager.notify({
-      kind: EventKind.RAW,
+      kind: EventKind.SERVER,
+      track: EventTrack.RUM,
       source: EventSource.MAIN,
-      format: EventFormat.RUM,
-      data: makeClickAction(),
-    } as never);
+      data: { type: 'action', action: { type: 'click' } } as RumEvent,
+    });
 
-    expect(lifecycleEvents).not.toContain(LifecycleKind.END_USER_ACTIVITY);
+    expect(lifecycleEvents).toHaveLength(0);
   });
 });

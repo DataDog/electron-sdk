@@ -1,30 +1,24 @@
-import { EventFormat, EventKind, EventSource, LifecycleKind } from '../event';
-import type { EventManager, RawRumEvent } from '../event';
-import type { RumEvent } from './rum';
+import { EventKind, EventSource, EventTrack, LifecycleKind } from '../event';
+import type { EventManager, ServerRumEvent } from '../event';
 
 /**
  * Bridges user interactions into session management.
  *
- * Listens for raw renderer RUM events and emits `END_USER_ACTIVITY` whenever
- * a click action is received from the browser-rum SDK, keeping sessions alive
- * automatically based on real user interactions.
- *
- * ```
- * renderer click → browser-rum → BridgeHandler (RawRumEvent)
- *   → UserActivityTracker → END_USER_ACTIVITY → SessionManager.updateActivity()
- * ```
- *
- * In the future, we should probably add support for other browser interactions somehow and maybe some electron or customer events as well.
+ * Listens for renderer ServerRumEvents and emits `END_USER_ACTIVITY` whenever
+ * a click action is received, keeping sessions alive based on real user interactions.
  *
  * @see SessionManager for how `END_USER_ACTIVITY` drives session renewal.
  */
 export class UserActivityTracker {
   constructor(eventManager: EventManager) {
-    eventManager.registerHandler<RawRumEvent>({
-      canHandle: (event): event is RawRumEvent =>
-        event.kind === EventKind.RAW && event.source === EventSource.RENDERER && event.format === EventFormat.RUM,
+    eventManager.registerHandler<ServerRumEvent>({
+      canHandle: (event): event is ServerRumEvent =>
+        event.kind === EventKind.SERVER &&
+        event.track === EventTrack.RUM &&
+        'source' in event &&
+        event.source === EventSource.RENDERER,
       handle: (event, notify) => {
-        const data = event.data as unknown as RumEvent;
+        const { data } = event;
         if (data.type === 'action' && data.action.type === 'click') {
           notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.END_USER_ACTIVITY });
         }
