@@ -1,4 +1,5 @@
-import { RecursivePartial, ServerDuration, TimeStamp } from '@datadog/browser-core';
+import { type RecursivePartial } from '@datadog/browser-core';
+import { type ServerDuration, type TimeStamp } from '@datadog/js-core/time';
 import { RumErrorEvent, RumResourceEvent, RumViewEvent, RumVitalOperationStepEvent } from './rumEvent.types';
 
 export type RawRumData = RawRumView | RawRumError | RawRumVital | RawRumResource;

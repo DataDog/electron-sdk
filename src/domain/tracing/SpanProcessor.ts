@@ -1,4 +1,5 @@
-import { combine, DISCARDED, generateUUID, type ServerDuration, type TimeStamp } from '@datadog/browser-core';
+import { combine, DISCARDED, generateUUID } from '@datadog/browser-core';
+import { type ServerDuration, type TimeStamp } from '@datadog/js-core/time';
 import * as DiagnosticsChannel from 'node:diagnostics_channel';
 import { type FormatHooks } from '../../assembly';
 import { type Configuration } from '../../config';

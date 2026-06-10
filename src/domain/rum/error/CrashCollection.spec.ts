@@ -34,7 +34,7 @@ vi.mock('../../../wasm', () => ({
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { crashReporter } from 'electron';
-import { type TimeStamp } from '@datadog/browser-core';
+import { type TimeStamp } from '@datadog/js-core/time';
 import { CrashCollection } from './CrashCollection';
 import { EventManager, EventKind, EventFormat, type RawRumEvent } from '../../../event';
 import { processMinidump } from '../../../wasm';

@@ -10,7 +10,7 @@ import { test, expect, launchApp } from '../lib/integrationFixture';
 import type { RumErrorEvent, RumResourceEvent, RumViewEvent } from '@datadog/electron-sdk';
 import { Intake, type ReceivedEvent, type Span } from '../../lib/intake';
 import type { Page } from '@playwright/test';
-import { ONE_SECOND } from '@datadog/browser-core';
+import { ONE_SECOND } from '@datadog/js-core/time';
 
 // Renderer window global helpers exposed by each integration app's renderer code
 interface IntegrationTestWindow {

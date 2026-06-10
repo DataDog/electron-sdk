@@ -141,6 +141,10 @@
   "dependencies": {
     "dd-trace": "5.103.0"
   },
+  "resolutions": {
+    "@datadog/browser-core": "file:../browser-sdk/packages/browser-core/package.tgz",
+    "@datadog/js-core": "file:../browser-sdk/packages/js-core/package.tgz"
+  },
   "peerDependencies": {
     "electron": ">=39"
   },

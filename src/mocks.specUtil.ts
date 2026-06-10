@@ -2,7 +2,8 @@ import { type MockInstance } from 'vitest';
 import * as fs from 'node:fs/promises';
 import type { Configuration } from './config';
 import { RawRumView, RumActionEvent, RumErrorEvent, RumEvent, RumResourceEvent, RumViewEvent } from './domain/rum';
-import { combine, mergeInto, RecursivePartial, ServerDuration } from '@datadog/browser-core';
+import { combine, mergeInto, type RecursivePartial } from '@datadog/browser-core';
+import { type ServerDuration } from '@datadog/js-core/time';
 
 export function mockFs() {
   const mocks = {

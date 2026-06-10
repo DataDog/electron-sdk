@@ -1,4 +1,4 @@
-import { ServerDuration } from '@datadog/browser-core';
+import { type ServerDuration } from '@datadog/js-core/time';
 
 export interface RawTraceData {
   env: string;

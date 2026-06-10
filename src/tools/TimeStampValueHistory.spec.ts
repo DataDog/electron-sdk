@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { TimeStamp } from '@datadog/browser-core';
+import type { TimeStamp } from '@datadog/js-core/time';
 import { TimeStampValueHistory } from './TimeStampValueHistory';
 
 // Fake timers align Date.now() with test timestamps so pruning works predictably

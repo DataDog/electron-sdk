@@ -1,13 +1,5 @@
-import {
-  elapsed,
-  generateUUID,
-  ONE_MINUTE,
-  ONE_SECOND,
-  Subscription,
-  TimeStamp,
-  timeStampNow,
-  toServerDuration,
-} from '@datadog/browser-core';
+import { generateUUID, type Subscription } from '@datadog/browser-core';
+import { elapsed, ONE_MINUTE, ONE_SECOND, type TimeStamp, timeStampNow, toServerDuration } from '@datadog/js-core/time';
 import {
   EventFormat,
   EventKind,
