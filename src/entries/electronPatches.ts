@@ -41,15 +41,12 @@ export function patchBrowserWindow(
   class DatadogBrowserWindow extends OriginalBrowserWindow {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     constructor(options?: any) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-      const win = super(options ?? {})
-      // BrowserWindow doesn't support true subclassing (native code),
-      // must return the native instance
+        // BrowserWindow doesn't support true subclassing (native code) — super()
+      // returns the native instance, not `this`. Cast to any to access it.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-explicit-any
+      const win = super(options ?? {}) as any
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      win.webContents.session.registerPreloadScript({
-        type: 'frame',
-        filePath: preloadPath,
-      })
+      win.webContents.session.registerPreloadScript({ type: 'frame', filePath: preloadPath })
       // eslint-disable-next-line @typescript-eslint/no-unsafe-return
       return win
     }
