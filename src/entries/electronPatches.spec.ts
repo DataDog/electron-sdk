@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as os from 'node:os';
 
 vi.mock('preload-content', () => ({ default: 'const x = 1' }));
@@ -7,6 +7,10 @@ vi.mock('node:fs');
 describe('resolvePreloadPath', () => {
   beforeEach(() => {
     vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('writes the embedded content to tmpdir and returns the path', async () => {
@@ -42,5 +46,16 @@ describe('resolvePreloadPath', () => {
     });
     expect(result).toBeUndefined();
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[datadog]'));
+  });
+
+  it('returns the resolved path when write fails but resolve succeeds', async () => {
+    const fs = await import('node:fs');
+    vi.mocked(fs.writeFileSync).mockImplementation(() => {
+      throw Object.assign(new Error('EPERM'), { code: 'EPERM' });
+    });
+    const resolvedPath = '/node_modules/@datadog/electron-sdk/dist/electron/preload.js';
+    const { resolvePreloadPath } = await import('./electronPatches');
+    const result = resolvePreloadPath(() => resolvedPath);
+    expect(result).toBe(resolvedPath);
   });
 });

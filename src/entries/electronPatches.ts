@@ -22,7 +22,7 @@ export function resolvePreloadPath(_resolvePackage = resolvePackage): string | u
       try {
         return _resolvePackage('@datadog/electron-sdk/electron/preload');
       } catch {
-        console.warn('[datadog] Could not resolve preload script' + ' — BrowserWindow injection skipped');
+        console.warn('[datadog] Could not resolve preload script — BrowserWindow injection skipped');
         return undefined;
       }
     }
