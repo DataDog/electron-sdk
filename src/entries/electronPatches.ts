@@ -133,21 +133,17 @@ function wrap(obj: any, method: string, wrapper: (original: AnyFn) => AnyFn): vo
 
 export function patchIpcMain(ipcMain: Electron.IpcMain): void {
   const listeners: Record<string, WeakMap<AnyFn, AnyFn>> = {};
+  const handlers: Record<string, WeakMap<AnyFn, AnyFn>> = {};
 
   wrap(ipcMain, 'addListener', wrapAddListener(mainReceiveCh, listeners));
+  wrap(ipcMain, 'handle', wrapAddListener(mainHandleCh, handlers));
+  wrap(ipcMain, 'handleOnce', wrapAddListener(mainHandleCh, handlers));
   wrap(ipcMain, 'off', wrapRemoveListener(listeners));
   wrap(ipcMain, 'on', wrapAddListener(mainReceiveCh, listeners));
   wrap(ipcMain, 'once', wrapAddListener(mainReceiveCh, listeners));
   wrap(ipcMain, 'removeAllListeners', wrapRemoveAllListeners(listeners));
+  wrap(ipcMain, 'removeHandler', wrapRemoveAllListeners(handlers));
   wrap(ipcMain, 'removeListener', wrapRemoveListener(listeners));
-
-  ipcMain.handle(
-    'datadog:apm:ipc:handle',
-    (event: Electron.IpcMainInvokeEvent, ipcChannel: string, ...args: unknown[]) => {
-      const ctx: IpcContext = { args, channel: ipcChannel, event };
-      return mainHandleCh.tracePromise(() => Promise.resolve(), ctx);
-    }
-  );
 
   ipcMain.once('datadog:apm:renderer:patched', (event) => rendererPatchedCh.publish(event));
 }

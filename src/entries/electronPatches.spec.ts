@@ -107,20 +107,21 @@ describe('patchIpcMain', () => {
     vi.resetModules();
   });
 
-  it('wraps ipcMain.handle so calls publish to mainHandleCh', async () => {
+  it('wraps ipcMain.handle so user handlers fire mainHandleCh', async () => {
     const events: string[] = [];
     const ch = tracingChannel('apm:electron:ipc:main:handle');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
     ch.start.subscribe((ctx: any) => events.push(ctx.channel as string));
 
-    let capturedListener: ((...args: unknown[]) => unknown) | null = null;
+    // Capture the wrapped listener that gets passed to the original handle
+    let capturedWrapped: ((...args: unknown[]) => unknown) | null = null;
     const mockIpcMain = {
-      handle: vi.fn((_ipcChannel: string, listener: (...args: unknown[]) => unknown) => {
-        capturedListener = listener;
+      handle: vi.fn((_ch: string, listener: (...args: unknown[]) => unknown) => {
+        capturedWrapped = listener;
       }),
       handleOnce: vi.fn(),
       on: vi.fn(),
-      once: vi.fn(),
+      once: vi.fn((_ch: string, fn: (...args: unknown[]) => unknown) => fn({} as Electron.IpcMainEvent)),
       addListener: vi.fn(),
       off: vi.fn(),
       removeListener: vi.fn(),
@@ -132,10 +133,15 @@ describe('patchIpcMain', () => {
     const { patchIpcMain } = await import('./electronPatches');
     patchIpcMain(mockIpcMain as unknown as Electron.IpcMain);
 
-    expect(mockIpcMain.handle).toHaveBeenCalled();
-    expect(capturedListener).not.toBeNull();
+    // User code registers a handler after patching
+    const userFn = vi.fn();
+    mockIpcMain.handle('test-channel', userFn);
 
-    void capturedListener!({} /* event */, 'test-channel', 'arg1');
+    // The original handle spy was called with a WRAPPED version of userFn
+    expect(capturedWrapped).not.toBeNull();
+
+    // Simulate Electron invoking the wrapped listener
+    await capturedWrapped!({} /* event */, 'arg1');
     expect(events).toContain('test-channel');
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
