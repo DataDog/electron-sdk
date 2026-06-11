@@ -15,6 +15,7 @@ playwright-report/
 
 # IA settings
 /.claude/settings.local.json
+/docs/superpowers/
 
 # Integration test generated artifacts
 e2e/integration/integration-sdk.tgz

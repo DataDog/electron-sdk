@@ -194,7 +194,6 @@ const config = [
       format: 'cjs',
     },
     external: ['electron'],
-    plugins: [],
   },
 ];
 
