@@ -30,3 +30,32 @@ export function resolvePreloadPath(_resolvePackage = resolvePackage): string | u
 
   return tmpPath;
 }
+
+export function patchBrowserWindow(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  electron: any,
+  preloadPath: string
+): void {
+  const OriginalBrowserWindow = electron.BrowserWindow
+
+  class DatadogBrowserWindow extends OriginalBrowserWindow {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    constructor(options?: any) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+      const win = super(options ?? {})
+      // BrowserWindow doesn't support true subclassing (native code),
+      // must return the native instance
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      win.webContents.session.registerPreloadScript({
+        type: 'frame',
+        filePath: preloadPath,
+      })
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+      return win
+    }
+  }
+
+  Object.assign(DatadogBrowserWindow, OriginalBrowserWindow)
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+  electron.BrowserWindow = DatadogBrowserWindow
+}

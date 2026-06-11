@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as os from 'node:os';
+import type { BrowserWindow as BrowserWindowType } from 'electron';
 
 vi.mock('preload-content', () => ({ default: 'const x = 1' }));
 vi.mock('node:fs');
@@ -58,4 +59,46 @@ describe('resolvePreloadPath', () => {
     const result = resolvePreloadPath(() => resolvedPath);
     expect(result).toBe(resolvedPath);
   });
+});
+
+describe('patchBrowserWindow', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('registers the preload script on each new BrowserWindow session', async () => {
+    const registerPreloadScript = vi.fn()
+    const mockSession = { registerPreloadScript }
+    const mockWebContents = { session: mockSession }
+
+    class FakeBrowserWindow {
+      webContents = mockWebContents
+      constructor(_options: unknown) {
+        return this
+      }
+    }
+
+    const mockElectron = {
+      BrowserWindow: FakeBrowserWindow as unknown as typeof BrowserWindowType,
+    }
+
+    const { patchBrowserWindow } = await import('./electronPatches')
+    patchBrowserWindow(
+      mockElectron as typeof import('electron'),
+      '/tmp/preload.js'
+    )
+
+    const PatchedClass = mockElectron.BrowserWindow as unknown as
+      new (o: unknown) => { webContents: typeof mockWebContents }
+    new PatchedClass({ width: 800 })
+
+    expect(registerPreloadScript).toHaveBeenCalledWith({
+      type: 'frame',
+      filePath: '/tmp/preload.js',
+    })
+  })
 });
