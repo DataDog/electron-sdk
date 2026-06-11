@@ -1,9 +1,8 @@
-import { MainAssembly, RendererAssembly, createFormatHooks, registerCommonContext } from './assembly';
+import { MainAssembly, RendererPipeline, createFormatHooks, registerCommonContext } from './assembly';
 import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
 import { RumCollection } from './domain/rum';
 import { SessionManager } from './domain/session';
-import { UserActivityTracker } from './domain/UserActivityTracker';
 import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './domain/rum';
 import { callMonitored, startTelemetry } from './domain/telemetry';
 import { EventManager } from './event';
@@ -45,8 +44,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   sessionManager = await SessionManager.start(eventManager, hooks);
 
   new MainAssembly(eventManager, hooks);
-  new RendererAssembly(eventManager, hooks, config);
-  new UserActivityTracker(eventManager);
+  new RendererPipeline(eventManager, hooks, config);
 
   if (tracing.enabled) {
     new SpanProcessor(eventManager, hooks, config);

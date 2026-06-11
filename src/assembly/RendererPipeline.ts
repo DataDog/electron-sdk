@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron';
 import { combine, DISCARDED, type TimeStamp } from '@datadog/browser-core';
 import type { DefaultPrivacyLevel } from '@datadog/browser-core';
-import { EventKind, EventSource, EventTrack } from '../event';
+import { EventKind, EventSource, EventTrack, LifecycleKind } from '../event';
 import type { EventManager, ServerRumEvent } from '../event';
 import { monitor, addError as addTelemetryError } from '../domain/telemetry';
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
@@ -26,8 +26,12 @@ interface BridgeEvent {
  * Receives pre-assembled events from the browser RUM SDK via the DatadogEventBridge,
  * injects main-process context (session.id, application.id, container.view.id) via
  * the triggerRenderer hook, and emits ServerEvents directly.
+ *
+ * Also emits END_USER_ACTIVITY for click actions before the session check, so a click
+ * after session inactivity expiry can create a new session even though the event itself
+ * would be discarded (its timestamp falls outside the closed session window).
  */
-export class RendererAssembly {
+export class RendererPipeline {
   constructor(
     private readonly eventManager: EventManager,
     private readonly hooks: FormatHooks,
@@ -74,6 +78,14 @@ export class RendererAssembly {
 
   private handleRumEvent(eventData: unknown): void {
     const data = eventData as RumEvent;
+
+    // Emit activity before the session check: a click after session expiry must still
+    // create a new session even though triggerRenderer will return DISCARDED (the event
+    // timestamp falls outside the now-closed session window).
+    if (data.type === 'action' && data.action.type === 'click') {
+      this.eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.END_USER_ACTIVITY });
+    }
+
     const hookResult = this.hooks.triggerRenderer({ startTime: data.date as TimeStamp });
 
     if (hookResult === DISCARDED) {
@@ -91,6 +103,7 @@ export class RendererAssembly {
       kind: EventKind.SERVER,
       track: EventTrack.RUM,
       source: EventSource.RENDERER,
+      // mainProcessAttributes wins: session/app ids must come from main process
       data: combine(data, mainProcessAttributes) as RumEvent,
     };
 

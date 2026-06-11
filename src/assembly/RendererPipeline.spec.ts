@@ -1,8 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DISCARDED, type TimeStamp } from '@datadog/browser-core';
-import { RendererAssembly, type BridgeOptions } from './RendererAssembly';
+import { RendererPipeline, type BridgeOptions } from './RendererPipeline';
 import { createFormatHooks, type FormatHooks } from './hooks';
-import { EventKind, EventManager, EventSource, EventTrack, type ServerRumEvent } from '../event';
+import {
+  EventKind,
+  EventManager,
+  EventSource,
+  EventTrack,
+  LifecycleKind,
+  type EndUserActivityEvent,
+  type ServerRumEvent,
+} from '../event';
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
 
 const { mockIpcMainOn, mockAddError } = vi.hoisted(() => {
@@ -36,7 +44,28 @@ const RENDERER_RUM_DATA = {
   ddtags: 'sdk_version:1.0.0',
 };
 
-describe('RendererAssembly', () => {
+const RENDERER_CLICK_DATA = {
+  type: 'action',
+  date: 12345 as TimeStamp,
+  source: 'browser',
+  service: 'renderer-service',
+  application: { id: 'renderer-app-id' },
+  session: { id: 'renderer-session-id', type: 'user' },
+  view: { id: 'renderer-view-id', name: 'My View', url: 'http://localhost' },
+  action: {
+    id: 'action-id',
+    type: 'click',
+    target: { name: 'button' },
+    loading_time: 0,
+    error: { count: 0 },
+    crash: { count: 0 },
+    long_task: { count: 0 },
+    resource: { count: 0 },
+  },
+  ddtags: 'sdk_version:1.0.0',
+};
+
+describe('RendererPipeline', () => {
   let eventManager: EventManager;
   let hooks: FormatHooks;
   let simulateIpcMessage: (msg: string) => void;
@@ -59,7 +88,7 @@ describe('RendererAssembly', () => {
       handle: (event) => serverEvents.push(event),
     });
 
-    new RendererAssembly(eventManager, hooks, DEFAULT_OPTIONS);
+    new RendererPipeline(eventManager, hooks, DEFAULT_OPTIONS);
   });
 
   it('registers IPC listeners on BRIDGE_CHANNEL and CONFIG_CHANNEL', () => {
@@ -74,7 +103,7 @@ describe('RendererAssembly', () => {
     mockIpcMainOn.mockImplementation((channel: string, cb: (event: unknown) => void) => {
       handlers[channel] = cb;
     });
-    new RendererAssembly(eventManager, hooks, options);
+    new RendererPipeline(eventManager, hooks, options);
     const event = { returnValue: undefined as unknown };
     handlers[CONFIG_CHANNEL](event);
     expect(event.returnValue).toEqual(options);
@@ -140,6 +169,57 @@ describe('RendererAssembly', () => {
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
 
       expect(serverEvents).toHaveLength(0);
+    });
+  });
+
+  describe('user activity tracking', () => {
+    it('emits END_USER_ACTIVITY for click actions', () => {
+      const lifecycleEvents: unknown[] = [];
+      eventManager.registerHandler({
+        canHandle: (e): e is EndUserActivityEvent => e.kind === EventKind.LIFECYCLE,
+        handle: (e) => lifecycleEvents.push(e),
+      });
+      hooks.registerRenderer(() => ({ session: { id: 'session' } }));
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_CLICK_DATA }));
+
+      expect(lifecycleEvents).toContainEqual({
+        kind: EventKind.LIFECYCLE,
+        lifecycle: LifecycleKind.END_USER_ACTIVITY,
+      });
+    });
+
+    it('emits END_USER_ACTIVITY for click actions even when triggerRenderer returns DISCARDED', () => {
+      const lifecycleEvents: unknown[] = [];
+      eventManager.registerHandler({
+        canHandle: (e): e is EndUserActivityEvent => e.kind === EventKind.LIFECYCLE,
+        handle: (e) => lifecycleEvents.push(e),
+      });
+      hooks.registerRenderer(() => DISCARDED);
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_CLICK_DATA }));
+
+      expect(lifecycleEvents).toContainEqual({
+        kind: EventKind.LIFECYCLE,
+        lifecycle: LifecycleKind.END_USER_ACTIVITY,
+      });
+      expect(serverEvents).toHaveLength(0);
+    });
+
+    it('does not emit END_USER_ACTIVITY for non-click events', () => {
+      const lifecycleEvents: unknown[] = [];
+      eventManager.registerHandler({
+        canHandle: (e): e is EndUserActivityEvent => e.kind === EventKind.LIFECYCLE,
+        handle: (e) => lifecycleEvents.push(e),
+      });
+      hooks.registerRenderer(() => ({ session: { id: 'session' } }));
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
+
+      expect(lifecycleEvents).not.toContainEqual({
+        kind: EventKind.LIFECYCLE,
+        lifecycle: LifecycleKind.END_USER_ACTIVITY,
+      });
     });
   });
 
