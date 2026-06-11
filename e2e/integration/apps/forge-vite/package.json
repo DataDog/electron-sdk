@@ -13,6 +13,7 @@
     }
   },
   "scripts": {
+    "postinstall": "node ../../../../bin/patch-dd-trace-preload.cjs",
     "start": "electron-forge start",
     "package": "electron-forge package"
   },

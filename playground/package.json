@@ -6,6 +6,7 @@
   "description": "Playground for testing @datadog/electron-sdk",
   "main": "./dist/main.js",
   "scripts": {
+    "postinstall": "node ../bin/patch-dd-trace-preload.cjs",
     "build": "tsc && yarn build:renderer && cp src/index.html dist/index.html",
     "build:renderer": "esbuild src/renderer.ts --bundle --format=esm --outfile=dist/renderer.js --sourcemap",
     "build:watch": "concurrently \"tsc --watch\" \"yarn build:renderer --watch\"",

@@ -14,6 +14,7 @@
     }
   },
   "scripts": {
+    "postinstall": "node ../../../../bin/patch-dd-trace-preload.cjs",
     "build": "node esbuild.config.mjs",
     "start": "yarn build && electron .",
     "package": "yarn build && electron-forge package"

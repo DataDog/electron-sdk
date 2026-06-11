@@ -5,6 +5,7 @@
   "packageManager": "yarn@4.12.0",
   "main": "dist/main.js",
   "scripts": {
+    "postinstall": "node ../../bin/patch-dd-trace-preload.cjs",
     "build": "yarn build:ts && mkdir -p ./dist && yarn build:bridge-window && yarn build:main-window",
     "build:ts": "tsc && tsc --project tsconfig.renderer.json",
     "build:main-window": "esbuild src/main-window.ts --bundle --format=iife --outfile=dist/main-window.js --sourcemap && cp src/main-window.html dist/",

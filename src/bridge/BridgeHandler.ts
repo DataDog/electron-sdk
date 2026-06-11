@@ -42,10 +42,10 @@ export class BridgeHandler {
       })
     );
 
-    ipcMain.handle(
+    ipcMain.on(
       CONFIG_CHANNEL,
-      monitor(() => {
-        return this.bridgeOptions;
+      monitor((event: { returnValue: unknown }) => {
+        event.returnValue = this.bridgeOptions;
       })
     );
   }

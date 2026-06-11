@@ -79,11 +79,13 @@
     "dist/esbuild-plugin.mjs",
     "dist/esbuild-plugin.mjs.map",
     "dist/esbuild-plugin.d.ts",
+    "bin/patch-dd-trace-preload.cjs",
     "README.md",
     "LICENSE",
     "LICENSE-3rdparty.csv"
   ],
   "scripts": {
+    "postinstall": "node bin/patch-dd-trace-preload.cjs",
     "repo:init": "yarn install && scripts/cli init_submodule && yarn dev:init && yarn test:e2e:init",
     "prepack": "rm -rf dist/ && yarn build",
     "prepare": "husky",
@@ -138,7 +140,7 @@
     "vitest": "4.0.18"
   },
   "dependencies": {
-    "dd-trace": "patch:dd-trace@npm%3A5.103.0#~/.yarn/patches/dd-trace-npm-5.103.0-bcd76a72f0.patch"
+    "dd-trace": "5.103.0"
   },
   "peerDependencies": {
     "electron": ">=39"
