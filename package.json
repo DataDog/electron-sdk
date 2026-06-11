@@ -31,7 +31,8 @@
       "types": "./dist/esbuild-plugin.d.ts",
       "require": "./dist/esbuild-plugin.cjs",
       "import": "./dist/esbuild-plugin.mjs"
-    }
+    },
+    "./electron/preload": "./dist/electron/preload.js"
   },
   "typesVersions": {
     "*": {
@@ -79,6 +80,7 @@
     "dist/esbuild-plugin.mjs",
     "dist/esbuild-plugin.mjs.map",
     "dist/esbuild-plugin.d.ts",
+    "dist/electron/preload.js",
     "README.md",
     "LICENSE",
     "LICENSE-3rdparty.csv"

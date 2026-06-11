@@ -4,7 +4,31 @@ import commonjs from '@rollup/plugin-commonjs';
 import json from '@rollup/plugin-json';
 import replace from '@rollup/plugin-replace';
 import dts from 'rollup-plugin-dts';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import pkg from './package.json' with { type: 'json' };
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+function preloadContentPlugin() {
+  const VIRTUAL_ID = '\0preload-content'
+  return {
+    name: 'preload-content',
+    resolveId(id) {
+      if (id === 'preload-content') return VIRTUAL_ID
+    },
+    load(id) {
+      if (id === VIRTUAL_ID) {
+        const content = readFileSync(
+          join(__dirname, 'src/bridge/preload.js'),
+          'utf8'
+        )
+        return `export default ${JSON.stringify(content)}`
+      }
+    },
+  }
+}
 
 const sharedPlugins = [
   replace({ preventAssignment: true, __SDK_VERSION__: JSON.stringify(pkg.version) }),
@@ -60,7 +84,7 @@ const config = [
       },
     ],
     external: ['electron'],
-    plugins: sharedPlugins,
+    plugins: [...sharedPlugins, preloadContentPlugin()],
   },
   // Vite plugin: ensures dd-trace initializes before hoisted requires
   {
@@ -161,6 +185,16 @@ const config = [
       format: 'esm',
     },
     plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
+  },
+  // Preload script: renderer bridge, output as plain CJS for BrowserWindow injection
+  {
+    input: 'src/bridge/preload.js',
+    output: {
+      file: 'dist/electron/preload.js',
+      format: 'cjs',
+    },
+    external: ['electron'],
+    plugins: [],
   },
 ];
 
