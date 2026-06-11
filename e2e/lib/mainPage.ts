@@ -15,6 +15,7 @@ interface ElectronAppWindow {
     mainNetRequest: (url: string) => Promise<number>;
     flushTransport: () => Promise<void>;
     ping: () => Promise<string>;
+    stopSession: () => Promise<void>;
     openBridgeFileWindow: () => Promise<void>;
     openBridgeFileWindowNoIsolation: () => Promise<void>;
     openBridgeHttpWindow: () => Promise<void>;
@@ -33,7 +34,7 @@ export class MainPage {
   }
 
   async stopSession() {
-    await this.page.locator('#stop-session').click();
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.stopSession());
   }
 
   async generateActivity() {
