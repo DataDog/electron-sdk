@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as os from 'node:os';
 import type { BrowserWindow as BrowserWindowType } from 'electron';
+import { tracingChannel } from 'node:diagnostics_channel';
 
 vi.mock('preload-content', () => ({ default: 'const x = 1' }));
 vi.mock('node:fs');
@@ -71,34 +72,108 @@ describe('patchBrowserWindow', () => {
   });
 
   it('registers the preload script on each new BrowserWindow session', async () => {
-    const registerPreloadScript = vi.fn()
-    const mockSession = { registerPreloadScript }
-    const mockWebContents = { session: mockSession }
+    const registerPreloadScript = vi.fn();
+    const mockSession = { registerPreloadScript };
+    const mockWebContents = { session: mockSession };
 
     class FakeBrowserWindow {
-      webContents = mockWebContents
+      webContents = mockWebContents;
       constructor(_options: unknown) {
-        return this
+        return this;
       }
     }
 
     const mockElectron = {
       BrowserWindow: FakeBrowserWindow as unknown as typeof BrowserWindowType,
-    }
+    };
 
-    const { patchBrowserWindow } = await import('./electronPatches')
-    patchBrowserWindow(
-      mockElectron as typeof import('electron'),
-      '/tmp/preload.js'
-    )
+    const { patchBrowserWindow } = await import('./electronPatches');
+    patchBrowserWindow(mockElectron as typeof import('electron'), '/tmp/preload.js');
 
-    const PatchedClass = mockElectron.BrowserWindow as unknown as
-      new (o: unknown) => { webContents: typeof mockWebContents }
-    new PatchedClass({ width: 800 })
+    const PatchedClass = mockElectron.BrowserWindow as unknown as new (o: unknown) => {
+      webContents: typeof mockWebContents;
+    };
+    new PatchedClass({ width: 800 });
 
     expect(registerPreloadScript).toHaveBeenCalledWith({
       type: 'frame',
       filePath: '/tmp/preload.js',
-    })
-  })
+    });
+  });
+});
+
+describe('patchIpcMain', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('wraps ipcMain.handle so calls publish to mainHandleCh', async () => {
+    const events: string[] = [];
+    const ch = tracingChannel('apm:electron:ipc:main:handle');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+    ch.start.subscribe((ctx: any) => events.push(ctx.channel as string));
+
+    let capturedListener: ((...args: unknown[]) => unknown) | null = null;
+    const mockIpcMain = {
+      handle: vi.fn((_ipcChannel: string, listener: (...args: unknown[]) => unknown) => {
+        capturedListener = listener;
+      }),
+      handleOnce: vi.fn(),
+      on: vi.fn(),
+      once: vi.fn(),
+      addListener: vi.fn(),
+      off: vi.fn(),
+      removeListener: vi.fn(),
+      removeAllListeners: vi.fn(),
+      removeHandler: vi.fn(),
+      emit: vi.fn(),
+    };
+
+    const { patchIpcMain } = await import('./electronPatches');
+    patchIpcMain(mockIpcMain as unknown as Electron.IpcMain);
+
+    expect(mockIpcMain.handle).toHaveBeenCalled();
+    expect(capturedListener).not.toBeNull();
+
+    void capturedListener!({} /* event */, 'test-channel', 'arg1');
+    expect(events).toContain('test-channel');
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+    ch.start.unsubscribe((ctx: any) => events.push(ctx.channel as string));
+  });
+});
+
+describe('patchIpcRenderer', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('wraps ipcRenderer.send so calls publish to rendererSendCh', async () => {
+    const events: string[] = [];
+    const ch = tracingChannel('apm:electron:ipc:renderer:send');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+    ch.start.subscribe((ctx: any) => events.push(ctx.channel as string));
+
+    const mockIpcRenderer = {
+      send: vi.fn(),
+      sendSync: vi.fn(),
+      invoke: vi.fn(),
+      sendToHost: vi.fn(),
+      on: vi.fn(),
+      once: vi.fn(),
+      addListener: vi.fn(),
+      off: vi.fn(),
+      removeListener: vi.fn(),
+      removeAllListeners: vi.fn(),
+    };
+
+    const { patchIpcRenderer } = await import('./electronPatches');
+    patchIpcRenderer(mockIpcRenderer as unknown as Electron.IpcRenderer);
+
+    mockIpcRenderer.send('my-channel', 'data');
+    expect(events).toContain('my-channel');
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+    ch.start.unsubscribe((ctx: any) => events.push(ctx.channel as string));
+  });
 });
