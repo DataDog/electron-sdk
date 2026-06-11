@@ -111,7 +111,8 @@ describe('patchIpcMain', () => {
     const events: string[] = [];
     const ch = tracingChannel('apm:electron:ipc:main:handle');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-    ch.start.subscribe((ctx: any) => events.push(ctx.channel as string));
+    const subscriber = (ctx: any) => events.push(ctx.channel as string);
+    ch.start.subscribe(subscriber);
 
     // Capture the wrapped listener that gets passed to the original handle
     let capturedWrapped: ((...args: unknown[]) => unknown) | null = null;
@@ -144,8 +145,7 @@ describe('patchIpcMain', () => {
     await capturedWrapped!({} /* event */, 'arg1');
     expect(events).toContain('test-channel');
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-    ch.start.unsubscribe((ctx: any) => events.push(ctx.channel as string));
+    ch.start.unsubscribe(subscriber);
   });
 });
 
@@ -158,7 +158,8 @@ describe('patchIpcRenderer', () => {
     const events: string[] = [];
     const ch = tracingChannel('apm:electron:ipc:renderer:send');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-    ch.start.subscribe((ctx: any) => events.push(ctx.channel as string));
+    const subscriber = (ctx: any) => events.push(ctx.channel as string);
+    ch.start.subscribe(subscriber);
 
     const mockIpcRenderer = {
       send: vi.fn(),
@@ -179,7 +180,35 @@ describe('patchIpcRenderer', () => {
     mockIpcRenderer.send('my-channel', 'data');
     expect(events).toContain('my-channel');
 
+    ch.start.unsubscribe(subscriber);
+  });
+
+  it('wraps ipcRenderer.invoke as a promise so calls publish to rendererSendCh', async () => {
+    const events: string[] = [];
+    const ch = tracingChannel('apm:electron:ipc:renderer:send');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-    ch.start.unsubscribe((ctx: any) => events.push(ctx.channel as string));
+    const subscriber = (ctx: any) => events.push(ctx.channel as string);
+    ch.start.subscribe(subscriber);
+
+    const mockIpcRenderer = {
+      send: vi.fn(),
+      sendSync: vi.fn(),
+      invoke: vi.fn().mockResolvedValue(undefined),
+      sendToHost: vi.fn(),
+      on: vi.fn(),
+      once: vi.fn(),
+      addListener: vi.fn(),
+      off: vi.fn(),
+      removeListener: vi.fn(),
+      removeAllListeners: vi.fn(),
+    };
+
+    const { patchIpcRenderer } = await import('./electronPatches');
+    patchIpcRenderer(mockIpcRenderer as unknown as Electron.IpcRenderer);
+
+    await mockIpcRenderer.invoke('invoke-channel');
+    expect(events).toContain('invoke-channel');
+
+    ch.start.unsubscribe(subscriber);
   });
 });

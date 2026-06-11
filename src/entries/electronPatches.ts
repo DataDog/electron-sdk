@@ -85,6 +85,7 @@ function wrapAddListener(
     function (this: unknown, ipcChannel: string, listener: AnyFn) {
       const wrappedListener = (event: unknown, ...args: unknown[]) => {
         const ctx: IpcContext = { args, channel: ipcChannel, event };
+        // tracePromise handles both sync and async listeners; Electron ignores return values from on/once
         return ch.tracePromise(() => listener.call(this, event, ...args) as Promise<unknown>, ctx);
       };
       const mapping = mappings[ipcChannel] ?? (mappings[ipcChannel] = new WeakMap());
@@ -100,6 +101,15 @@ function wrapRemoveListener(mappings: Record<string, WeakMap<AnyFn, AnyFn>>): (r
       const wrapper = mappings[ipcChannel]?.get(listener);
       // eslint-disable-next-line @typescript-eslint/no-unsafe-return
       return removeListener.call(this, ipcChannel, wrapper ?? listener);
+    };
+}
+
+function wrapRemoveHandler(mappings: Record<string, WeakMap<AnyFn, AnyFn>>): (remove: AnyFn) => AnyFn {
+  return (removeHandler) =>
+    function (this: unknown, ipcChannel: string) {
+      delete mappings[ipcChannel];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+      return removeHandler.call(this, ipcChannel);
     };
 }
 
@@ -142,7 +152,7 @@ export function patchIpcMain(ipcMain: Electron.IpcMain): void {
   wrap(ipcMain, 'on', wrapAddListener(mainReceiveCh, listeners));
   wrap(ipcMain, 'once', wrapAddListener(mainReceiveCh, listeners));
   wrap(ipcMain, 'removeAllListeners', wrapRemoveAllListeners(listeners));
-  wrap(ipcMain, 'removeHandler', wrapRemoveAllListeners(handlers));
+  wrap(ipcMain, 'removeHandler', wrapRemoveHandler(handlers));
   wrap(ipcMain, 'removeListener', wrapRemoveListener(listeners));
 
   ipcMain.once('datadog:apm:renderer:patched', (event) => rendererPatchedCh.publish(event));
