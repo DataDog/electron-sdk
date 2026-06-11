@@ -17,7 +17,8 @@
  *
  * 4. Copies dd-trace, @datadog/electron-sdk, and their transitive dependencies
  *    into the webpack output's node_modules so they are available at runtime
- *    in packaged apps where the project's node_modules is absent.
+ *    in packaged apps where the project's node_modules is absent. The SDK
+ *    writes its own preload script at runtime — no manual copy needed.
  *
  * Usage:
  *   const { DatadogWebpackPlugin } = require('@datadog/electron-sdk/webpack-plugin');
@@ -27,8 +28,8 @@
  *   };
  */
 
-import { resolve, join, dirname } from 'node:path';
-import { mkdirSync, copyFileSync, existsSync, readFileSync, cpSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { mkdirSync, existsSync, readFileSync, cpSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
 interface Rule {
@@ -61,7 +62,6 @@ interface Compiler {
 // Support both CJS (__filename) and ESM (import.meta.url) contexts
 const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
 
-const DD_TRACE_PRELOAD_SOURCE = 'dd-trace/packages/datadog-instrumentations/src/electron/preload.js';
 const EXCLUDE_PATTERN = /[/\\]node_modules[/\\](dd-trace|@datadog[/\\]electron-sdk)[/\\]/;
 const ASSET_RELOCATOR = '@vercel/webpack-asset-relocator-loader';
 
@@ -141,21 +141,9 @@ export class DatadogWebpackPlugin {
       }
     }
 
-    // Copy dd-trace's preload script and node_modules into the output
+    // Copy externalized packages and node_modules into the output
     compiler.hooks.afterEmit.tap('DatadogWebpackPlugin', (compilation) => {
       const outputPath = compilation.outputOptions.path;
-
-      // Copy preload script
-      try {
-        const src = resolve(_require.resolve(DD_TRACE_PRELOAD_SOURCE));
-        const destDir = join(outputPath, 'electron');
-        mkdirSync(destDir, { recursive: true });
-        copyFileSync(src, join(destDir, 'preload.js'));
-      } catch {
-        console.warn(
-          '[datadog] dd-trace not found — the preload script will not be bundled and monitoring will not work'
-        );
-      }
 
       // Copy externalized packages into node_modules alongside the bundle
       // so they are available at runtime in packaged apps

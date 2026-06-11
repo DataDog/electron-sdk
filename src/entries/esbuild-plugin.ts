@@ -9,11 +9,11 @@
  * BrowserWindow with automatic preload injection.
  *
  * For ESM output: prepends a banner that initializes dd-trace and registers
- * dd-trace's preload script directly via session.registerPreloadScript().
+ * the SDK's preload script directly via session.registerPreloadScript().
  * In ESM, static imports are loaded before any module code evaluates, so
  * dd-trace's IITM hooks cannot intercept `import 'electron'` for automatic
  * BrowserWindow wrapping. The direct preload registration achieves the same
- * result using dd-trace's preload script.
+ * result.
  *
  * Usage:
  *   import { datadogEsbuildPlugin } from '@datadog/electron-sdk/esbuild-plugin';
@@ -34,11 +34,11 @@ interface EsbuildPlugin {
   }) => void;
 }
 
-const DD_TRACE_PRELOAD = 'dd-trace/packages/datadog-instrumentations/src/electron/preload.js';
+const SDK_PRELOAD = '@datadog/electron-sdk/electron/preload';
 
 const CJS_BANNER = 'try{require("@datadog/electron-sdk/instrument")}catch{}';
 
-// ESM banner: initialize dd-trace and register the preload script directly.
+// ESM banner: initialize dd-trace and register the SDK's preload script directly.
 // IITM cannot wrap BrowserWindow in ESM because static imports are loaded
 // before module code evaluates, so we register the preload via session API.
 const ESM_BANNER = `
@@ -46,7 +46,7 @@ import { createRequire as __ddCR } from "module";
 try {
   const __ddR = __ddCR(import.meta.url);
   __ddR("@datadog/electron-sdk/instrument");
-  const __ddP = __ddR.resolve("${DD_TRACE_PRELOAD}");
+  const __ddP = __ddR.resolve("${SDK_PRELOAD}");
   const { app: __ddApp, session: __ddSes } = __ddR("electron");
   const __ddReg = () => {
     try {
