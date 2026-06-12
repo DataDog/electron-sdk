@@ -63,7 +63,7 @@ const config = [
         sourcemap: true,
       },
     ],
-    external: ['electron'],
+    external: ['electron', 'dd-trace'],
     plugins: sharedPlugins,
   },
   // Vite plugin: ensures dd-trace initializes before hoisted requires
