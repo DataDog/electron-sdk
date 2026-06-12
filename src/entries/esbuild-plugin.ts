@@ -123,8 +123,12 @@ export function datadogEsbuildPlugin(): EsbuildPlugin {
 
             const pkgJson = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) as {
               dependencies?: Record<string, string>;
+              optionalDependencies?: Record<string, string>;
             };
-            for (const dep of Object.keys(pkgJson.dependencies ?? {})) {
+            for (const dep of Object.keys({
+              ...pkgJson.dependencies,
+              ...pkgJson.optionalDependencies,
+            })) {
               copyPackageTree(dep);
             }
           } catch {
