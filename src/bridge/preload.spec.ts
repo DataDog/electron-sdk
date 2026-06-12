@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { resolve } from 'node:path';
 
 const electronPath = require.resolve('electron');
-const preloadPath = resolve(__dirname, './preload.js');
+const preloadPath = resolve(__dirname, './preload.ts');
 
 interface BridgeConfig {
   defaultPrivacyLevel: string;
@@ -58,7 +58,7 @@ describe('preload bridge script', () => {
     injectElectronMock({ defaultPrivacyLevel: 'allow', allowedWebViewHosts: [] });
 
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require('./preload.js');
+    require('./preload.ts');
 
     const { DatadogEventBridge: bridge } = (global as unknown as TestGlobal).window;
     expect(bridge).toBeDefined();
@@ -70,7 +70,7 @@ describe('preload bridge script', () => {
     const { mockSend } = injectElectronMock(null);
 
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require('./preload.js');
+    require('./preload.ts');
 
     const { DatadogEventBridge: bridge } = (global as unknown as TestGlobal).window;
     bridge.send('{"type":"view"}');
@@ -82,7 +82,7 @@ describe('preload bridge script', () => {
     injectElectronMock(null);
 
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require('./preload.js');
+    require('./preload.ts');
 
     const { DatadogEventBridge: bridge } = (global as unknown as TestGlobal).window;
     expect(bridge.getPrivacyLevel()).toBe('mask');

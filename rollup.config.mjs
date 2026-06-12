@@ -168,12 +168,13 @@ const config = [
   },
   // Preload script: renderer bridge, output as plain CJS for BrowserWindow injection
   {
-    input: 'src/bridge/preload.js',
+    input: 'src/bridge/preload.ts',
     output: {
-      file: 'dist/electron/preload.js',
+      file: 'dist/preload.js',
       format: 'cjs',
     },
     external: ['electron'],
+    plugins: sharedPlugins,
   },
 ];
 
