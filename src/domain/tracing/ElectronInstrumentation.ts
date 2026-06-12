@@ -8,11 +8,13 @@ function getTracer(): typeof ddTrace {
   return ddTrace;
 }
 
+type IpcEvent = Electron.IpcMainEvent | Electron.IpcMainInvokeEvent | Electron.IpcRendererEvent;
+
 interface IpcContext {
   args: unknown[];
   channel: string;
   self?: object;
-  event?: unknown;
+  event?: IpcEvent;
   span?: Span;
   error?: unknown;
   result?: unknown;
@@ -22,7 +24,6 @@ interface NetRequestOptions {
   url?: string;
   method?: string;
   headers?: Record<string, string | string[]>;
-  [key: string]: unknown;
 }
 
 interface NetContext {
@@ -45,7 +46,7 @@ const requestCh = tracingChannel<NetContext>('apm:electron:net:request');
 function noop(): void {}
 
 export class ElectronInstrumentation {
-  private renderers = new WeakSet<object>();
+  private renderers = new WeakSet<Electron.WebContents>();
 
   private mainReceiveHandlers: TracingChannelSubscribers<IpcContext>;
   private mainHandleHandlers: TracingChannelSubscribers<IpcContext>;
@@ -62,13 +63,13 @@ export class ElectronInstrumentation {
 
     this.mainSendHandlers = this.makeSendHandlers(
       'electron.main.send',
-      (ctx) => ctx.self !== undefined && this.renderers.has(ctx.self)
+      (ctx) => ctx.self !== undefined && this.renderers.has(ctx.self as Electron.WebContents)
     );
     this.rendererSendHandlers = this.makeSendHandlers('electron.renderer.send', () => true);
 
     this.rendererPatchedHandler = (event: unknown) => {
       if (event && typeof event === 'object' && 'sender' in event) {
-        this.renderers.add(event.sender as object);
+        this.renderers.add(event.sender as Electron.WebContents);
       }
     };
 
@@ -99,7 +100,7 @@ export class ElectronInstrumentation {
         if (ctx.channel?.startsWith('datadog:')) return;
 
         const tracer = getTracer();
-        const childOf = tracer.extract('text_map', ctx.args[ctx.args.length - 1] as object);
+        const childOf = tracer.extract('text_map', ctx.args[ctx.args.length - 1] as Record<string, string>);
         if (childOf) ctx.args.pop();
 
         const span = tracer.startSpan(spanName, {

@@ -17,21 +17,16 @@ export function resolvePreloadPath(_resolvePackage = resolvePackage): string | u
   }
 }
 
-export function patchBrowserWindow(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  electron: any,
-  preloadPath: string
-): void {
+export function patchBrowserWindow(electron: typeof import('electron'), preloadPath: string): void {
   const OriginalBrowserWindow = electron.BrowserWindow;
 
   class DatadogBrowserWindow extends OriginalBrowserWindow {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    constructor(options?: any) {
+    constructor(options?: Electron.BrowserWindowConstructorOptions) {
       // BrowserWindow doesn't support true subclassing (native code) — super()
       // returns the native instance, not `this`. Cast to any to access it.
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
       const win = super(options ?? {}) as any;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
       win.webContents.session.registerPreloadScript({ type: 'frame', filePath: preloadPath });
       // eslint-disable-next-line @typescript-eslint/no-unsafe-return
       return win;
@@ -39,8 +34,7 @@ export function patchBrowserWindow(
   }
 
   Object.assign(DatadogBrowserWindow, OriginalBrowserWindow);
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-  electron.BrowserWindow = DatadogBrowserWindow;
+  (electron as { BrowserWindow: unknown }).BrowserWindow = DatadogBrowserWindow;
 }
 
 const mainReceiveCh = tracingChannel('apm:electron:ipc:main:receive');
@@ -53,8 +47,7 @@ const rendererSendCh = tracingChannel('apm:electron:ipc:renderer:send');
 interface IpcContext {
   args: unknown[];
   channel: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  self?: any;
+  self?: object;
   event?: unknown;
 }
 
@@ -114,7 +107,7 @@ function wrapSend(ch: TracingChannel<IpcContext>, promise = false): (send: AnyFn
   const trace = promise ? ch.tracePromise.bind(ch) : ch.traceSync.bind(ch);
   return (send) =>
     function (this: unknown, ipcChannel: string, ...args: unknown[]) {
-      const ctx: IpcContext = { args, channel: ipcChannel, self: this };
+      const ctx: IpcContext = { args, channel: ipcChannel, self: this as object };
       return trace(() => send.call(this, ipcChannel, ...ctx.args) as Promise<unknown>, ctx);
     };
 }
