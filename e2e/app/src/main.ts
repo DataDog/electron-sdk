@@ -46,8 +46,18 @@ import {
   startOperation,
   succeedOperation,
   failOperation,
+  setUserInfo,
+  clearUserInfo,
+  setUserInfoProperty,
+  removeUserInfoProperty,
+  setAccountInfo,
+  clearAccountInfo,
+  setAccountInfoProperty,
+  removeAccountInfoProperty,
   type FailureReason,
   type FeatureOperationOptions,
+  type UserInfo,
+  type AccountInfo,
   type InitConfiguration,
 } from '@datadog/electron-sdk';
 
@@ -194,6 +204,38 @@ void app.whenReady().then(async () => {
 
   ipcMain.handle('flushTransport', async () => {
     await _flushTransport();
+  });
+
+  ipcMain.handle('setUserInfo', (_event, user: UserInfo) => {
+    setUserInfo(user);
+  });
+
+  ipcMain.handle('clearUserInfo', () => {
+    clearUserInfo();
+  });
+
+  ipcMain.handle('setUserInfoProperty', (_event, key: string, value: unknown) => {
+    setUserInfoProperty(key, value);
+  });
+
+  ipcMain.handle('removeUserInfoProperty', (_event, key: string) => {
+    removeUserInfoProperty(key);
+  });
+
+  ipcMain.handle('setAccountInfo', (_event, accountInfo: AccountInfo) => {
+    setAccountInfo(accountInfo);
+  });
+
+  ipcMain.handle('clearAccountInfo', () => {
+    clearAccountInfo();
+  });
+
+  ipcMain.handle('setAccountInfoProperty', (_event, key: string, value: unknown) => {
+    setAccountInfoProperty(key, value);
+  });
+
+  ipcMain.handle('removeAccountInfoProperty', (_event, key: string) => {
+    removeAccountInfoProperty(key);
   });
 
   ipcMain.handle('ping', () => 'pong');
