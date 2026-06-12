@@ -46,7 +46,4 @@ export class Tracing {
     if (!this.exporter) return;
     await new Promise<void>((resolve) => this.exporter!.flush(resolve));
   }
-
-  // eslint-disable-next-line @typescript-eslint/no-empty-function
-  stop(): void {}
 }
