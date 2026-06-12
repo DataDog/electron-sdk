@@ -24,6 +24,7 @@ export class Tracing {
       // tracer.init() is a no-op if already called by instrument.ts.
       // Service/env/version are set per-span by SpanProcessor.
       tracer.use('http');
+      tracer.use('electron' as 'http', false);
 
       patchFetchContext(tracer);
 
