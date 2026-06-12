@@ -1,6 +1,5 @@
+import ddTrace from 'dd-trace';
 import { createRequire } from 'node:module';
-import { tracingChannel, channel } from 'node:diagnostics_channel';
-import type { TracingChannel } from 'node:diagnostics_channel';
 
 const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
 
@@ -37,34 +36,68 @@ export function patchBrowserWindow(electron: typeof import('electron'), preloadP
   (electron as { BrowserWindow: unknown }).BrowserWindow = DatadogBrowserWindow;
 }
 
-const mainReceiveCh = tracingChannel('apm:electron:ipc:main:receive');
-const mainHandleCh = tracingChannel('apm:electron:ipc:main:handle');
-export const mainSendCh = tracingChannel('apm:electron:ipc:main:send');
-const rendererPatchedCh = channel('apm:electron:ipc:renderer:patched');
-const rendererReceiveCh = tracingChannel('apm:electron:ipc:renderer:receive');
-const rendererSendCh = tracingChannel('apm:electron:ipc:renderer:send');
-
-interface IpcContext {
-  args: unknown[];
-  channel: string;
-  self?: object;
-  event?: unknown;
-}
-
+type IpcEvent = Electron.IpcMainEvent | Electron.IpcMainInvokeEvent | Electron.IpcRendererEvent;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyFn = (...args: any[]) => any;
 
+function isPromise(value: unknown): value is Promise<unknown> {
+  return !!value && typeof (value as { then?: unknown }).then === 'function';
+}
+
 function wrapAddListener(
-  ch: TracingChannel<IpcContext>,
+  spanName: string,
   mappings: Record<string, WeakMap<AnyFn, AnyFn>>
 ): (addListener: AnyFn) => AnyFn {
   return (addListener) =>
     function (this: unknown, ipcChannel: string, listener: AnyFn) {
-      const wrappedListener = (event: unknown, ...args: unknown[]) => {
-        const ctx: IpcContext = { args, channel: ipcChannel, event };
-        // tracePromise handles both sync and async listeners; Electron ignores return values from on/once
-        return ch.tracePromise(() => listener.call(this, event, ...args) as Promise<unknown>, ctx);
+      const wrappedListener = (event: IpcEvent, ...args: unknown[]) => {
+        if (ipcChannel.startsWith('datadog:')) {
+          return listener.call(this, event, ...args) as unknown;
+        }
+
+        const lastArg = args[args.length - 1];
+        const childOf =
+          lastArg !== null && typeof lastArg === 'object'
+            ? ddTrace.extract('text_map', lastArg as Record<string, string>)
+            : null;
+        const callArgs = childOf ? args.slice(0, -1) : args;
+
+        const span = ddTrace.startSpan(spanName, {
+          childOf: childOf ?? undefined,
+          tags: {
+            'span.kind': 'consumer',
+            component: 'electron',
+            'resource.name': ipcChannel,
+            type: 'worker',
+          },
+        });
+
+        return ddTrace.scope().activate(span, () => {
+          let result: unknown;
+          try {
+            result = listener.call(this, event, ...callArgs) as unknown;
+          } catch (err) {
+            span.setTag('error', err);
+            span.finish();
+            throw err;
+          }
+
+          if (isPromise(result)) {
+            void result.then(
+              () => span.finish(),
+              (err: unknown) => {
+                span.setTag('error', err);
+                span.finish();
+              }
+            );
+            return result;
+          }
+
+          span.finish();
+          return result;
+        });
       };
+
       const mapping = mappings[ipcChannel] ?? (mappings[ipcChannel] = new WeakMap());
       mapping.set(listener, wrappedListener);
       // eslint-disable-next-line @typescript-eslint/no-unsafe-return
@@ -103,12 +136,48 @@ function wrapRemoveAllListeners(mappings: Record<string, WeakMap<AnyFn, AnyFn>>)
     };
 }
 
-function wrapSend(ch: TracingChannel<IpcContext>, promise = false): (send: AnyFn) => AnyFn {
-  const trace = promise ? ch.tracePromise.bind(ch) : ch.traceSync.bind(ch);
+function wrapSend(spanName: string, promise = false): (send: AnyFn) => AnyFn {
   return (send) =>
     function (this: unknown, ipcChannel: string, ...args: unknown[]) {
-      const ctx: IpcContext = { args, channel: ipcChannel, self: this as object };
-      return trace(() => send.call(this, ipcChannel, ...ctx.args) as Promise<unknown>, ctx);
+      if (ipcChannel.startsWith('datadog:')) {
+        return send.call(this, ipcChannel, ...args) as unknown;
+      }
+
+      const span = ddTrace.startSpan(spanName, {
+        tags: {
+          'span.kind': 'producer',
+          component: 'electron',
+          'resource.name': ipcChannel,
+        },
+      });
+
+      return ddTrace.scope().activate(span, () => {
+        const carrier: Record<string, string> = {};
+        ddTrace.inject(span, 'text_map', carrier);
+
+        let result: unknown;
+        try {
+          result = send.call(this, ipcChannel, ...args, carrier) as unknown;
+        } catch (err) {
+          span.setTag('error', err);
+          span.finish();
+          throw err;
+        }
+
+        if (promise && isPromise(result)) {
+          void result.then(
+            () => span.finish(),
+            (err: unknown) => {
+              span.setTag('error', err);
+              span.finish();
+            }
+          );
+          return result;
+        }
+
+        span.finish();
+        return result;
+      });
     };
 }
 
@@ -122,32 +191,85 @@ export function patchIpcMain(ipcMain: Electron.IpcMain): void {
   const listeners: Record<string, WeakMap<AnyFn, AnyFn>> = {};
   const handlers: Record<string, WeakMap<AnyFn, AnyFn>> = {};
 
-  wrap(ipcMain, 'addListener', wrapAddListener(mainReceiveCh, listeners));
-  wrap(ipcMain, 'handle', wrapAddListener(mainHandleCh, handlers));
-  wrap(ipcMain, 'handleOnce', wrapAddListener(mainHandleCh, handlers));
+  wrap(ipcMain, 'addListener', wrapAddListener('electron.main.receive', listeners));
+  wrap(ipcMain, 'handle', wrapAddListener('electron.main.handle', handlers));
+  wrap(ipcMain, 'handleOnce', wrapAddListener('electron.main.handle', handlers));
   wrap(ipcMain, 'off', wrapRemoveListener(listeners));
-  wrap(ipcMain, 'on', wrapAddListener(mainReceiveCh, listeners));
-  wrap(ipcMain, 'once', wrapAddListener(mainReceiveCh, listeners));
+  wrap(ipcMain, 'on', wrapAddListener('electron.main.receive', listeners));
+  wrap(ipcMain, 'once', wrapAddListener('electron.main.receive', listeners));
   wrap(ipcMain, 'removeAllListeners', wrapRemoveAllListeners(listeners));
   wrap(ipcMain, 'removeHandler', wrapRemoveHandler(handlers));
   wrap(ipcMain, 'removeListener', wrapRemoveListener(listeners));
-
-  ipcMain.once('datadog:apm:renderer:patched', (event) => rendererPatchedCh.publish(event));
 }
 
 export function patchIpcRenderer(ipcRenderer: Electron.IpcRenderer): void {
   const listeners: Record<string, WeakMap<AnyFn, AnyFn>> = {};
 
-  wrap(ipcRenderer, 'invoke', wrapSend(rendererSendCh, true));
-  wrap(ipcRenderer, 'send', wrapSend(rendererSendCh));
-  wrap(ipcRenderer, 'sendSync', wrapSend(rendererSendCh));
-  wrap(ipcRenderer, 'sendToHost', wrapSend(rendererSendCh));
-  wrap(ipcRenderer, 'addListener', wrapAddListener(rendererReceiveCh, listeners));
+  wrap(ipcRenderer, 'invoke', wrapSend('electron.renderer.send', true));
+  wrap(ipcRenderer, 'send', wrapSend('electron.renderer.send'));
+  wrap(ipcRenderer, 'sendSync', wrapSend('electron.renderer.send'));
+  wrap(ipcRenderer, 'sendToHost', wrapSend('electron.renderer.send'));
+  wrap(ipcRenderer, 'addListener', wrapAddListener('electron.renderer.receive', listeners));
   wrap(ipcRenderer, 'off', wrapRemoveListener(listeners));
-  wrap(ipcRenderer, 'on', wrapAddListener(rendererReceiveCh, listeners));
-  wrap(ipcRenderer, 'once', wrapAddListener(rendererReceiveCh, listeners));
+  wrap(ipcRenderer, 'on', wrapAddListener('electron.renderer.receive', listeners));
+  wrap(ipcRenderer, 'once', wrapAddListener('electron.renderer.receive', listeners));
   wrap(ipcRenderer, 'removeListener', wrapRemoveListener(listeners));
   wrap(ipcRenderer, 'removeAllListeners', wrapRemoveAllListeners(listeners));
+}
 
-  ipcRenderer.send('datadog:apm:renderer:patched');
+export function patchNet(net: Electron.Net): void {
+  const originalRequest = net.request.bind(net);
+
+  (net as { request: unknown }).request = function (
+    options: Electron.ClientRequestConstructorOptions | string
+  ): Electron.ClientRequest {
+    const opts: Electron.ClientRequestConstructorOptions =
+      typeof options === 'string' ? { url: options } : { ...options };
+
+    let parsed: URL | undefined;
+    try {
+      if (opts.url) parsed = new URL(opts.url);
+    } catch {
+      // invalid URL
+    }
+
+    const method = (opts.method ?? 'GET').toUpperCase();
+    const urlStr = opts.url ?? parsed?.href ?? '';
+
+    const span = ddTrace.startSpan('http.request', {
+      tags: {
+        'span.kind': 'client',
+        'span.type': 'http',
+        component: 'electron',
+        'resource.name': method,
+        'http.method': method,
+        'http.url': urlStr,
+      },
+    });
+
+    const carrier: Record<string, string> = {};
+    ddTrace.inject(span, 'http_headers', carrier);
+    const existingHeaders = opts.headers ?? {};
+    opts.headers = { ...carrier, ...existingHeaders };
+
+    const req = originalRequest(opts);
+
+    let finished = false;
+    const finish = (err?: unknown): void => {
+      if (finished) return;
+      finished = true;
+      if (err !== undefined) span.setTag('error', err);
+      span.finish();
+    };
+
+    req.on('response', (response: Electron.IncomingMessage) => {
+      span.setTag('http.status_code', String(response.statusCode));
+      response.on('end', () => finish());
+      response.on('error', (err: unknown) => finish(err));
+    });
+    req.on('error', (err: Error) => finish(err));
+    req.on('abort', () => finish());
+
+    return req;
+  } as typeof net.request;
 }

@@ -1,7 +1,6 @@
 import { createRequire } from 'node:module';
 import { addError } from '../telemetry';
 import { patchFetchContext } from './tracingPatches';
-import { ElectronInstrumentation } from './ElectronInstrumentation';
 
 // Support both CJS (__filename) and ESM (import.meta.url) contexts
 const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
@@ -17,7 +16,6 @@ interface TracerInternals {
 export class Tracing {
   enabled = false;
   private exporter: ExporterWithFlush | undefined;
-  private electronInstrumentation: ElectronInstrumentation | undefined;
 
   constructor() {
     try {
@@ -28,8 +26,6 @@ export class Tracing {
       tracer.use('http');
 
       patchFetchContext(tracer);
-
-      this.electronInstrumentation = new ElectronInstrumentation();
 
       // TODO(RUM-16445) discuss a more reliable way to flush the exporter
       const internalExporter = (tracer as unknown as TracerInternals)._tracer?._exporter;
@@ -51,7 +47,6 @@ export class Tracing {
     await new Promise<void>((resolve) => this.exporter!.flush(resolve));
   }
 
-  stop(): void {
-    this.electronInstrumentation?.stop();
-  }
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  stop(): void {}
 }

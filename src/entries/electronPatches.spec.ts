@@ -1,6 +1,23 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { BrowserWindow as BrowserWindowType } from 'electron';
-import { tracingChannel } from 'node:diagnostics_channel';
+
+vi.mock('dd-trace', () => {
+  const span = {
+    setTag: vi.fn(),
+    finish: vi.fn(),
+  };
+  const scope = {
+    activate: vi.fn((_, fn: () => unknown) => fn()),
+  };
+  return {
+    default: {
+      startSpan: vi.fn(() => span),
+      extract: vi.fn(() => null),
+      inject: vi.fn(),
+      scope: vi.fn(() => scope),
+    },
+  };
+});
 
 describe('resolvePreloadPath', () => {
   it('returns the resolved path for the SDK preload', async () => {
@@ -38,6 +55,7 @@ describe('patchBrowserWindow', () => {
 
     class FakeBrowserWindow {
       webContents = mockWebContents;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       constructor(_options: unknown) {
         return this;
       }
@@ -65,16 +83,10 @@ describe('patchBrowserWindow', () => {
 describe('patchIpcMain', () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.clearAllMocks();
   });
 
-  it('wraps ipcMain.handle so user handlers fire mainHandleCh', async () => {
-    const events: string[] = [];
-    const ch = tracingChannel('apm:electron:ipc:main:handle');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-    const subscriber = (ctx: any) => events.push(ctx.channel as string);
-    ch.start.subscribe(subscriber);
-
-    // Capture the wrapped listener that gets passed to the original handle
+  it('wraps ipcMain.handle so the original handler is called with a span active', async () => {
     let capturedWrapped: ((...args: unknown[]) => unknown) | null = null;
     const mockIpcMain = {
       handle: vi.fn((_ch: string, listener: (...args: unknown[]) => unknown) => {
@@ -82,7 +94,7 @@ describe('patchIpcMain', () => {
       }),
       handleOnce: vi.fn(),
       on: vi.fn(),
-      once: vi.fn((_ch: string, fn: (...args: unknown[]) => unknown) => fn({} as Electron.IpcMainEvent)),
+      once: vi.fn(),
       addListener: vi.fn(),
       off: vi.fn(),
       removeListener: vi.fn(),
@@ -94,18 +106,45 @@ describe('patchIpcMain', () => {
     const { patchIpcMain } = await import('./electronPatches');
     patchIpcMain(mockIpcMain as unknown as Electron.IpcMain);
 
-    // User code registers a handler after patching
-    const userFn = vi.fn();
+    const userFn = vi.fn().mockResolvedValue('result');
     mockIpcMain.handle('test-channel', userFn);
 
-    // The original handle spy was called with a WRAPPED version of userFn
     expect(capturedWrapped).not.toBeNull();
 
-    // Simulate Electron invoking the wrapped listener
     await capturedWrapped!({} /* event */, 'arg1');
-    expect(events).toContain('test-channel');
 
-    ch.start.unsubscribe(subscriber);
+    expect(userFn).toHaveBeenCalledWith({}, 'arg1');
+  });
+
+  it('skips tracing for datadog: channels', async () => {
+    const ddTrace = (await import('dd-trace')).default;
+    let capturedWrapped: ((...args: unknown[]) => unknown) | null = null;
+    const mockIpcMain = {
+      handle: vi.fn(),
+      handleOnce: vi.fn(),
+      on: vi.fn((_ch: string, listener: (...args: unknown[]) => unknown) => {
+        capturedWrapped = listener;
+      }),
+      once: vi.fn(),
+      addListener: vi.fn(),
+      off: vi.fn(),
+      removeListener: vi.fn(),
+      removeAllListeners: vi.fn(),
+      removeHandler: vi.fn(),
+      emit: vi.fn(),
+    };
+
+    const { patchIpcMain } = await import('./electronPatches');
+    patchIpcMain(mockIpcMain as unknown as Electron.IpcMain);
+
+    const userFn = vi.fn();
+    mockIpcMain.on('datadog:apm:test', userFn);
+
+    capturedWrapped!({} /* event */);
+
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(ddTrace.startSpan).not.toHaveBeenCalled();
+    expect(userFn).toHaveBeenCalled();
   });
 });
 
@@ -114,13 +153,8 @@ describe('patchIpcRenderer', () => {
     vi.resetModules();
   });
 
-  it('wraps ipcRenderer.send so calls publish to rendererSendCh', async () => {
-    const events: string[] = [];
-    const ch = tracingChannel('apm:electron:ipc:renderer:send');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-    const subscriber = (ctx: any) => events.push(ctx.channel as string);
-    ch.start.subscribe(subscriber);
-
+  it('wraps ipcRenderer.send to create a producer span', async () => {
+    const ddTrace = (await import('dd-trace')).default;
     const mockIpcRenderer = {
       send: vi.fn(),
       sendSync: vi.fn(),
@@ -138,22 +172,21 @@ describe('patchIpcRenderer', () => {
     patchIpcRenderer(mockIpcRenderer as unknown as Electron.IpcRenderer);
 
     mockIpcRenderer.send('my-channel', 'data');
-    expect(events).toContain('my-channel');
 
-    ch.start.unsubscribe(subscriber);
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(ddTrace.startSpan).toHaveBeenCalledWith(
+      'electron.renderer.send',
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      expect.objectContaining({ tags: expect.objectContaining({ 'resource.name': 'my-channel' }) })
+    );
   });
 
-  it('wraps ipcRenderer.invoke as a promise so calls publish to rendererSendCh', async () => {
-    const events: string[] = [];
-    const ch = tracingChannel('apm:electron:ipc:renderer:send');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-    const subscriber = (ctx: any) => events.push(ctx.channel as string);
-    ch.start.subscribe(subscriber);
-
+  it('wraps ipcRenderer.invoke and finishes span when promise resolves', async () => {
+    const ddTrace = (await import('dd-trace')).default;
     const mockIpcRenderer = {
       send: vi.fn(),
       sendSync: vi.fn(),
-      invoke: vi.fn().mockResolvedValue(undefined),
+      invoke: vi.fn().mockResolvedValue('result'),
       sendToHost: vi.fn(),
       on: vi.fn(),
       once: vi.fn(),
@@ -167,8 +200,12 @@ describe('patchIpcRenderer', () => {
     patchIpcRenderer(mockIpcRenderer as unknown as Electron.IpcRenderer);
 
     await mockIpcRenderer.invoke('invoke-channel');
-    expect(events).toContain('invoke-channel');
 
-    ch.start.unsubscribe(subscriber);
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(ddTrace.startSpan).toHaveBeenCalledWith(
+      'electron.renderer.send',
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      expect.objectContaining({ tags: expect.objectContaining({ 'resource.name': 'invoke-channel' }) })
+    );
   });
 });

@@ -15,7 +15,7 @@
  * - Webpack: DatadogWebpackPlugin from '@datadog/electron-sdk/webpack-plugin'
  */
 import { createRequire } from 'node:module';
-import { resolvePreloadPath, patchBrowserWindow, patchIpcMain, patchIpcRenderer } from './electronPatches';
+import { resolvePreloadPath, patchBrowserWindow, patchIpcMain, patchIpcRenderer, patchNet } from './electronPatches';
 
 const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
 
@@ -34,6 +34,7 @@ interface ElectronModule {
   ipcRenderer?: Electron.IpcRenderer;
   ipcMain?: Electron.IpcMain;
   BrowserWindow?: typeof Electron.BrowserWindow;
+  net?: Electron.Net;
 }
 
 try {
@@ -50,7 +51,10 @@ try {
         patchIpcMain(electron.ipcMain);
       }
       if (preloadPath) {
-        patchBrowserWindow(electron, preloadPath);
+        patchBrowserWindow(electron as typeof import('electron'), preloadPath);
+      }
+      if (electron.net) {
+        patchNet(electron.net);
       }
     }
   }
