@@ -1,6 +1,6 @@
 import { test, expect } from '../lib/helpers';
 
-test('emits an http.request span for net.request calls @integration', async ({ mainPage, intake, testServer }) => {
+test('emits an http.request span for net.request calls', async ({ mainPage, intake, testServer }) => {
   await mainPage.flushTransport();
 
   const url = testServer.urlFor(200);
