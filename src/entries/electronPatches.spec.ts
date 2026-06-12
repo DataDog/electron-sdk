@@ -55,8 +55,7 @@ describe('patchBrowserWindow', () => {
 
     class FakeBrowserWindow {
       webContents = mockWebContents;
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      constructor(_options: unknown) {
+      constructor() {
         return this;
       }
     }
@@ -143,7 +142,7 @@ describe('patchIpcMain', () => {
     capturedWrapped!({} /* event */);
 
     // eslint-disable-next-line @typescript-eslint/unbound-method
-    expect(ddTrace.startSpan).not.toHaveBeenCalled();
+    expect(vi.mocked(ddTrace).startSpan).not.toHaveBeenCalled();
     expect(userFn).toHaveBeenCalled();
   });
 });
@@ -174,7 +173,7 @@ describe('patchIpcRenderer', () => {
     mockIpcRenderer.send('my-channel', 'data');
 
     // eslint-disable-next-line @typescript-eslint/unbound-method
-    expect(ddTrace.startSpan).toHaveBeenCalledWith(
+    expect(vi.mocked(ddTrace).startSpan).toHaveBeenCalledWith(
       'electron.renderer.send',
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       expect.objectContaining({ tags: expect.objectContaining({ 'resource.name': 'my-channel' }) })
@@ -202,7 +201,7 @@ describe('patchIpcRenderer', () => {
     await mockIpcRenderer.invoke('invoke-channel');
 
     // eslint-disable-next-line @typescript-eslint/unbound-method
-    expect(ddTrace.startSpan).toHaveBeenCalledWith(
+    expect(vi.mocked(ddTrace).startSpan).toHaveBeenCalledWith(
       'electron.renderer.send',
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       expect.objectContaining({ tags: expect.objectContaining({ 'resource.name': 'invoke-channel' }) })

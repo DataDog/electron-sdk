@@ -16,19 +16,20 @@ export function resolvePreloadPath(_resolvePackage = resolvePackage): string | u
   }
 }
 
+interface NativeBrowserWindow {
+  webContents: { session: { registerPreloadScript: (opts: { type: string; filePath: string }) => void } };
+}
+
 export function patchBrowserWindow(electron: typeof import('electron'), preloadPath: string): void {
   const OriginalBrowserWindow = electron.BrowserWindow;
 
   class DatadogBrowserWindow extends OriginalBrowserWindow {
     constructor(options?: Electron.BrowserWindowConstructorOptions) {
       // BrowserWindow doesn't support true subclassing (native code) — super()
-      // returns the native instance, not `this`. Cast to any to access it.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
-      const win = super(options ?? {}) as any;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      // returns the native instance, not `this`.
+      const win = super(options ?? {}) as unknown as NativeBrowserWindow;
       win.webContents.session.registerPreloadScript({ type: 'frame', filePath: preloadPath });
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-      return win;
+      return win as unknown as DatadogBrowserWindow;
     }
   }
 
@@ -100,8 +101,7 @@ function wrapAddListener(
 
       const mapping = mappings[ipcChannel] ?? (mappings[ipcChannel] = new WeakMap());
       mapping.set(listener, wrappedListener);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-      return addListener.call(this, ipcChannel, wrappedListener);
+      return addListener.call(this, ipcChannel, wrappedListener) as unknown;
     };
 }
 
@@ -109,8 +109,7 @@ function wrapRemoveListener(mappings: Record<string, WeakMap<AnyFn, AnyFn>>): (r
   return (removeListener) =>
     function (this: unknown, ipcChannel: string, listener: AnyFn) {
       const wrapper = mappings[ipcChannel]?.get(listener);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-      return removeListener.call(this, ipcChannel, wrapper ?? listener);
+      return removeListener.call(this, ipcChannel, wrapper ?? listener) as unknown;
     };
 }
 
@@ -118,8 +117,7 @@ function wrapRemoveHandler(mappings: Record<string, WeakMap<AnyFn, AnyFn>>): (re
   return (removeHandler) =>
     function (this: unknown, ipcChannel: string) {
       delete mappings[ipcChannel];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-      return removeHandler.call(this, ipcChannel);
+      return removeHandler.call(this, ipcChannel) as unknown;
     };
 }
 
@@ -131,8 +129,7 @@ function wrapRemoveAllListeners(mappings: Record<string, WeakMap<AnyFn, AnyFn>>)
       } else {
         for (const key of Object.keys(mappings)) delete mappings[key];
       }
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-      return removeAllListeners.call(this, ipcChannel);
+      return removeAllListeners.call(this, ipcChannel) as unknown;
     };
 }
 
@@ -181,10 +178,9 @@ function wrapSend(spanName: string, promise = false): (send: AnyFn) => AnyFn {
     };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function wrap(obj: any, method: string, wrapper: (original: AnyFn) => AnyFn): void {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-  obj[method] = wrapper((obj[method] as AnyFn).bind(obj));
+function wrap(obj: object, method: string, wrapper: (original: AnyFn) => AnyFn): void {
+  const record = obj as Record<string, unknown>;
+  record[method] = wrapper((record[method] as AnyFn).bind(obj));
 }
 
 export function patchIpcMain(ipcMain: Electron.IpcMain): void {
