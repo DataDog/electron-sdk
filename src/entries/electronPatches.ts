@@ -1,7 +1,11 @@
-import ddTrace from 'dd-trace';
 import { createRequire } from 'node:module';
 
 const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
+
+let _ddTrace: typeof import('dd-trace').default | undefined;
+function getTracer(): typeof import('dd-trace').default {
+  return (_ddTrace ??= (_require('dd-trace') as { default: typeof import('dd-trace').default }).default);
+}
 
 function resolvePackage(id: string): string {
   return _require.resolve(id);
@@ -59,11 +63,11 @@ function wrapAddListener(
         const lastArg = args[args.length - 1];
         const childOf =
           lastArg !== null && typeof lastArg === 'object'
-            ? ddTrace.extract('text_map', lastArg as Record<string, string>)
+            ? getTracer().extract('text_map', lastArg as Record<string, string>)
             : null;
         const callArgs = childOf ? args.slice(0, -1) : args;
 
-        const span = ddTrace.startSpan(spanName, {
+        const span = getTracer().startSpan(spanName, {
           childOf: childOf ?? undefined,
           tags: {
             'span.kind': 'consumer',
@@ -73,30 +77,32 @@ function wrapAddListener(
           },
         });
 
-        return ddTrace.scope().activate(span, () => {
-          let result: unknown;
-          try {
-            result = listener.call(this, event, ...callArgs) as unknown;
-          } catch (err) {
-            span.setTag('error', err);
+        return getTracer()
+          .scope()
+          .activate(span, () => {
+            let result: unknown;
+            try {
+              result = listener.call(this, event, ...callArgs) as unknown;
+            } catch (err) {
+              span.setTag('error', err);
+              span.finish();
+              throw err;
+            }
+
+            if (isPromise(result)) {
+              void result.then(
+                () => span.finish(),
+                (err: unknown) => {
+                  span.setTag('error', err);
+                  span.finish();
+                }
+              );
+              return result;
+            }
+
             span.finish();
-            throw err;
-          }
-
-          if (isPromise(result)) {
-            void result.then(
-              () => span.finish(),
-              (err: unknown) => {
-                span.setTag('error', err);
-                span.finish();
-              }
-            );
             return result;
-          }
-
-          span.finish();
-          return result;
-        });
+          });
       };
 
       const mapping = mappings[ipcChannel] ?? (mappings[ipcChannel] = new WeakMap());
@@ -140,7 +146,7 @@ function wrapSend(spanName: string, promise = false): (send: AnyFn) => AnyFn {
         return send.call(this, ipcChannel, ...args) as unknown;
       }
 
-      const span = ddTrace.startSpan(spanName, {
+      const span = getTracer().startSpan(spanName, {
         tags: {
           'span.kind': 'producer',
           component: 'electron',
@@ -148,33 +154,35 @@ function wrapSend(spanName: string, promise = false): (send: AnyFn) => AnyFn {
         },
       });
 
-      return ddTrace.scope().activate(span, () => {
-        const carrier: Record<string, string> = {};
-        ddTrace.inject(span, 'text_map', carrier);
+      return getTracer()
+        .scope()
+        .activate(span, () => {
+          const carrier: Record<string, string> = {};
+          getTracer().inject(span, 'text_map', carrier);
 
-        let result: unknown;
-        try {
-          result = send.call(this, ipcChannel, ...args, carrier) as unknown;
-        } catch (err) {
-          span.setTag('error', err);
+          let result: unknown;
+          try {
+            result = send.call(this, ipcChannel, ...args, carrier) as unknown;
+          } catch (err) {
+            span.setTag('error', err);
+            span.finish();
+            throw err;
+          }
+
+          if (promise && isPromise(result)) {
+            void result.then(
+              () => span.finish(),
+              (err: unknown) => {
+                span.setTag('error', err);
+                span.finish();
+              }
+            );
+            return result;
+          }
+
           span.finish();
-          throw err;
-        }
-
-        if (promise && isPromise(result)) {
-          void result.then(
-            () => span.finish(),
-            (err: unknown) => {
-              span.setTag('error', err);
-              span.finish();
-            }
-          );
           return result;
-        }
-
-        span.finish();
-        return result;
-      });
+        });
     };
 }
 
@@ -232,7 +240,7 @@ export function patchNet(net: Electron.Net): void {
     const method = (opts.method ?? 'GET').toUpperCase();
     const urlStr = opts.url ?? parsed?.href ?? '';
 
-    const span = ddTrace.startSpan('http.request', {
+    const span = getTracer().startSpan('http.request', {
       tags: {
         'span.kind': 'client',
         'span.type': 'http',
@@ -244,7 +252,7 @@ export function patchNet(net: Electron.Net): void {
     });
 
     const carrier: Record<string, string> = {};
-    ddTrace.inject(span, 'http_headers', carrier);
+    getTracer().inject(span, 'http_headers', carrier);
     const existingHeaders = opts.headers ?? {};
     opts.headers = { ...carrier, ...existingHeaders };
 
