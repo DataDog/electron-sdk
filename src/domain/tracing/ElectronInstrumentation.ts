@@ -2,6 +2,8 @@ import ddTrace from 'dd-trace';
 import { tracingChannel, channel } from 'node:diagnostics_channel';
 import type { TracingChannelSubscribers } from 'node:diagnostics_channel';
 
+type Span = ReturnType<typeof ddTrace.startSpan>;
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getTracer(): any {
   return ddTrace;
@@ -13,7 +15,7 @@ interface IpcContext {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   self?: any;
   event?: unknown;
-  span?: unknown;
+  span?: Span;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   currentStore?: any;
   error?: unknown;
@@ -23,7 +25,7 @@ interface IpcContext {
 interface NetContext {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   args: any[];
-  span?: unknown;
+  span?: Span;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   res?: any;
   error?: unknown;
@@ -123,12 +125,10 @@ export class ElectronInstrumentation {
       end: noop,
       asyncStart: noop,
       asyncEnd: (ctx: IpcContext) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-        (ctx.span as any)?.finish();
+        ctx.span?.finish();
       },
       error: (ctx: IpcContext) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-        (ctx.span as any)?.setTag('error', ctx.error);
+        ctx.span?.setTag('error', ctx.error);
       },
     };
   }
@@ -165,18 +165,15 @@ export class ElectronInstrumentation {
       },
       end: (ctx: IpcContext) => {
         if (Object.prototype.hasOwnProperty.call(ctx, 'result')) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-          (ctx.span as any)?.finish();
+          ctx.span?.finish();
         }
       },
       asyncStart: noop,
       asyncEnd: (ctx: IpcContext) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-        (ctx.span as any)?.finish();
+        ctx.span?.finish();
       },
       error: (ctx: IpcContext) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-        (ctx.span as any)?.setTag('error', ctx.error);
+        ctx.span?.setTag('error', ctx.error);
       },
     };
   }
@@ -244,17 +241,14 @@ export class ElectronInstrumentation {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         const statusCode = ctx.res?._responseHead?.statusCode as number | undefined;
         if (statusCode !== undefined) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-          (ctx.span as any).setTag('http.status_code', String(statusCode));
+          ctx.span.setTag('http.status_code', String(statusCode));
         }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-        (ctx.span as any).finish();
+        ctx.span.finish();
         ctx.span = undefined;
       },
       asyncEnd: noop,
       error: (ctx: NetContext) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-        (ctx.span as any)?.setTag('error', ctx.error);
+        ctx.span?.setTag('error', ctx.error);
       },
     };
   }
