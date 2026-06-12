@@ -13,6 +13,12 @@ import {
   startOperation,
   succeedOperation,
   failOperation,
+  setUserInfo,
+  clearUserInfo,
+  setUserInfoProperty,
+  setAccountInfo,
+  clearAccountInfo,
+  setAccountInfoProperty,
   type FailureReason,
   type FeatureOperationOptions,
 } from '@datadog/electron-sdk';
@@ -107,6 +113,32 @@ ipcMain.handle('main:fetch-api-net', async () => {
 // IPC handler to crash the main process
 ipcMain.handle('crash', () => {
   process.crash();
+});
+
+// --- User & Account context handlers ---
+
+ipcMain.handle('main:set-user', () => {
+  setUserInfo({ id: 'user-playground', name: 'Playground User', email: 'playground@example.com' });
+});
+
+ipcMain.handle('main:add-user-extra', () => {
+  setUserInfoProperty('plan', 'premium');
+});
+
+ipcMain.handle('main:clear-user', () => {
+  clearUserInfo();
+});
+
+ipcMain.handle('main:set-account', () => {
+  setAccountInfo({ id: 'account-playground', name: 'Playground Corp' });
+});
+
+ipcMain.handle('main:add-account-extra', () => {
+  setAccountInfoProperty('tier', 'enterprise');
+});
+
+ipcMain.handle('main:clear-account', () => {
+  clearAccountInfo();
 });
 
 // --- Operation Monitoring demo handlers ---
