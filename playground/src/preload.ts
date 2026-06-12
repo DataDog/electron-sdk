@@ -19,4 +19,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   mainFetchApiNet: () => ipcRenderer.invoke('main:fetch-api-net'),
   openRumExplorer: () => ipcRenderer.invoke('open-rum-explorer'),
   flushTransport: () => ipcRenderer.invoke('flush-transport'),
+  setUser: () => ipcRenderer.invoke('main:set-user'),
+  addUserExtra: () => ipcRenderer.invoke('main:add-user-extra'),
+  clearUser: () => ipcRenderer.invoke('main:clear-user'),
+  setAccount: () => ipcRenderer.invoke('main:set-account'),
+  addAccountExtra: () => ipcRenderer.invoke('main:add-account-extra'),
+  clearAccount: () => ipcRenderer.invoke('main:clear-account'),
 });
