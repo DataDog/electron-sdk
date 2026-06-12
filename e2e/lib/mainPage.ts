@@ -1,5 +1,5 @@
 import type { ElectronApplication, Page } from '@playwright/test';
-import type { FailureReason, FeatureOperationOptions } from '@datadog/electron-sdk';
+import type { AccountInfo, FailureReason, FeatureOperationOptions, UserInfo } from '@datadog/electron-sdk';
 import { BridgeWindowPage } from './bridgeWindowPage';
 
 // declare exposed IPC methods called directly in tests
@@ -14,6 +14,14 @@ interface ElectronAppWindow {
     mainHttpRequest: (url: string) => Promise<number>;
     mainNetRequest: (url: string) => Promise<number>;
     flushTransport: () => Promise<void>;
+    setUserInfo: (user: UserInfo) => Promise<void>;
+    clearUserInfo: () => Promise<void>;
+    setUserInfoProperty: (key: string, value: unknown) => Promise<void>;
+    removeUserInfoProperty: (key: string) => Promise<void>;
+    setAccountInfo: (accountInfo: AccountInfo) => Promise<void>;
+    clearAccountInfo: () => Promise<void>;
+    setAccountInfoProperty: (key: string, value: unknown) => Promise<void>;
+    removeAccountInfoProperty: (key: string) => Promise<void>;
     ping: () => Promise<string>;
     stopSession: () => Promise<void>;
     openBridgeFileWindow: () => Promise<void>;
@@ -119,6 +127,53 @@ export class MainPage {
 
   async flushTransport() {
     await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.flushTransport());
+  }
+
+  async setUserInfo(user: UserInfo) {
+    await this.page.evaluate((u) => (globalThis as unknown as ElectronAppWindow).electronAPI.setUserInfo(u), user);
+  }
+
+  async clearUserInfo() {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.clearUserInfo());
+  }
+
+  async setUserInfoProperty(key: string, value: unknown) {
+    await this.page.evaluate(
+      ({ key, value }) => (globalThis as unknown as ElectronAppWindow).electronAPI.setUserInfoProperty(key, value),
+      { key, value }
+    );
+  }
+
+  async removeUserInfoProperty(key: string) {
+    await this.page.evaluate(
+      (k) => (globalThis as unknown as ElectronAppWindow).electronAPI.removeUserInfoProperty(k),
+      key
+    );
+  }
+
+  async setAccountInfo(accountInfo: AccountInfo) {
+    await this.page.evaluate(
+      (a) => (globalThis as unknown as ElectronAppWindow).electronAPI.setAccountInfo(a),
+      accountInfo
+    );
+  }
+
+  async clearAccountInfo() {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.clearAccountInfo());
+  }
+
+  async setAccountInfoProperty(key: string, value: unknown) {
+    await this.page.evaluate(
+      ({ key, value }) => (globalThis as unknown as ElectronAppWindow).electronAPI.setAccountInfoProperty(key, value),
+      { key, value }
+    );
+  }
+
+  async removeAccountInfoProperty(key: string) {
+    await this.page.evaluate(
+      (k) => (globalThis as unknown as ElectronAppWindow).electronAPI.removeAccountInfoProperty(k),
+      key
+    );
   }
 
   crash() {
