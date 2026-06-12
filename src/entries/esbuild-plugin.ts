@@ -5,15 +5,16 @@
  * for both CJS and ESM esbuild output formats.
  *
  * For CJS output: prepends a banner that initializes dd-trace via require()
- * before any application code. dd-trace hooks require('electron') to wrap
- * BrowserWindow with automatic preload injection.
+ * before any application code.
  *
  * For ESM output: prepends a banner that initializes dd-trace and registers
  * the SDK's preload script directly via session.registerPreloadScript().
  * In ESM, static imports are loaded before any module code evaluates, so
- * dd-trace's IITM hooks cannot intercept `import 'electron'` for automatic
- * BrowserWindow wrapping. The direct preload registration achieves the same
- * result.
+ * BrowserWindow subclassing alone cannot intercept `import 'electron'`.
+ * The direct preload registration achieves the same result.
+ *
+ * Also copies dd-trace and @datadog/electron-sdk into the build output's
+ * node_modules so they are available at runtime in packaged apps.
  *
  * Usage:
  *   import { datadogEsbuildPlugin } from '@datadog/electron-sdk/esbuild-plugin';
@@ -23,6 +24,11 @@
  *   });
  */
 
+import { createRequire } from 'node:module';
+import { cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 interface EsbuildPlugin {
   name: string;
   setup: (build: {
@@ -30,7 +36,10 @@ interface EsbuildPlugin {
       format?: string;
       banner?: { js?: string };
       external?: string[];
+      outdir?: string;
+      outfile?: string;
     };
+    onEnd: (callback: () => void | Promise<void>) => void;
   }) => void;
 }
 
@@ -59,6 +68,9 @@ try {
 `.trim();
 
 export function datadogEsbuildPlugin(): EsbuildPlugin {
+  const currentFile = typeof __filename !== 'undefined' ? __filename : fileURLToPath(import.meta.url);
+  const _require = createRequire(currentFile);
+
   return {
     name: 'datadog-electron-sdk',
     setup(build) {
@@ -80,6 +92,49 @@ export function datadogEsbuildPlugin(): EsbuildPlugin {
         }
       }
       build.initialOptions.external = external;
+
+      // Copy externalized packages into node_modules alongside the output
+      // so they are available at runtime in packaged apps
+      build.onEnd(() => {
+        const outDir =
+          build.initialOptions.outdir ??
+          (build.initialOptions.outfile ? dirname(build.initialOptions.outfile) : undefined);
+        if (!outDir) return;
+
+        const destModules = join(outDir, 'node_modules');
+        const visited = new Set<string>();
+
+        function copyPackageTree(pkg: string): void {
+          if (visited.has(pkg)) return;
+          visited.add(pkg);
+
+          try {
+            const entryPath = _require.resolve(pkg);
+            let pkgDir = dirname(entryPath);
+            while (pkgDir !== dirname(pkgDir) && !existsSync(join(pkgDir, 'package.json'))) {
+              pkgDir = dirname(pkgDir);
+            }
+
+            const destDir = join(destModules, pkg);
+            if (!existsSync(destDir)) {
+              mkdirSync(dirname(destDir), { recursive: true });
+              cpSync(pkgDir, destDir, { recursive: true });
+            }
+
+            const pkgJson = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) as {
+              dependencies?: Record<string, string>;
+            };
+            for (const dep of Object.keys(pkgJson.dependencies ?? {})) {
+              copyPackageTree(dep);
+            }
+          } catch {
+            console.warn(`[datadog] Failed to copy package '${pkg}' to build output`);
+          }
+        }
+
+        copyPackageTree('dd-trace');
+        copyPackageTree('@datadog/electron-sdk');
+      });
     },
   };
 }
