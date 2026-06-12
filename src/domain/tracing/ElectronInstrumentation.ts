@@ -4,34 +4,33 @@ import type { TracingChannelSubscribers } from 'node:diagnostics_channel';
 
 type Span = ReturnType<typeof ddTrace.startSpan>;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getTracer(): any {
+function getTracer(): typeof ddTrace {
   return ddTrace;
 }
 
 interface IpcContext {
   args: unknown[];
   channel: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  self?: any;
+  self?: object;
   event?: unknown;
   span?: Span;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  currentStore?: any;
   error?: unknown;
   result?: unknown;
 }
 
+interface NetRequestOptions {
+  url?: string;
+  method?: string;
+  headers?: Record<string, string | string[]>;
+  [key: string]: unknown;
+}
+
 interface NetContext {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  args: any[];
+  args: [string | NetRequestOptions, ...unknown[]];
   span?: Span;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  res?: any;
+  res?: { _responseHead?: { statusCode?: number } };
   error?: unknown;
   result?: unknown;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  currentStore?: any;
 }
 
 const mainReceiveCh = tracingChannel<IpcContext>('apm:electron:ipc:main:receive');
@@ -63,8 +62,7 @@ export class ElectronInstrumentation {
 
     this.mainSendHandlers = this.makeSendHandlers(
       'electron.main.send',
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      (ctx) => this.renderers.has(ctx.self)
+      (ctx) => ctx.self !== undefined && this.renderers.has(ctx.self)
     );
     this.rendererSendHandlers = this.makeSendHandlers('electron.renderer.send', () => true);
 
@@ -100,15 +98,11 @@ export class ElectronInstrumentation {
       start: (ctx: IpcContext) => {
         if (ctx.channel?.startsWith('datadog:')) return;
 
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const tracer = getTracer();
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-        const childOf = tracer.extract('text_map', ctx.args[ctx.args.length - 1]);
+        const childOf = tracer.extract('text_map', ctx.args[ctx.args.length - 1] as object);
         if (childOf) ctx.args.pop();
 
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
         const span = tracer.startSpan(spanName, {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           childOf,
           tags: {
             'span.kind': 'consumer',
@@ -119,8 +113,6 @@ export class ElectronInstrumentation {
         });
 
         ctx.span = span;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-        ctx.currentStore = tracer.scope().activate(span);
       },
       end: noop,
       asyncStart: noop,
@@ -141,9 +133,7 @@ export class ElectronInstrumentation {
       start: (ctx: IpcContext) => {
         if (ctx.channel?.startsWith('datadog:')) return;
 
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const tracer = getTracer();
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
         const span = tracer.startSpan(spanName, {
           tags: {
             'span.kind': 'producer',
@@ -153,12 +143,9 @@ export class ElectronInstrumentation {
         });
 
         ctx.span = span;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-        ctx.currentStore = tracer.scope().activate(span);
 
         if (shouldInject(ctx)) {
           const carrier: Record<string, string> = {};
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
           tracer.inject(span, 'text_map', carrier);
           ctx.args.push(carrier);
         }
@@ -181,32 +168,30 @@ export class ElectronInstrumentation {
   private makeRequestHandlers(): TracingChannelSubscribers<NetContext> {
     return {
       start: (ctx: NetContext) => {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const tracer = getTracer();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
-        let options: any = ctx.args[0];
+        const raw = ctx.args[0];
 
-        if (typeof options === 'string') {
-          options = ctx.args[0] = { url: options };
-        } else if (!options) {
-          options = ctx.args[0] = {};
+        let options: NetRequestOptions;
+        if (typeof raw === 'string') {
+          options = { url: raw };
+          ctx.args[0] = options;
+        } else if (!raw) {
+          options = {};
+          ctx.args[0] = options;
+        } else {
+          options = raw;
         }
 
-        let parsed: { href?: string; method?: string } | undefined;
+        let parsed: URL | undefined;
         try {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
-          parsed = new URL(options.url ?? options);
+          if (options.url) parsed = new URL(options.url);
         } catch {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-          parsed = options;
+          // invalid URL, skip
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        const method = ((options.method as string | undefined) ?? parsed?.method ?? 'GET').toUpperCase();
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        const urlStr = (options.url as string | undefined) ?? parsed?.href ?? '';
+        const method = (options.method ?? parsed?.pathname ?? 'GET').toUpperCase();
+        const urlStr = options.url ?? parsed?.href ?? '';
 
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
         const span = tracer.startSpan('http.request', {
           tags: {
             'span.kind': 'client',
@@ -219,27 +204,21 @@ export class ElectronInstrumentation {
         });
 
         ctx.span = span;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-        ctx.currentStore = tracer.scope().activate(span);
 
         const carrier: Record<string, string> = {};
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
         tracer.inject(span, 'http_headers', carrier);
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
-        options.headers = options.headers ?? {};
+        const headers: Record<string, string | string[]> = options.headers ?? {};
+        options.headers = headers;
         for (const name of Object.keys(carrier)) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          if (!options.headers[name]) {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-            options.headers[name] = carrier[name];
+          if (!headers[name]) {
+            headers[name] = carrier[name];
           }
         }
       },
       end: noop,
       asyncStart: (ctx: NetContext) => {
         if (!ctx.span) return;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        const statusCode = ctx.res?._responseHead?.statusCode as number | undefined;
+        const statusCode = ctx.res?._responseHead?.statusCode;
         if (statusCode !== undefined) {
           ctx.span.setTag('http.status_code', String(statusCode));
         }
