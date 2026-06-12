@@ -1,6 +1,32 @@
 import ddTrace from 'dd-trace';
+import { createRequire } from 'node:module';
+import type { AsyncLocalStorage } from 'node:async_hooks';
 import { tracingChannel, channel } from 'node:diagnostics_channel';
-import type { TracingChannelSubscribers } from 'node:diagnostics_channel';
+import type { TracingChannel, TracingChannelSubscribers } from 'node:diagnostics_channel';
+
+const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
+
+type DdStore = Record<string, unknown>;
+
+// Access dd-trace's internal AsyncLocalStorage — no public API for this.
+// The 'legacy' namespace is what tracer.scope() reads for the active span.
+function getDdStorage(): AsyncLocalStorage<DdStore> {
+  const { storage } = _require('dd-trace/packages/datadog-core') as {
+    storage: (ns: string) => AsyncLocalStorage<DdStore>;
+  };
+  return storage('legacy');
+}
+
+// Bind dd-trace's storage to a tracing channel so the span is propagated into
+// the async context of the traced function. bindStore fires after start
+// subscribers run (per Node.js runStores ordering), so ctx.span is already set.
+// The ALS type doesn't match the channel's StoreType, so we cast through any.
+function bindSpanStore<C extends { span?: Span }>(ch: TracingChannel<C>, als: AsyncLocalStorage<DdStore>): void {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+  (ch.start as any).bindStore(als, (ctx: C) =>
+    ctx.span ? { ...als.getStore(), span: ctx.span } : (als.getStore() ?? {})
+  );
+}
 
 type Span = ReturnType<typeof ddTrace.startSpan>;
 
@@ -47,6 +73,7 @@ function noop(): void {}
 
 export class ElectronInstrumentation {
   private renderers = new WeakSet<Electron.WebContents>();
+  private als: AsyncLocalStorage<DdStore>;
 
   private mainReceiveHandlers: TracingChannelSubscribers<IpcContext>;
   private mainHandleHandlers: TracingChannelSubscribers<IpcContext>;
@@ -57,6 +84,14 @@ export class ElectronInstrumentation {
   private requestHandlers: TracingChannelSubscribers<NetContext>;
 
   constructor() {
+    this.als = getDdStorage();
+    bindSpanStore(mainReceiveCh, this.als);
+    bindSpanStore(mainHandleCh, this.als);
+    bindSpanStore(mainSendCh, this.als);
+    bindSpanStore(rendererReceiveCh, this.als);
+    bindSpanStore(rendererSendCh, this.als);
+    bindSpanStore(requestCh, this.als);
+
     this.mainReceiveHandlers = this.makeReceiveHandlers('electron.main.receive');
     this.mainHandleHandlers = this.makeReceiveHandlers('electron.main.handle');
     this.rendererReceiveHandlers = this.makeReceiveHandlers('electron.renderer.receive');
@@ -85,6 +120,11 @@ export class ElectronInstrumentation {
   }
 
   stop(): void {
+    for (const ch of [mainReceiveCh, mainHandleCh, mainSendCh, rendererReceiveCh, rendererSendCh, requestCh]) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      (ch.start as any).unbindStore(this.als);
+    }
+
     mainReceiveCh.unsubscribe(this.mainReceiveHandlers);
     mainHandleCh.unsubscribe(this.mainHandleHandlers);
     mainSendCh.unsubscribe(this.mainSendHandlers);
