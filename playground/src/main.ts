@@ -1,12 +1,13 @@
 // Must be imported before 'electron' — instruments electron for tracing and preload injection.
 import '@datadog/electron-sdk/instrument';
 
-import { app, BrowserWindow, ipcMain, net } from 'electron';
+import { app, BrowserWindow, ipcMain, net, shell } from 'electron';
 import * as path from 'node:path';
 import * as https from 'node:https';
 import {
   init,
   stopSession,
+  _flushTransport,
   getInternalContext,
   _generateTelemetryError,
   startOperation,
@@ -17,6 +18,9 @@ import {
 } from '@datadog/electron-sdk';
 import { loadWindowState, saveWindowState } from './main/windowState';
 import { setupHotReload } from './main/hotReload';
+import { buildRumExplorerUrl } from './main/utils';
+
+const isTestMode = process.env.DD_TEST_MODE === '1';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -28,6 +32,7 @@ function createWindow() {
     height: savedState?.height ?? 768,
     x: savedState?.x,
     y: savedState?.y,
+    show: !isTestMode,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -121,25 +126,39 @@ ipcMain.handle(
   }
 );
 
+const ACTIVE_ENV = 'staging';
+const CONF = {
+  staging: {
+    applicationId: '6efd3722-af0a-4070-994c-0e87076d4814',
+    clientToken: 'pub2a7307cdec74934cacb411a193f632f8',
+    site: 'datad0g.com',
+  },
+  prod: {
+    applicationId: '0f574f27-317e-4223-b5b6-c935b4c83700',
+    clientToken: 'pub09a54e493460355ef58c0c617d577e19',
+    site: 'datadoghq.com',
+  },
+};
+
+// needed for automated tests
+ipcMain.handle('flush-transport', async () => {
+  await _flushTransport();
+});
+
+ipcMain.handle('open-rum-explorer', () => {
+  const ctx = getInternalContext();
+  if (!ctx) return;
+  void shell.openExternal(buildRumExplorerUrl(CONF[ACTIVE_ENV], ctx.session_id));
+});
+
 void app.whenReady().then(async () => {
   // Initialize SDK on app ready (before window creation)
   console.log('Initializing SDK from main process...');
-  const CONF = {
-    staging: {
-      applicationId: '6efd3722-af0a-4070-994c-0e87076d4814',
-      clientToken: 'pub2a7307cdec74934cacb411a193f632f8',
-      site: 'datad0g.com',
-    },
-    prod: {
-      applicationId: '0f574f27-317e-4223-b5b6-c935b4c83700',
-      clientToken: 'pub09a54e493460355ef58c0c617d577e19',
-      site: 'datadoghq.com',
-    },
-  };
   const result = await init({
-    ...CONF.staging,
+    ...CONF[ACTIVE_ENV],
     service: 'electron-playground',
     env: 'dev',
+    ...(process.env.DD_SDK_PROXY ? { proxy: process.env.DD_SDK_PROXY } : {}),
   });
   console.log('SDK init result:', result);
 

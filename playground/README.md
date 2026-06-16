@@ -1,60 +1,53 @@
 # Electron SDK Playground
 
-A simple Electron application to test and demonstrate the `@datadog/electron-sdk`.
-
-## Features
-
-- TypeScript-based Electron application
-- Hot reload during development with `electron-reloader`
-- SDK initialized in main process via IPC
-- Secure context isolation with IPC communication
-- Button to trigger SDK initialization
+Developer sandbox for `@datadog/electron-sdk` — experiment with SDK features, prototype scenarios, and validate changes with a mock intake.
 
 ## Getting Started
 
-### Install Dependencies
-
 ```bash
-cd playground
-yarn
-```
-
-### Build the TypeScript Files
-
-```bash
-yarn build
-```
-
-### Run the Playground
-
-```bash
-yarn start
-```
-
-### Development Mode (with hot reload)
-
-For development with automatic reload on file changes:
-
-```bash
-yarn dev
-```
-
-This will:
-
-- Watch TypeScript files for changes and recompile automatically
-- Reload Electron when files change
-- Open DevTools by default
-
-## Development with SDK Changes
-
-From the root directory, run:
-
-```bash
+# From the repo root — builds SDK + playground with hot reload
 yarn dev:playground
+
+# Or standalone (playground only, requires SDK already built)
+cd playground && yarn dev
 ```
 
-This will:
+## Testing
 
-- Watch and rebuild the parent SDK on changes
-- Automatically reload the playground when SDK is updated
-- Run both processes concurrently with color-coded output
+The playground includes a Playwright test infrastructure for prototyping and self-validation. Scenarios launch the app in headless mode with a mock intake, so agents and developers can iterate and verify that events flow end-to-end.
+
+```bash
+cd playground && yarn test
+```
+
+### Writing scenarios
+
+Test files live in `test/` and must match `*.scenario.ts`. They use Playwright's Electron support with fixtures from `test/helpers.ts`:
+
+- **`intake`** — mock HTTP server capturing RUM events (reuses `e2e/lib/intake.ts`)
+- **`electronApp`** — headless Electron app with `DD_TEST_MODE` and `DD_SDK_PROXY` env vars
+- **`window`** — first browser window, ready after load
+
+### Local prototyping
+
+`test/local/` is gitignored — use it for throwaway scenarios without affecting CI.
+
+## Architecture
+
+### Module System Split
+
+The playground uses different module systems due to Electron constraints:
+
+- **main.ts, preload.ts**: CommonJS (`tsconfig.json`) — Electron requires this
+- **renderer.ts**: ES modules (`tsconfig.renderer.json`) — runs in browser context
+
+**Critical detail:** Using `export {}` in CommonJS code generates `exports` references that fail in browser. Separate compilation configs prevent this.
+
+### Hot Reload System
+
+Two watchers handle different reload scenarios:
+
+1. **electron-reloader** (3s startup delay) — watches playground files, reloads windows
+2. **chokidar** (5s grace period, 200ms debounce) — watches parent SDK's dist/, clears require cache, relaunches app
+
+Grace periods prevent reload loops during initial TypeScript compilation.

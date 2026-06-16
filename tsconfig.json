@@ -7,6 +7,7 @@
     { "path": "./e2e/app" },
     { "path": "./e2e/app/tsconfig.renderer.json" },
     { "path": "./playground" },
-    { "path": "./playground/tsconfig.renderer.json" }
+    { "path": "./playground/tsconfig.renderer.json" },
+    { "path": "./playground/tsconfig.test.json" }
   ]
 }
