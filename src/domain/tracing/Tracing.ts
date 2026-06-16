@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { addError } from '../telemetry';
-import { patchIpcHandleContext, patchFetchContext } from './tracingPatches';
+import { patchFetchContext } from './tracingPatches';
 
 // Support both CJS (__filename) and ESM (import.meta.url) contexts
 const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
@@ -21,15 +21,11 @@ export class Tracing {
     try {
       const tracer = (_require('dd-trace') as { default: typeof import('dd-trace').default }).default;
 
-      // dd-trace is initialized early via @datadog/electron-sdk/instrument (before require('electron')).
-      // tracer.init() is a no-op if already initialized, so we only configure plugins here.
-      // Service/env/version are set by SpanProcessor on each span payload,
-      // overriding dd-trace's defaults with the SDK config values.
-      // @ts-expect-error electron plugin exists in dd-trace but is not in the type definitions
-      tracer.use('electron');
+      // tracer.init() is a no-op if already called by instrument.ts.
+      // Service/env/version are set per-span by SpanProcessor.
       tracer.use('http');
+      tracer.use('electron' as 'http', false);
 
-      patchIpcHandleContext(tracer);
       patchFetchContext(tracer);
 
       // TODO(RUM-16445) discuss a more reliable way to flush the exporter
@@ -45,12 +41,10 @@ export class Tracing {
   }
 
   // dd-trace's electron exporter batches spans on a flushInterval (2s by default).
-  // Flushing it before the SDK transport ensures any pending HTTP spans become RUM resource events synchronously,
-  // so _flushTransport() captures them in one shot.
+  // Flushing it before the SDK transport ensures any pending HTTP spans become RUM
+  // resource events synchronously, so _flushTransport() captures them in one shot.
   async flush(): Promise<void> {
-    if (!this.exporter) {
-      return;
-    }
+    if (!this.exporter) return;
     await new Promise<void>((resolve) => this.exporter!.flush(resolve));
   }
 }

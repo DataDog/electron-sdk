@@ -4,7 +4,11 @@ import commonjs from '@rollup/plugin-commonjs';
 import json from '@rollup/plugin-json';
 import replace from '@rollup/plugin-replace';
 import dts from 'rollup-plugin-dts';
+import { fileURLToPath } from 'node:url';
+import { dirname } from 'node:path';
 import pkg from './package.json' with { type: 'json' };
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const sharedPlugins = [
   replace({ preventAssignment: true, __SDK_VERSION__: JSON.stringify(pkg.version) }),
@@ -59,7 +63,7 @@ const config = [
         sourcemap: true,
       },
     ],
-    external: ['electron'],
+    external: ['electron', 'dd-trace'],
     plugins: sharedPlugins,
   },
   // Vite plugin: ensures dd-trace initializes before hoisted requires
@@ -161,6 +165,16 @@ const config = [
       format: 'esm',
     },
     plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
+  },
+  // Preload script: renderer bridge, output as plain CJS for BrowserWindow injection
+  {
+    input: 'src/bridge/preload.ts',
+    output: {
+      file: 'dist/preload.js',
+      format: 'cjs',
+    },
+    external: ['electron'],
+    plugins: sharedPlugins,
   },
 ];
 
