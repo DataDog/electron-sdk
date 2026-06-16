@@ -34,11 +34,13 @@ export class MainAssembly {
 
   private assembleMainProcessEvent(event: RawEvent): ServerEvent | DISCARDED {
     const startTime = event.startTime ?? timeStampNow();
+    const source = EventSource.MAIN;
 
     if (event.format === EventFormat.RUM) {
       const hookResult = this.hooks.triggerRum({
         eventType: event.data.type,
         startTime,
+        source,
       });
       if (hookResult !== DISCARDED) {
         return {
@@ -51,7 +53,7 @@ export class MainAssembly {
     }
 
     if (event.format === EventFormat.TELEMETRY) {
-      const hookResult = this.hooks.triggerTelemetry({ startTime });
+      const hookResult = this.hooks.triggerTelemetry({ startTime, source });
       if (hookResult !== DISCARDED) {
         return {
           kind: EventKind.SERVER,

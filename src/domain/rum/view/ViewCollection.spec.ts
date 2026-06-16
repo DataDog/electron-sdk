@@ -86,7 +86,7 @@ describe('ViewCollection', () => {
   describe('hook registration', () => {
     it('injects view attributes into RUM hooks', () => {
       const initialViewAttributes = (rawRumEvents[0].data as RawRumView).view;
-      const result = hooks.triggerRum({ eventType: 'view', startTime: T0 });
+      const result = hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN });
 
       expect(result).toMatchObject({
         view: { id: initialViewAttributes.id },
@@ -95,7 +95,7 @@ describe('ViewCollection', () => {
 
     it('injects view attributes into telemetry hooks', () => {
       const initialView = (rawRumEvents[0].data as RawRumView).view;
-      const result = hooks.triggerTelemetry({ startTime: T0 });
+      const result = hooks.triggerTelemetry({ startTime: T0, source: EventSource.MAIN });
 
       expect(result).toEqual({ view: { id: initialView.id } });
     });
@@ -153,7 +153,7 @@ describe('ViewCollection', () => {
 
       eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
 
-      const result = hooks.triggerRum({ eventType: 'view', startTime: T0 });
+      const result = hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN });
       const newViewId = (rawRumEvents[1].data as RawRumView).view.id;
       expect(result).toMatchObject({ view: { id: newViewId } });
       expect(newViewId).not.toBe(originalViewId);
@@ -170,9 +170,13 @@ describe('ViewCollection', () => {
       expect(newViewId).not.toBe(originalViewId);
 
       // event started at T0 (before renewal at T10) → attributed to original view
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toMatchObject({ view: { id: originalViewId } });
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toMatchObject({
+        view: { id: originalViewId },
+      });
       // event started at T10 → attributed to new view
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T10 })).toMatchObject({ view: { id: newViewId } });
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T10, source: EventSource.MAIN })).toMatchObject({
+        view: { id: newViewId },
+      });
     });
 
     it('restarts periodic updates', () => {

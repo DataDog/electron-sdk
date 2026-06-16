@@ -25,7 +25,7 @@ interface BridgeEvent {
  *
  * Receives pre-assembled events from the browser RUM SDK via the DatadogEventBridge,
  * injects main-process context (session.id, application.id, container.view.id) via
- * the triggerRenderer hook, and emits ServerEvents directly.
+ * triggerRum with source RENDERER, and emits ServerEvents directly.
  *
  * Also emits END_USER_ACTIVITY for click actions before the session check, so a click
  * after session inactivity expiry can create a new session even though the event itself
@@ -80,31 +80,27 @@ export class RendererPipeline {
     const data = eventData as RumEvent;
 
     // Emit activity before the session check: a click after session expiry must still
-    // create a new session even though triggerRenderer will return DISCARDED (the event
-    // timestamp falls outside the now-closed session window).
+    // create a new session even though triggerRum will return DISCARDED
+    // (the event timestamp falls outside the now-closed session window).
     if (data.type === 'action' && data.action.type === 'click') {
       this.eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.END_USER_ACTIVITY });
     }
 
-    const hookResult = this.hooks.triggerRenderer({ startTime: data.date as TimeStamp });
+    const hookResult = this.hooks.triggerRum({
+      eventType: data.type,
+      startTime: data.date as TimeStamp,
+      source: EventSource.RENDERER,
+    });
 
     if (hookResult === DISCARDED) {
       return;
     }
 
-    const { session, application, view } = hookResult ?? {};
-    const mainProcessAttributes = {
-      session: { id: session?.id },
-      application: { id: application?.id },
-      container: { view: { id: view?.id }, source: 'electron' },
-    };
-
     const serverEvent: ServerRumEvent = {
       kind: EventKind.SERVER,
       track: EventTrack.RUM,
       source: EventSource.RENDERER,
-      // mainProcessAttributes wins: session/app ids must come from main process
-      data: combine(data, mainProcessAttributes) as RumEvent,
+      data: combine(data, hookResult ?? {}) as RumEvent,
     };
 
     this.eventManager.notify(serverEvent);

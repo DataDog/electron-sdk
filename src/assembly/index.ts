@@ -7,7 +7,6 @@ export type {
   FormatHooks,
   RumAssembleParams,
   TelemetryAssembleParams,
+  SpanAssembleParams,
   RumEventType,
-  RendererAssembleParams,
-  RendererHookResult,
 } from './hooks';

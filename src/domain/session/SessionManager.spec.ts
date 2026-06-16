@@ -12,7 +12,7 @@ import { SessionManager, SESSION_EXPIRATION_DELAY } from './SessionManager';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
 
 const T0 = 0 as TimeStamp;
-import { EventManager, EventKind, LifecycleKind, type LifecycleEvent } from '../../event';
+import { EventManager, EventKind, EventSource, LifecycleKind, type LifecycleEvent } from '../../event';
 import { createFormatHooks, type FormatHooks } from '../../assembly';
 
 const mfs = mockFs();
@@ -67,12 +67,14 @@ describe('sessionManager', () => {
       expect(newSessionId).not.toBe('previous-session-id');
 
       // Event at T_now (after relaunch) → new session
-      expect(hooks.triggerRum({ eventType: 'view', startTime: now as TimeStamp })).toMatchObject({
+      expect(
+        hooks.triggerRum({ eventType: 'view', startTime: now as TimeStamp, source: EventSource.MAIN })
+      ).toMatchObject({
         session: { id: newSessionId },
       });
 
       // Event at T0 (before relaunch, within previous session) → old session (crash attribution)
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toMatchObject({
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toMatchObject({
         session: { id: 'previous-session-id' },
       });
     });
@@ -183,14 +185,14 @@ describe('sessionManager', () => {
     it('RUM hook returns session id immediately after start()', async () => {
       sessionManager = await SessionManager.start(eventManager, hooks);
 
-      const result = hooks.triggerRum({ eventType: 'view', startTime: T0 });
+      const result = hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN });
       expect(result).toMatchObject({ session: { id: sessionManager.getSession().id } });
     });
 
     it('telemetry hook returns session id immediately after start()', async () => {
       sessionManager = await SessionManager.start(eventManager, hooks);
 
-      const result = hooks.triggerTelemetry({ startTime: T0 });
+      const result = hooks.triggerTelemetry({ startTime: T0, source: EventSource.MAIN });
       expect(result).toMatchObject({ session: { id: sessionManager.getSession().id } });
     });
   });

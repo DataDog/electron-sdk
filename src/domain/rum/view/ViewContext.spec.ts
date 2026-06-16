@@ -11,6 +11,7 @@ vi.mock('../../../tools/display', () => ({
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { DISCARDED, type TimeStamp } from '@datadog/browser-core';
 import { createFormatHooks } from '../../../assembly';
+import { EventSource } from '../../../event';
 import { ViewContext } from './ViewContext';
 
 vi.mock('node:fs/promises');
@@ -40,34 +41,56 @@ describe('ViewContext', () => {
       const hooks = createFormatHooks();
       await ViewContext.init(hooks, EXPIRE_DELAY);
 
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toBe(DISCARDED);
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toBe(DISCARDED);
     });
 
     it('span hook returns DISCARDED', async () => {
       const hooks = createFormatHooks();
       await ViewContext.init(hooks, EXPIRE_DELAY);
 
-      expect(hooks.triggerSpan({ startTime: T0 })).toBe(DISCARDED);
+      expect(hooks.triggerSpan({ startTime: T0, source: EventSource.MAIN })).toBe(DISCARDED);
     });
 
     it('telemetry hook returns SKIPPED (undefined)', async () => {
       const hooks = createFormatHooks();
       await ViewContext.init(hooks, EXPIRE_DELAY);
 
-      expect(hooks.triggerTelemetry({ startTime: T0 })).toBeUndefined();
+      expect(hooks.triggerTelemetry({ startTime: T0, source: EventSource.MAIN })).toBeUndefined();
     });
   });
 
   describe('after add()', () => {
-    it('RUM hook returns id, name, url', async () => {
+    it('RUM hook returns id, name, url for main source', async () => {
       const hooks = createFormatHooks();
       const context = await ViewContext.init(hooks, EXPIRE_DELAY);
 
       context.add(VIEW_ID);
 
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toMatchObject({
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toMatchObject({
         view: { id: VIEW_ID, name: 'main process', url: 'electron://main-process' },
       });
+    });
+
+    it('RUM hook returns container.view.id for renderer source', async () => {
+      const hooks = createFormatHooks();
+      const context = await ViewContext.init(hooks, EXPIRE_DELAY);
+
+      context.add(VIEW_ID);
+
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.RENDERER })).toMatchObject({
+        container: { view: { id: VIEW_ID } },
+      });
+    });
+
+    it('RUM hook does not include view.name/url for renderer source', async () => {
+      const hooks = createFormatHooks();
+      const context = await ViewContext.init(hooks, EXPIRE_DELAY);
+
+      context.add(VIEW_ID);
+
+      const result = hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.RENDERER });
+      expect(result).not.toHaveProperty('view.name');
+      expect(result).not.toHaveProperty('view.url');
     });
 
     it('span hook returns view id', async () => {
@@ -76,7 +99,7 @@ describe('ViewContext', () => {
 
       context.add(VIEW_ID);
 
-      expect(hooks.triggerSpan({ startTime: T0 })).toMatchObject({
+      expect(hooks.triggerSpan({ startTime: T0, source: EventSource.MAIN })).toMatchObject({
         meta: {
           '_dd.view.id': VIEW_ID,
         },
@@ -89,7 +112,7 @@ describe('ViewContext', () => {
 
       context.add(VIEW_ID);
 
-      expect(hooks.triggerTelemetry({ startTime: T0 })).toEqual({ view: { id: VIEW_ID } });
+      expect(hooks.triggerTelemetry({ startTime: T0, source: EventSource.MAIN })).toEqual({ view: { id: VIEW_ID } });
     });
 
     it('reflects the latest add()', async () => {
@@ -101,7 +124,9 @@ describe('ViewContext', () => {
       vi.advanceTimersByTime(10); // advance to T10
       context.add(newViewId); // at T10
 
-      expect(hooks.triggerRum({ eventType: 'view', startTime: 10 as TimeStamp })).toMatchObject({
+      expect(
+        hooks.triggerRum({ eventType: 'view', startTime: 10 as TimeStamp, source: EventSource.MAIN })
+      ).toMatchObject({
         view: { id: newViewId },
       });
     });
@@ -117,7 +142,7 @@ describe('ViewContext', () => {
       context.close(); // closed at T10
 
       // event at T0 (during active period) is still attributed
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toMatchObject({
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toMatchObject({
         view: { id: VIEW_ID },
       });
     });
@@ -131,7 +156,7 @@ describe('ViewContext', () => {
       context.close();
 
       // event at T0 (before view started at T10) → DISCARDED
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toBe(DISCARDED);
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toBe(DISCARDED);
     });
 
     it('span hook still attributes events during the view period', async () => {
@@ -143,7 +168,7 @@ describe('ViewContext', () => {
       context.close(); // closed at T10
 
       // event at T0 (during active period) is still attributed
-      expect(hooks.triggerSpan({ startTime: T0 })).toMatchObject({
+      expect(hooks.triggerSpan({ startTime: T0, source: EventSource.MAIN })).toMatchObject({
         meta: {
           '_dd.view.id': VIEW_ID,
         },
@@ -159,7 +184,7 @@ describe('ViewContext', () => {
       context.close();
 
       // event at T0 (before view started at T10) → DISCARDED
-      expect(hooks.triggerSpan({ startTime: T0 })).toBe(DISCARDED);
+      expect(hooks.triggerSpan({ startTime: T0, source: EventSource.MAIN })).toBe(DISCARDED);
     });
 
     it('telemetry hook still attributes events during the view period', async () => {
@@ -170,7 +195,9 @@ describe('ViewContext', () => {
       vi.advanceTimersByTime(10);
       context.close();
 
-      expect(hooks.triggerTelemetry({ startTime: T0 })).toMatchObject({ view: { id: VIEW_ID } });
+      expect(hooks.triggerTelemetry({ startTime: T0, source: EventSource.MAIN })).toMatchObject({
+        view: { id: VIEW_ID },
+      });
     });
   });
 });

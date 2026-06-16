@@ -2,6 +2,7 @@ import { app } from 'electron';
 import * as path from 'node:path';
 import { DISCARDED, SKIPPED, timeStampNow } from '@datadog/browser-core';
 import type { FormatHooks } from '../../../assembly';
+import { EventSource } from '../../../event';
 import { DiskValueHistory } from '../../../tools/DiskValueHistory';
 import { SESSION_TIME_OUT_DELAY } from '../../session';
 
@@ -13,10 +14,15 @@ export class ViewContext {
   private constructor(history: DiskValueHistory<string>, hooks: FormatHooks) {
     this.history = history;
 
-    hooks.registerRum((params) => {
-      const id = this.history.find(params.startTime);
+    hooks.registerRum(({ source, startTime }) => {
+      const id = this.history.find(startTime);
       if (id === undefined) return DISCARDED;
-      return { view: { id, name: 'main process', url: 'electron://main-process' } }; // TODO(RUM-14657) improve name / url
+      switch (source) {
+        case EventSource.RENDERER:
+          return { container: { view: { id } } };
+        case EventSource.MAIN:
+          return { view: { id, name: 'main process', url: 'electron://main-process' } }; // TODO(RUM-14657) improve name / url
+      }
     });
 
     hooks.registerTelemetry((params) => {
@@ -29,12 +35,6 @@ export class ViewContext {
       const id = this.history.find(params.startTime);
       if (id === undefined) return DISCARDED;
       return { meta: { '_dd.view.id': id } };
-    });
-
-    hooks.registerRenderer((params) => {
-      const id = this.history.find(params.startTime);
-      if (id === undefined) return DISCARDED;
-      return { view: { id } };
     });
   }
 

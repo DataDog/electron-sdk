@@ -111,7 +111,7 @@ describe('RendererPipeline', () => {
 
   describe('rum events', () => {
     it('emits a ServerRumEvent with source RENDERER', () => {
-      hooks.registerRenderer(() => ({ session: { id: 'main-session' }, application: { id: 'main-app' } }));
+      hooks.registerRum(() => ({ session: { id: 'main-session' }, application: { id: 'main-app' } }));
 
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
 
@@ -121,7 +121,7 @@ describe('RendererPipeline', () => {
     });
 
     it('overrides session.id and application.id from hook result', () => {
-      hooks.registerRenderer(() => ({ session: { id: 'main-session' }, application: { id: 'main-app' } }));
+      hooks.registerRum(() => ({ session: { id: 'main-session' }, application: { id: 'main-app' } }));
 
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
 
@@ -130,17 +130,25 @@ describe('RendererPipeline', () => {
       expect(data.application.id).toBe('main-app');
     });
 
-    it('injects container.view.id and container.source from hook result', () => {
-      hooks.registerRenderer(() => ({ view: { id: 'main-view-id' } }));
+    it('injects container.view.id from hook result', () => {
+      hooks.registerRum(() => ({ container: { view: { id: 'main-view-id' } } }));
 
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
 
       const data = serverEvents[0].data;
-      expect(data.container).toEqual({ view: { id: 'main-view-id' }, source: 'electron' });
+      expect(data.container).toMatchObject({ view: { id: 'main-view-id' } });
+    });
+
+    it('injects container.source from hook result', () => {
+      hooks.registerRum(() => ({ application: { id: 'main-app' }, container: { source: 'electron' } }));
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
+
+      expect(serverEvents[0].data.container).toMatchObject({ source: 'electron' });
     });
 
     it('preserves renderer source, service, view, and ddtags', () => {
-      hooks.registerRenderer(() => ({ session: { id: 'main-session' }, application: { id: 'main-app' } }));
+      hooks.registerRum(() => ({ session: { id: 'main-session' }, application: { id: 'main-app' } }));
 
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
 
@@ -151,10 +159,10 @@ describe('RendererPipeline', () => {
       expect(data.ddtags).toBe('sdk_version:1.0.0');
     });
 
-    it('passes event.data.date as startTime to triggerRenderer', () => {
+    it('passes event.data.date as startTime to triggerRum', () => {
       let capturedStartTime: TimeStamp | undefined;
-      hooks.registerRenderer((params) => {
-        capturedStartTime = params.startTime;
+      hooks.registerRum(({ startTime }) => {
+        capturedStartTime = startTime;
         return {};
       });
 
@@ -163,8 +171,8 @@ describe('RendererPipeline', () => {
       expect(capturedStartTime).toBe(12345);
     });
 
-    it('discards the event when triggerRenderer returns DISCARDED', () => {
-      hooks.registerRenderer(() => DISCARDED);
+    it('discards the event when triggerRum returns DISCARDED', () => {
+      hooks.registerRum(() => DISCARDED);
 
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
 
@@ -179,7 +187,7 @@ describe('RendererPipeline', () => {
         canHandle: (e): e is EndUserActivityEvent => e.kind === EventKind.LIFECYCLE,
         handle: (e) => lifecycleEvents.push(e),
       });
-      hooks.registerRenderer(() => ({ session: { id: 'session' } }));
+      hooks.registerRum(() => ({ session: { id: 'session' } }));
 
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_CLICK_DATA }));
 
@@ -189,13 +197,13 @@ describe('RendererPipeline', () => {
       });
     });
 
-    it('emits END_USER_ACTIVITY for click actions even when triggerRenderer returns DISCARDED', () => {
+    it('emits END_USER_ACTIVITY for click actions even when triggerRum returns DISCARDED', () => {
       const lifecycleEvents: unknown[] = [];
       eventManager.registerHandler({
         canHandle: (e): e is EndUserActivityEvent => e.kind === EventKind.LIFECYCLE,
         handle: (e) => lifecycleEvents.push(e),
       });
-      hooks.registerRenderer(() => DISCARDED);
+      hooks.registerRum(() => DISCARDED);
 
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_CLICK_DATA }));
 
@@ -212,7 +220,7 @@ describe('RendererPipeline', () => {
         canHandle: (e): e is EndUserActivityEvent => e.kind === EventKind.LIFECYCLE,
         handle: (e) => lifecycleEvents.push(e),
       });
-      hooks.registerRenderer(() => ({ session: { id: 'session' } }));
+      hooks.registerRum(() => ({ session: { id: 'session' } }));
 
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
 

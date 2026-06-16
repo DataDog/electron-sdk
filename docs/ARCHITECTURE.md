@@ -115,11 +115,11 @@ See `src/event/` and `src/domain/assembly.ts`.
 Two handlers transform events into `ServerEvent`s:
 
 - **`MainAssembly`** — handles `RawEvent`s (always main-process originated), enriches them via `triggerRum` / `triggerTelemetry` hooks, and emits `ServerEvent`s with `source: MAIN`.
-- **`RendererPipeline`** — owns the renderer IPC channel, receives pre-assembled RUM events from the Browser SDK, enriches them via the `triggerRenderer` hook, and emits `ServerRumEvent`s with `source: RENDERER` directly — bypassing the `RawEvent` pipeline entirely.
+- **`RendererPipeline`** — owns the renderer IPC channel, receives pre-assembled RUM events from the Browser SDK, enriches them via `triggerRum` with `source: EventSource.RENDERER`, and emits `ServerRumEvent`s with `source: RENDERER` directly — bypassing the `RawEvent` pipeline entirely.
 
 #### Format Hooks
 
-`createFormatHooks()` creates per-format hook pairs (`registerRum`/`triggerRum`, `registerTelemetry`/`triggerTelemetry`, `registerRenderer`/`triggerRenderer`). Each hook callback can return:
+`createFormatHooks()` creates per-format hook pairs (`registerRum`/`triggerRum`, `registerTelemetry`/`triggerTelemetry`, `registerSpan`/`triggerSpan`). Each hook callback receives a `source: EventSource` param (MAIN or RENDERER) and can return:
 
 - **Partial data** — merged into the event via `combine()`
 - **`DISCARDED`** — drops the event entirely

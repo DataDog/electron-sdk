@@ -71,7 +71,7 @@ export class SpanProcessor {
         continue;
       }
       const span = toRawSpan(exportedSpan, this.service);
-      const hookResult = this.hooks.triggerSpan({ startTime: toTimeStamp(span.start) });
+      const hookResult = this.hooks.triggerSpan({ startTime: toTimeStamp(span.start), source: EventSource.MAIN });
       if (hookResult === DISCARDED) {
         continue;
       }

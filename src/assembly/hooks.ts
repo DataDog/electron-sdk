@@ -2,30 +2,24 @@ import { combine, DISCARDED, SKIPPED, type RecursivePartial, type TimeStamp } fr
 import type { RumEvent } from '../domain/rum';
 import type { TelemetryEvent } from '../domain/telemetry';
 import { RawSpanData } from '../domain/tracing/rawTracingData.types';
+import { EventSource } from '../event';
 
 export type RumEventType = RumEvent['type'];
 
 export interface RumAssembleParams {
   eventType: RumEventType;
   startTime: TimeStamp;
+  source: EventSource;
 }
 
 export interface TelemetryAssembleParams {
   startTime: TimeStamp;
+  source: EventSource;
 }
 
 export interface SpanAssembleParams {
   startTime: TimeStamp;
-}
-
-export interface RendererAssembleParams {
-  startTime: TimeStamp;
-}
-
-export interface RendererHookResult {
-  session?: { id?: string };
-  application?: { id?: string };
-  view?: { id?: string };
+  source: EventSource;
 }
 
 type AssembleCallback<Params, Result> = (params: Params) => Result | typeof DISCARDED | typeof SKIPPED;
@@ -74,16 +68,13 @@ export function createFormatHooks() {
   const rumHook = createAssembleHook<RumAssembleParams, RecursivePartial<RumEvent>>();
   const telemetryHook = createAssembleHook<TelemetryAssembleParams, RecursivePartial<TelemetryEvent>>();
   const spanHook = createAssembleHook<SpanAssembleParams, RecursivePartial<RawSpanData>>();
-  const rendererHook = createAssembleHook<RendererAssembleParams, RendererHookResult>();
 
   return {
     registerRum: rumHook.register,
     registerTelemetry: telemetryHook.register,
     registerSpan: spanHook.register,
-    registerRenderer: rendererHook.register,
     triggerRum: rumHook.trigger,
     triggerTelemetry: telemetryHook.trigger,
     triggerSpan: spanHook.trigger,
-    triggerRenderer: rendererHook.trigger,
   };
 }
