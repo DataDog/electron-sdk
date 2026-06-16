@@ -25,9 +25,11 @@ export const test = base.extend<TestFixtures>({
   ],
 
   electronApp: async ({ intake }, use) => {
+    // Electron/Chromium refuses to run as root (e.g. GitLab CI Docker) without --no-sandbox
+    const extraArgs = process.getuid?.() === 0 ? ['--no-sandbox'] : [];
     const app = await electron.launch({
       executablePath: electronPath,
-      args: [join(__dirname, '../dist/main.js')],
+      args: [join(__dirname, '../dist/main.js'), ...extraArgs],
       env: {
         ...process.env,
         DD_TEST_MODE: '1',
