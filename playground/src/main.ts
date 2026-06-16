@@ -7,6 +7,7 @@ import * as https from 'node:https';
 import {
   init,
   stopSession,
+  _flushTransport,
   getInternalContext,
   _generateTelemetryError,
   startOperation,
@@ -138,6 +139,11 @@ const CONF = {
     site: 'datadoghq.com',
   },
 };
+
+// needed for automated tests
+ipcMain.handle('flush-transport', async () => {
+  await _flushTransport();
+});
 
 ipcMain.handle('open-rum-explorer', () => {
   const ctx = getInternalContext();

@@ -35,6 +35,7 @@ interface ElectronAPI {
   mainFetchApiFetch: () => Promise<unknown>;
   mainFetchApiNet: () => Promise<unknown>;
   openRumExplorer: () => Promise<void>;
+  flushTransport: () => Promise<void>;
 }
 
 declare global {
