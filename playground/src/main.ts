@@ -1,13 +1,14 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+// Must be imported before 'electron' — instruments electron for tracing and preload injection.
+import '@datadog/electron-sdk/instrument';
+
+import { app, BrowserWindow, ipcMain, net, shell } from 'electron';
 import * as path from 'node:path';
-import * as fs from 'node:fs';
 import * as https from 'node:https';
 import {
   init,
   stopSession,
-  _flushTransport,
-  _generateTelemetryError,
   getInternalContext,
+  _generateTelemetryError,
   startOperation,
   succeedOperation,
   failOperation,
@@ -21,10 +22,6 @@ import { buildRumExplorerUrl } from './main/utils';
 const isTestMode = process.env.DD_TEST_MODE === '1';
 
 let mainWindow: BrowserWindow | null = null;
-
-function getSessionFilePath(): string {
-  return path.join(app.getPath('userData'), '_dd_s');
-}
 
 function createWindow() {
   const savedState = loadWindowState();
@@ -56,20 +53,8 @@ function createWindow() {
   });
 }
 
-// IPC handler to get session file content
-ipcMain.handle('get-session-file', () => {
-  const sessionFilePath = getSessionFilePath();
-  try {
-    if (fs.existsSync(sessionFilePath)) {
-      const content = fs.readFileSync(sessionFilePath, 'utf-8');
-      return content;
-    }
-    return null;
-  } catch (error) {
-    console.error('Error reading session file:', error);
-    return null;
-  }
-});
+// IPC handler to get internal context
+ipcMain.handle('get-internal-context', () => getInternalContext());
 
 ipcMain.handle('stop-session', () => {
   stopSession();
@@ -108,6 +93,16 @@ ipcMain.handle('main:fetch-api', async () => {
   return JSON.parse(data) as unknown;
 });
 
+ipcMain.handle('main:fetch-api-fetch', async () => {
+  const res = await fetch('https://httpbin.org/json');
+  return (await res.json()) as unknown;
+});
+
+ipcMain.handle('main:fetch-api-net', async () => {
+  const res = await net.fetch('https://httpbin.org/json');
+  return (await res.json()) as unknown;
+});
+
 // IPC handler to crash the main process
 ipcMain.handle('crash', () => {
   process.crash();
@@ -143,10 +138,6 @@ const CONF = {
     site: 'datadoghq.com',
   },
 };
-
-ipcMain.handle('flush-transport', async () => {
-  await _flushTransport();
-});
 
 ipcMain.handle('open-rum-explorer', () => {
   const ctx = getInternalContext();

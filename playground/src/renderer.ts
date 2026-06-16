@@ -18,7 +18,7 @@ datadogRum.init({
 
 // Type definition for the exposed API
 interface ElectronAPI {
-  getSessionFile: () => Promise<string | null>;
+  getInternalContext: () => Promise<{ session_id: string } | undefined>;
   stopSession: () => Promise<void>;
   generateTelemetryError: () => Promise<void>;
   generateUncaughtException: () => Promise<void>;
@@ -32,8 +32,9 @@ interface ElectronAPI {
     failureReason: 'error' | 'abandoned' | 'other',
     options?: { operationKey?: string }
   ) => Promise<void>;
+  mainFetchApiFetch: () => Promise<unknown>;
+  mainFetchApiNet: () => Promise<unknown>;
   openRumExplorer: () => Promise<void>;
-  flushTransport: () => Promise<void>;
 }
 
 declare global {
@@ -45,32 +46,21 @@ declare global {
 // This export makes this file a module, which is needed for global augmentation
 export {};
 
-const sessionContent = document.getElementById('session-content') as HTMLPreElement;
+const sessionContent = document.getElementById('session-content') as HTMLElement;
 const stopBtn = document.getElementById('stop-btn') as HTMLButtonElement;
 
-const DISK_SETTLE_DELAY = 100;
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 async function refreshSessionDisplay() {
-  await delay(DISK_SETTLE_DELAY);
   try {
-    const content = await window.electronAPI.getSessionFile();
-    if (content) {
-      // Try to pretty-print JSON
-      try {
-        const parsed = JSON.parse(content);
-        sessionContent.textContent = JSON.stringify(parsed, null, 2);
-      } catch {
-        // Not valid JSON, display as-is
-        sessionContent.textContent = content;
-      }
+    const context = await window.electronAPI.getInternalContext();
+    if (context) {
+      sessionContent.textContent = context.session_id;
       sessionContent.style.opacity = '1';
     } else {
-      sessionContent.textContent = 'No session file found';
+      sessionContent.textContent = 'No active session';
       sessionContent.style.opacity = '0.6';
     }
   } catch (error) {
-    console.error('Error fetching session file:', error);
+    console.error('Error fetching session context:', error);
     sessionContent.textContent = `Error: ${String(error)}`;
     sessionContent.style.opacity = '0.6';
   }
@@ -209,6 +199,8 @@ if (rendererFetchBtn) {
 }
 
 setupDemoButton('main-fetch', 'main:fetch-api', () => window.electronAPI.mainFetchApi());
+setupDemoButton('main-fetch-fetch', 'main:fetch-api-fetch', () => window.electronAPI.mainFetchApiFetch());
+setupDemoButton('main-fetch-net', 'main:fetch-api-net', () => window.electronAPI.mainFetchApiNet());
 
 // --- Operation Monitoring demo buttons ---
 

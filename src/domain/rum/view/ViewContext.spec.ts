@@ -43,6 +43,13 @@ describe('ViewContext', () => {
       expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toBe(DISCARDED);
     });
 
+    it('span hook returns DISCARDED', async () => {
+      const hooks = createFormatHooks();
+      await ViewContext.init(hooks, EXPIRE_DELAY);
+
+      expect(hooks.triggerSpan({ startTime: T0 })).toBe(DISCARDED);
+    });
+
     it('telemetry hook returns SKIPPED (undefined)', async () => {
       const hooks = createFormatHooks();
       await ViewContext.init(hooks, EXPIRE_DELAY);
@@ -60,6 +67,19 @@ describe('ViewContext', () => {
 
       expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toMatchObject({
         view: { id: VIEW_ID, name: 'main process', url: 'electron://main-process' },
+      });
+    });
+
+    it('span hook returns view id', async () => {
+      const hooks = createFormatHooks();
+      const context = await ViewContext.init(hooks, EXPIRE_DELAY);
+
+      context.add(VIEW_ID);
+
+      expect(hooks.triggerSpan({ startTime: T0 })).toMatchObject({
+        meta: {
+          '_dd.view.id': VIEW_ID,
+        },
       });
     });
 
@@ -112,6 +132,34 @@ describe('ViewContext', () => {
 
       // event at T0 (before view started at T10) → DISCARDED
       expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toBe(DISCARDED);
+    });
+
+    it('span hook still attributes events during the view period', async () => {
+      const hooks = createFormatHooks();
+      const context = await ViewContext.init(hooks, EXPIRE_DELAY);
+
+      context.add(VIEW_ID); // at T0 = 0
+      vi.advanceTimersByTime(10); // time is now 10
+      context.close(); // closed at T10
+
+      // event at T0 (during active period) is still attributed
+      expect(hooks.triggerSpan({ startTime: T0 })).toMatchObject({
+        meta: {
+          '_dd.view.id': VIEW_ID,
+        },
+      });
+    });
+
+    it('span hook returns DISCARDED for events before the view started', async () => {
+      const hooks = createFormatHooks();
+      const context = await ViewContext.init(hooks, EXPIRE_DELAY);
+
+      vi.advanceTimersByTime(10); // advance to T10
+      context.add(VIEW_ID); // view started at T10
+      context.close();
+
+      // event at T0 (before view started at T10) → DISCARDED
+      expect(hooks.triggerSpan({ startTime: T0 })).toBe(DISCARDED);
     });
 
     it('telemetry hook still attributes events during the view period', async () => {

@@ -10,7 +10,11 @@ interface ElectronAppWindow {
     startOperation: (name: string, options?: FeatureOperationOptions) => Promise<void>;
     succeedOperation: (name: string, options?: FeatureOperationOptions) => Promise<void>;
     failOperation: (name: string, failureReason: FailureReason, options?: FeatureOperationOptions) => Promise<void>;
+    mainFetch: (url: string) => Promise<number>;
+    mainHttpRequest: (url: string) => Promise<number>;
+    mainNetRequest: (url: string) => Promise<number>;
     flushTransport: () => Promise<void>;
+    ping: () => Promise<string>;
     openBridgeFileWindow: () => Promise<void>;
     openBridgeFileWindowNoIsolation: () => Promise<void>;
     openBridgeHttpWindow: () => Promise<void>;
@@ -88,6 +92,28 @@ export class MainPage {
         (globalThis as unknown as ElectronAppWindow).electronAPI.failOperation(name, failureReason, options),
       { name, failureReason, options }
     );
+  }
+
+  async mainFetch(url: string): Promise<number> {
+    return await this.page.evaluate((u) => (globalThis as unknown as ElectronAppWindow).electronAPI.mainFetch(u), url);
+  }
+
+  async mainHttpRequest(url: string): Promise<number> {
+    return await this.page.evaluate(
+      (u) => (globalThis as unknown as ElectronAppWindow).electronAPI.mainHttpRequest(u),
+      url
+    );
+  }
+
+  async mainNetRequest(url: string): Promise<number> {
+    return await this.page.evaluate(
+      (u) => (globalThis as unknown as ElectronAppWindow).electronAPI.mainNetRequest(u),
+      url
+    );
+  }
+
+  async mainPing(): Promise<string> {
+    return await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.ping());
   }
 
   async flushTransport() {

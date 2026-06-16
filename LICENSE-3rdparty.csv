@@ -18,6 +18,7 @@ npm-dev,@electron-forge/plugin-webpack,MIT,Copyright (c) 2019 The Electron Forge
 npm-dev,@eslint/js,MIT,Copyright OpenJS Foundation and other contributors
 npm-dev,@playwright/test,Apache-2.0,Copyright Microsoft Corporation
 npm-dev,@rollup/plugin-commonjs,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)
+npm-dev,@rollup/plugin-json,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)
 npm-dev,@rollup/plugin-node-resolve,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)
 npm-dev,@rollup/plugin-replace,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)
 npm-dev,@rollup/plugin-typescript,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)

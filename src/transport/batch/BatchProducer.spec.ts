@@ -7,7 +7,7 @@ import { mockFs } from '../../mocks.specUtil';
 vi.mock('node:fs/promises');
 const fsMocks = mockFs();
 
-vi.mock('@datadog/browser-core', () => ({
+vi.mock('@datadog/js-core/time', () => ({
   dateNow: vi.fn(() => 1234567890),
 }));
 
@@ -167,7 +167,7 @@ describe('BatchProducer', () => {
 
       const producer = await BatchProducer.create(small);
 
-      const { dateNow } = await import('@datadog/browser-core');
+      const { dateNow } = await import('@datadog/js-core/time');
       vi.mocked(dateNow)
         .mockReturnValueOnce(111) // first tmp
         .mockReturnValueOnce(222); // second tmp after rotation
@@ -190,7 +190,7 @@ describe('BatchProducer', () => {
     });
 
     it('swallows rename/access errors during rotation and still resets state (new batch file is created after)', async () => {
-      const { dateNow } = await import('@datadog/browser-core');
+      const { dateNow } = await import('@datadog/js-core/time');
       vi.mocked(dateNow).mockReturnValueOnce(1000).mockReturnValueOnce(2000);
 
       fsMocks.rename.mockRejectedValueOnce(new Error('rename failed'));

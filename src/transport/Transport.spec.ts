@@ -97,7 +97,7 @@ describe('Transport', () => {
       const transport = await Transport.create(config, eventManager);
       await transport.flush();
 
-      expect(mockBatchFlush).toHaveBeenCalledTimes(1);
+      expect(mockBatchFlush).toHaveBeenCalledTimes(2);
     });
   });
 

@@ -36,12 +36,19 @@ yarn test:integration --project=forge-webpack-packaged
 
 ## Supported Toolchains
 
-| App                     | Bundler             | Packager         | SDK preload loading                                   |
-| ----------------------- | ------------------- | ---------------- | ----------------------------------------------------- |
-| `forge-webpack`         | Webpack (via Forge) | Electron Forge   | `import '@datadog/electron-sdk/preload'`              |
-| `forge-vite`            | Vite (via Forge)    | Electron Forge   | `import '@datadog/electron-sdk/preload'`              |
-| `electron-vite`         | electron-vite CLI   | electron-builder | Auto-registered via `session.registerPreloadScript()` |
-| `electron-builder-vite` | Vite (manual)       | electron-builder | `import '@datadog/electron-sdk/preload'`              |
+| App                     | Bundler             | Main format | Packager         |
+| ----------------------- | ------------------- | ----------- | ---------------- |
+| `forge-webpack`         | Webpack (via Forge) | CJS         | Electron Forge   |
+| `forge-vite`            | Vite (via Forge)    | CJS         | Electron Forge   |
+| `forge-esbuild-cjs`     | esbuild             | CJS         | Electron Forge   |
+| `forge-esbuild-esm`     | esbuild             | ESM         | Electron Forge   |
+| `electron-vite`         | electron-vite CLI   | CJS         | electron-builder |
+| `electron-builder-vite` | Vite (manual)       | CJS         | electron-builder |
+
+All apps use `import '@datadog/electron-sdk/instrument'` before importing `electron` in their main process.
+This initializes dd-trace which automatically injects the preload script via BrowserWindow wrapping.
+Vite-based apps use `datadogVitePlugin`, webpack-based apps use `DatadogWebpackPlugin`, and esbuild-based apps use `datadogEsbuildPlugin` to ensure correct module loading order and preload availability in packaged builds.
+The `forge-esbuild-esm` app additionally exercises the plugin's ESM path, which registers the dd-trace preload via `session.registerPreloadScript()` because static `import` bypasses dd-trace's IITM hook on `require('electron')`.
 
 ## Key design points
 

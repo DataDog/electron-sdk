@@ -7,8 +7,8 @@ import { join } from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { test, expect, launchApp } from '../lib/integrationFixture';
-import type { RumErrorEvent, RumViewEvent } from '@datadog/electron-sdk';
-import { Intake, type ReceivedEvent } from '../../lib/intake';
+import type { RumErrorEvent, RumResourceEvent, RumViewEvent } from '@datadog/electron-sdk';
+import { Intake, type ReceivedEvent, type Span } from '../../lib/intake';
 import type { Page } from '@playwright/test';
 import { ONE_SECOND } from '@datadog/browser-core';
 
@@ -17,6 +17,7 @@ interface IntegrationTestWindow {
   electronAPI?: {
     flushTransport: () => Promise<void>;
     crash: () => Promise<void>;
+    mainFetch: (url: string) => Promise<number>;
   };
   __integrationTest?: {
     triggerRendererError: (message: string) => void;
@@ -56,6 +57,39 @@ test.describe('renderer error propagation @integration', () => {
     expect(error.type).toBe('error');
     expect(error.error.message).toBe('integration test error');
     expect(error.session.id).toBeDefined();
+  });
+});
+
+test.describe('main-process fetch resource @integration', () => {
+  test('emits a resource event and a matching trace span for a main-process fetch', async ({
+    window,
+    intake,
+    testServer,
+  }) => {
+    await flushTransport(window);
+    const [viewEvent] = await intake.getEventsByType('view');
+    const view = viewEvent.body as RumViewEvent;
+
+    const url = testServer.urlFor(200);
+    await window.evaluate((u) => (globalThis as unknown as IntegrationTestWindow).electronAPI?.mainFetch(u), url);
+    await flushTransport(window);
+
+    const resourceEvents = await intake.waitForEventCount('resource', 1, { timeout: 10 * ONE_SECOND });
+    const resource = resourceEvents[0].body as RumResourceEvent;
+    expect(resource.resource.method).toBe('GET');
+    expect(resource.resource.status_code).toBe(200);
+    expect(resource.resource.url).toBe(url);
+    expect(resource.application.id).toBe(view.application.id);
+    expect(resource.session.id).toBe(view.session.id);
+    expect(resource.view.id).toBe(view.view.id);
+    expect(resource._dd.trace_id).toBeDefined();
+    expect(resource._dd.span_id).toBeDefined();
+
+    const span = await intake.waitForSpan((s: Span) => BigInt(`0x${s.trace_id}`) === BigInt(resource._dd.trace_id!));
+    expect(span.meta['_dd.application.id']).toBe(view.application.id);
+    expect(span.meta['_dd.session.id']).toBe(view.session.id);
+    expect(span.meta['_dd.view.id']).toBe(view.view.id);
+    expect(span.service).toBe('integration-test-app');
   });
 });
 

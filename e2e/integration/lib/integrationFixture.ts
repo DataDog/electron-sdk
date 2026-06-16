@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { Intake } from '../../lib/intake';
+import { TestServer } from '../../lib/testServer';
 import type { IntegrationApp, IntegrationMode } from '../../playwright.config';
 import type { InitConfiguration } from '@datadog/electron-sdk';
 
@@ -14,6 +15,8 @@ export interface IntegrationFixtures {
   mode: IntegrationMode;
   /** Local HTTP intake server capturing RUM events. */
   intake: Intake;
+  /** Local HTTP server used as a controllable destination for outbound requests. */
+  testServer: TestServer;
   /** Playwright handle for the running Electron application. */
   electronApp: ElectronApplication;
   /** The app's first renderer window. Auto-setup before each test. */
@@ -31,6 +34,17 @@ export const test = base.extend<IntegrationFixtures>({
       await intake.start();
       await use(intake);
       await intake.stop();
+    },
+    { option: true },
+  ],
+
+  testServer: [
+    // eslint-disable-next-line no-empty-pattern
+    async ({}, use) => {
+      const testServer = new TestServer();
+      await testServer.start();
+      await use(testServer);
+      await testServer.stop();
     },
     { option: true },
   ],

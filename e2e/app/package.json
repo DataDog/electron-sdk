@@ -2,6 +2,7 @@
   "name": "e2e-test-app",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "yarn@4.12.0",
   "main": "dist/main.js",
   "scripts": {
     "build": "yarn build:ts && mkdir -p ./dist && yarn build:bridge-window && yarn build:main-window",
@@ -14,7 +15,7 @@
     "@datadog/electron-sdk": "portal:../.."
   },
   "devDependencies": {
-    "electron": "41.0.2",
+    "electron": "41.1.0",
     "esbuild": "0.27.3",
     "typescript": "5.9.3"
   }

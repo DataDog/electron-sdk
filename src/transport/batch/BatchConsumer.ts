@@ -28,7 +28,7 @@ export class BatchConsumer {
   /** Uploads all pending `.log` files to the intake endpoint. */
   async upload() {
     if (!this.userAgent) {
-      this.userAgent = await getUserAgent();
+      this.userAgent = getUserAgent();
     }
 
     const logFiles = await this.getLogFiles();
