@@ -35,6 +35,7 @@ export function createTestConfiguration(overrides: Partial<Configuration> = {}):
     service: 'test-service',
     clientToken: 'test-token',
     applicationId: 'test-app-id',
+    sessionSampleRate: 100,
     telemetrySampleRate: 100,
     defaultPrivacyLevel: 'mask',
     allowedWebViewHosts: [],

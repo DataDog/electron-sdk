@@ -48,7 +48,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   registerCommonContext(config, hooks);
   startTelemetry(eventManager, config);
-  sessionManager = await SessionManager.start(eventManager, hooks);
+  sessionManager = await SessionManager.start(eventManager, hooks, config);
 
   new MainAssembly(eventManager, hooks);
   new RendererPipeline(eventManager, hooks, config);

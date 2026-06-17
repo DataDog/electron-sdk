@@ -323,6 +323,48 @@ describe('buildConfiguration', () => {
     });
   });
 
+  describe('sessionSampleRate validation', () => {
+    it('defaults to 100 when not provided', () => {
+      const result = buildConfiguration({ ...DEFAULT_CONFIG });
+
+      expect(result?.sessionSampleRate).toBe(100);
+    });
+
+    it.each([0, 50, 100])('accepts valid value: %d', (value) => {
+      const result = buildConfiguration({ ...DEFAULT_CONFIG, sessionSampleRate: value });
+
+      expect(result?.sessionSampleRate).toBe(value);
+    });
+
+    it.each([
+      { value: -1, description: 'negative number' },
+      { value: 101, description: 'greater than 100' },
+      { value: 'fifty', description: 'non-number string' },
+      { value: {}, description: 'object' },
+    ])('logs error and uses default when $description', ({ value }) => {
+      const config = { ...DEFAULT_CONFIG, sessionSampleRate: value } as unknown as InitConfiguration;
+
+      const result = buildConfiguration(config);
+
+      expect(result?.sessionSampleRate).toBe(100);
+      expect(display.displayError).toHaveBeenCalledWith(
+        "Configuration error: 'sessionSampleRate' must be a number between 0 and 100"
+      );
+    });
+
+    it.each([
+      { value: null, description: 'null' },
+      { value: undefined, description: 'undefined' },
+    ])('defaults to 100 when $description (no error)', ({ value }) => {
+      const config = { ...DEFAULT_CONFIG, sessionSampleRate: value } as unknown as InitConfiguration;
+
+      const result = buildConfiguration(config);
+
+      expect(result?.sessionSampleRate).toBe(100);
+      expect(display.displayError).not.toHaveBeenCalled();
+    });
+  });
+
   describe('telemetrySampleRate validation', () => {
     it('defaults to 20 when not provided', () => {
       const config = { ...DEFAULT_CONFIG };
