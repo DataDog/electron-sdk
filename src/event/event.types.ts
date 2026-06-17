@@ -1,7 +1,7 @@
 import { EventFormat, EventKind, EventSource, EventTrack, LifecycleKind } from './event.constants';
 import { RawTelemetryData, TelemetryEvent } from '../domain/telemetry';
 import { RawRumData, RumEvent } from '../domain/rum';
-import type { TimeStamp } from '@datadog/browser-core';
+import type { TimeStamp } from '@datadog/js-core/time';
 import { RawTraceData } from '../domain/tracing/rawTracingData.types';
 
 export type RawEvent = RawRumEvent | RawTelemetryEvent;

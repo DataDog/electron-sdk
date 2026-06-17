@@ -1,5 +1,5 @@
 import * as fs from 'node:fs/promises';
-import type { TimeStamp } from '@datadog/browser-core';
+import type { TimeStamp } from '@datadog/js-core/time';
 import { TimeStampValueHistory, type TimeStampHistoryEntry } from './TimeStampValueHistory';
 import { displayError } from './display';
 

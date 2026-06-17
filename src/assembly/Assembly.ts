@@ -1,5 +1,5 @@
-import { timeStampNow } from '@datadog/js-core/time';
-import { combine, DISCARDED, type RecursivePartial, TimeStamp } from '@datadog/browser-core';
+import { timeStampNow, TimeStamp } from '@datadog/js-core/time';
+import { combine, DISCARDED, type RecursivePartial } from '@datadog/browser-core';
 import { EventFormat, EventKind, EventManager, EventSource, EventTrack, type RawEvent, ServerEvent } from '../event';
 import type { RawRumEvent } from '../event';
 import type { FormatHooks } from './hooks';

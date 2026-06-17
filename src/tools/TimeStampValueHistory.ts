@@ -1,4 +1,4 @@
-import type { TimeStamp } from '@datadog/browser-core';
+import type { TimeStamp } from '@datadog/js-core/time';
 
 const END_OF_TIMES = Infinity as TimeStamp;
 
