@@ -139,7 +139,7 @@
     "vitest": "4.0.18"
   },
   "dependencies": {
-    "dd-trace": "5.103.0"
+    "dd-trace": "5.109.0"
   },
   "peerDependencies": {
     "electron": ">=39"
