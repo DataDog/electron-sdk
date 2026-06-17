@@ -2,6 +2,18 @@
 
 All notable changes to `@datadog/electron-sdk` are documented here.
 
+## [0.4.0] - 2026-06-17
+
+### ✨ Features
+
+- ✨ [RUM-16444] always create a new session on app launch (#130)
+
+### Internal
+
+- 👷 Bump dd-trace to 5.109.0 (#136)
+- 👷 playground improvements: RUM Explorer button and Playwright test infra (#98)
+- ♻️ replace dateNow from @datadog/browser-core with @datadog/js-core/time (#132)
+
 ## [0.3.0] - 2026-05-27
 
 ### ✨ Features
