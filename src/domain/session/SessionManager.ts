@@ -1,4 +1,5 @@
-import { deepClone, generateUUID, ONE_MINUTE, type Subscription } from '@datadog/browser-core';
+import { ONE_MINUTE } from '@datadog/js-core/time';
+import { deepClone, generateUUID, type Subscription } from '@datadog/browser-core';
 import { type EndUserActivityEvent, EventKind, EventManager, LifecycleKind } from '../../event';
 import type { FormatHooks } from '../../assembly';
 import { setTimeout } from '../telemetry';

@@ -109,7 +109,7 @@
   },
   "devDependencies": {
     "@datadog/browser-core": "6.26.0",
-    "@datadog/js-core": "0.0.1",
+    "@datadog/js-core": "0.0.3",
     "@eslint/js": "10.0.0",
     "@playwright/test": "1.58.2",
     "@rollup/plugin-commonjs": "29.0.0",
