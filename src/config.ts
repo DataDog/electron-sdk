@@ -1,4 +1,5 @@
-import { ONE_KIBI_BYTE, ONE_MEBI_BYTE, ONE_SECOND, DefaultPrivacyLevel } from '@datadog/browser-core';
+import { ONE_SECOND } from '@datadog/js-core/time';
+import { ONE_KIBI_BYTE, ONE_MEBI_BYTE, DefaultPrivacyLevel } from '@datadog/browser-core';
 import { displayError } from './tools/display';
 
 const VALID_DATADOG_SITES = [

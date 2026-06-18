@@ -6,7 +6,7 @@ vi.mock('./display', () => ({
 }));
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { TimeStamp } from '@datadog/browser-core';
+import type { TimeStamp } from '@datadog/js-core/time';
 import { DiskValueHistory } from './DiskValueHistory';
 import { TimeStampHistoryEntry } from './TimeStampValueHistory';
 

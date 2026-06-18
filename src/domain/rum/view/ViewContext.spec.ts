@@ -9,7 +9,8 @@ vi.mock('../../../tools/display', () => ({
 }));
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { DISCARDED, type TimeStamp } from '@datadog/browser-core';
+import type { TimeStamp } from '@datadog/js-core/time';
+import { DISCARDED } from '@datadog/browser-core';
 import { createFormatHooks } from '../../../assembly';
 import { ViewContext } from './ViewContext';
 

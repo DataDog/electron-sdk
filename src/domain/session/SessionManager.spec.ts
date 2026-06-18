@@ -7,7 +7,7 @@ vi.mock('electron', () => ({
 }));
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { type TimeStamp } from '@datadog/browser-core';
+import type { TimeStamp } from '@datadog/js-core/time';
 import { SessionManager, SESSION_EXPIRATION_DELAY } from './SessionManager';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
 
