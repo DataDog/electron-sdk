@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import * as path from 'node:path';
-import { DISCARDED, SKIPPED, timeStampNow } from '@datadog/browser-core';
+import { timeStampNow } from '@datadog/js-core/time';
+import { DISCARDED, SKIPPED } from '@datadog/browser-core';
 import type { FormatHooks } from '../../../assembly';
 import { EventSource } from '../../../event';
 import { DiskValueHistory } from '../../../tools/DiskValueHistory';

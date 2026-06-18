@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "lib": ["ES2020", "DOM"],
+    "types": ["node"],
+    // Include e2e/lib/intake.ts so playground tests can reuse the mock intake server.
+    // The relative import (../../e2e/lib/intake) works at runtime without a path alias.
+    "composite": true,
+    "emitDeclarationOnly": true
+  },
+  "include": ["test/**/*.ts", "../e2e/lib/intake.ts"],
+  "exclude": ["node_modules"]
+}

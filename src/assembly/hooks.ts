@@ -1,4 +1,5 @@
-import { combine, DISCARDED, SKIPPED, type RecursivePartial, type TimeStamp } from '@datadog/browser-core';
+import type { TimeStamp } from '@datadog/js-core/time';
+import { combine, DISCARDED, SKIPPED, type RecursivePartial } from '@datadog/browser-core';
 import type { RumEvent } from '../domain/rum';
 import type { TelemetryEvent } from '../domain/telemetry';
 import { RawSpanData } from '../domain/tracing/rawTracingData.types';

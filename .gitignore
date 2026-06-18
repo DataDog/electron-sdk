@@ -24,3 +24,6 @@ e2e/integration/apps/*/.vite/
 
 # Logs
 *.log
+
+# Playground local test scenarios
+playground/test/local/

@@ -25,6 +25,13 @@ export interface InternalContext {
 }
 
 /**
+ * Internal SDK context
+ */
+export interface InternalContext {
+  session_id: string;
+}
+
+/**
  * Initialize the Electron SDK
  */
 export async function init(configuration: InitConfiguration): Promise<boolean> {

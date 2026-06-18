@@ -1,4 +1,5 @@
-import { type Context, generateUUID, isIndexableObject, timeStampNow } from '@datadog/browser-core';
+import { timeStampNow } from '@datadog/js-core/time';
+import { type Context, generateUUID, isIndexableObject } from '@datadog/browser-core';
 import { EventFormat, EventKind, EventManager } from '../../../event';
 import { displayError, displayWarn } from '../../../tools/display';
 import type { RawRumVital } from '../rawRumData.types';

@@ -1,6 +1,6 @@
 {
   "name": "@datadog/electron-sdk",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "DataDog SDK for Electron applications",
   "packageManager": "yarn@4.12.0",
   "main": "./dist/index.cjs",
@@ -109,7 +109,7 @@
   },
   "devDependencies": {
     "@datadog/browser-core": "6.26.0",
-    "@datadog/js-core": "0.0.1",
+    "@datadog/js-core": "0.0.3",
     "@eslint/js": "10.0.0",
     "@playwright/test": "1.58.2",
     "@rollup/plugin-commonjs": "29.0.0",
@@ -139,7 +139,7 @@
     "vitest": "4.0.18"
   },
   "dependencies": {
-    "dd-trace": "5.103.0"
+    "dd-trace": "5.109.0"
   },
   "peerDependencies": {
     "electron": ">=39"
