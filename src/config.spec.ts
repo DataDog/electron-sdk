@@ -341,12 +341,13 @@ describe('buildConfiguration', () => {
       { value: 101, description: 'greater than 100' },
       { value: 'fifty', description: 'non-number string' },
       { value: {}, description: 'object' },
-    ])('logs error and uses default when $description', ({ value }) => {
+      { value: NaN, description: 'NaN' },
+    ])('returns undefined and logs error when $description', ({ value }) => {
       const config = { ...DEFAULT_CONFIG, sessionSampleRate: value } as unknown as InitConfiguration;
 
       const result = buildConfiguration(config);
 
-      expect(result?.sessionSampleRate).toBe(100);
+      expect(result).toBeUndefined();
       expect(display.displayError).toHaveBeenCalledWith(
         "Configuration error: 'sessionSampleRate' must be a number between 0 and 100"
       );
@@ -387,12 +388,13 @@ describe('buildConfiguration', () => {
       { value: 101, description: 'greater than 100' },
       { value: 'fifty', description: 'non-number string' },
       { value: {}, description: 'object' },
-    ])('logs error and uses default when $description', ({ value }) => {
+      { value: NaN, description: 'NaN' },
+    ])('returns undefined and logs error when $description', ({ value }) => {
       const config = { ...DEFAULT_CONFIG, telemetrySampleRate: value } as unknown as InitConfiguration;
 
       const result = buildConfiguration(config);
 
-      expect(result?.telemetrySampleRate).toBe(20);
+      expect(result).toBeUndefined();
       expect(display.displayError).toHaveBeenCalledWith(
         "Configuration error: 'telemetrySampleRate' must be a number between 0 and 100"
       );

@@ -64,7 +64,7 @@ describe('SessionContext', () => {
       const hooks = createFormatHooks();
       const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
-      context.add('session-abc', true);
+      context.add('session-abc');
 
       expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toMatchObject({
         session: { id: 'session-abc' },
@@ -86,7 +86,7 @@ describe('SessionContext', () => {
       const hooks = createFormatHooks();
       const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
-      context.add('session-abc', true);
+      context.add('session-abc');
 
       expect(hooks.triggerSpan({ startTime: T0, source: EventSource.MAIN })).toMatchObject({
         meta: {
@@ -99,7 +99,7 @@ describe('SessionContext', () => {
       const hooks = createFormatHooks();
       const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
-      context.add('session-abc', true);
+      context.add('session-abc');
 
       expect(hooks.triggerTelemetry({ startTime: T0, source: EventSource.MAIN })).toMatchObject({
         session: { id: 'session-abc' },
@@ -110,9 +110,9 @@ describe('SessionContext', () => {
       const hooks = createFormatHooks();
       const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
-      context.add('session-first', true); // at T0
+      context.add('session-first'); // at T0
       vi.advanceTimersByTime(10); // advance to T10
-      context.add('session-second', true); // at T10
+      context.add('session-second'); // at T10
 
       expect(
         hooks.triggerRum({ eventType: 'view', startTime: 10 as TimeStamp, source: EventSource.MAIN })
@@ -122,67 +122,12 @@ describe('SessionContext', () => {
     });
   });
 
-  describe('session sampling', () => {
-    it('RUM hook returns DISCARDED for a non-sampled session', async () => {
-      const hooks = createFormatHooks();
-      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
-
-      context.add('session-abc', false);
-
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toBe(DISCARDED);
-    });
-
-    it('span hook is not affected by sampling (spans always pass)', async () => {
-      const hooks = createFormatHooks();
-      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
-
-      context.add('session-abc', false);
-
-      expect(hooks.triggerSpan({ startTime: T0 })).toMatchObject({
-        meta: { '_dd.session.id': 'session-abc' },
-      });
-    });
-
-    it('telemetry hook is not affected by sampling (telemetry always passes)', async () => {
-      const hooks = createFormatHooks();
-      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
-
-      context.add('session-abc', false);
-
-      expect(hooks.triggerTelemetry({ startTime: T0 })).toMatchObject({
-        session: { id: 'session-abc' },
-      });
-    });
-
-    it('migrates old string format from disk and treats it as sampled (crash attribution)', async () => {
-      const hooks = createFormatHooks();
-      // Old disk format: value was a plain session ID string (pre-sessionSampleRate)
-      mfs.readFile.mockResolvedValueOnce(JSON.stringify([{ startTime: 0, endTime: 500, value: 'old-session-id' }]));
-      await SessionContext.init(hooks, EXPIRE_DELAY);
-
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toMatchObject({
-        session: { id: 'old-session-id' },
-      });
-    });
-
-    it('respects isSampled from new disk format', async () => {
-      const hooks = createFormatHooks();
-      // New disk format: value is { id, isSampled }
-      mfs.readFile.mockResolvedValueOnce(
-        JSON.stringify([{ startTime: 0, endTime: 500, value: { id: 'new-session-id', isSampled: false } }])
-      );
-      await SessionContext.init(hooks, EXPIRE_DELAY);
-
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toBe(DISCARDED);
-    });
-  });
-
   describe('after close()', () => {
     it('RUM hook still attributes events during the session period (crash attribution)', async () => {
       const hooks = createFormatHooks();
       const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
-      context.add('session-abc', true); // at T0 = 0
+      context.add('session-abc'); // at T0 = 0
       vi.advanceTimersByTime(10); // time is now 10
       context.close(); // closed at T10
 
@@ -197,7 +142,7 @@ describe('SessionContext', () => {
       const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
       vi.advanceTimersByTime(10); // advance to T10
-      context.add('session-abc', true); // session started at T10
+      context.add('session-abc'); // session started at T10
       context.close();
 
       // event at T0 (before session started at T10) → DISCARDED
@@ -208,7 +153,7 @@ describe('SessionContext', () => {
       const hooks = createFormatHooks();
       const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
-      context.add('session-abc', true); // at T0 = 0
+      context.add('session-abc'); // at T0 = 0
       vi.advanceTimersByTime(10); // time is now 10
       context.close(); // closed at T10
 
@@ -225,7 +170,7 @@ describe('SessionContext', () => {
       const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
       vi.advanceTimersByTime(10); // advance to T10
-      context.add('session-abc', true); // session started at T10
+      context.add('session-abc'); // session started at T10
       context.close();
 
       // event at T0 (before session started at T10) → DISCARDED
@@ -236,7 +181,7 @@ describe('SessionContext', () => {
       const hooks = createFormatHooks();
       const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
-      context.add('session-abc', true); // at T0 = 0
+      context.add('session-abc'); // at T0 = 0
       vi.advanceTimersByTime(10);
       context.close();
 
@@ -249,7 +194,7 @@ describe('SessionContext', () => {
       const hooks = createFormatHooks();
       const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
-      context.add('session-abc', true); // at T0
+      context.add('session-abc'); // at T0
       vi.advanceTimersByTime(10); // now T10
       context.close(); // closed at T10
 

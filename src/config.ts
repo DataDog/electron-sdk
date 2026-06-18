@@ -88,26 +88,26 @@ function validateOptionalString(value: unknown): string | undefined {
   return value.length > 0 ? value : undefined;
 }
 
-function validateSessionSampleRate(value: unknown): number {
+function validateSessionSampleRate(value: unknown): number | undefined {
   if (value === undefined || value === null) {
     return 100;
   }
-  if (typeof value !== 'number' || value < 0 || value > 100) {
+  if (!Number.isFinite(value) || (value as number) < 0 || (value as number) > 100) {
     displayError("Configuration error: 'sessionSampleRate' must be a number between 0 and 100");
-    return 100;
+    return undefined;
   }
-  return value;
+  return value as number;
 }
 
-function validateTelemetrySampleRate(value: unknown): number {
+function validateTelemetrySampleRate(value: unknown): number | undefined {
   if (value === undefined || value === null) {
     return 20;
   }
-  if (typeof value !== 'number' || value < 0 || value > 100) {
+  if (!Number.isFinite(value) || (value as number) < 0 || (value as number) > 100) {
     displayError("Configuration error: 'telemetrySampleRate' must be a number between 0 and 100");
-    return 20;
+    return undefined;
   }
-  return value;
+  return value as number;
 }
 
 const VALID_PRIVACY_LEVELS: readonly DefaultPrivacyLevel[] = [
@@ -149,6 +149,12 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
   }
 
   const proxy = validateOptionalString(initConfig.proxy);
+  const sessionSampleRate = validateSessionSampleRate(initConfig.sessionSampleRate);
+  const telemetrySampleRate = validateTelemetrySampleRate(initConfig.telemetrySampleRate);
+
+  if (sessionSampleRate === undefined || telemetrySampleRate === undefined) {
+    return undefined;
+  }
 
   return {
     site,
@@ -158,8 +164,8 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     env: validateOptionalString(initConfig.env),
     version: validateOptionalString(initConfig.version),
     proxy,
-    sessionSampleRate: validateSessionSampleRate(initConfig.sessionSampleRate),
-    telemetrySampleRate: validateTelemetrySampleRate(initConfig.telemetrySampleRate),
+    sessionSampleRate,
+    telemetrySampleRate,
     defaultPrivacyLevel: validateDefaultPrivacyLevel(initConfig.defaultPrivacyLevel),
     allowedWebViewHosts: validateAllowedWebViewHosts(initConfig.allowedWebViewHosts),
   };

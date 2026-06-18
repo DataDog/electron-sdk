@@ -13,7 +13,6 @@ export const SESSION_EXPIRATION_DELAY = 15 * ONE_MINUTE;
 export interface Session {
   id: string;
   status: SessionStatus;
-  isSampled: boolean;
 }
 
 export type SessionStatus = 'active' | 'expired';
@@ -83,8 +82,10 @@ export class SessionManager {
     const id = generateUUID();
     const isSampled = isSessionSampled(id, this.configuration.sessionSampleRate);
 
-    this.currentSession = { id, status: 'active', isSampled };
-    this.sessionContext.add(id, isSampled);
+    this.currentSession = { id, status: 'active' };
+    if (isSampled) {
+      this.sessionContext.add(id);
+    }
 
     this.scheduleInactivityTimeout();
     this.scheduleSessionTimeout(now);

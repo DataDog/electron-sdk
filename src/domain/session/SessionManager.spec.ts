@@ -7,7 +7,7 @@ vi.mock('electron', () => ({
 }));
 
 import { DISCARDED } from '@datadog/browser-core';
-import type { TimeStamp } from '@datadog/js-core/time';
+import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFormatHooks, type FormatHooks } from '../../assembly';
 import type { Configuration } from '../../config';
@@ -217,13 +217,13 @@ describe('sessionManager', () => {
     it('session is sampled when sampleRate is 100', async () => {
       sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
 
-      expect(sessionManager.getSession().isSampled).toBe(true);
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).not.toBe(DISCARDED);
     });
 
     it('session is not sampled when sampleRate is 0', async () => {
       sessionManager = await SessionManager.start(eventManager, hooks, makeConfig({ sessionSampleRate: 0 }));
 
-      expect(sessionManager.getSession().isSampled).toBe(false);
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toBe(DISCARDED);
     });
 
     it('RUM hook returns session id when session is sampled', async () => {
@@ -249,7 +249,7 @@ describe('sessionManager', () => {
       await vi.advanceTimersByTimeAsync(0);
 
       // new session with sampleRate=100 must also be sampled
-      expect(sessionManager.getSession().isSampled).toBe(true);
+      expect(hooks.triggerRum({ eventType: 'view', startTime: timeStampNow() })).not.toBe(DISCARDED);
     });
   });
 });
