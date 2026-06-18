@@ -12,6 +12,8 @@ playwright-report/
 # Dependencies & Yarn
 **/node_modules/
 **/.yarn/
+!**/.yarn/patches/
+!**/.yarn/patches/**
 
 # IA settings
 /.claude/settings.local.json

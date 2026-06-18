@@ -93,7 +93,7 @@ __metadata:
     "@vitest/coverage-v8": "npm:4.0.18"
     "@vitest/ui": "npm:4.0.18"
     concurrently: "npm:9.2.1"
-    dd-trace: "npm:5.109.0"
+    dd-trace: "patch:dd-trace@npm%3A5.109.0#~/.yarn/patches/dd-trace-npm-5.109.0-bcd76a72f0.patch"
     electron: "npm:41.1.0"
     eslint: "npm:10.0.2"
     eslint-config-prettier: "npm:10.1.8"
@@ -1948,6 +1948,48 @@ __metadata:
     oxc-parser:
       optional: true
   checksum: 10c0/1dfc3ef38fa8b3cf9daf9c22a5f57da6205bceea6a30c950f16e8262c4569aca1d2a301a85d33c6465d04574e013162b4de1e93005ac7d705ce9b9ef0c5c08e9
+  languageName: node
+  linkType: hard
+
+"dd-trace@patch:dd-trace@npm%3A5.109.0#~/.yarn/patches/dd-trace-npm-5.109.0-bcd76a72f0.patch":
+  version: 5.109.0
+  resolution: "dd-trace@patch:dd-trace@npm%3A5.109.0#~/.yarn/patches/dd-trace-npm-5.109.0-bcd76a72f0.patch::version=5.109.0&hash=7c8bf4"
+  dependencies:
+    "@datadog/libdatadog": "npm:0.9.4"
+    "@datadog/native-appsec": "npm:11.0.1"
+    "@datadog/native-iast-taint-tracking": "npm:4.2.0"
+    "@datadog/native-metrics": "npm:3.1.2"
+    "@datadog/openfeature-node-server": "npm:2.0.0"
+    "@datadog/pprof": "npm:5.15.0"
+    "@datadog/wasm-js-rewriter": "npm:5.0.1"
+    "@opentelemetry/api": "npm:>=1.0.0 <1.10.0"
+    "@opentelemetry/api-logs": "npm:<1.0.0"
+    dc-polyfill: "npm:^0.1.11"
+    import-in-the-middle: "npm:^3.0.1"
+    opentracing: "npm:>=0.14.7"
+    oxc-parser: "npm:^0.132.0"
+  dependenciesMeta:
+    "@datadog/libdatadog":
+      optional: true
+    "@datadog/native-appsec":
+      optional: true
+    "@datadog/native-iast-taint-tracking":
+      optional: true
+    "@datadog/native-metrics":
+      optional: true
+    "@datadog/openfeature-node-server":
+      optional: true
+    "@datadog/pprof":
+      optional: true
+    "@datadog/wasm-js-rewriter":
+      optional: true
+    "@opentelemetry/api":
+      optional: true
+    "@opentelemetry/api-logs":
+      optional: true
+    oxc-parser:
+      optional: true
+  checksum: 10c0/28d7c7f46b96ce1c0375378e24bd42dde51cb5840ba07eea8a42fc306700893873212d190ab32ccd13254b457c842ca13ce847ee697070686c6abc1a362068f3
   languageName: node
   linkType: hard
 

@@ -1,0 +1,13 @@
+diff --git a/packages/datadog-instrumentations/src/electron/preload.js b/packages/datadog-instrumentations/src/electron/preload.js
+index df62472e9f5b6b671afad3720edc3c24668e074b..cf4afeb35d00d6ab0f47fb6414f2907367c24aa1 100644
+--- a/packages/datadog-instrumentations/src/electron/preload.js
++++ b/packages/datadog-instrumentations/src/electron/preload.js
+@@ -18,7 +18,7 @@ const allowedHosts = [...new Set([location.hostname, ...configuredHosts])]
+ 
+ const bridge = {
+   getCapabilities () {
+-    return '[]'
++    return '["profiles"]'
+   },
+   getPrivacyLevel () {
+     return defaultPrivacyLevel

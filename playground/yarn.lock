@@ -41,7 +41,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@datadog/electron-sdk@portal:..::locator=electron-sdk-playground%40workspace%3A."
   dependencies:
-    dd-trace: "patch:dd-trace@npm%3A5.103.0#~/.yarn/patches/dd-trace-npm-5.109.0-bcd76a72f0.patch"
+    dd-trace: "patch:dd-trace@npm%3A5.109.0#~/.yarn/patches/dd-trace-npm-5.109.0-bcd76a72f0.patch"
   peerDependencies:
     electron: ">=39"
   languageName: node
@@ -999,22 +999,23 @@ __metadata:
   languageName: node
   linkType: hard
 
-"dd-trace@patch:dd-trace@npm%3A5.103.0#~/.yarn/patches/dd-trace-npm-5.103.0-bcd76a72f0.patch":
-  version: 5.103.0
-  resolution: "dd-trace@patch:dd-trace@npm%3A5.103.0#~/.yarn/patches/dd-trace-npm-5.103.0-bcd76a72f0.patch::version=5.103.0&hash=7c8bf4"
+"dd-trace@patch:dd-trace@npm%3A5.109.0#~/.yarn/patches/dd-trace-npm-5.109.0-bcd76a72f0.patch":
+  version: 5.109.0
+  resolution: "dd-trace@patch:dd-trace@npm%3A5.109.0#~/.yarn/patches/dd-trace-npm-5.109.0-bcd76a72f0.patch::version=5.109.0&hash=7c8bf4"
   dependencies:
-    "@datadog/libdatadog": "npm:0.9.3"
+    "@datadog/libdatadog": "npm:0.9.4"
     "@datadog/native-appsec": "npm:11.0.1"
-    "@datadog/native-iast-taint-tracking": "npm:4.1.0"
+    "@datadog/native-iast-taint-tracking": "npm:4.2.0"
     "@datadog/native-metrics": "npm:3.1.2"
-    "@datadog/openfeature-node-server": "npm:1.1.2"
-    "@datadog/pprof": "npm:5.14.1"
+    "@datadog/openfeature-node-server": "npm:2.0.0"
+    "@datadog/pprof": "npm:5.15.0"
     "@datadog/wasm-js-rewriter": "npm:5.0.1"
     "@opentelemetry/api": "npm:>=1.0.0 <1.10.0"
     "@opentelemetry/api-logs": "npm:<1.0.0"
     dc-polyfill: "npm:^0.1.11"
     import-in-the-middle: "npm:^3.0.1"
-    oxc-parser: "npm:^0.129.0"
+    opentracing: "npm:>=0.14.7"
+    oxc-parser: "npm:^0.132.0"
   dependenciesMeta:
     "@datadog/libdatadog":
       optional: true
@@ -1036,7 +1037,7 @@ __metadata:
       optional: true
     oxc-parser:
       optional: true
-  checksum: 10c0/5ec68a87e5c04538c0cc76b935fd9b619008a2c92271be395b898d882d0820aa639cc75e1a5e3e92ed0f9a60067ff9274d8ab812301adba69da3b4ec723856d9
+  checksum: 10c0/28d7c7f46b96ce1c0375378e24bd42dde51cb5840ba07eea8a42fc306700893873212d190ab32ccd13254b457c842ca13ce847ee697070686c6abc1a362068f3
   languageName: node
   linkType: hard
 
