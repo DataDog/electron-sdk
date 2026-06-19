@@ -8,7 +8,6 @@ export type RawEvent = RawRumEvent | RawTelemetryEvent;
 
 export interface RawRumEvent {
   kind: typeof EventKind.RAW;
-  source: EventSource;
   format: typeof EventFormat.RUM;
   data: RawRumData;
   startTime?: TimeStamp;
@@ -16,7 +15,6 @@ export interface RawRumEvent {
 
 export interface RawTelemetryEvent {
   kind: typeof EventKind.RAW;
-  source: EventSource;
   format: typeof EventFormat.TELEMETRY;
   data: RawTelemetryData;
   startTime?: TimeStamp;
@@ -34,18 +32,21 @@ export interface ServerRumEvent {
 export interface ServerTelemetryEvent {
   kind: typeof EventKind.SERVER;
   track: typeof EventTrack.RUM;
+  source: EventSource;
   data: TelemetryEvent;
 }
 
 export interface ServerLogsEvent {
   kind: typeof EventKind.SERVER;
   track: typeof EventTrack.LOGS;
+  source: EventSource;
   data: unknown;
 }
 
 export interface ServerSpansEvent {
   kind: typeof EventKind.SERVER;
   track: typeof EventTrack.SPANS;
+  source: EventSource;
   data: RawTraceData;
 }
 

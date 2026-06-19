@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BatchSizes, BatchUploadFrequencies } from '../config';
 import type { RawEvent, ServerEvent } from '../event';
-import { EventKind, EventTrack, EventManager } from '../event';
+import { EventKind, EventSource, EventTrack, EventManager } from '../event';
 import { createTestConfiguration } from '../mocks.specUtil';
 import { Transport } from './Transport';
 
@@ -85,6 +85,7 @@ describe('Transport', () => {
       eventManager.notify({
         kind: EventKind.SERVER,
         track: EventTrack.LOGS,
+        source: EventSource.MAIN,
         data: { test: 'data' },
       });
 

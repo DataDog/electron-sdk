@@ -12,6 +12,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED } from '@datadog/browser-core';
 import { createFormatHooks } from '../../assembly';
+import { EventSource } from '../../event';
 import { SessionContext } from './SessionContext';
 
 vi.mock('node:fs/promises');
@@ -40,21 +41,21 @@ describe('SessionContext', () => {
       const hooks = createFormatHooks();
       await SessionContext.init(hooks, EXPIRE_DELAY);
 
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toBe(DISCARDED);
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toBe(DISCARDED);
     });
 
     it('span hook returns DISCARDED', async () => {
       const hooks = createFormatHooks();
       await SessionContext.init(hooks, EXPIRE_DELAY);
 
-      expect(hooks.triggerSpan({ startTime: T0 })).toBe(DISCARDED);
+      expect(hooks.triggerSpan({ startTime: T0, source: EventSource.MAIN })).toBe(DISCARDED);
     });
 
     it('telemetry hook returns SKIPPED (undefined)', async () => {
       const hooks = createFormatHooks();
       await SessionContext.init(hooks, EXPIRE_DELAY);
 
-      expect(hooks.triggerTelemetry({ startTime: T0 })).toBeUndefined();
+      expect(hooks.triggerTelemetry({ startTime: T0, source: EventSource.MAIN })).toBeUndefined();
     });
   });
 
@@ -65,7 +66,18 @@ describe('SessionContext', () => {
 
       context.add('session-abc');
 
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toMatchObject({
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toMatchObject({
+        session: { id: 'session-abc' },
+      });
+    });
+
+    it('RUM hook returns the session id for renderer source', async () => {
+      const hooks = createFormatHooks();
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
+
+      context.add('session-abc');
+
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.RENDERER })).toMatchObject({
         session: { id: 'session-abc' },
       });
     });
@@ -76,7 +88,7 @@ describe('SessionContext', () => {
 
       context.add('session-abc');
 
-      expect(hooks.triggerSpan({ startTime: T0 })).toMatchObject({
+      expect(hooks.triggerSpan({ startTime: T0, source: EventSource.MAIN })).toMatchObject({
         meta: {
           '_dd.session.id': 'session-abc',
         },
@@ -89,7 +101,7 @@ describe('SessionContext', () => {
 
       context.add('session-abc');
 
-      expect(hooks.triggerTelemetry({ startTime: T0 })).toMatchObject({
+      expect(hooks.triggerTelemetry({ startTime: T0, source: EventSource.MAIN })).toMatchObject({
         session: { id: 'session-abc' },
       });
     });
@@ -102,7 +114,9 @@ describe('SessionContext', () => {
       vi.advanceTimersByTime(10); // advance to T10
       context.add('session-second'); // at T10
 
-      expect(hooks.triggerRum({ eventType: 'view', startTime: 10 as TimeStamp })).toMatchObject({
+      expect(
+        hooks.triggerRum({ eventType: 'view', startTime: 10 as TimeStamp, source: EventSource.MAIN })
+      ).toMatchObject({
         session: { id: 'session-second' },
       });
     });
@@ -118,7 +132,7 @@ describe('SessionContext', () => {
       context.close(); // closed at T10
 
       // event at T0 (during active period) is still attributed
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toMatchObject({
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toMatchObject({
         session: { id: 'session-abc' },
       });
     });
@@ -132,7 +146,7 @@ describe('SessionContext', () => {
       context.close();
 
       // event at T0 (before session started at T10) → DISCARDED
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toBe(DISCARDED);
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toBe(DISCARDED);
     });
 
     it('span hook still attributes events during the session period (crash attribution)', async () => {
@@ -144,7 +158,7 @@ describe('SessionContext', () => {
       context.close(); // closed at T10
 
       // event at T0 (during active period) is still attributed
-      expect(hooks.triggerSpan({ startTime: T0 })).toMatchObject({
+      expect(hooks.triggerSpan({ startTime: T0, source: EventSource.MAIN })).toMatchObject({
         meta: {
           '_dd.session.id': 'session-abc',
         },
@@ -160,7 +174,7 @@ describe('SessionContext', () => {
       context.close();
 
       // event at T0 (before session started at T10) → DISCARDED
-      expect(hooks.triggerSpan({ startTime: T0 })).toBe(DISCARDED);
+      expect(hooks.triggerSpan({ startTime: T0, source: EventSource.MAIN })).toBe(DISCARDED);
     });
 
     it('telemetry hook still attributes events during the session period', async () => {
@@ -171,7 +185,7 @@ describe('SessionContext', () => {
       vi.advanceTimersByTime(10);
       context.close();
 
-      expect(hooks.triggerTelemetry({ startTime: T0 })).toMatchObject({
+      expect(hooks.triggerTelemetry({ startTime: T0, source: EventSource.MAIN })).toMatchObject({
         session: { id: 'session-abc' },
       });
     });
@@ -185,7 +199,9 @@ describe('SessionContext', () => {
       context.close(); // closed at T10
 
       // Event at T20 (after session ended at T10) → DISCARDED
-      expect(hooks.triggerRum({ eventType: 'view', startTime: 20 as TimeStamp })).toBe(DISCARDED);
+      expect(hooks.triggerRum({ eventType: 'view', startTime: 20 as TimeStamp, source: EventSource.MAIN })).toBe(
+        DISCARDED
+      );
     });
   });
 });

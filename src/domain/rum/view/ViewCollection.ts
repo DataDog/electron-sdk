@@ -118,7 +118,6 @@ export class ViewCollection {
 
     this.eventManager.notify({
       kind: EventKind.RAW,
-      source: EventSource.MAIN,
       format: EventFormat.RUM,
       data: viewEvent,
       startTime: this.currentView.startTime,

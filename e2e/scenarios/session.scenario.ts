@@ -4,7 +4,7 @@ import type { TelemetryErrorEvent, RumViewEvent } from '@datadog/electron-sdk';
 test.use({ rumBrowserSdk: {} });
 
 test('new session id is generated when renewing a session', async ({ mainPage, intake }) => {
-  await mainPage.generateTelemetryError();
+  await mainPage.generateTelemetryErrors(1);
   await mainPage.flushTransport();
 
   const firstEvents = await intake.getEventsByType('telemetry');
@@ -12,7 +12,7 @@ test('new session id is generated when renewing a session', async ({ mainPage, i
   expect(firstSessionId).toMatch(/^[0-9a-f-]+$/);
 
   await mainPage.renewSession();
-  await mainPage.generateTelemetryError();
+  await mainPage.generateTelemetryErrors(1);
   await mainPage.flushTransport();
 
   const allEvents = await intake.waitForEventCount('telemetry', 2);

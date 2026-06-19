@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import type { TimeStamp } from '@datadog/js-core/time';
 import { generateUUID } from '@datadog/browser-core';
 import { app, crashReporter } from 'electron';
-import { EventFormat, EventKind, EventManager, EventSource } from '../../../event';
+import { EventFormat, EventKind, EventManager } from '../../../event';
 import type { CrashReport } from '../../../wasm';
 import type { RawRumError } from '../rawRumData.types';
 import type { RumErrorEvent } from '../rumEvent.types';
@@ -51,7 +51,6 @@ export class CrashCollection {
 
         this.eventManager.notify({
           kind: EventKind.RAW,
-          source: EventSource.MAIN,
           format: EventFormat.RUM,
           data: buildCrashErrorEvent(crashReport, crashTime),
           startTime: crashTime,

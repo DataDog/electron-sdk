@@ -3,20 +3,24 @@ import { combine, DISCARDED, SKIPPED, type RecursivePartial } from '@datadog/bro
 import type { RumEvent } from '../domain/rum';
 import type { TelemetryEvent } from '../domain/telemetry';
 import { RawSpanData } from '../domain/tracing/rawTracingData.types';
+import { EventSource } from '../event';
 
 export type RumEventType = RumEvent['type'];
 
 export interface RumAssembleParams {
   eventType: RumEventType;
   startTime: TimeStamp;
+  source: EventSource;
 }
 
 export interface TelemetryAssembleParams {
   startTime: TimeStamp;
+  source: EventSource;
 }
 
 export interface SpanAssembleParams {
   startTime: TimeStamp;
+  source: EventSource;
 }
 
 type AssembleCallback<Params, Result> = (params: Params) => Result | typeof DISCARDED | typeof SKIPPED;

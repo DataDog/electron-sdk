@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EventManager } from './EventManager';
 import type { EventHandler, RawEvent, RawRumEvent, ServerEvent } from './event.types';
-import { EventFormat, EventKind, EventSource, EventTrack } from './event.constants';
+import { EventFormat, EventKind, EventTrack } from './event.constants';
 import { createRawRumView } from '../mocks.specUtil';
 import { RecursivePartial } from '@datadog/browser-core';
 import { RawRumView, RumEvent } from '../domain/rum';
@@ -9,7 +9,6 @@ import { RawRumView, RumEvent } from '../domain/rum';
 function createRawRumEvent(overrides?: RecursivePartial<RawRumEvent>): RawRumEvent {
   return {
     kind: EventKind.RAW,
-    source: EventSource.RENDERER,
     format: EventFormat.RUM,
     ...overrides,
     data: createRawRumView(overrides?.data as RecursivePartial<RawRumView>),
@@ -92,14 +91,14 @@ describe('EventManager', () => {
 
   it('provides correctly typed events to handlers without casting', () => {
     const eventManager = new EventManager();
-    let receivedSource: (typeof EventSource)[keyof typeof EventSource] | undefined;
+    let receivedFormat: (typeof EventFormat)[keyof typeof EventFormat] | undefined;
     let receivedTrack: (typeof EventTrack)[keyof typeof EventTrack] | undefined;
 
     eventManager.registerHandler<RawEvent>({
       canHandle: (event) => event.kind === EventKind.RAW,
       handle: (event) => {
-        // event is RawEvent - no cast needed, source is accessible
-        receivedSource = event.source;
+        // event is RawEvent - no cast needed, format is accessible
+        receivedFormat = event.format;
       },
     });
 
@@ -111,10 +110,10 @@ describe('EventManager', () => {
       },
     });
 
-    eventManager.notify(createRawRumEvent({ source: EventSource.MAIN }));
+    eventManager.notify(createRawRumEvent());
     eventManager.notify(createServerEvent({ track: EventTrack.LOGS }));
 
-    expect(receivedSource).toBe(EventSource.MAIN);
+    expect(receivedFormat).toBe(EventFormat.RUM);
     expect(receivedTrack).toBe(EventTrack.LOGS);
   });
 
