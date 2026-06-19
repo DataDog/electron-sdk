@@ -18,10 +18,17 @@ export function computeIntakeHostname(site: string, proxy?: string): string {
   return `browser-intake-${computeIntakeSite(site)}`;
 }
 
-export function computeIntakeUrlForTrack(site: string, trackType: string, proxy?: string): string {
+export function computeIntakeUrlForTrack(
+  site: string,
+  trackType: string,
+  options?: { proxy?: string; subdomain?: string }
+): string {
+  const { proxy, subdomain } = options ?? {};
   if (proxy) {
-    return `${proxy}?ddforward=${encodeURIComponent(`/api/v2/${trackType}`)}`;
+    const ddforward = encodeURIComponent(`/api/v2/${trackType}`);
+    const subdomainParam = subdomain ? `&ddforwardSubdomain=${subdomain}` : '';
+    return `${proxy}?ddforward=${ddforward}${subdomainParam}`;
   }
-
-  return `https://browser-intake-${computeIntakeSite(site)}/api/v2/${trackType}`;
+  const subdomainPrefix = subdomain ? `${subdomain}.` : '';
+  return `https://${subdomainPrefix}browser-intake-${computeIntakeSite(site)}/api/v2/${trackType}`;
 }

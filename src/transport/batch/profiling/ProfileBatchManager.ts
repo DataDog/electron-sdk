@@ -25,7 +25,7 @@ export class ProfileBatchManager {
 
   static async create(config: Configuration, managerConfig: ProfileBatchManagerConfig): Promise<ProfileBatchManager> {
     const trackPath = path.join(managerConfig.path, EventTrack.PROFILE);
-    const intakeUrl = computeIntakeUrlForTrack(config.site, EventTrack.PROFILE, config.proxy);
+    const intakeUrl = computeIntakeUrlForTrack(config.site, EventTrack.PROFILE, { proxy: config.proxy });
 
     const producer = await ProfileBatchProducer.create(trackPath);
     const consumer = new ProfileBatchConsumer({ trackPath, intakeUrl, clientToken: config.clientToken });
