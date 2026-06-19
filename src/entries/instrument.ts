@@ -51,7 +51,12 @@ try {
         patchIpcMain(electron.ipcMain);
       }
       if (preloadPath) {
-        patchBrowserWindow(electron as typeof import('electron'), preloadPath);
+        try {
+          patchBrowserWindow(electron as typeof import('electron'), preloadPath);
+        } catch {
+          // BrowserWindow may already be wrapped by dd-trace as a non-configurable getter.
+          // That's fine — dd-trace's wrapper already injects the bridge preload.
+        }
       }
       if (electron.net) {
         patchNet(electron.net);
