@@ -1,6 +1,6 @@
 # Code Review Guide
 
-What to look for when reviewing a PR. Linters, formatter, and type-checker already run in CI — don't
+What to look for when reviewing a PR. Linters, the formatter, and the type checker already run in CI — don't
 repeat what they enforce. Focus on the project-specific concerns below.
 
 ## What to look for
@@ -21,8 +21,8 @@ all interleave. Look for:
 
 The SDK favors observable failures over silent ones:
 
-- Prefer throwing or reporting via telemetry over defensive null-checks for invalid payloads. An
-  uncaught error is caught by the SDK's error wrapper and reported as telemetry.
+- Prefer throwing or reporting via telemetry over defensive null-checks for invalid payloads. Unhandled errors are
+  captured by the SDK's error wrapper and reported as telemetry.
 - Validate external inputs (IPC messages, public API calls) early and fail loudly. Internal code can
   trust its invariants.
 - Don't introduce `?.` or fallback values for conditions that should not be possible — surface them
@@ -32,7 +32,7 @@ The SDK favors observable failures over silent ones:
 
 All callbacks driven by Node.js or Electron (IPC handlers, `diagnostics_channel` subscribers, event
 listeners) must be wrapped with `monitor()` so errors are captured by telemetry rather than
-silently lost. This applies to promise `.then`/`.catch` callbacks into SDK code too.
+silently lost. This applies to Promise `.then`/`.catch` callbacks into SDK code too.
 
 Use the SDK's `setTimeout`, `setInterval`, and `throttle` from `src/domain/telemetry/timer.ts`
 instead of raw `global.setTimeout`/`global.setInterval`.
