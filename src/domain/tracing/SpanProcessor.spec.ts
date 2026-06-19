@@ -188,6 +188,18 @@ describe('SpanProcessor', () => {
       expect(collected).toHaveLength(0);
     });
 
+    it('should filter out requests to intake subdomains (e.g. the profiling quota host)', () => {
+      const span = createSpan({
+        meta: {
+          'http.url': 'https://quota.browser-intake-datadoghq.com/api/v2/profiling/quota',
+          'http.method': 'GET',
+        },
+      });
+      publish([[span]]);
+
+      expect(collected).toHaveLength(0);
+    });
+
     it('should not filter localhost requests when no proxy is configured', () => {
       const span = createSpan({ meta: { 'http.url': 'http://localhost:3000/api/data', 'http.method': 'GET' } });
       publish([[span]]);

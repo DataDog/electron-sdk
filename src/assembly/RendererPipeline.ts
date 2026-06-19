@@ -45,6 +45,9 @@ export class RendererPipeline {
     this.bridgeOptions = {
       defaultPrivacyLevel: config.defaultPrivacyLevel,
       allowedWebViewHosts: config.allowedWebViewHosts,
+      // Capabilities are resolved once here and advertised globally, not per session. Bridge mode has no
+      // channel to notify the renderer on session renew/expire or capability changes, so the browser SDK
+      // cannot adjust its per-session behavior (e.g. stop profiling a sampled-out session). Out of scope for now.
       capabilities: config.profilingSampleRate > 0 ? ['profiles'] : [],
     };
 

@@ -97,7 +97,10 @@ export class SpanProcessor {
     const url = span.meta['http.url'];
     if (!url) return false;
     try {
-      return new URL(url).hostname === this.intakeHostname;
+      const { hostname } = new URL(url);
+      // Match the intake hostname and any of its subdomains (e.g. the `quota.` host used by the
+      // profiling quota check), so the SDK never traces its own intake requests.
+      return hostname === this.intakeHostname || hostname.endsWith(`.${this.intakeHostname}`);
     } catch {
       return false;
     }
