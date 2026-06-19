@@ -1,15 +1,26 @@
 import { combine } from '@datadog/browser-core';
 import type { Configuration } from '../../config';
 import type { SessionManager } from '../session';
-import { EventKind, EventFormat, EventTrack } from '../../event';
-import type { EventManager, RawProfileEvent, ServerProfileEvent, BrowserProfileEvent } from '../../event';
+import { EventKind, EventFormat, EventTrack, LifecycleKind } from '../../event';
+import type {
+  EventManager,
+  RawProfileEvent,
+  ServerProfileEvent,
+  BrowserProfileEvent,
+  SessionRenewEvent,
+} from '../../event';
+import { correctedChildSampleRate, isSessionSampled } from '../../tools/Sampler';
 
 export class ProfilingCollection {
+  private isCurrentSessionSampled: boolean;
+
   constructor(
     eventManager: EventManager,
     private readonly sessionManager: Pick<SessionManager, 'getSession'>,
     private readonly config: Configuration
   ) {
+    this.isCurrentSessionSampled = this.computeProfilingSampled();
+
     eventManager.registerHandler<RawProfileEvent>({
       canHandle: (event): event is RawProfileEvent =>
         event.kind === EventKind.RAW && event.format === EventFormat.PROFILE,
@@ -18,9 +29,27 @@ export class ProfilingCollection {
         if (server) notify(server);
       },
     });
+
+    eventManager.registerHandler<SessionRenewEvent>({
+      canHandle: (event): event is SessionRenewEvent =>
+        event.kind === EventKind.LIFECYCLE && event.lifecycle === LifecycleKind.SESSION_RENEW,
+      handle: () => {
+        this.isCurrentSessionSampled = this.computeProfilingSampled();
+      },
+    });
+  }
+
+  private computeProfilingSampled(): boolean {
+    const session = this.sessionManager.getSession();
+    return isSessionSampled(
+      session.id,
+      correctedChildSampleRate(this.config.sessionSampleRate, this.config.profilingSampleRate)
+    );
   }
 
   private enrich(event: RawProfileEvent): ServerProfileEvent | null {
+    if (!this.isCurrentSessionSampled) return null;
+
     const session = this.sessionManager.getSession();
     if (session.status !== 'active') return null;
 

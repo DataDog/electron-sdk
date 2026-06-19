@@ -366,6 +366,49 @@ describe('buildConfiguration', () => {
     });
   });
 
+  describe('profilingSampleRate validation', () => {
+    it('defaults to 0 when not provided', () => {
+      const result = buildConfiguration({ ...DEFAULT_CONFIG });
+
+      expect(result?.profilingSampleRate).toBe(0);
+    });
+
+    it.each([0, 50, 100])('accepts valid value: %d', (value) => {
+      const result = buildConfiguration({ ...DEFAULT_CONFIG, profilingSampleRate: value });
+
+      expect(result?.profilingSampleRate).toBe(value);
+    });
+
+    it.each([
+      { value: -1, description: 'negative number' },
+      { value: 101, description: 'greater than 100' },
+      { value: 'fifty', description: 'non-number string' },
+      { value: {}, description: 'object' },
+      { value: NaN, description: 'NaN' },
+    ])('returns undefined and logs error when $description', ({ value }) => {
+      const config = { ...DEFAULT_CONFIG, profilingSampleRate: value } as unknown as InitConfiguration;
+
+      const result = buildConfiguration(config);
+
+      expect(result).toBeUndefined();
+      expect(display.displayError).toHaveBeenCalledWith(
+        "Configuration error: 'profilingSampleRate' must be a number between 0 and 100"
+      );
+    });
+
+    it.each([
+      { value: null, description: 'null' },
+      { value: undefined, description: 'undefined' },
+    ])('defaults to 0 when $description (no error)', ({ value }) => {
+      const config = { ...DEFAULT_CONFIG, profilingSampleRate: value } as unknown as InitConfiguration;
+
+      const result = buildConfiguration(config);
+
+      expect(result?.profilingSampleRate).toBe(0);
+      expect(display.displayError).not.toHaveBeenCalled();
+    });
+  });
+
   describe('telemetrySampleRate validation', () => {
     it('defaults to 20 when not provided', () => {
       const config = { ...DEFAULT_CONFIG };
