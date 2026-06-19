@@ -10,9 +10,12 @@ import type {
   SessionRenewEvent,
 } from '../../event';
 import { correctedChildSampleRate, isSessionSampled } from '../../tools/Sampler';
+import { checkProfilingQuota } from './quotaCheck';
 
 export class ProfilingCollection {
   private isCurrentSessionSampled: boolean;
+  private quotaOk = true;
+  private quotaCheckGeneration = 0;
 
   constructor(
     eventManager: EventManager,
@@ -20,6 +23,9 @@ export class ProfilingCollection {
     private readonly config: Configuration
   ) {
     this.isCurrentSessionSampled = this.computeProfilingSampled();
+    if (this.isCurrentSessionSampled) {
+      this.triggerQuotaCheck(this.sessionManager.getSession().id);
+    }
 
     eventManager.registerHandler<RawProfileEvent>({
       canHandle: (event): event is RawProfileEvent =>
@@ -35,6 +41,10 @@ export class ProfilingCollection {
         event.kind === EventKind.LIFECYCLE && event.lifecycle === LifecycleKind.SESSION_RENEW,
       handle: () => {
         this.isCurrentSessionSampled = this.computeProfilingSampled();
+        if (this.isCurrentSessionSampled) {
+          this.quotaOk = true;
+          this.triggerQuotaCheck(this.sessionManager.getSession().id);
+        }
       },
     });
   }
@@ -47,8 +57,25 @@ export class ProfilingCollection {
     );
   }
 
+  private triggerQuotaCheck(sessionId: string): void {
+    const checkGeneration = ++this.quotaCheckGeneration;
+    checkProfilingQuota(this.config, sessionId)
+      .then((result) => {
+        if (checkGeneration !== this.quotaCheckGeneration) {
+          return;
+        }
+        if (result.decision === 'quota_ko') {
+          this.quotaOk = false;
+        }
+      })
+      .catch(() => {
+        // fail-open: errors in checkProfilingQuota itself are already handled inside it
+      });
+  }
+
   private enrich(event: RawProfileEvent): ServerProfileEvent | null {
     if (!this.isCurrentSessionSampled) return null;
+    if (!this.quotaOk) return null;
 
     const session = this.sessionManager.getSession();
     if (session.status !== 'active') return null;
