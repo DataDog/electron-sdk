@@ -77,7 +77,9 @@ export class Intake {
           const admitted = this.quotaDecision === 'quota_ok';
           req.resume();
           res.writeHead(admitted ? 200 : 429, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ data: { attributes: { admitted, reason: this.quotaDecision } } }));
+          res.end(
+            JSON.stringify({ data: { attributes: { admitted, reason: admitted ? 'quota_ok' : 'quota_exceeded' } } })
+          );
           return;
         }
 

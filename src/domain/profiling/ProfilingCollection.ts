@@ -41,8 +41,8 @@ export class ProfilingCollection {
         event.kind === EventKind.LIFECYCLE && event.lifecycle === LifecycleKind.SESSION_RENEW,
       handle: () => {
         this.isCurrentSessionSampled = this.computeProfilingSampled();
+        this.quotaOk = true;
         if (this.isCurrentSessionSampled) {
-          this.quotaOk = true;
           this.triggerQuotaCheck(this.sessionManager.getSession().id);
         }
       },
@@ -59,18 +59,14 @@ export class ProfilingCollection {
 
   private triggerQuotaCheck(sessionId: string): void {
     const checkGeneration = ++this.quotaCheckGeneration;
-    checkProfilingQuota(this.config, sessionId)
-      .then((result) => {
-        if (checkGeneration !== this.quotaCheckGeneration) {
-          return;
-        }
-        if (result.decision === 'quota_ko') {
-          this.quotaOk = false;
-        }
-      })
-      .catch(() => {
-        // fail-open: errors in checkProfilingQuota itself are already handled inside it
-      });
+    void checkProfilingQuota(this.config, sessionId).then((result) => {
+      if (checkGeneration !== this.quotaCheckGeneration) {
+        return;
+      }
+      if (result.decision === 'quota_ko') {
+        this.quotaOk = false;
+      }
+    });
   }
 
   private enrich(event: RawProfileEvent): ServerProfileEvent | null {
