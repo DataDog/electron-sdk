@@ -60,6 +60,16 @@ describe('checkProfilingQuota', () => {
       );
     });
 
+    it('builds the correct URL for datad0g.com (internal staging)', async () => {
+      global.fetch = mockFetchResponse(true, 'quota_ok');
+      const promise = checkProfilingQuota(createTestConfiguration({ site: 'datad0g.com' }), 'session-abc');
+      await vi.runAllTimersAsync();
+      await promise;
+      expect(vi.mocked(fetch).mock.calls[0][0]).toBe(
+        'https://quota.browser-intake-datad0g.com/api/v2/profiling/quota?session_id=session-abc'
+      );
+    });
+
     it('routes through proxy with ddforwardSubdomain=quota', async () => {
       global.fetch = mockFetchResponse(true, 'quota_ok');
       const promise = checkProfilingQuota(
