@@ -14,6 +14,7 @@ When making changes that impact development workflows or architecture, update th
 | `docs/CONVENTIONS.md`       | Coding conventions and style guidelines                     |
 | `docs/ARCHITECTURE.md`      | SDK design patterns and event pipeline                      |
 | `docs/TESTING.md`           | Unit and E2E testing strategy and infrastructure            |
+| `docs/REVIEW.md`            | Code review guide for agents                                |
 | `scripts/README.md`         | Script placement and CLI conventions                        |
 | `e2e/integration/README.md` | Integration tests strategy and structure                    |
 | `playground/README.md`      | Playground app, Playwright test infra for agent prototyping |
