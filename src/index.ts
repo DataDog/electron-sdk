@@ -177,11 +177,11 @@ export function getInternalContext(): InternalContext | undefined {
   if (!sessionManager) {
     return undefined;
   }
-  const session = sessionManager.getSession();
-  if (session.status !== 'active') {
+  const sessionId = sessionManager.getTrackedSessionId();
+  if (sessionId === undefined) {
     return undefined;
   }
-  return { session_id: session.id };
+  return { session_id: sessionId };
 }
 
 export type { InitConfiguration } from './config';

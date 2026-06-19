@@ -43,6 +43,13 @@ export class SessionContext {
     this.history.add(sessionId, timeStampNow());
   }
 
+  // Returns the tracked session id at the current time, or undefined if there is none.
+  // A session is absent here when it has expired (entry closed) or was not sampled (never added),
+  // so this is the single source of truth for "is there a tracked session right now".
+  getActiveSessionId(): string | undefined {
+    return this.history.find(timeStampNow());
+  }
+
   close(): void {
     this.history.closeActive(timeStampNow());
   }

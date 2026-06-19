@@ -218,13 +218,32 @@ describe('sessionManager', () => {
     it('session is sampled when sampleRate is 100', async () => {
       sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
 
+      // A sampled session is tracked, so getInternalContext()/correlation can resolve its id.
+      expect(sessionManager.getTrackedSessionId()).toBe(sessionManager.getSession().id);
       expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).not.toBe(DISCARDED);
     });
 
     it('session is not sampled when sampleRate is 0', async () => {
       sessionManager = await SessionManager.start(eventManager, hooks, makeConfig({ sessionSampleRate: 0 }));
 
+      // A non-sampled session is not tracked, so getInternalContext() resolves to undefined —
+      // no session id leaks for a session that produces no RUM.
+      expect(sessionManager.getTrackedSessionId()).toBeUndefined();
       expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toBe(DISCARDED);
+    });
+
+    it('getTrackedSessionId returns undefined once the session has expired', async () => {
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
+      expect(sessionManager.getTrackedSessionId()).toBeDefined();
+
+      await vi.advanceTimersByTimeAsync(SESSION_EXPIRATION_DELAY);
+      expect(sessionManager.getSession().status).toBe('expired');
+
+      // The history entry is closed at the expiry timestamp and find() is inclusive of endTime,
+      // so the session stops being tracked once time moves past the close — matching how the
+      // RUM/span/telemetry hooks attribute boundary events (single source of truth).
+      await vi.advanceTimersByTimeAsync(1);
+      expect(sessionManager.getTrackedSessionId()).toBeUndefined();
     });
 
     it('RUM hook returns session id when session is sampled', async () => {

@@ -51,6 +51,12 @@ export class SessionManager {
     return deepClone(this.currentSession);
   }
 
+  // Id of the currently tracked session (active and sampled), or undefined. Backed by
+  // SessionContext so it stays consistent with what the RUM/span/telemetry hooks attribute.
+  getTrackedSessionId(): string | undefined {
+    return this.sessionContext.getActiveSessionId();
+  }
+
   expire(): void {
     this.expireSession();
   }
