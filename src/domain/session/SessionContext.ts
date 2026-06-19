@@ -15,21 +15,21 @@ export class SessionContext {
     this.history = history;
 
     hooks.registerRum((params) => {
-      const id = this.history.find(params.startTime);
-      if (id === undefined) return DISCARDED;
-      return { session: { id } };
+      const sessionId = this.history.find(params.startTime);
+      if (sessionId === undefined) return DISCARDED;
+      return { session: { id: sessionId } };
     });
 
     hooks.registerTelemetry((params) => {
-      const id = this.history.find(params.startTime);
-      if (id === undefined) return SKIPPED;
-      return { session: { id } };
+      const sessionId = this.history.find(params.startTime);
+      if (sessionId === undefined) return SKIPPED;
+      return { session: { id: sessionId } };
     });
 
     hooks.registerSpan((params) => {
-      const id = this.history.find(params.startTime);
-      if (id === undefined) return DISCARDED;
-      return { meta: { '_dd.session.id': id } };
+      const sessionId = this.history.find(params.startTime);
+      if (sessionId === undefined) return DISCARDED;
+      return { meta: { '_dd.session.id': sessionId } };
     });
   }
 

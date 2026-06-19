@@ -7,13 +7,29 @@ vi.mock('electron', () => ({
 }));
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { TimeStamp } from '@datadog/js-core/time';
+import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
+import { DISCARDED } from '@datadog/browser-core';
 import { SessionManager, SESSION_EXPIRATION_DELAY } from './SessionManager';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
 
 const T0 = 0 as TimeStamp;
 import { EventManager, EventKind, LifecycleKind, type LifecycleEvent } from '../../event';
 import { createFormatHooks, type FormatHooks } from '../../assembly';
+import type { Configuration } from '../../config';
+
+function makeConfig(overrides: Partial<Configuration> = {}): Configuration {
+  return {
+    site: 'datadoghq.com',
+    service: 'test-service',
+    clientToken: 'test-token',
+    applicationId: 'test-app-id',
+    sessionSampleRate: 100,
+    telemetrySampleRate: 100,
+    defaultPrivacyLevel: 'mask',
+    allowedWebViewHosts: [],
+    ...overrides,
+  };
+}
 
 const mfs = mockFs();
 
@@ -45,7 +61,7 @@ describe('sessionManager', () => {
 
   describe('session creation', () => {
     it('creates new session on start', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks);
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
 
       expect(sessionManager.getSession().id).toMatch(/^[0-9a-f-]+$/);
       expect(sessionManager.getSession().status).toBe('active');
@@ -61,7 +77,7 @@ describe('sessionManager', () => {
         JSON.stringify([{ startTime: 0, endTime: null, value: 'previous-session-id' }])
       ); // _dd_session_history
 
-      sessionManager = await SessionManager.start(eventManager, hooks);
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
 
       const newSessionId = sessionManager.getSession().id;
       expect(newSessionId).not.toBe('previous-session-id');
@@ -80,7 +96,7 @@ describe('sessionManager', () => {
 
   describe('session expiration', () => {
     it('expires session after inactivity delay', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks);
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
 
       expect(sessionManager.getSession().status).toBe('active');
 
@@ -91,7 +107,7 @@ describe('sessionManager', () => {
     });
 
     it('resets inactivity timer on activity', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks);
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
 
       const sessionId = sessionManager.getSession().id;
 
@@ -112,7 +128,7 @@ describe('sessionManager', () => {
     });
 
     it('expires session after session timeout regardless of activity', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks);
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
 
       const sessionId = sessionManager.getSession().id;
       expect(sessionId).toBeDefined();
@@ -141,7 +157,7 @@ describe('sessionManager', () => {
     });
 
     it('creates new session on activity when expired', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks);
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
 
       const originalSessionId = sessionManager.getSession().id;
       expect(sessionManager.getSession().status).toBe('active');
@@ -168,7 +184,7 @@ describe('sessionManager', () => {
 
   describe('expire', () => {
     it('sets session status to expired and clears timers', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks);
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
 
       expect(sessionManager.getSession().status).toBe('active');
 
@@ -181,14 +197,14 @@ describe('sessionManager', () => {
 
   describe('hook registration', () => {
     it('RUM hook returns session id immediately after start()', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks);
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
 
       const result = hooks.triggerRum({ eventType: 'view', startTime: T0 });
       expect(result).toMatchObject({ session: { id: sessionManager.getSession().id } });
     });
 
     it('telemetry hook returns session id immediately after start()', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks);
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
 
       const result = hooks.triggerTelemetry({ startTime: T0 });
       expect(result).toMatchObject({ session: { id: sessionManager.getSession().id } });
@@ -197,12 +213,42 @@ describe('sessionManager', () => {
 
   describe('getSession', () => {
     it('should not allow to mutate the current session', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks);
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
 
       const session = sessionManager.getSession();
       session.id = 'new-id';
 
       expect(sessionManager.getSession().id).not.toBe('new-id');
+    });
+  });
+
+  describe('sessionSampleRate', () => {
+    it('session is sampled when sampleRate is 100', async () => {
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
+
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).not.toBe(DISCARDED);
+    });
+
+    it('session is not sampled when sampleRate is 0', async () => {
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig({ sessionSampleRate: 0 }));
+
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toBe(DISCARDED);
+    });
+
+    it('RUM hook returns DISCARDED when session is not sampled', async () => {
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig({ sessionSampleRate: 0 }));
+
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toBe(DISCARDED);
+    });
+
+    it('renewed session gets its own sampling decision', async () => {
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
+
+      await vi.advanceTimersByTimeAsync(SESSION_EXPIRATION_DELAY);
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.END_USER_ACTIVITY });
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(hooks.triggerRum({ eventType: 'view', startTime: timeStampNow() })).not.toBe(DISCARDED);
     });
   });
 });

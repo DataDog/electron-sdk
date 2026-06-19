@@ -51,7 +51,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   registerCommonContext(config, hooks);
   startTelemetry(eventManager, config);
-  sessionManager = await SessionManager.start(eventManager, hooks);
+  sessionManager = await SessionManager.start(eventManager, hooks, config);
 
   new Assembly(eventManager, hooks);
   new ProfilingCollection(eventManager, sessionManager, config);

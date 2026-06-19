@@ -29,7 +29,11 @@ export class DiskValueHistory<T> {
     this.filePath = filePath;
   }
 
-  static async init<T>(opts: { filePath: string; expireDelay: number }): Promise<DiskValueHistory<T>> {
+  static async init<T>(opts: {
+    filePath: string;
+    expireDelay: number;
+    migrateValue?: (raw: unknown) => T;
+  }): Promise<DiskValueHistory<T>> {
     let parsedFile: unknown;
     try {
       const content = await fs.readFile(opts.filePath, 'utf-8');
@@ -49,8 +53,9 @@ export class DiskValueHistory<T> {
     for (let i = rawEntries.length - 1; i >= 0; i--) {
       const entry = rawEntries[i];
       // Skip entries that would be immediately pruned
-      if (entry.endTime !== null && (entry.endTime as number) < expireThreshold) continue;
-      history.add(entry.value, entry.startTime);
+      if (entry.endTime !== null && entry.endTime < expireThreshold) continue;
+      const value = opts.migrateValue ? opts.migrateValue(entry.value) : entry.value;
+      history.add(value, entry.startTime);
       if (entry.endTime !== null) {
         history.closeActive(entry.endTime);
       }

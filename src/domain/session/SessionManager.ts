@@ -2,7 +2,9 @@ import { ONE_MINUTE } from '@datadog/js-core/time';
 import { deepClone, generateUUID, type Subscription } from '@datadog/browser-core';
 import { type EndUserActivityEvent, EventKind, EventManager, LifecycleKind } from '../../event';
 import type { FormatHooks } from '../../assembly';
+import type { Configuration } from '../../config';
 import { setTimeout } from '../telemetry';
+import { isSessionSampled } from '../../tools/Sampler';
 import { SessionContext } from './SessionContext';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
 
@@ -31,11 +33,16 @@ export class SessionManager {
 
   private constructor(
     private readonly eventManager: EventManager,
-    private readonly hooks: FormatHooks
+    private readonly hooks: FormatHooks,
+    private readonly configuration: Configuration
   ) {}
 
-  static async start(eventManager: EventManager, hooks: FormatHooks): Promise<SessionManager> {
-    const manager = new SessionManager(eventManager, hooks);
+  static async start(
+    eventManager: EventManager,
+    hooks: FormatHooks,
+    configuration: Configuration
+  ): Promise<SessionManager> {
+    const manager = new SessionManager(eventManager, hooks, configuration);
     await manager.init();
     return manager;
   }
@@ -73,9 +80,12 @@ export class SessionManager {
   private createNewSession(): void {
     const now = Date.now();
     const id = generateUUID();
+    const isSampled = isSessionSampled(id, this.configuration.sessionSampleRate);
 
     this.currentSession = { id, status: 'active' };
-    this.sessionContext.add(id);
+    if (isSampled) {
+      this.sessionContext.add(id);
+    }
 
     this.scheduleInactivityTimeout();
     this.scheduleSessionTimeout(now);
