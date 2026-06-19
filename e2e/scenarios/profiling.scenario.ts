@@ -27,3 +27,24 @@ test('browser SDK profiler flushes through bridge and reaches profiling intake',
   expect(profilingRequests[0].contentType).toMatch(/multipart\/form-data/);
   expect(profilingRequests[0].headers['dd-api-key']).toBeDefined();
 });
+
+test.describe('quota_ko', () => {
+  test.use({ initialIntakeQuotaDecision: 'quota_ko' });
+
+  test('profiling bridge events are discarded when quota check returns quota_ko', async ({
+    electronApp,
+    mainPage,
+    intake,
+  }) => {
+    await mainPage.flushTransport();
+
+    const bridgeWindowPage = await mainPage.openBridgeHttpWindow(electronApp);
+
+    await bridgeWindowPage.generateLongTask(500);
+    await bridgeWindowPage.triggerProfilingFlush();
+
+    await mainPage.flushTransport();
+
+    await intake.assertNoProfilingRequest();
+  });
+});
