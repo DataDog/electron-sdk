@@ -1,4 +1,4 @@
-> Canonical source: `docs/REVIEW.md`
+> Based on `docs/REVIEW.md` (condensed + Copilot-specific process notes; keep in sync where applicable)
 
 # Electron SDK — Code Review Guide
 

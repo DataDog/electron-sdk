@@ -21,8 +21,7 @@ all interleave. Look for:
 
 The SDK favors observable failures over silent ones:
 
-- Prefer throwing or reporting via telemetry over defensive null-checks for invalid payloads. Unhandled errors are
-  captured by the SDK's error wrapper and reported as telemetry.
+- Prefer throwing or reporting via telemetry over defensive null-checks for invalid payloads. Errors thrown from monitored callbacks are captured by the SDK's error wrapper and reported as telemetry.
 - Validate external inputs (IPC messages, public API calls) early and fail loudly. Internal code can
   trust its invariants.
 - Don't introduce `?.` or fallback values for conditions that should not be possible — surface them
