@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFormatHooks, type FormatHooks } from '../../assembly';
 import type { Configuration } from '../../config';
 import { EventKind, EventManager, EventSource, LifecycleKind, type LifecycleEvent } from '../../event';
+import * as Sampler from '../../tools/Sampler';
 import { SESSION_EXPIRATION_DELAY, SessionManager } from './SessionManager';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
 
@@ -217,26 +218,26 @@ describe('sessionManager', () => {
     it('session is sampled when sampleRate is 100', async () => {
       sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
 
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).not.toBe(DISCARDED);
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).not.toBe(DISCARDED);
     });
 
     it('session is not sampled when sampleRate is 0', async () => {
       sessionManager = await SessionManager.start(eventManager, hooks, makeConfig({ sessionSampleRate: 0 }));
 
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toBe(DISCARDED);
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toBe(DISCARDED);
     });
 
     it('RUM hook returns session id when session is sampled', async () => {
       sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
 
-      const result = hooks.triggerRum({ eventType: 'view', startTime: T0 });
+      const result = hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN });
       expect(result).toMatchObject({ session: { id: sessionManager.getSession().id } });
     });
 
     it('RUM hook returns DISCARDED when session is not sampled', async () => {
       sessionManager = await SessionManager.start(eventManager, hooks, makeConfig({ sessionSampleRate: 0 }));
 
-      const result = hooks.triggerRum({ eventType: 'view', startTime: T0 });
+      const result = hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN });
       expect(result).toBe(DISCARDED);
     });
 
@@ -249,7 +250,74 @@ describe('sessionManager', () => {
       await vi.advanceTimersByTimeAsync(0);
 
       // new session with sampleRate=100 must also be sampled
-      expect(hooks.triggerRum({ eventType: 'view', startTime: timeStampNow() })).not.toBe(DISCARDED);
+      expect(hooks.triggerRum({ eventType: 'view', startTime: timeStampNow(), source: EventSource.MAIN })).not.toBe(
+        DISCARDED
+      );
+    });
+
+    it('attributes events correctly across renews with mixed sampling outcomes', async () => {
+      // First session sampled, second not sampled, third sampled.
+      const sampledSpy = vi
+        .spyOn(Sampler, 'isSessionSampled')
+        .mockReturnValueOnce(true) // session #1
+        .mockReturnValueOnce(false) // session #2
+        .mockReturnValueOnce(true); // session #3
+
+      // Events fall strictly inside each session's window (find() treats endTime as inclusive).
+      const DURING_FIRST = T0; // session #1: [0, EXPIRATION]
+      const DURING_SECOND = (SESSION_EXPIRATION_DELAY + 1) as TimeStamp; // session #2: (EXPIRATION, 2*EXPIRATION]
+      const DURING_THIRD = (2 * SESSION_EXPIRATION_DELAY + 1) as TimeStamp; // session #3: (2*EXPIRATION, ...]
+
+      const renewActivity = async () => {
+        eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.END_USER_ACTIVITY });
+        await vi.advanceTimersByTimeAsync(0);
+      };
+      const renewCount = () => lifecycleEvents.filter((e) => e === LifecycleKind.SESSION_RENEW).length;
+
+      // --- Session #1 (sampled): RUM hook returns its id until expiration ---
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig({ sessionSampleRate: 50 }));
+      const firstId = sessionManager.getSession().id;
+      expect(hooks.triggerRum({ eventType: 'view', startTime: DURING_FIRST, source: EventSource.MAIN })).toMatchObject({
+        session: { id: firstId },
+      });
+
+      // --- Expire #1 and renew → Session #2 (not sampled) ---
+      await vi.advanceTimersByTimeAsync(SESSION_EXPIRATION_DELAY);
+      await renewActivity();
+      const secondId = sessionManager.getSession().id;
+      expect(secondId).not.toBe(firstId);
+      expect(hooks.triggerRum({ eventType: 'view', startTime: DURING_SECOND, source: EventSource.MAIN })).toBe(
+        DISCARDED
+      );
+
+      // Activity while the non-sampled session is still active does NOT create a new session
+      const renewsBefore = renewCount();
+      await renewActivity();
+      expect(sessionManager.getSession().id).toBe(secondId);
+      expect(renewCount()).toBe(renewsBefore);
+      expect(hooks.triggerRum({ eventType: 'view', startTime: DURING_SECOND, source: EventSource.MAIN })).toBe(
+        DISCARDED
+      );
+
+      // --- Expire #2 and renew → Session #3 (sampled): attribution resumes ---
+      await vi.advanceTimersByTimeAsync(SESSION_EXPIRATION_DELAY);
+      await renewActivity();
+      const thirdId = sessionManager.getSession().id;
+      expect(thirdId).not.toBe(secondId);
+      expect(hooks.triggerRum({ eventType: 'view', startTime: DURING_THIRD, source: EventSource.MAIN })).toMatchObject({
+        session: { id: thirdId },
+      });
+
+      // Earlier sessions remain correctly attributed for crash/late events
+      expect(hooks.triggerRum({ eventType: 'view', startTime: DURING_FIRST, source: EventSource.MAIN })).toMatchObject({
+        session: { id: firstId },
+      });
+      expect(hooks.triggerRum({ eventType: 'view', startTime: DURING_SECOND, source: EventSource.MAIN })).toBe(
+        DISCARDED
+      );
+
+      expect(sampledSpy).toHaveBeenCalledTimes(3);
+      sampledSpy.mockRestore();
     });
   });
 });

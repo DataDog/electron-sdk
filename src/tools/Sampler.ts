@@ -1,3 +1,7 @@
+export function correctedChildSampleRate(parentRate: number, childRate: number): number {
+  return (parentRate * childRate) / 100;
+}
+
 export function isSessionSampled(sessionId: string, sampleRate: number): boolean {
   if (sampleRate >= 100) return true;
   if (sampleRate <= 0) return false;
@@ -9,8 +13,11 @@ export function isSessionSampled(sessionId: string, sampleRate: number): boolean
 }
 
 /**
- * Consistent sampling using the Knuth factor method, aligned with the Datadog cross-language spec.
- * See: https://github.com/DataDog/browser-sdk/blob/main/packages/rum-core/src/domain/sampler/sampler.ts
+ * Perform sampling using the Knuth factor method. This method offer consistent sampling result
+ * based on the provided identifier.
+ *
+ * @param identifier - The identifier to use for sampling.
+ * @param sampleRate - The sample rate in percentage between 0 and 100.
  */
 function sampleUsingKnuthFactor(identifier: bigint, sampleRate: number): boolean {
   const knuthFactor = BigInt('1111111111111111111');

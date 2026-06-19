@@ -29,13 +29,7 @@ export class DiskValueHistory<T> {
     this.filePath = filePath;
   }
 
-  static async init<T>(opts: {
-    filePath: string;
-    expireDelay: number;
-    // Optional migration hook: called for each raw value read from disk.
-    // Use this to convert entries written by older versions of the SDK to the current shape.
-    migrateValue?: (raw: unknown) => T;
-  }): Promise<DiskValueHistory<T>> {
+  static async init<T>(opts: { filePath: string; expireDelay: number }): Promise<DiskValueHistory<T>> {
     let parsedFile: unknown;
     try {
       const content = await fs.readFile(opts.filePath, 'utf-8');
@@ -56,8 +50,7 @@ export class DiskValueHistory<T> {
       const entry = rawEntries[i];
       // Skip entries that would be immediately pruned
       if (entry.endTime !== null && entry.endTime < expireThreshold) continue;
-      const value = opts.migrateValue ? opts.migrateValue(entry.value) : entry.value;
-      history.add(value, entry.startTime);
+      history.add(entry.value, entry.startTime);
       if (entry.endTime !== null) {
         history.closeActive(entry.endTime);
       }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isSessionSampled } from './Sampler';
+import { correctedChildSampleRate, isSessionSampled } from './Sampler';
 
 // UUID known to yield a low hash value using the Knuth formula (from browser-sdk)
 const LOW_HASH_UUID = '29a4b5e3-9859-4290-99fa-4bc4a1a348b9';
@@ -42,5 +42,25 @@ describe('isSessionSampled', () => {
   it('returns false for an invalid session ID', () => {
     expect(isSessionSampled('not-a-uuid', 50)).toBe(false);
     expect(isSessionSampled('', 50)).toBe(false);
+  });
+});
+
+describe('correctedChildSampleRate', () => {
+  it('scales the child rate by the parent rate', () => {
+    // 50% of the 20%-sampled sessions → 10% of all sessions
+    expect(correctedChildSampleRate(20, 50)).toBe(10);
+  });
+
+  it('returns the child rate unchanged when the parent rate is 100', () => {
+    expect(correctedChildSampleRate(100, 30)).toBe(30);
+  });
+
+  it('returns 0 when either rate is 0', () => {
+    expect(correctedChildSampleRate(0, 50)).toBe(0);
+    expect(correctedChildSampleRate(50, 0)).toBe(0);
+  });
+
+  it('never exceeds the parent rate (child is a subset of the parent)', () => {
+    expect(correctedChildSampleRate(20, 100)).toBe(20);
   });
 });
