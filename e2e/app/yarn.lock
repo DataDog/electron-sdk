@@ -5,34 +5,38 @@ __metadata:
   version: 8
   cacheKey: 10c0
 
-"@datadog/browser-core@npm:6.30.1":
-  version: 6.30.1
-  resolution: "@datadog/browser-core@npm:6.30.1"
-  checksum: 10c0/3a17ddcfbc1d8321941f8119958e8e050f83eb9f7bc7895c30e6e73d33f66fd50e1194756e0dc10830e59721a1fd7829e57e236c73588471d413596566e1f2c4
+"@datadog/browser-core@npm:7.3.0":
+  version: 7.3.0
+  resolution: "@datadog/browser-core@npm:7.3.0"
+  dependencies:
+    "@datadog/js-core": "npm:0.0.2"
+  checksum: 10c0/e9b9d27f180e50744da8955d47c88d9e9fd15b675a2571892cd6005a5c6e7c89e6fcc19e760f35d87bcedb87d300f37fb42e7ede50e87ea7df47aa6cacdf1f03
   languageName: node
   linkType: hard
 
-"@datadog/browser-rum-core@npm:6.30.1":
-  version: 6.30.1
-  resolution: "@datadog/browser-rum-core@npm:6.30.1"
+"@datadog/browser-rum-core@npm:7.3.0":
+  version: 7.3.0
+  resolution: "@datadog/browser-rum-core@npm:7.3.0"
   dependencies:
-    "@datadog/browser-core": "npm:6.30.1"
-  checksum: 10c0/c26fec4859856b287c90ce3eb631f6b2703869d2fdf2119df5b33a3a3abf4016147de3ba7a95fa0973bd322b2b0655e4ca7310ff91461583536d8665186d37b7
+    "@datadog/browser-core": "npm:7.3.0"
+    "@datadog/js-core": "npm:0.0.2"
+  checksum: 10c0/4b2471853a3b9ed1cff523d9f4e8677b4559edd1e4d4e36c526ca455936bf86673d569d0554a96ad5ffc1b18119aabd5113d07b305c4f1afba1df472f1a98412
   languageName: node
   linkType: hard
 
-"@datadog/browser-rum@npm:6.30.1":
-  version: 6.30.1
-  resolution: "@datadog/browser-rum@npm:6.30.1"
+"@datadog/browser-rum@npm:7.3.0":
+  version: 7.3.0
+  resolution: "@datadog/browser-rum@npm:7.3.0"
   dependencies:
-    "@datadog/browser-core": "npm:6.30.1"
-    "@datadog/browser-rum-core": "npm:6.30.1"
+    "@datadog/browser-core": "npm:7.3.0"
+    "@datadog/browser-rum-core": "npm:7.3.0"
+    "@datadog/js-core": "npm:0.0.2"
   peerDependencies:
-    "@datadog/browser-logs": 6.30.1
+    "@datadog/browser-logs": 7.3.0
   peerDependenciesMeta:
     "@datadog/browser-logs":
       optional: true
-  checksum: 10c0/f07f55c1ccd8ae535d7216e41d3a8244999d68c678115f0f9df8a9407b9ce7b5924c687a91a3100c63569a55443b54cd4d2861dbd3560148a5f2285e68f93f5d
+  checksum: 10c0/a4d0e81f24d2e36c572af07661013f7965ed5057c76a007b877ea3d28b29ae9e8245b1c5e17c4373f177657eea72e86d76029aa8f3a832f661e1504b779370e4
   languageName: node
   linkType: hard
 
@@ -52,6 +56,13 @@ __metadata:
   dependencies:
     spark-md5: "npm:^3.0.2"
   checksum: 10c0/105dd13dcb8b241e5ed1a76c4d9b3a43bf4f6867af5893e3ae92bb98344907adca3a2b7c3d04511762012459b0803fb9e82feded5cf8eebfac7122de6a27eeff
+  languageName: node
+  linkType: hard
+
+"@datadog/js-core@npm:0.0.2":
+  version: 0.0.2
+  resolution: "@datadog/js-core@npm:0.0.2"
+  checksum: 10c0/43ad87a93f1979b71d122ec9509e22ab0c525d8e951d840186798f963641cf90ef151389f538aac683eb2dbe1a41d82c2cd85dbe8510767c3bcae75376ad17f2
   languageName: node
   linkType: hard
 
@@ -835,7 +846,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "e2e-test-app@workspace:."
   dependencies:
-    "@datadog/browser-rum": "npm:6.30.1"
+    "@datadog/browser-rum": "npm:7.3.0"
     "@datadog/electron-sdk": "portal:../.."
     electron: "npm:41.1.0"
     esbuild: "npm:0.27.3"
@@ -1536,16 +1547,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"semver@npm:^7.3.2":
-  version: 7.7.3
-  resolution: "semver@npm:7.7.3"
-  bin:
-    semver: bin/semver.js
-  checksum: 10c0/4afe5c986567db82f44c8c6faef8fe9df2a9b1d98098fc1721f57c696c4c21cebd572f297fc21002f81889492345b8470473bc6f4aff5fb032a6ea59ea2bc45e
-  languageName: node
-  linkType: hard
-
-"semver@npm:^7.3.5":
+"semver@npm:^7.3.2, semver@npm:^7.3.5":
   version: 7.7.4
   resolution: "semver@npm:7.7.4"
   bin:

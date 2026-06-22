@@ -69,10 +69,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@datadog/browser-core@npm:6.26.0":
-  version: 6.26.0
-  resolution: "@datadog/browser-core@npm:6.26.0"
-  checksum: 10c0/4fa9f83073198f5f61a32c0e6fa424b442f8bd0cab8ae3817a4ff65c84e9650530c3befa4604ff244a8d42cde5fe74dd7d425774b6469acadfcbd659e3d46264
+"@datadog/browser-core@npm:7.3.0":
+  version: 7.3.0
+  resolution: "@datadog/browser-core@npm:7.3.0"
+  dependencies:
+    "@datadog/js-core": "npm:0.0.2"
+  checksum: 10c0/e9b9d27f180e50744da8955d47c88d9e9fd15b675a2571892cd6005a5c6e7c89e6fcc19e760f35d87bcedb87d300f37fb42e7ede50e87ea7df47aa6cacdf1f03
   languageName: node
   linkType: hard
 
@@ -80,7 +82,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@datadog/electron-sdk@workspace:."
   dependencies:
-    "@datadog/browser-core": "npm:6.26.0"
+    "@datadog/browser-core": "npm:7.3.0"
     "@datadog/js-core": "npm:0.0.3"
     "@eslint/js": "npm:10.0.0"
     "@playwright/test": "npm:1.58.2"
@@ -121,6 +123,13 @@ __metadata:
   dependencies:
     spark-md5: "npm:^3.0.2"
   checksum: 10c0/105dd13dcb8b241e5ed1a76c4d9b3a43bf4f6867af5893e3ae92bb98344907adca3a2b7c3d04511762012459b0803fb9e82feded5cf8eebfac7122de6a27eeff
+  languageName: node
+  linkType: hard
+
+"@datadog/js-core@npm:0.0.2":
+  version: 0.0.2
+  resolution: "@datadog/js-core@npm:0.0.2"
+  checksum: 10c0/43ad87a93f1979b71d122ec9509e22ab0c525d8e951d840186798f963641cf90ef151389f538aac683eb2dbe1a41d82c2cd85dbe8510767c3bcae75376ad17f2
   languageName: node
   linkType: hard
 
