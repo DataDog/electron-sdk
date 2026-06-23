@@ -48,7 +48,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   registerCommonContext(config, hooks);
   startTelemetry(eventManager, config);
-  sessionManager = await SessionManager.start(eventManager, hooks);
+  sessionManager = await SessionManager.start(eventManager, hooks, config);
 
   new MainAssembly(eventManager, hooks);
   new RendererPipeline(eventManager, hooks, config);
@@ -177,11 +177,11 @@ export function getInternalContext(): InternalContext | undefined {
   if (!sessionManager) {
     return undefined;
   }
-  const session = sessionManager.getSession();
-  if (session.status !== 'active') {
+  const sessionId = sessionManager.getTrackedSessionId();
+  if (sessionId === undefined) {
     return undefined;
   }
-  return { session_id: session.id };
+  return { session_id: sessionId };
 }
 
 export type { InitConfiguration } from './config';

@@ -15,21 +15,21 @@ export class SessionContext {
     this.history = history;
 
     hooks.registerRum((params) => {
-      const id = this.history.find(params.startTime);
-      if (id === undefined) return DISCARDED;
-      return { session: { id } };
+      const sessionId = this.history.find(params.startTime);
+      if (sessionId === undefined) return DISCARDED;
+      return { session: { id: sessionId } };
     });
 
     hooks.registerTelemetry((params) => {
-      const id = this.history.find(params.startTime);
-      if (id === undefined) return SKIPPED;
-      return { session: { id } };
+      const sessionId = this.history.find(params.startTime);
+      if (sessionId === undefined) return SKIPPED;
+      return { session: { id: sessionId } };
     });
 
     hooks.registerSpan((params) => {
-      const id = this.history.find(params.startTime);
-      if (id === undefined) return DISCARDED;
-      return { meta: { '_dd.session.id': id } };
+      const sessionId = this.history.find(params.startTime);
+      if (sessionId === undefined) return DISCARDED;
+      return { meta: { '_dd.session.id': sessionId } };
     });
   }
 
@@ -41,6 +41,13 @@ export class SessionContext {
 
   add(sessionId: string): void {
     this.history.add(sessionId, timeStampNow());
+  }
+
+  // Returns the tracked session id at the current time, or undefined if there is none.
+  // A session is absent here when it has expired (entry closed) or was not sampled (never added),
+  // so this is the single source of truth for "is there a tracked session right now".
+  getActiveSessionId(): string | undefined {
+    return this.history.find(timeStampNow());
   }
 
   close(): void {

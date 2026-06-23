@@ -49,7 +49,7 @@ export class DiskValueHistory<T> {
     for (let i = rawEntries.length - 1; i >= 0; i--) {
       const entry = rawEntries[i];
       // Skip entries that would be immediately pruned
-      if (entry.endTime !== null && (entry.endTime as number) < expireThreshold) continue;
+      if (entry.endTime !== null && entry.endTime < expireThreshold) continue;
       history.add(entry.value, entry.startTime);
       if (entry.endTime !== null) {
         history.closeActive(entry.endTime);
