@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BatchConsumer } from './BatchConsumer';
-import type { ConsumerConfig } from './BatchConsumer';
-import path from 'node:path';
+import type { BatchConsumerConfig } from './BatchConsumer';
 import { getUserAgent } from '../userAgent';
 import { mockFs } from '../../mocks.specUtil';
 
@@ -9,138 +8,125 @@ vi.mock('node:fs/promises');
 vi.mock('../userAgent');
 const fsMocks = mockFs();
 
-const TEST_USER_AGENT = 'TestApp/1.0.0 (test) Electron/0 Chrome/0 Node/0';
+const TEST_USER_AGENT = 'TestApp/1.0.0';
+const TEST_REQUEST = new Request('https://intake.datadoghq.com/api/v2/rum', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: '[]',
+});
 
-describe('BatchConsumer', () => {
-  const config: ConsumerConfig = {
-    trackPath: 'rum',
-    intakeUrl: 'https://intake.datadoghq.com/api/v2/rum',
-    clientToken: 'test-client-token',
-  };
+const config: BatchConsumerConfig = {
+  trackPath: '/mock/track',
+  intakeUrl: 'https://intake.datadoghq.com/api/v2/rum',
+  clientToken: 'test-token',
+};
 
-  let consumer: BatchConsumer;
+/** Minimal concrete subclass for testing the base-class upload logic. */
+class TestConsumer extends BatchConsumer {
+  constructor(
+    config: BatchConsumerConfig,
+    private readonly requestToReturn: Request | null
+  ) {
+    super(config);
+  }
 
+  protected buildRequest(): Request | null {
+    return this.requestToReturn;
+  }
+}
+
+describe('BatchConsumer — upload/send/delete behaviour', () => {
   beforeEach(() => {
     fsMocks.reset();
     vi.mocked(getUserAgent).mockReset().mockReturnValue(TEST_USER_AGENT);
-    consumer = new BatchConsumer(config);
-
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    global.fetch = vi.fn().mockResolvedValue({ ok: true } as Response);
     fsMocks.access.mockResolvedValue(undefined);
+    fsMocks.unlink.mockResolvedValue(undefined);
   });
 
-  describe('request headers', () => {
-    it('should include user agent and client token', async () => {
-      fsMocks.readdir.mockResolvedValue(['test.log']);
-      fsMocks.readFile.mockResolvedValue('{"event":"data"}');
+  describe('when buildRequest returns null (empty / malformed batch)', () => {
+    it('deletes the file without calling fetch', async () => {
+      fsMocks.readdir.mockResolvedValue(['batch.log']);
+      fsMocks.readFile.mockResolvedValue('');
 
+      const consumer = new TestConsumer(config, null);
       await consumer.upload();
 
-      const fetchMock = vi.mocked(fetch);
-      const headers = fetchMock.mock.calls[0][1]?.headers as Record<string, string>;
-      expect(headers['User-Agent']).toBe(TEST_USER_AGENT);
-      expect(headers['DD-API-KEY']).toBe(config.clientToken);
+      expect(fetch).not.toHaveBeenCalled();
+      expect(fsMocks.unlink).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('when buildRequest returns a Request', () => {
+    it('sends the request via fetch', async () => {
+      fsMocks.readdir.mockResolvedValue(['batch.log']);
+      fsMocks.readFile.mockResolvedValue('{"event":1}');
+
+      const consumer = new TestConsumer(config, TEST_REQUEST);
+      await consumer.upload();
+
+      expect(fetch).toHaveBeenCalledWith(TEST_REQUEST);
     });
 
-    it('should call getUserAgent only once across multiple uploads', async () => {
-      fsMocks.readdir.mockResolvedValue(['a.log', 'b.log']);
-      fsMocks.readFile.mockResolvedValue('{"event":"data"}');
+    it('deletes the file on a successful response', async () => {
+      fsMocks.readdir.mockResolvedValue(['batch.log']);
+      fsMocks.readFile.mockResolvedValue('{"event":1}');
 
+      const consumer = new TestConsumer(config, TEST_REQUEST);
+      await consumer.upload();
+
+      expect(fsMocks.unlink).toHaveBeenCalledOnce();
+    });
+
+    it('keeps the file when the intake returns a non-ok response', async () => {
+      fsMocks.readdir.mockResolvedValue(['batch.log']);
+      fsMocks.readFile.mockResolvedValue('{"event":1}');
+      vi.mocked(fetch).mockResolvedValueOnce({ ok: false, status: 500 } as Response);
+
+      const consumer = new TestConsumer(config, TEST_REQUEST);
+      await consumer.upload();
+
+      expect(fsMocks.unlink).not.toHaveBeenCalled();
+    });
+
+    it('keeps the file when fetch throws a network error', async () => {
+      fsMocks.readdir.mockResolvedValue(['batch.log']);
+      fsMocks.readFile.mockResolvedValue('{"event":1}');
+      vi.mocked(fetch).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+      const consumer = new TestConsumer(config, TEST_REQUEST);
+      await expect(consumer.upload()).resolves.not.toThrow();
+      expect(fsMocks.unlink).not.toHaveBeenCalled();
+    });
+
+    it('processes multiple log files in sequence', async () => {
+      fsMocks.readdir.mockResolvedValue(['a.log', 'b.log']);
+      fsMocks.readFile.mockResolvedValue('{"event":1}');
+
+      const consumer = new TestConsumer(config, TEST_REQUEST);
+      await consumer.upload();
+
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(fsMocks.unlink).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('getUserAgent lazy initialisation', () => {
+    it('calls getUserAgent only once across multiple upload() calls', async () => {
+      fsMocks.readdir.mockResolvedValue(['a.log', 'b.log']);
+      fsMocks.readFile.mockResolvedValue('{"event":1}');
+
+      const consumer = new TestConsumer(config, TEST_REQUEST);
       await consumer.upload();
       await consumer.upload();
 
       expect(getUserAgent).toHaveBeenCalledTimes(1);
     });
-  });
 
-  describe('upload lifecycle', () => {
-    it('should only process .log files and ignore others', async () => {
-      fsMocks.readdir.mockResolvedValue(['a.log', 'b.tmp']);
-      fsMocks.readFile.mockResolvedValue('{"event":"data"}');
-
-      await consumer.upload();
-
-      expect(fetch).toHaveBeenCalledTimes(1);
-      const expectedPath = path.join(config.trackPath, 'a.log');
-      expect(fsMocks.readFile).toHaveBeenCalledWith(expectedPath, 'utf8');
-    });
-
-    it('should process multiple log files in alphabetical order', async () => {
-      fsMocks.readdir.mockResolvedValue(['a.log', 'b.log', 'c.log']);
-      fsMocks.readFile.mockResolvedValue('{"event":"data"}');
-
-      await consumer.upload();
-
-      const fetchMock = vi.mocked(fetch);
-      expect(fetchMock.mock.calls).toHaveLength(3);
-
-      expect(fsMocks.readFile).toHaveBeenNthCalledWith(1, path.join(config.trackPath, 'a.log'), 'utf8');
-      expect(fsMocks.readFile).toHaveBeenNthCalledWith(3, path.join(config.trackPath, 'c.log'), 'utf8');
-    });
-
-    it('should delete file on successful response', async () => {
-      fsMocks.readdir.mockResolvedValue(['batch.log']);
-      fsMocks.readFile.mockResolvedValue('{"event":"data"}');
-
-      vi.mocked(fetch).mockResolvedValueOnce({ ok: true } as Response);
-      await consumer.upload();
-      expect(fsMocks.unlink).toHaveBeenCalledTimes(1);
-    });
-
-    it('should keep file if request fails', async () => {
-      fsMocks.readdir.mockResolvedValue(['batch.log']);
-      fsMocks.readFile.mockResolvedValue('{"event":"data"}');
-
-      vi.mocked(fetch).mockResolvedValueOnce({ ok: false, status: 500 } as Response);
-      await consumer.upload();
-      expect(fsMocks.unlink).toHaveBeenCalledTimes(0);
-    });
-  });
-
-  describe('data parsing', () => {
-    it('should filter out invalid JSON and empty lines', async () => {
-      fsMocks.readdir.mockResolvedValue(['test.log']);
-      const rawContent = ['{"valid": 1}', '   ', 'invalid-json', '{"valid": 2}'].join('\n');
-
-      fsMocks.readFile.mockResolvedValue(rawContent);
-
-      await consumer.upload();
-
-      const fetchMock = vi.mocked(fetch);
-      const call = fetchMock.mock.calls[0];
-
-      const body = call[1]?.body;
-      if (typeof body === 'string') {
-        const sentBody = JSON.parse(body) as unknown[];
-        expect(sentBody).toEqual([{ valid: 1 }, { valid: 2 }]);
-      }
-    });
-
-    it('should delete empty log files without calling fetch', async () => {
-      fsMocks.readdir.mockResolvedValue(['empty.log']);
-      fsMocks.readFile.mockResolvedValue('');
-
-      await consumer.upload();
-
-      expect(fetch).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('error handling', () => {
-    it('should not crash if trackPath is missing', async () => {
+    it('does not crash when the track directory does not exist', async () => {
       fsMocks.access.mockRejectedValue(new Error('ENOENT'));
-
+      const consumer = new TestConsumer(config, TEST_REQUEST);
       await expect(consumer.upload()).resolves.not.toThrow();
-      expect(fsMocks.readdir).not.toHaveBeenCalled();
-    });
-
-    it('should handle network exceptions gracefully', async () => {
-      fsMocks.readdir.mockResolvedValue(['retry.log']);
-      fsMocks.readFile.mockResolvedValue('{"event":"data"}');
-      vi.mocked(fetch).mockRejectedValue(new TypeError('Failed to fetch'));
-
-      await expect(consumer.upload()).resolves.not.toThrow();
-      expect(fsMocks.unlink).not.toHaveBeenCalled();
     });
   });
 });
