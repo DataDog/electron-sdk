@@ -48,6 +48,12 @@ unit:
     - yarn
     - yarn test:unit
 
+check-node-version:
+  stage: test
+  script:
+    - yarn
+    - node scripts/check-node-version.ts
+
 check-licenses:
   stage: test
   script:
