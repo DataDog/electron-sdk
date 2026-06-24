@@ -18,5 +18,6 @@
 - [ ] Added unit tests for this change.
 - [ ] Added e2e/integration tests for this change.
 - [ ] Updated related documentation.
+- [ ] Agentic code review findings addressed or explicitly dismissed.
 
 <!-- Also, please read the contribution guidelines: https://github.com/DataDog/electron-sdk/blob/main/CONTRIBUTING.md -->

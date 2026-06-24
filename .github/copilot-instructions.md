@@ -51,7 +51,7 @@ Use exactly this structure for the review comment:
 **Why X.X:** <Specific factors that drove the score — correct design, test coverage, clean
 boundaries, etc.>
 
-**Why not higher:** <Specific gaps that prevented a higher score — missing tests, observability
+**Why not 5:** <Specific gaps that prevented a perfect score — missing tests, observability
 tradeoffs, untested transitive changes, etc.>
 
 ---
