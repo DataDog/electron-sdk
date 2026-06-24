@@ -2,12 +2,7 @@ import { performDraw, type Subscription } from '@datadog/browser-core';
 // These are internal browser-core exports, not part of the public API
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore TODO(RUM-14336) expose those APIs from browser-core
-import {
-  startMonitorErrorCollection,
-  resetMonitor,
-  monitor,
-  callMonitored,
-} from '@datadog/browser-core/cjs/tools/monitor';
+import { startMonitorErrorCollection, monitor, callMonitored } from '@datadog/browser-core/cjs/tools/monitor';
 import type { Configuration } from '../../config';
 import { EventKind, EventManager, SessionRenewEvent, LifecycleKind, EventFormat } from '../../event';
 import { RawTelemetryError } from './rawTelemetryData.types';
@@ -15,6 +10,7 @@ import { RawTelemetryError } from './rawTelemetryData.types';
 export { monitor, callMonitored };
 
 const MAX_TELEMETRY_EVENTS_PER_SESSION = 100;
+const noop = () => undefined;
 
 let telemetryInstance: Telemetry | undefined;
 
@@ -56,7 +52,9 @@ class Telemetry {
   }
 
   stop(): void {
-    resetMonitor();
+    // resetMonitor() was removed in browser-core v7 (stale .d.ts, missing from JS).
+    // Detach the error callback so monitor errors are silently dropped after telemetry stops.
+    startMonitorErrorCollection(noop);
     this.sessionRenewSubscription?.unsubscribe();
   }
 
