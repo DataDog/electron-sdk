@@ -6,7 +6,7 @@ vi.mock('electron', () => ({
   },
 }));
 
-import { DISCARDED } from '@datadog/browser-core';
+import { DISCARDED } from '@datadog/js-core/assembly';
 import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFormatHooks, type FormatHooks } from '../../assembly';

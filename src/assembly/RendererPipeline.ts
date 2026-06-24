@@ -1,5 +1,7 @@
 import { ipcMain } from 'electron';
-import { combine, DISCARDED, type TimeStamp } from '@datadog/browser-core';
+import { type TimeStamp } from '@datadog/js-core/time';
+import { combine } from '@datadog/js-core/util';
+import { DISCARDED } from '@datadog/js-core/assembly';
 import type { DefaultPrivacyLevel } from '@datadog/browser-core';
 import { EventKind, EventSource, EventTrack, LifecycleKind } from '../event';
 import type { EventManager, ServerRumEvent } from '../event';

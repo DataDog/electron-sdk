@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DISCARDED, type TimeStamp } from '@datadog/browser-core';
+import { type TimeStamp } from '@datadog/js-core/time';
+import { DISCARDED } from '@datadog/js-core/assembly';
 import { RendererPipeline, type BridgeOptions } from './RendererPipeline';
 import { createFormatHooks, type FormatHooks } from './hooks';
 import {

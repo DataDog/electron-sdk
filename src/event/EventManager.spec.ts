@@ -3,7 +3,7 @@ import { EventManager } from './EventManager';
 import type { EventHandler, RawEvent, RawRumEvent, ServerEvent } from './event.types';
 import { EventFormat, EventKind, EventTrack } from './event.constants';
 import { createRawRumView } from '../mocks.specUtil';
-import { RecursivePartial } from '@datadog/browser-core';
+import { type RecursivePartial } from '@datadog/js-core/util';
 import { RawRumView, RumEvent } from '../domain/rum';
 
 function createRawRumEvent(overrides?: RecursivePartial<RawRumEvent>): RawRumEvent {

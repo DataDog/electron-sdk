@@ -1,4 +1,6 @@
-import { combine, DISCARDED, timeStampNow, type RecursivePartial } from '@datadog/browser-core';
+import { timeStampNow } from '@datadog/js-core/time';
+import { combine, type RecursivePartial } from '@datadog/js-core/util';
+import { DISCARDED } from '@datadog/js-core/assembly';
 import {
   EventFormat,
   EventKind,
