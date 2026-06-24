@@ -1,6 +1,6 @@
 variables:
   CI_IMAGE_REPO: 'ci/${CI_PROJECT_NAME}'
-  CI_IMAGE: 'registry.ddbuild.io/ci/electron-sdk:v103674365-cf44b708@sha256:5fb8205e60fd28eba344fee63b60f98e4a8b2a11085ac5f46966489c007b89b5' # https://gitlab.ddbuild.io/DataDog/electron-sdk/-/jobs/1524560887
+  CI_IMAGE: 'registry.ddbuild.io/ci/electron-sdk:v120778963-d70c392e@sha256:fbd772ca8047e7992bc030306e287e8c35d8cf5a5daba327c4024b5a4d009c4f' # https://gitlab.ddbuild.io/DataDog/electron-sdk/-/jobs/1800425126
 
 stages:
   - docker
