@@ -162,5 +162,18 @@ describe('telemetry', () => {
 
       expect(notifiedEvents).toHaveLength(1);
     });
+
+    it('detaches monitor error collection so monitored errors are dropped', () => {
+      const config = createTestConfiguration();
+      startTelemetry(eventManager, config);
+      stopTelemetry();
+
+      const monitoredFn = monitor(() => {
+        throw new Error('post-stop monitor error');
+      });
+      monitoredFn();
+
+      expect(notifiedEvents).toHaveLength(0);
+    });
   });
 });
