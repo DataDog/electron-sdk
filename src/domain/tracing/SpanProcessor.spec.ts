@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as DiagnosticsChannel from 'node:diagnostics_channel';
-import { DISCARDED, SKIPPED } from '@datadog/browser-core';
+import { DISCARDED, SKIPPED } from '@datadog/js-core/assembly';
 import { EventFormat, EventKind, EventManager, EventTrack } from '../../event';
 import type { Event, RawRumEvent, ServerSpansEvent } from '../../event';
 import { createFormatHooks, type FormatHooks } from '../../assembly';

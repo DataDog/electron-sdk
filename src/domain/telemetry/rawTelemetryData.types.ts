@@ -1,5 +1,5 @@
 import { TelemetryErrorEvent } from './telemetryEvent.types';
-import { RecursivePartial } from '@datadog/browser-core';
+import { type RecursivePartial } from '@datadog/js-core/util';
 
 export type RawTelemetryData = RawTelemetryError;
 

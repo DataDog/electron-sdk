@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { TimeStamp } from '@datadog/js-core/time';
-import { DISCARDED, SKIPPED } from '@datadog/browser-core';
+import { DISCARDED, SKIPPED } from '@datadog/js-core/assembly';
 import { createFormatHooks } from './hooks';
 import { EventSource } from '../event';
 
