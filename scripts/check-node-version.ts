@@ -8,7 +8,7 @@ const pkg = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, '..', 'pac
 };
 
 runMain(async () => {
-  printLog('Check that node version across configurations are matching...\n');
+  printLog('Check that node versions across configurations are matching...\n');
 
   const dockerVersion = await retrieveDockerVersion();
   printLog(`docker: ${dockerVersion}`);
@@ -23,7 +23,7 @@ runMain(async () => {
     printError('Different node versions detected!\n');
     printError('Ensure to:');
     printError(`- run 'volta pin node@${dockerVersion}'`);
-    printError("- bump 'CURRENT_CI_IMAGE' and run the 'build-container-image' gitlab job\n");
+    printError("- bump 'CI_IMAGE' and run the 'build-container-image' gitlab job\n");
     process.exit(1);
   }
 });
@@ -31,10 +31,14 @@ runMain(async () => {
 async function retrieveDockerVersion(): Promise<string> {
   const fileStream = fs.createReadStream(path.join(import.meta.dirname, '..', 'Dockerfile'));
   const rl = readline.createInterface({ input: fileStream });
-  for await (const line of rl) {
-    if (/^FROM node:\S+$/.test(line)) {
-      return extractVersion(line);
+  try {
+    for await (const line of rl) {
+      if (/^FROM node:\S+$/.test(line)) {
+        return extractVersion(line);
+      }
     }
+  } finally {
+    rl.close();
   }
   throw new Error('Could not find node version in Dockerfile');
 }
