@@ -33,7 +33,7 @@ describe('buildConfiguration', () => {
       const config = {
         ...DEFAULT_CONFIG,
         [fieldName]: value,
-      } as unknown as InitConfiguration;
+      };
 
       expect(buildConfiguration(config)).toBeUndefined();
     });
@@ -73,7 +73,7 @@ describe('buildConfiguration', () => {
         const config = {
           ...DEFAULT_CONFIG,
           [fieldName]: value,
-        } as unknown as InitConfiguration;
+        };
 
         const result = buildConfiguration(config);
 

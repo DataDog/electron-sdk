@@ -84,7 +84,7 @@ export async function launchApp(
     return electron.launch({
       executablePath: findPackagedBinary(appDir),
       args: userDataArgs,
-      env: { ...process.env, DD_SDK_CONFIG: JSON.stringify(config) } as Record<string, string>,
+      env: { ...process.env, DD_SDK_CONFIG: JSON.stringify(config) },
     });
   }
 
@@ -98,7 +98,7 @@ export async function launchApp(
   return electron.launch({
     executablePath: electronPath,
     args: [mainScript, ...userDataArgs],
-    env: { ...process.env, DD_SDK_CONFIG: JSON.stringify(config) } as Record<string, string>,
+    env: { ...process.env, DD_SDK_CONFIG: JSON.stringify(config) },
   });
 }
 
