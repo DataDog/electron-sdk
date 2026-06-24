@@ -63,5 +63,5 @@ export function patchFetchContext(tracer: typeof import('dd-trace').default): vo
       return tracer.scope().activate(span, () => originalFetch.apply(globalThis, args));
     }
     return originalFetch.apply(globalThis, args);
-  } as typeof globalThis.fetch;
+  };
 }

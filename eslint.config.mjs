@@ -38,6 +38,7 @@ export default tseslint.config(
     rules: {
       'unicorn/prefer-node-protocol': 'error',
       'local/no-internal-modules': 'error',
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
   // Release some rules outside of source code

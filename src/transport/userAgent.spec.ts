@@ -33,7 +33,7 @@ describe('getUserAgent', () => {
   it('returns correct format on macOS', () => {
     mockPlatform.mockReturnValue('darwin');
     mockArch.mockReturnValue('x64');
-    stubProcess({ getSystemVersion: () => '15.3.0' } as Partial<NodeJS.Process>);
+    stubProcess({ getSystemVersion: () => '15.3.0' });
 
     expect(getUserAgent()).toBe('(Macintosh; Intel Mac OS X 15_3_0) Electron/30.0.0 Chrome/124.0.0 Node/20.14.0');
   });
@@ -41,7 +41,7 @@ describe('getUserAgent', () => {
   it('appends .0 to two-part macOS versions', () => {
     mockPlatform.mockReturnValue('darwin');
     mockArch.mockReturnValue('x64');
-    stubProcess({ getSystemVersion: () => '15.3' } as Partial<NodeJS.Process>);
+    stubProcess({ getSystemVersion: () => '15.3' });
 
     expect(getUserAgent()).toContain('Mac OS X 15_3_0');
   });

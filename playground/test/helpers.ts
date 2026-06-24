@@ -34,7 +34,7 @@ export const test = base.extend<TestFixtures>({
         ...process.env,
         DD_TEST_MODE: '1',
         DD_SDK_PROXY: `http://localhost:${intake.getPort()}/api/v2/rum`,
-      } as Record<string, string>,
+      },
     });
     await use(app);
     await app.close();

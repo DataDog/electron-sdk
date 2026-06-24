@@ -39,7 +39,7 @@ describe('BatchConsumer — upload/send/delete behaviour', () => {
   beforeEach(() => {
     fsMocks.reset();
     vi.mocked(getUserAgent).mockReset().mockReturnValue(TEST_USER_AGENT);
-    global.fetch = vi.fn().mockResolvedValue({ ok: true } as Response);
+    global.fetch = vi.fn().mockResolvedValue({ ok: true });
     fsMocks.access.mockResolvedValue(undefined);
     fsMocks.unlink.mockResolvedValue(undefined);
   });

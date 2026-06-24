@@ -24,7 +24,7 @@ describe('StandardBatchConsumer — request construction', () => {
     fsMocks.reset();
     vi.mocked(getUserAgent).mockReset().mockReturnValue(TEST_USER_AGENT);
     consumer = new StandardBatchConsumer(config);
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 } as Response);
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     fsMocks.access.mockResolvedValue(undefined);
     fsMocks.unlink.mockResolvedValue(undefined);
   });

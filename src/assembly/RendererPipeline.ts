@@ -102,7 +102,7 @@ export class RendererPipeline {
       kind: EventKind.SERVER,
       track: EventTrack.RUM,
       source: EventSource.RENDERER,
-      data: combine(data, hookResult ?? {}) as RumEvent,
+      data: combine(data, hookResult ?? {}),
     };
 
     this.eventManager.notify(serverEvent);
