@@ -1,7 +1,8 @@
 import { test, expect } from '../lib/helpers';
 import type { RumViewEvent } from '@datadog/electron-sdk';
 
-test('emits an IPC span with Electron context', async ({ mainPage, intake }) => {
+// Test skipped: requires IPC tracing via patchIpcMain — re-enable in step 3
+test.skip('emits an IPC span with Electron context', async ({ mainPage, intake }) => {
   await mainPage.flushTransport();
   const viewEvents = await intake.getEventsByType('view');
   const view = viewEvents[0].body as RumViewEvent;

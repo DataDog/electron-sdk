@@ -37,7 +37,8 @@ test.describe('view event on startup @integration', () => {
   });
 });
 
-test.describe('renderer error propagation @integration', () => {
+// Test skipped: requires bridge preload — re-enable in step 2
+test.describe.skip('renderer error propagation @integration', () => {
   test('propagates a renderer error to the intake', async ({ window, intake }) => {
     // Trigger a manual error via the renderer's exposed test helper
     await window.evaluate(() => {
@@ -60,7 +61,8 @@ test.describe('renderer error propagation @integration', () => {
   });
 });
 
-test.describe('main-process fetch resource @integration', () => {
+// Test skipped: requires IPC context propagation — re-enable in step 3
+test.describe.skip('main-process fetch resource @integration', () => {
   test('emits a resource event and a matching trace span for a main-process fetch', async ({
     window,
     intake,

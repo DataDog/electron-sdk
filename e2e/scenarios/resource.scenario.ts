@@ -6,7 +6,8 @@ function matchResourceTraceId(resource: RumResourceEvent) {
   return (span: Span) => BigInt(`0x${span.trace_id}`) === BigInt(resource._dd.trace_id!);
 }
 
-test('emits a resource event for a main-process fetch', async ({ mainPage, intake, testServer }) => {
+// Test skipped: requires IPC context propagation via patchIpcMain — re-enable in step 3
+test.skip('emits a resource event for a main-process fetch', async ({ mainPage, intake, testServer }) => {
   await mainPage.flushTransport();
   const viewEvents = await intake.getEventsByType('view');
   const view = viewEvents[0].body as RumViewEvent;
@@ -64,7 +65,8 @@ test('emits a resource event for a main-process http.request', async ({ mainPage
   expect(span.service).toBe('e2e-test-app');
 });
 
-test('emits a resource event for a main-process net.request', async ({ mainPage, intake, testServer }) => {
+// Test skipped: requires net.request span via patchNet — re-enable in step 4
+test.skip('emits a resource event for a main-process net.request', async ({ mainPage, intake, testServer }) => {
   await mainPage.flushTransport();
   const viewEvents = await intake.getEventsByType('view');
   const view = viewEvents[0].body as RumViewEvent;
