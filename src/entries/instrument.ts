@@ -5,8 +5,8 @@
  *   import '@datadog/electron-sdk/instrument';
  *   import { app, BrowserWindow } from 'electron';
  *
- * Initializes dd-trace with the electron exporter so it can hook
- * require('electron') and wrap BrowserWindow for automatic preload injection.
+ * Initializes dd-trace with the electron exporter, then patches BrowserWindow
+ * to inject the bridge preload.
  *
  * Note: Bundlers may break the import order dd-trace needs. Use the bundler
  * plugins provided by the SDK to ensure correct behavior:
@@ -14,8 +14,8 @@
  * - Webpack: DatadogWebpackPlugin from '@datadog/electron-sdk/webpack-plugin'
  */
 import { createRequire } from 'node:module';
+import { resolvePreloadPath, patchBrowserWindow } from '../instrument/browserWindow';
 
-// Support both CJS (__filename) and ESM (import.meta.url) contexts
 const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
 
 try {
@@ -27,4 +27,26 @@ try {
   });
 } catch {
   console.warn('[datadog] dd-trace not found — monitoring will not work');
+}
+
+interface ElectronModule {
+  BrowserWindow?: typeof Electron.BrowserWindow;
+}
+
+try {
+  const electron = _require('electron') as string | ElectronModule;
+
+  // In plain Node, 'electron' exports the binary path string — skip patching there.
+  if (typeof electron !== 'string') {
+    const preloadPath = resolvePreloadPath();
+    if (preloadPath) {
+      try {
+        patchBrowserWindow(electron as typeof import('electron'), preloadPath);
+      } catch {
+        // skip if BrowserWindow is not patchable in this context
+      }
+    }
+  }
+} catch {
+  // electron not available (e.g. during unit testing) — skip patching
 }
