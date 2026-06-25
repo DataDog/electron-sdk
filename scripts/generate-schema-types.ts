@@ -31,7 +31,15 @@ function buildJsonSchemaToTypescript() {
   // 'dist/' folder instead of 'dist/src/'. Using an explicit '--rootDir' fixes this issue.
   try {
     execSync('npm i', { cwd: JSON2TYPE_PATH, stdio: 'inherit' });
+  } catch {
+    // ignore
+  }
+  try {
     execSync('npm run clean', { cwd: JSON2TYPE_PATH, stdio: 'inherit' });
+  } catch {
+    // ignore
+  }
+  try {
     execSync('npm exec -- tsc --declaration --rootDir .', { cwd: JSON2TYPE_PATH, stdio: 'inherit' });
   } catch {
     // ignore
