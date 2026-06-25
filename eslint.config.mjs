@@ -11,6 +11,7 @@ export default tseslint.config(
       '**/node_modules/**',
       'coverage/**',
       '.claude/**',
+      '.worktrees/**',
       '**/*.mjs',
       'rum-events-format/**',
       '**/rumEvent.types.ts',
