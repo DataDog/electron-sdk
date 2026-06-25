@@ -16,6 +16,7 @@
 import { createRequire } from 'node:module';
 import { resolvePreloadPath, patchBrowserWindow } from '../instrument/browserWindow';
 import { patchIpcMain } from '../instrument/ipc';
+import { patchNet } from '../instrument/net';
 
 const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
 
@@ -33,6 +34,7 @@ try {
 interface ElectronModule {
   ipcMain?: Electron.IpcMain;
   BrowserWindow?: typeof Electron.BrowserWindow;
+  net?: Electron.Net;
 }
 
 try {
@@ -50,6 +52,9 @@ try {
     }
     if (electron.ipcMain) {
       patchIpcMain(electron.ipcMain);
+    }
+    if (electron.net) {
+      patchNet(electron.net);
     }
   }
 } catch {

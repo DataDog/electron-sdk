@@ -137,6 +137,12 @@ void app.whenReady().then(async () => {
       })
   );
 
+  ipcMain.handle('mainNetFetch', async (_event, url: string) => {
+    const res = await net.fetch(url);
+    await res.text();
+    return res.status;
+  });
+
   ipcMain.handle('flushTransport', async () => {
     await _flushTransport();
   });
