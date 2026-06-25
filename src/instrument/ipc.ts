@@ -105,6 +105,7 @@ export function patchIpcMain(ipcMain: Electron.IpcMain): void {
   wrap(ipcMain, 'addListener', wrapAddListener('electron.main.receive', listeners));
   wrap(ipcMain, 'handle', wrapAddListener('electron.main.handle', handlers));
   wrap(ipcMain, 'handleOnce', wrapAddListener('electron.main.handle', handlers));
+  // `off` is the alias for `removeListener` - event namespace only, not request handlers
   wrap(ipcMain, 'off', wrapRemoveListener(listeners));
   wrap(ipcMain, 'on', wrapAddListener('electron.main.receive', listeners));
   wrap(ipcMain, 'once', wrapAddListener('electron.main.receive', listeners));

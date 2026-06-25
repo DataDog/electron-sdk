@@ -22,6 +22,7 @@ export class Tracing {
       // tracer.init() is a no-op if already called by instrument.ts.
       // Service/env/version are set per-span by SpanProcessor.
       tracer.use('http');
+      // Disable dd-trace's built-in electron plugin - SDK owns IPC and net instrumentation directly
       tracer.use('electron', false);
 
       // TODO(RUM-16445) discuss a more reliable way to flush the exporter

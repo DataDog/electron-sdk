@@ -60,8 +60,7 @@ test.describe('renderer error propagation @integration', () => {
   });
 });
 
-// Test skipped: requires IPC context propagation — re-enable in step 3
-test.describe.skip('main-process fetch resource @integration', () => {
+test.describe('main-process fetch resource @integration', () => {
   test('emits a resource event and a matching trace span for a main-process fetch', async ({
     window,
     intake,
