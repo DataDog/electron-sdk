@@ -37,8 +37,7 @@ test.describe('view event on startup @integration', () => {
   });
 });
 
-// Test skipped: requires bridge preload — re-enable in step 2
-test.describe.skip('renderer error propagation @integration', () => {
+test.describe('renderer error propagation @integration', () => {
   test('propagates a renderer error to the intake', async ({ window, intake }) => {
     // Trigger a manual error via the renderer's exposed test helper
     await window.evaluate(() => {
