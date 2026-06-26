@@ -16,10 +16,10 @@ import {
   failOperation,
   setUserInfo,
   clearUserInfo,
-  setUserInfoProperty,
+  addUserExtraInfo,
   setAccountInfo,
   clearAccountInfo,
-  setAccountInfoProperty,
+  addAccountExtraInfo,
   type FailureReason,
   type FeatureOperationOptions,
 } from '@datadog/electron-sdk';
@@ -147,27 +147,27 @@ ipcMain.handle('crash', () => {
 
 // --- User & Account context handlers ---
 
-ipcMain.handle('main:set-user', () => {
+ipcMain.handle('main:set-user-info', () => {
   setUserInfo({ id: 'user-playground', name: 'Playground User', email: 'playground@example.com' });
 });
 
-ipcMain.handle('main:add-user-extra', () => {
-  setUserInfoProperty('plan', 'premium');
+ipcMain.handle('main:add-user-extra-info', () => {
+  addUserExtraInfo({ plan: 'premium' });
 });
 
-ipcMain.handle('main:clear-user', () => {
+ipcMain.handle('main:clear-user-info', () => {
   clearUserInfo();
 });
 
-ipcMain.handle('main:set-account', () => {
+ipcMain.handle('main:set-account-info', () => {
   setAccountInfo({ id: 'account-playground', name: 'Playground Corp' });
 });
 
-ipcMain.handle('main:add-account-extra', () => {
-  setAccountInfoProperty('tier', 'enterprise');
+ipcMain.handle('main:add-account-extra-info', () => {
+  addAccountExtraInfo({ tier: 'enterprise' });
 });
 
-ipcMain.handle('main:clear-account', () => {
+ipcMain.handle('main:clear-account-info', () => {
   clearAccountInfo();
 });
 

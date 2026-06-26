@@ -4,6 +4,7 @@ import { combine, isIndexableObject } from '@datadog/js-core/util';
 import { DISCARDED } from '@datadog/js-core/assembly';
 import { EventKind, EventSource, EventTrack, LifecycleKind, EventFormat } from '../event';
 import type { EventManager, ServerRumEvent, BrowserProfileEvent, BrowserProfilerTrace } from '../event';
+import { isEmptyObject, type DefaultPrivacyLevel } from '@datadog/browser-core';
 import { monitor, addError as addTelemetryError } from '../domain/telemetry';
 import { BRIDGE_CHANNEL, setBridgeConfig, type BridgeOptions } from '../common';
 import type { FormatHooks } from './hooks';
@@ -117,13 +118,25 @@ export class RendererPipeline {
       return;
     }
 
+    // The renderer's own user/account context takes precedence: only inject the
+    // main-process values when the renderer event doesn't already carry them.
+    // session/application/container always come from the main process.
+    const overrides = { ...(hookResult ?? {}) };
+    if (hasContext(data.usr)) delete overrides.usr;
+    if (hasContext(data.account)) delete overrides.account;
+
     const serverEvent: ServerRumEvent = {
       kind: EventKind.SERVER,
       track: EventTrack.RUM,
       source: EventSource.RENDERER,
-      data: combine(data, hookResult ?? {}),
+      data: combine(data, overrides),
     };
 
     this.eventManager.notify(serverEvent);
   }
+}
+
+/** Whether the renderer event already carries a non-empty context object. */
+function hasContext(context: object | undefined): boolean {
+  return context !== undefined && !isEmptyObject(context);
 }
