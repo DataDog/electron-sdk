@@ -1,5 +1,6 @@
-import type { AccountInfo, UserInfo } from './assembly';
-import { createFormatHooks, MainAssembly, registerCommonContext, RendererPipeline, UserContext } from './assembly';
+import type { AccountInfo, UserInfo } from './domain/customer-context';
+import { AccountContext, UserContext } from './domain/customer-context';
+import { createFormatHooks, MainAssembly, registerCommonContext, RendererPipeline } from './assembly';
 import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
 import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './domain/rum';
@@ -17,6 +18,7 @@ let transport: Transport | undefined;
 let rumApi: ReturnType<RumCollection['getApi']> | undefined;
 let tracing: Tracing | undefined;
 let userContext: UserContext | undefined;
+let accountContext: AccountContext | undefined;
 
 /**
  * Internal SDK context
@@ -50,6 +52,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   registerCommonContext(config, hooks);
   userContext = new UserContext(hooks);
+  accountContext = new AccountContext(hooks);
   startTelemetry(eventManager, config);
   sessionManager = await SessionManager.start(eventManager, hooks, config);
 
@@ -79,21 +82,21 @@ export function stopSession(): void {
  * @param user - The user information containing at least an `id`.
  */
 export function setUserInfo(user: UserInfo): void {
-  callMonitored(() => userContext?.setUserInfo(user));
+  callMonitored(() => userContext?.setContext(user));
 }
 
 /**
  * Return a copy of the current user information, or `undefined` if none is set.
  */
 export function getUserInfo(): UserInfo | undefined {
-  return userContext?.getUserInfo();
+  return userContext?.getInfo();
 }
 
 /**
  * Clear all user information.
  */
 export function clearUserInfo(): void {
-  callMonitored(() => userContext?.clearUserInfo());
+  callMonitored(() => userContext?.clearContext());
 }
 
 /**
@@ -103,7 +106,7 @@ export function clearUserInfo(): void {
  * Requires `setUserInfo` to have been called first; otherwise the call is ignored.
  */
 export function setUserInfoProperty(key: string, value: unknown): void {
-  callMonitored(() => userContext?.setUserInfoProperty(key, value));
+  callMonitored(() => userContext?.setContextProperty(key, value));
 }
 
 /**
@@ -111,7 +114,7 @@ export function setUserInfoProperty(key: string, value: unknown): void {
  * Requires `setUserInfo` to have been called first; otherwise the call is ignored.
  */
 export function removeUserInfoProperty(key: string): void {
-  callMonitored(() => userContext?.removeUserInfoProperty(key));
+  callMonitored(() => userContext?.removeContextProperty(key));
 }
 
 /**
@@ -119,21 +122,21 @@ export function removeUserInfoProperty(key: string): void {
  * @param accountInfo - The account information containing at least an `id`.
  */
 export function setAccountInfo(accountInfo: AccountInfo): void {
-  callMonitored(() => userContext?.setAccountInfo(accountInfo));
+  callMonitored(() => accountContext?.setContext(accountInfo));
 }
 
 /**
  * Return a copy of the current account information, or `undefined` if none is set.
  */
 export function getAccountInfo(): AccountInfo | undefined {
-  return userContext?.getAccountInfo();
+  return accountContext?.getInfo();
 }
 
 /**
  * Clear all account information.
  */
 export function clearAccountInfo(): void {
-  callMonitored(() => userContext?.clearAccountInfo());
+  callMonitored(() => accountContext?.clearContext());
 }
 
 /**
@@ -143,7 +146,7 @@ export function clearAccountInfo(): void {
  * Requires `setAccountInfo` to have been called first; otherwise the call is ignored.
  */
 export function setAccountInfoProperty(key: string, value: unknown): void {
-  callMonitored(() => userContext?.setAccountInfoProperty(key, value));
+  callMonitored(() => accountContext?.setContextProperty(key, value));
 }
 
 /**
@@ -151,7 +154,7 @@ export function setAccountInfoProperty(key: string, value: unknown): void {
  * Requires `setAccountInfo` to have been called first; otherwise the call is ignored.
  */
 export function removeAccountInfoProperty(key: string): void {
-  callMonitored(() => userContext?.removeAccountInfoProperty(key));
+  callMonitored(() => accountContext?.removeContextProperty(key));
 }
 
 /**
@@ -267,7 +270,7 @@ export function getInternalContext(): InternalContext | undefined {
   return { session_id: sessionId };
 }
 
-export type { AccountInfo, UserInfo } from './assembly';
+export type { AccountInfo, UserInfo } from './domain/customer-context';
 export type { InitConfiguration } from './config';
 export type {
   FailureReason,

@@ -36,12 +36,12 @@ interface ElectronAPI {
   mainFetchApiNet: () => Promise<unknown>;
   openRumExplorer: () => Promise<void>;
   flushTransport: () => Promise<void>;
-  setUser: () => Promise<void>;
-  addUserExtra: () => Promise<void>;
-  clearUser: () => Promise<void>;
-  setAccount: () => Promise<void>;
-  addAccountExtra: () => Promise<void>;
-  clearAccount: () => Promise<void>;
+  setUserInfo: () => Promise<void>;
+  setUserInfoProperty: () => Promise<void>;
+  clearUserInfo: () => Promise<void>;
+  setAccountInfo: () => Promise<void>;
+  setAccountInfoProperty: () => Promise<void>;
+  clearAccountInfo: () => Promise<void>;
 }
 
 declare global {
@@ -207,12 +207,16 @@ if (rendererFetchBtn) {
 
 // --- User & Account Context buttons ---
 
-setupDemoButton('set-user', 'main:set-user', () => window.electronAPI.setUser());
-setupDemoButton('add-user-extra', 'main:add-user-extra', () => window.electronAPI.addUserExtra());
-setupDemoButton('clear-user', 'main:clear-user', () => window.electronAPI.clearUser());
-setupDemoButton('set-account', 'main:set-account', () => window.electronAPI.setAccount());
-setupDemoButton('add-account-extra', 'main:add-account-extra', () => window.electronAPI.addAccountExtra());
-setupDemoButton('clear-account', 'main:clear-account', () => window.electronAPI.clearAccount());
+setupDemoButton('set-user-info', 'main:set-user-info', () => window.electronAPI.setUserInfo());
+setupDemoButton('set-user-info-property', 'main:set-user-info-property', () =>
+  window.electronAPI.setUserInfoProperty()
+);
+setupDemoButton('clear-user-info', 'main:clear-user-info', () => window.electronAPI.clearUserInfo());
+setupDemoButton('set-account-info', 'main:set-account-info', () => window.electronAPI.setAccountInfo());
+setupDemoButton('set-account-info-property', 'main:set-account-info-property', () =>
+  window.electronAPI.setAccountInfoProperty()
+);
+setupDemoButton('clear-account-info', 'main:clear-account-info', () => window.electronAPI.clearAccountInfo());
 
 setupDemoButton('main-fetch', 'main:fetch-api', () => window.electronAPI.mainFetchApi());
 setupDemoButton('main-fetch-fetch', 'main:fetch-api-fetch', () => window.electronAPI.mainFetchApiFetch());

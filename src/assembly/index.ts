@@ -10,5 +10,3 @@ export type {
 export { MainAssembly } from './MainAssembly';
 export { RendererPipeline } from './RendererPipeline';
 export type { BridgeOptions } from './RendererPipeline';
-export { UserContext } from './userContext';
-export type { AccountInfo, UserInfo } from './userContext';
