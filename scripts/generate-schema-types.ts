@@ -1,8 +1,50 @@
-import { compile } from 'json-schema-to-typescript';
+import type { compile as CompileFn } from 'json-schema-to-typescript';
 import { execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { printLog } from './lib/executionUtils.ts';
+
+// needed because using a fork instead of the npm package
+// TODO remove when json-schema-to-typescript natively supports readOnly
+const JSON2TYPE_PATH = path.join(import.meta.dirname, '../node_modules/json-schema-to-typescript');
+
+let jsonSchemaToTypescriptCache: Promise<typeof CompileFn> | undefined;
+
+function getCompile(): Promise<typeof CompileFn> {
+  if (!jsonSchemaToTypescriptCache) {
+    jsonSchemaToTypescriptCache = import('json-schema-to-typescript')
+      .catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'ERR_MODULE_NOT_FOUND') throw error;
+        buildJsonSchemaToTypescript();
+        return import('json-schema-to-typescript');
+      })
+      .then((mod) => mod.compile);
+  }
+  return jsonSchemaToTypescriptCache;
+}
+
+function buildJsonSchemaToTypescript() {
+  printLog('Building json-schema-to-typescript...');
+  // due to installation in node_modules, some of these steps can fail;
+  // the built version still behaves correctly though
+  // With yarn 3+, the 'test/' folder is not present, so all built files are put directly in the
+  // 'dist/' folder instead of 'dist/src/'. Using an explicit '--rootDir' fixes this issue.
+  try {
+    execSync('npm i', { cwd: JSON2TYPE_PATH, stdio: 'inherit' });
+  } catch {
+    // ignore
+  }
+  try {
+    execSync('npm run clean', { cwd: JSON2TYPE_PATH, stdio: 'inherit' });
+  } catch {
+    // ignore
+  }
+  try {
+    execSync('npm exec -- tsc --declaration --rootDir .', { cwd: JSON2TYPE_PATH, stdio: 'inherit' });
+  } catch {
+    // ignore
+  }
+}
 
 interface SchemaConfig {
   schemaPath: string;
@@ -26,13 +68,12 @@ const SCHEMAS: SchemaConfig[] = [
 async function generateTypesForSchema(config: SchemaConfig) {
   printLog(`Reading schema from: ${config.schemaPath}`);
 
-  // Read the JSON schema
   const schemaContent = fs.readFileSync(config.schemaPath, 'utf-8');
   const schema = JSON.parse(schemaContent);
 
   printLog(`Generating TypeScript types for ${config.typeName}...`);
 
-  // Generate TypeScript types
+  const compile = await getCompile();
   const ts = await compile(schema, config.typeName, {
     cwd: path.dirname(config.schemaPath), // Set working directory for resolving $ref
     bannerComment: `/**
@@ -53,11 +94,9 @@ async function generateTypesForSchema(config: SchemaConfig) {
     },
   });
 
-  // Write to output file
   printLog(`Writing types to: ${config.outputPath}`);
   fs.writeFileSync(config.outputPath, ts);
 
-  // Format the generated file with prettier to match project formatting rules
   printLog('Formatting with prettier...');
   execSync(`prettier --write ${config.outputPath}`, { stdio: 'inherit' });
 }
