@@ -16,12 +16,10 @@ interface ElectronAppWindow {
     flushTransport: () => Promise<void>;
     setUserInfo: (user: UserInfo) => Promise<void>;
     clearUserInfo: () => Promise<void>;
-    setUserInfoProperty: (key: string, value: unknown) => Promise<void>;
-    removeUserInfoProperty: (key: string) => Promise<void>;
+    addUserExtraInfo: (extraInfo: Record<string, unknown>) => Promise<void>;
     setAccountInfo: (accountInfo: AccountInfo) => Promise<void>;
     clearAccountInfo: () => Promise<void>;
-    setAccountInfoProperty: (key: string, value: unknown) => Promise<void>;
-    removeAccountInfoProperty: (key: string) => Promise<void>;
+    addAccountExtraInfo: (extraInfo: Record<string, unknown>) => Promise<void>;
     ping: () => Promise<string>;
     stopSession: () => Promise<void>;
     openBridgeFileWindow: () => Promise<void>;
@@ -137,17 +135,10 @@ export class MainPage {
     await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.clearUserInfo());
   }
 
-  async setUserInfoProperty(key: string, value: unknown) {
+  async addUserExtraInfo(extraInfo: Record<string, unknown>) {
     await this.page.evaluate(
-      ({ key, value }) => (globalThis as unknown as ElectronAppWindow).electronAPI.setUserInfoProperty(key, value),
-      { key, value }
-    );
-  }
-
-  async removeUserInfoProperty(key: string) {
-    await this.page.evaluate(
-      (k) => (globalThis as unknown as ElectronAppWindow).electronAPI.removeUserInfoProperty(k),
-      key
+      (info) => (globalThis as unknown as ElectronAppWindow).electronAPI.addUserExtraInfo(info),
+      extraInfo
     );
   }
 
@@ -162,17 +153,10 @@ export class MainPage {
     await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.clearAccountInfo());
   }
 
-  async setAccountInfoProperty(key: string, value: unknown) {
+  async addAccountExtraInfo(extraInfo: Record<string, unknown>) {
     await this.page.evaluate(
-      ({ key, value }) => (globalThis as unknown as ElectronAppWindow).electronAPI.setAccountInfoProperty(key, value),
-      { key, value }
-    );
-  }
-
-  async removeAccountInfoProperty(key: string) {
-    await this.page.evaluate(
-      (k) => (globalThis as unknown as ElectronAppWindow).electronAPI.removeAccountInfoProperty(k),
-      key
+      (info) => (globalThis as unknown as ElectronAppWindow).electronAPI.addAccountExtraInfo(info),
+      extraInfo
     );
   }
 
