@@ -13,6 +13,7 @@ interface ElectronAppWindow {
     mainFetch: (url: string) => Promise<number>;
     mainHttpRequest: (url: string) => Promise<number>;
     mainNetRequest: (url: string) => Promise<number>;
+    mainNetFetch: (url: string) => Promise<number>;
     flushTransport: () => Promise<void>;
     ping: () => Promise<string>;
     stopSession: () => Promise<void>;
@@ -109,6 +110,13 @@ export class MainPage {
   async mainNetRequest(url: string): Promise<number> {
     return await this.page.evaluate(
       (u) => (globalThis as unknown as ElectronAppWindow).electronAPI.mainNetRequest(u),
+      url
+    );
+  }
+
+  async mainNetFetch(url: string): Promise<number> {
+    return await this.page.evaluate(
+      (u) => (globalThis as unknown as ElectronAppWindow).electronAPI.mainNetFetch(u),
       url
     );
   }

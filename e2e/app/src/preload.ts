@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   mainFetch: (url: string) => ipcRenderer.invoke('mainFetch', url),
   mainHttpRequest: (url: string) => ipcRenderer.invoke('mainHttpRequest', url),
   mainNetRequest: (url: string) => ipcRenderer.invoke('mainNetRequest', url),
+  mainNetFetch: (url: string) => ipcRenderer.invoke('mainNetFetch', url),
   flushTransport: () => ipcRenderer.invoke('flushTransport'),
   crash: () => ipcRenderer.invoke('crash'),
   ping: () => ipcRenderer.invoke('ping'),
