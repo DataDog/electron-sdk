@@ -12,8 +12,16 @@ import {
   startOperation,
   succeedOperation,
   failOperation,
+  setUserInfo,
+  clearUserInfo,
+  addUserExtraInfo,
+  setAccountInfo,
+  clearAccountInfo,
+  addAccountExtraInfo,
   type FailureReason,
   type FeatureOperationOptions,
+  type UserInfo,
+  type AccountInfo,
   type InitConfiguration,
 } from '@datadog/electron-sdk';
 
@@ -139,6 +147,30 @@ void app.whenReady().then(async () => {
 
   ipcMain.handle('flushTransport', async () => {
     await _flushTransport();
+  });
+
+  ipcMain.handle('setUserInfo', (_event, user: UserInfo & { id: string }) => {
+    setUserInfo(user);
+  });
+
+  ipcMain.handle('clearUserInfo', () => {
+    clearUserInfo();
+  });
+
+  ipcMain.handle('addUserExtraInfo', (_event, extraInfo: Record<string, unknown>) => {
+    addUserExtraInfo(extraInfo);
+  });
+
+  ipcMain.handle('setAccountInfo', (_event, accountInfo: AccountInfo) => {
+    setAccountInfo(accountInfo);
+  });
+
+  ipcMain.handle('clearAccountInfo', () => {
+    clearAccountInfo();
+  });
+
+  ipcMain.handle('addAccountExtraInfo', (_event, extraInfo: Record<string, unknown>) => {
+    addAccountExtraInfo(extraInfo);
   });
 
   ipcMain.handle('ping', () => 'pong');
