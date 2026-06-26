@@ -25,9 +25,8 @@ export type PropertiesConfig = Record<
  * "info" shape and the flat shape sent on events. When a key appears in both stores, the standard
  * field wins (see {@link getContext}).
  *
- * It owns the cloning, validation, and property-guard concerns shared by every context (user,
- * account, and later global context), so each context only needs to register its hook and declare
- * its config.
+ * It owns the cloning and validation concerns shared by every context (user, account, and later
+ * global context), so each context only needs to register its hook and declare its config.
  */
 export class ContextManager<T extends { extraInfo?: Context } = Context> {
   private standardFields: Context = {};
@@ -35,9 +34,7 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
 
   constructor(
     private readonly name: string,
-    private readonly propertiesConfig: PropertiesConfig = {},
-    private readonly standardKeys?: Set<string>,
-    private readonly protectedKeys?: Set<string>
+    private readonly propertiesConfig: PropertiesConfig = {}
   ) {}
 
   /**
@@ -73,65 +70,22 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
     this.extraInfo = extraInfo ?? {};
   }
 
-  setContextProperty(key: string, value: unknown): void {
-    if (this.rejectsProtectedKey(key)) return;
-
-    if (this.isStandardKey(key)) {
-      const candidate = { ...this.standardFields, [key]: deepClone(value) };
-      if (!this.validateProperties(candidate)) return;
-      this.standardFields = candidate;
-    } else {
-      // A custom attribute may only be added once the standard fields are valid (e.g. an `id` is
-      // set); otherwise we'd emit a context that violates the schema (`{ usr: { plan } }` with no id).
-      if (!this.validateProperties(this.standardFields)) return;
-      this.extraInfo = { ...this.extraInfo, [key]: deepClone(value) };
-    }
-  }
-
-  removeContextProperty(key: string): void {
-    if (this.rejectsProtectedKey(key)) return;
-
-    if (this.isStandardKey(key)) {
-      const candidate = { ...this.standardFields };
-      delete candidate[key];
-      if (!this.validateProperties(candidate)) return;
-      this.standardFields = candidate;
-    } else {
-      const next = { ...this.extraInfo };
-      delete next[key];
-      this.extraInfo = next;
-    }
+  /**
+   * Merges custom attributes into `extraInfo`, leaving the standard fields untouched. Only applies
+   * when the current standard fields are valid: a context with a required field (account needs an
+   * `id`) is a no-op until that field is set, while a context with no required field (user) accepts
+   * attributes freely — even before any identity is set, so the backend can derive the id from
+   * `anonymous_id`. Standard keys are never overwritten by `extraInfo` (see {@link getContext}), so
+   * this cannot change `id`/`name`/`email`.
+   */
+  addExtraInfo(extraInfo: Context): void {
+    if (!this.validateProperties(this.standardFields)) return;
+    this.extraInfo = { ...this.extraInfo, ...deepClone(extraInfo) };
   }
 
   clearContext(): void {
     this.standardFields = {};
     this.extraInfo = {};
-  }
-
-  /**
-   * Classifies a property key. A key is "standard" when the context declares no standard keys (a
-   * plain context, where everything lives at the top level) or when the key is one of the declared
-   * standard keys; any other key is a free-form `extraInfo` attribute.
-   *
-   * @param key - The property key to classify.
-   * @returns `true` if the key is a standard field, `false` if it is an `extraInfo` attribute.
-   */
-  private isStandardKey(key: string): boolean {
-    return !this.standardKeys || this.standardKeys.has(key);
-  }
-
-  /**
-   * Protected keys (e.g. `id`) cannot be changed through the per-property API — they are only set
-   * by replacing the whole context via {@link setContext}. Warns and returns `true` when `key` is
-   * protected so the per-property callers can bail out instead of silently ignoring the request.
-   *
-   * @param key - The property key being set or removed.
-   * @returns `true` if the key is protected (and a warning was emitted), `false` otherwise.
-   */
-  private rejectsProtectedKey(key: string): boolean {
-    if (!this.protectedKeys?.has(key)) return false;
-    displayWarn(`The property "${key}" of ${this.name} cannot be modified; the context will not be updated.`);
-    return true;
   }
 
   /**

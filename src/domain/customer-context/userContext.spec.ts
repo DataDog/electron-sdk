@@ -49,14 +49,18 @@ describe('UserContext', () => {
     it('does not mutate the original user object', () => {
       const user = { id: 'user-1', name: 'Alice' };
       userContext.setContext(user);
-      userContext.setContextProperty('plan', 'premium');
+      userContext.addExtraInfo({ plan: 'premium' });
 
       expect(user).toEqual({ id: 'user-1', name: 'Alice' });
     });
 
-    it('is ignored when id is missing or empty', () => {
-      userContext.setContext({ id: '' });
-      expect(userContext.getInfo()).toBeUndefined();
+    it('accepts a user without an id', () => {
+      // `usr.id` is optional; setUserInfo enforces an id at the public-API level, but the context
+      // store itself accepts an id-less user (e.g. attributes attached to an anonymous user).
+      userContext.setContext({ name: 'Alice' });
+
+      expect(userContext.getInfo()).toEqual({ name: 'Alice' });
+      expect(triggerRum()).toEqual({ usr: { name: 'Alice' } });
     });
 
     it('is ignored when id is not a string', () => {
@@ -116,6 +120,26 @@ describe('UserContext', () => {
     });
   });
 
+  describe('setUserInfo', () => {
+    it('sets the user when an id is provided', () => {
+      userContext.setUserInfo({ id: 'user-1', name: 'Alice' });
+
+      expect(userContext.getInfo()).toEqual({ id: 'user-1', name: 'Alice' });
+    });
+
+    it('is ignored when no id is provided', () => {
+      userContext.setUserInfo({ name: 'Alice' });
+
+      expect(userContext.getInfo()).toBeUndefined();
+    });
+
+    it('is ignored when the id is empty', () => {
+      userContext.setUserInfo({ id: '' });
+
+      expect(userContext.getInfo()).toBeUndefined();
+    });
+  });
+
   describe('clearContext', () => {
     it('removes usr from RUM events', () => {
       userContext.setContext({ id: 'user-1' });
@@ -126,85 +150,51 @@ describe('UserContext', () => {
     });
   });
 
-  describe('setContextProperty', () => {
-    it('sets a standard field', () => {
+  describe('addExtraInfo', () => {
+    it('adds custom fields to extraInfo', () => {
       userContext.setContext({ id: 'user-1' });
-      userContext.setContextProperty('name', 'Bob');
-
-      expect(userContext.getInfo()).toEqual({ id: 'user-1', name: 'Bob' });
-    });
-
-    it('sets a custom field in extraInfo', () => {
-      userContext.setContext({ id: 'user-1' });
-      userContext.setContextProperty('plan', 'premium');
+      userContext.addExtraInfo({ plan: 'premium' });
 
       expect(userContext.getInfo()).toEqual({ id: 'user-1', extraInfo: { plan: 'premium' } });
     });
 
     it('merges with existing extraInfo', () => {
       userContext.setContext({ id: 'user-1', extraInfo: { plan: 'free' } });
-      userContext.setContextProperty('role', 'admin');
+      userContext.addExtraInfo({ role: 'admin' });
 
       expect(userContext.getInfo()!.extraInfo).toEqual({ plan: 'free', role: 'admin' });
     });
 
-    it('is ignored when no user is set', () => {
-      userContext.setContextProperty('name', 'Bob');
-      expect(userContext.getInfo()).toBeUndefined();
+    it('overwrites an existing custom field', () => {
+      userContext.setContext({ id: 'user-1', extraInfo: { plan: 'free' } });
+      userContext.addExtraInfo({ plan: 'premium' });
+
+      expect(userContext.getInfo()!.extraInfo).toEqual({ plan: 'premium' });
     });
 
-    it('is ignored for a custom property when no user is set', () => {
-      userContext.setContextProperty('plan', 'premium');
-
-      // A custom attribute alone (no id) would emit usr:{plan} and violate the schema.
-      expect(userContext.getInfo()).toBeUndefined();
-      hooks.registerRum(() => ({ date: 1 }));
-      expect(triggerRum()).toEqual({ date: 1 });
-    });
-
-    it('is ignored for the required id field', () => {
-      userContext.setContext({ id: 'user-1' });
-      userContext.setContextProperty('id', 'user-2');
-
-      expect(userContext.getInfo()!.id).toBe('user-1');
-    });
-  });
-
-  describe('removeContextProperty', () => {
-    it('removes a standard field', () => {
+    it('does not override standard fields in the emitted event', () => {
       userContext.setContext({ id: 'user-1', name: 'Alice' });
-      userContext.removeContextProperty('name');
+      userContext.addExtraInfo({ id: 'hacked', name: 'hacked' });
 
-      const info = userContext.getInfo()!;
-      expect(info.name).toBeUndefined();
-      expect('name' in info).toBe(false);
-      expect(info.id).toBe('user-1');
+      expect(triggerRum()).toEqual({ usr: { id: 'user-1', name: 'Alice' } });
     });
 
-    it('is ignored for the required id field', () => {
+    it('works without a user set (anonymous-id scenario)', () => {
+      // `usr.id` is optional, so attributes can be attached to a user whose id is derived from
+      // anonymous_id by the backend — matching the mobile SDKs.
+      userContext.addExtraInfo({ plan: 'premium' });
+
+      expect(userContext.getInfo()).toEqual({ extraInfo: { plan: 'premium' } });
+      expect(triggerRum()).toEqual({ usr: { plan: 'premium' } });
+    });
+
+    it('does not leak nested extraInfo mutations after add', () => {
+      const nested = { role: 'admin' };
       userContext.setContext({ id: 'user-1' });
-      userContext.removeContextProperty('id');
+      userContext.addExtraInfo({ nested });
+      nested.role = 'hacked';
 
-      expect(userContext.getInfo()!.id).toBe('user-1');
-    });
-
-    it('removes a custom field from extraInfo', () => {
-      userContext.setContext({ id: 'user-1', extraInfo: { plan: 'premium', role: 'admin' } });
-      userContext.removeContextProperty('plan');
-
-      expect(userContext.getInfo()!.extraInfo).toEqual({ role: 'admin' });
-    });
-
-    it('clears extraInfo when the last key is removed', () => {
-      userContext.setContext({ id: 'user-1', extraInfo: { plan: 'premium' } });
-      userContext.removeContextProperty('plan');
-
-      expect(userContext.getInfo()!.extraInfo).toBeUndefined();
-    });
-
-    it('is ignored when no user is set', () => {
-      userContext.removeContextProperty('name');
-      expect(userContext.getInfo()).toBeUndefined();
+      expect((userContext.getInfo()!.extraInfo!.nested as { role: string }).role).toBe('admin');
     });
   });
 });

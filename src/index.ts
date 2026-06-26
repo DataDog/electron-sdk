@@ -79,10 +79,12 @@ export function stopSession(): void {
 
 /**
  * Set the user information. The user info is attached to all subsequent RUM events.
- * @param user - The user information containing at least an `id`.
+ * An `id` is required: calls without one are ignored (with a warning). To attach attributes to a
+ * user whose `id` is managed elsewhere (e.g. derived from `anonymous_id`), use `addUserExtraInfo`.
+ * @param user - The user information, including an `id`.
  */
-export function setUserInfo(user: UserInfo): void {
-  callMonitored(() => userContext?.setContext(user));
+export function setUserInfo(user: UserInfo & { id: string }): void {
+  callMonitored(() => userContext?.setUserInfo(user));
 }
 
 /**
@@ -100,21 +102,14 @@ export function clearUserInfo(): void {
 }
 
 /**
- * Set a single property on the current user.
- * Standard keys (`id`, `name`, `email`) update the corresponding field;
- * any other key is stored in `extraInfo`.
- * Requires `setUserInfo` to have been called first; otherwise the call is ignored.
+ * Add custom attributes to the current user, merged into its `extraInfo`.
+ * Standard fields (`id`, `name`, `email`) can only be set via `setUserInfo`.
+ * Works even when no user has been set, so attributes can be attached to a user whose `id` is
+ * derived elsewhere (e.g. from `anonymous_id`).
+ * @param extraInfo - Custom attributes to merge into the user's `extraInfo`.
  */
-export function setUserInfoProperty(key: string, value: unknown): void {
-  callMonitored(() => userContext?.setContextProperty(key, value));
-}
-
-/**
- * Remove a single property from the current user.
- * Requires `setUserInfo` to have been called first; otherwise the call is ignored.
- */
-export function removeUserInfoProperty(key: string): void {
-  callMonitored(() => userContext?.removeContextProperty(key));
+export function addUserExtraInfo(extraInfo: Record<string, unknown>): void {
+  callMonitored(() => userContext?.addExtraInfo(extraInfo));
 }
 
 /**
@@ -140,21 +135,13 @@ export function clearAccountInfo(): void {
 }
 
 /**
- * Set a single property on the current account.
- * Standard keys (`id`, `name`) update the corresponding field;
- * any other key is stored in `extraInfo`.
+ * Add custom attributes to the current account, merged into its `extraInfo`.
+ * Standard fields (`id`, `name`) can only be set via `setAccountInfo`.
  * Requires `setAccountInfo` to have been called first; otherwise the call is ignored.
+ * @param extraInfo - Custom attributes to merge into the account's `extraInfo`.
  */
-export function setAccountInfoProperty(key: string, value: unknown): void {
-  callMonitored(() => accountContext?.setContextProperty(key, value));
-}
-
-/**
- * Remove a single property from the current account.
- * Requires `setAccountInfo` to have been called first; otherwise the call is ignored.
- */
-export function removeAccountInfoProperty(key: string): void {
-  callMonitored(() => accountContext?.removeContextProperty(key));
+export function addAccountExtraInfo(extraInfo: Record<string, unknown>): void {
+  callMonitored(() => accountContext?.addExtraInfo(extraInfo));
 }
 
 /**

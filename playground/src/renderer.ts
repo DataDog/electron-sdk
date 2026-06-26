@@ -37,10 +37,10 @@ interface ElectronAPI {
   openRumExplorer: () => Promise<void>;
   flushTransport: () => Promise<void>;
   setUserInfo: () => Promise<void>;
-  setUserInfoProperty: () => Promise<void>;
+  addUserExtraInfo: () => Promise<void>;
   clearUserInfo: () => Promise<void>;
   setAccountInfo: () => Promise<void>;
-  setAccountInfoProperty: () => Promise<void>;
+  addAccountExtraInfo: () => Promise<void>;
   clearAccountInfo: () => Promise<void>;
 }
 
@@ -208,13 +208,11 @@ if (rendererFetchBtn) {
 // --- User & Account Context buttons ---
 
 setupDemoButton('set-user-info', 'main:set-user-info', () => window.electronAPI.setUserInfo());
-setupDemoButton('set-user-info-property', 'main:set-user-info-property', () =>
-  window.electronAPI.setUserInfoProperty()
-);
+setupDemoButton('add-user-extra-info', 'main:add-user-extra-info', () => window.electronAPI.addUserExtraInfo());
 setupDemoButton('clear-user-info', 'main:clear-user-info', () => window.electronAPI.clearUserInfo());
 setupDemoButton('set-account-info', 'main:set-account-info', () => window.electronAPI.setAccountInfo());
-setupDemoButton('set-account-info-property', 'main:set-account-info-property', () =>
-  window.electronAPI.setAccountInfoProperty()
+setupDemoButton('add-account-extra-info', 'main:add-account-extra-info', () =>
+  window.electronAPI.addAccountExtraInfo()
 );
 setupDemoButton('clear-account-info', 'main:clear-account-info', () => window.electronAPI.clearAccountInfo());
 

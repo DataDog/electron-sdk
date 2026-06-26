@@ -49,7 +49,7 @@ describe('AccountContext', () => {
     it('does not mutate the original account object', () => {
       const account = { id: 'account-1', name: 'Acme' };
       accountContext.setContext(account);
-      accountContext.setContextProperty('tier', 'enterprise');
+      accountContext.addExtraInfo({ tier: 'enterprise' });
 
       expect(account).toEqual({ id: 'account-1', name: 'Acme' });
     });
@@ -119,35 +119,37 @@ describe('AccountContext', () => {
     });
   });
 
-  describe('setContextProperty', () => {
-    it('sets a standard field', () => {
+  describe('addExtraInfo', () => {
+    it('adds custom fields to extraInfo', () => {
       accountContext.setContext({ id: 'account-1' });
-      accountContext.setContextProperty('name', 'Acme');
-
-      expect(accountContext.getInfo()).toEqual({ id: 'account-1', name: 'Acme' });
-    });
-
-    it('sets a custom field in extraInfo', () => {
-      accountContext.setContext({ id: 'account-1' });
-      accountContext.setContextProperty('tier', 'enterprise');
+      accountContext.addExtraInfo({ tier: 'enterprise' });
 
       expect(accountContext.getInfo()).toEqual({ id: 'account-1', extraInfo: { tier: 'enterprise' } });
     });
 
     it('merges with existing extraInfo', () => {
       accountContext.setContext({ id: 'account-1', extraInfo: { tier: 'free' } });
-      accountContext.setContextProperty('region', 'us');
+      accountContext.addExtraInfo({ region: 'us' });
 
       expect(accountContext.getInfo()!.extraInfo).toEqual({ tier: 'free', region: 'us' });
     });
 
-    it('is ignored when no account is set', () => {
-      accountContext.setContextProperty('name', 'Acme');
-      expect(accountContext.getInfo()).toBeUndefined();
+    it('overwrites an existing custom field', () => {
+      accountContext.setContext({ id: 'account-1', extraInfo: { tier: 'free' } });
+      accountContext.addExtraInfo({ tier: 'enterprise' });
+
+      expect(accountContext.getInfo()!.extraInfo).toEqual({ tier: 'enterprise' });
     });
 
-    it('is ignored for a custom property when no account is set', () => {
-      accountContext.setContextProperty('tier', 'enterprise');
+    it('does not override standard fields in the emitted event', () => {
+      accountContext.setContext({ id: 'account-1', name: 'Acme' });
+      accountContext.addExtraInfo({ id: 'hacked', name: 'hacked' });
+
+      expect(triggerRum()).toEqual({ account: { id: 'account-1', name: 'Acme' } });
+    });
+
+    it('is ignored when no account is set', () => {
+      accountContext.addExtraInfo({ tier: 'enterprise' });
 
       // A custom attribute alone (no id) would emit account:{tier} and violate the schema.
       expect(accountContext.getInfo()).toBeUndefined();
@@ -155,49 +157,13 @@ describe('AccountContext', () => {
       expect(triggerRum()).toEqual({ date: 1 });
     });
 
-    it('is ignored for the required id field', () => {
+    it('does not leak nested extraInfo mutations after add', () => {
+      const nested = { tier: 'enterprise' };
       accountContext.setContext({ id: 'account-1' });
-      accountContext.setContextProperty('id', 'account-2');
+      accountContext.addExtraInfo({ nested });
+      nested.tier = 'hacked';
 
-      expect(accountContext.getInfo()!.id).toBe('account-1');
-    });
-  });
-
-  describe('removeContextProperty', () => {
-    it('removes a standard field', () => {
-      accountContext.setContext({ id: 'account-1', name: 'Acme' });
-      accountContext.removeContextProperty('name');
-
-      const info = accountContext.getInfo()!;
-      expect(info.name).toBeUndefined();
-      expect('name' in info).toBe(false);
-      expect(info.id).toBe('account-1');
-    });
-
-    it('is ignored for the required id field', () => {
-      accountContext.setContext({ id: 'account-1' });
-      accountContext.removeContextProperty('id');
-
-      expect(accountContext.getInfo()!.id).toBe('account-1');
-    });
-
-    it('removes a custom field from extraInfo', () => {
-      accountContext.setContext({ id: 'account-1', extraInfo: { tier: 'enterprise', region: 'us' } });
-      accountContext.removeContextProperty('tier');
-
-      expect(accountContext.getInfo()!.extraInfo).toEqual({ region: 'us' });
-    });
-
-    it('clears extraInfo when the last key is removed', () => {
-      accountContext.setContext({ id: 'account-1', extraInfo: { tier: 'enterprise' } });
-      accountContext.removeContextProperty('tier');
-
-      expect(accountContext.getInfo()!.extraInfo).toBeUndefined();
-    });
-
-    it('is ignored when no account is set', () => {
-      accountContext.removeContextProperty('name');
-      expect(accountContext.getInfo()).toBeUndefined();
+      expect((accountContext.getInfo()!.extraInfo!.nested as { tier: string }).tier).toBe('enterprise');
     });
   });
 });

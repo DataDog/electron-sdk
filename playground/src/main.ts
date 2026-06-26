@@ -15,10 +15,10 @@ import {
   failOperation,
   setUserInfo,
   clearUserInfo,
-  setUserInfoProperty,
+  addUserExtraInfo,
   setAccountInfo,
   clearAccountInfo,
-  setAccountInfoProperty,
+  addAccountExtraInfo,
   type FailureReason,
   type FeatureOperationOptions,
 } from '@datadog/electron-sdk';
@@ -121,8 +121,8 @@ ipcMain.handle('main:set-user-info', () => {
   setUserInfo({ id: 'user-playground', name: 'Playground User', email: 'playground@example.com' });
 });
 
-ipcMain.handle('main:set-user-info-property', () => {
-  setUserInfoProperty('plan', 'premium');
+ipcMain.handle('main:add-user-extra-info', () => {
+  addUserExtraInfo({ plan: 'premium' });
 });
 
 ipcMain.handle('main:clear-user-info', () => {
@@ -133,8 +133,8 @@ ipcMain.handle('main:set-account-info', () => {
   setAccountInfo({ id: 'account-playground', name: 'Playground Corp' });
 });
 
-ipcMain.handle('main:set-account-info-property', () => {
-  setAccountInfoProperty('tier', 'enterprise');
+ipcMain.handle('main:add-account-extra-info', () => {
+  addAccountExtraInfo({ tier: 'enterprise' });
 });
 
 ipcMain.handle('main:clear-account-info', () => {

@@ -14,27 +14,24 @@ type EventKey = 'usr' | 'account';
 
 interface Scenario {
   label: Label;
-  article: string;
   eventKey: EventKey;
 }
 
 const scenarios: Scenario[] = [
-  { label: 'user', article: 'a', eventKey: 'usr' },
-  { label: 'account', article: 'an', eventKey: 'account' },
+  { label: 'user', eventKey: 'usr' },
+  { label: 'account', eventKey: 'account' },
 ];
 
 const INITIAL_INFO: Info = { id: 'customer-1', name: 'Alice' };
-const UPDATED_NAME = 'Bob';
 
-/** Derives the set/clear/property operations for a customer from the MainPage `set${Label}Info` naming convention. */
+/** Derives the set/clear/extra-info operations for a customer from the MainPage `set${Label}Info` naming convention. */
 function getOps(mainPage: MainPage, label: Label) {
   const cap = label.charAt(0).toUpperCase() + label.slice(1);
   const page = mainPage as unknown as Record<string, (...args: unknown[]) => Promise<void>>;
   return {
     setInfo: (info: Info) => page[`set${cap}Info`](info),
     clearInfo: () => page[`clear${cap}Info`](),
-    setProperty: (key: string, value: unknown) => page[`set${cap}InfoProperty`](key, value),
-    removeProperty: (key: string) => page[`remove${cap}InfoProperty`](key),
+    addExtraInfo: (extraInfo: Record<string, unknown>) => page[`add${cap}ExtraInfo`](extraInfo),
   };
 }
 
@@ -51,7 +48,7 @@ async function getContext(
   return error[eventKey];
 }
 
-for (const { label, article, eventKey } of scenarios) {
+for (const { label, eventKey } of scenarios) {
   test(`attaches ${label} info to subsequent events`, async ({ mainPage, intake }) => {
     await getOps(mainPage, label).setInfo(INITIAL_INFO);
 
@@ -76,25 +73,14 @@ for (const { label, article, eventKey } of scenarios) {
     expect(context).toBeUndefined();
   });
 
-  test(`updates ${label} info via property setter`, async ({ mainPage, intake }) => {
+  test(`adds ${label} extra info to subsequent events`, async ({ mainPage, intake }) => {
     const ops = getOps(mainPage, label);
     await ops.setInfo(INITIAL_INFO);
-    await ops.setProperty('name', UPDATED_NAME);
+    await ops.addExtraInfo({ plan: 'premium' });
 
     const context = await getContext(mainPage, intake, eventKey);
 
-    expect(context).toMatchObject({ id: INITIAL_INFO.id, name: UPDATED_NAME });
-  });
-
-  test(`removes ${article} ${label} property`, async ({ mainPage, intake }) => {
-    const ops = getOps(mainPage, label);
-    await ops.setInfo(INITIAL_INFO);
-    await ops.removeProperty('name');
-
-    const context = await getContext(mainPage, intake, eventKey);
-
-    expect(context).toMatchObject({ id: INITIAL_INFO.id });
-    expect(context?.name).toBeUndefined();
+    expect(context).toMatchObject({ id: INITIAL_INFO.id, plan: 'premium' });
   });
 }
 

@@ -14,12 +14,10 @@ import {
   failOperation,
   setUserInfo,
   clearUserInfo,
-  setUserInfoProperty,
-  removeUserInfoProperty,
+  addUserExtraInfo,
   setAccountInfo,
   clearAccountInfo,
-  setAccountInfoProperty,
-  removeAccountInfoProperty,
+  addAccountExtraInfo,
   type FailureReason,
   type FeatureOperationOptions,
   type UserInfo,
@@ -151,7 +149,7 @@ void app.whenReady().then(async () => {
     await _flushTransport();
   });
 
-  ipcMain.handle('setUserInfo', (_event, user: UserInfo) => {
+  ipcMain.handle('setUserInfo', (_event, user: UserInfo & { id: string }) => {
     setUserInfo(user);
   });
 
@@ -159,12 +157,8 @@ void app.whenReady().then(async () => {
     clearUserInfo();
   });
 
-  ipcMain.handle('setUserInfoProperty', (_event, key: string, value: unknown) => {
-    setUserInfoProperty(key, value);
-  });
-
-  ipcMain.handle('removeUserInfoProperty', (_event, key: string) => {
-    removeUserInfoProperty(key);
+  ipcMain.handle('addUserExtraInfo', (_event, extraInfo: Record<string, unknown>) => {
+    addUserExtraInfo(extraInfo);
   });
 
   ipcMain.handle('setAccountInfo', (_event, accountInfo: AccountInfo) => {
@@ -175,12 +169,8 @@ void app.whenReady().then(async () => {
     clearAccountInfo();
   });
 
-  ipcMain.handle('setAccountInfoProperty', (_event, key: string, value: unknown) => {
-    setAccountInfoProperty(key, value);
-  });
-
-  ipcMain.handle('removeAccountInfoProperty', (_event, key: string) => {
-    removeAccountInfoProperty(key);
+  ipcMain.handle('addAccountExtraInfo', (_event, extraInfo: Record<string, unknown>) => {
+    addAccountExtraInfo(extraInfo);
   });
 
   ipcMain.handle('ping', () => 'pong');
