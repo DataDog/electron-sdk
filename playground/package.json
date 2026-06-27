@@ -21,7 +21,7 @@
     "@playwright/test": "1.61.0",
     "@types/node": "25.9.3",
     "chokidar": "5.0.0",
-    "concurrently": "9.2.1",
+    "concurrently": "10.0.3",
     "electron": "41.1.0",
     "electron-reloader": "1.2.3",
     "esbuild": "0.28.1",
