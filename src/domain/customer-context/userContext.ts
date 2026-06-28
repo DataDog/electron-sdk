@@ -1,5 +1,6 @@
 import { SKIPPED } from '@datadog/js-core/assembly';
-import { ContextManager, type PropertiesConfig } from './contextManager';
+import { isEmptyObject } from '@datadog/browser-core';
+import { ContextManager, toSpanMeta, type ContextHistory, type PropertiesConfig } from './contextManager';
 import { displayWarn } from '../../tools/display';
 import type { FormatHooks } from '../../assembly';
 
@@ -20,15 +21,29 @@ const USER_PROPERTIES: PropertiesConfig = {
   email: { type: 'string' },
 };
 
+export const USER_CONTEXT_HISTORY_FILE_NAME = '_dd_user_context_history';
+
 /**
- * Stores user information and injects it as `usr` into RUM events via format hooks.
+ * Stores user information and injects it as `usr` into RUM events and `meta.usr.*` into spans.
  */
 export class UserContext extends ContextManager<UserInfo> {
-  constructor(hooks: FormatHooks) {
-    super('user', USER_PROPERTIES);
-    hooks.registerRum(() => {
-      if (this.isEmpty()) return SKIPPED;
-      return { usr: this.getContext() };
+  static async init(hooks: FormatHooks): Promise<UserContext> {
+    const { initContextHistory } = await import('./contextHistory');
+    const history = await initContextHistory(USER_CONTEXT_HISTORY_FILE_NAME);
+    return new UserContext(hooks, history);
+  }
+
+  constructor(hooks: FormatHooks, history?: ContextHistory) {
+    super('user', USER_PROPERTIES, history);
+    hooks.registerRum(({ startTime }) => {
+      const context = this.getContext(startTime);
+      if (isEmptyObject(context)) return SKIPPED;
+      return { usr: context };
+    });
+    hooks.registerSpan(({ startTime }) => {
+      const context = this.getContext(startTime);
+      if (isEmptyObject(context)) return SKIPPED;
+      return { meta: toSpanMeta('usr', context) };
     });
   }
 

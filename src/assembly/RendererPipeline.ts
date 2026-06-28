@@ -71,7 +71,8 @@ export class RendererPipeline {
         this.handleRumEvent(bridgeEvent.event);
         break;
       case 'log':
-        // TODO(RUM-15047)
+        // TODO(RUM-15047): when Logs are implemented, enrich them with user/account context
+        // matching mobile: `usr.*` and `account.*`.
         break;
       case 'internal_telemetry':
         // TODO(RUM-15253)

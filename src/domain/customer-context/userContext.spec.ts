@@ -1,8 +1,9 @@
-import { beforeEach, describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { EventSource } from '../../event';
 import { createFormatHooks, type FormatHooks } from '../../assembly';
 import { UserContext } from './userContext';
+import type { ContextHistory } from './contextManager';
 
 const T0 = 0 as TimeStamp;
 
@@ -12,6 +13,10 @@ describe('UserContext', () => {
 
   function triggerRum() {
     return hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN });
+  }
+
+  function triggerSpan() {
+    return hooks.triggerSpan({ startTime: T0, source: EventSource.MAIN });
   }
 
   beforeEach(() => {
@@ -24,6 +29,58 @@ describe('UserContext', () => {
       hooks.registerRum(() => ({ date: 1 }));
       const result = triggerRum();
       expect(result).toEqual({ date: 1 });
+    });
+  });
+
+  describe('span metadata', () => {
+    it('injects user info into span meta', () => {
+      userContext.setContext({
+        id: 'user-1',
+        name: 'Alice',
+        email: 'alice@example.com',
+        extraInfo: { plan: 'premium', beta: true, count: 2 },
+      });
+
+      expect(triggerSpan()).toEqual({
+        meta: {
+          'meta.usr.id': 'user-1',
+          'meta.usr.name': 'Alice',
+          'meta.usr.email': 'alice@example.com',
+          'meta.usr.plan': 'premium',
+          'meta.usr.beta': 'true',
+          'meta.usr.count': '2',
+        },
+      });
+    });
+
+    it('does not let extraInfo override standard span meta fields', () => {
+      userContext.setContext({ id: 'user-1', name: 'Alice' });
+      userContext.addExtraInfo({ id: 'hacked', name: 'hacked' });
+
+      expect(triggerSpan()).toMatchObject({
+        meta: {
+          'meta.usr.id': 'user-1',
+          'meta.usr.name': 'Alice',
+        },
+      });
+    });
+  });
+
+  describe('historical context', () => {
+    it('uses the user context matching the event start time', () => {
+      const find = vi.fn(() => ({ id: 'historical-user', plan: 'premium' }));
+      const history = createHistory(find);
+      hooks = createFormatHooks();
+      userContext = new UserContext(hooks, history);
+
+      expect(triggerRum()).toEqual({ usr: { id: 'historical-user', plan: 'premium' } });
+      expect(triggerSpan()).toEqual({
+        meta: {
+          'meta.usr.id': 'historical-user',
+          'meta.usr.plan': 'premium',
+        },
+      });
+      expect(find).toHaveBeenCalledWith(T0);
     });
   });
 
@@ -198,3 +255,11 @@ describe('UserContext', () => {
     });
   });
 });
+
+function createHistory(find: ContextHistory['find']): ContextHistory {
+  return {
+    add: vi.fn(),
+    closeActive: vi.fn(),
+    find,
+  };
+}

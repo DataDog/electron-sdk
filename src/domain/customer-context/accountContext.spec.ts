@@ -1,8 +1,9 @@
-import { beforeEach, describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { EventSource } from '../../event';
 import { createFormatHooks, type FormatHooks } from '../../assembly';
 import { AccountContext } from './accountContext';
+import type { ContextHistory } from './contextManager';
 
 const T0 = 0 as TimeStamp;
 
@@ -12,6 +13,10 @@ describe('AccountContext', () => {
 
   function triggerRum() {
     return hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN });
+  }
+
+  function triggerSpan() {
+    return hooks.triggerSpan({ startTime: T0, source: EventSource.MAIN });
   }
 
   beforeEach(() => {
@@ -24,6 +29,56 @@ describe('AccountContext', () => {
       hooks.registerRum(() => ({ date: 1 }));
       const result = triggerRum();
       expect(result).toEqual({ date: 1 });
+    });
+  });
+
+  describe('span metadata', () => {
+    it('injects account info into span meta', () => {
+      accountContext.setContext({
+        id: 'account-1',
+        name: 'Acme Corp',
+        extraInfo: { tier: 'enterprise', paid: true, seats: 10 },
+      });
+
+      expect(triggerSpan()).toEqual({
+        meta: {
+          'meta.account.id': 'account-1',
+          'meta.account.name': 'Acme Corp',
+          'meta.account.tier': 'enterprise',
+          'meta.account.paid': 'true',
+          'meta.account.seats': '10',
+        },
+      });
+    });
+
+    it('does not let extraInfo override standard span meta fields', () => {
+      accountContext.setContext({ id: 'account-1', name: 'Acme' });
+      accountContext.addExtraInfo({ id: 'hacked', name: 'hacked' });
+
+      expect(triggerSpan()).toMatchObject({
+        meta: {
+          'meta.account.id': 'account-1',
+          'meta.account.name': 'Acme',
+        },
+      });
+    });
+  });
+
+  describe('historical context', () => {
+    it('uses the account context matching the event start time', () => {
+      const find = vi.fn(() => ({ id: 'historical-account', tier: 'enterprise' }));
+      const history = createHistory(find);
+      hooks = createFormatHooks();
+      accountContext = new AccountContext(hooks, history);
+
+      expect(triggerRum()).toEqual({ account: { id: 'historical-account', tier: 'enterprise' } });
+      expect(triggerSpan()).toEqual({
+        meta: {
+          'meta.account.id': 'historical-account',
+          'meta.account.tier': 'enterprise',
+        },
+      });
+      expect(find).toHaveBeenCalledWith(T0);
     });
   });
 
@@ -167,3 +222,11 @@ describe('AccountContext', () => {
     });
   });
 });
+
+function createHistory(find: ContextHistory['find']): ContextHistory {
+  return {
+    add: vi.fn(),
+    closeActive: vi.fn(),
+    find,
+  };
+}
