@@ -229,6 +229,21 @@ describe('UserContext', () => {
       expect(userContext.getInfo()!.extraInfo).toEqual({ plan: 'premium' });
     });
 
+    it('removes an existing custom field when the new value is null', () => {
+      userContext.setContext({ id: 'user-1', extraInfo: { plan: 'free', role: 'admin' } });
+      userContext.addExtraInfo({ plan: null, cohort: 'a' });
+
+      expect(userContext.getInfo()).toEqual({ id: 'user-1', extraInfo: { role: 'admin', cohort: 'a' } });
+      expect(triggerRum()).toEqual({ usr: { id: 'user-1', role: 'admin', cohort: 'a' } });
+      expect(triggerSpan()).toEqual({
+        meta: {
+          'meta.usr.id': 'user-1',
+          'meta.usr.role': 'admin',
+          'meta.usr.cohort': 'a',
+        },
+      });
+    });
+
     it('does not override standard fields in the emitted event', () => {
       userContext.setContext({ id: 'user-1', name: 'Alice' });
       userContext.addExtraInfo({ id: 'hacked', name: 'hacked' });

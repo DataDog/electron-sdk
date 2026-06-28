@@ -196,6 +196,21 @@ describe('AccountContext', () => {
       expect(accountContext.getInfo()!.extraInfo).toEqual({ tier: 'enterprise' });
     });
 
+    it('removes an existing custom field when the new value is null', () => {
+      accountContext.setContext({ id: 'account-1', extraInfo: { tier: 'free', region: 'us' } });
+      accountContext.addExtraInfo({ tier: null, plan: 'pro' });
+
+      expect(accountContext.getInfo()).toEqual({ id: 'account-1', extraInfo: { region: 'us', plan: 'pro' } });
+      expect(triggerRum()).toEqual({ account: { id: 'account-1', region: 'us', plan: 'pro' } });
+      expect(triggerSpan()).toEqual({
+        meta: {
+          'meta.account.id': 'account-1',
+          'meta.account.region': 'us',
+          'meta.account.plan': 'pro',
+        },
+      });
+    });
+
     it('does not override standard fields in the emitted event', () => {
       accountContext.setContext({ id: 'account-1', name: 'Acme' });
       accountContext.addExtraInfo({ id: 'hacked', name: 'hacked' });
