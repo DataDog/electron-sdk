@@ -106,6 +106,7 @@ export function clearUserInfo(): void {
 
 /**
  * Add custom attributes to the current user, merged into its `extraInfo`.
+ * Set an attribute value to `null` to remove it.
  * Standard fields (`id`, `name`, `email`) can only be set via `setUserInfo`.
  * Works even when no user has been set, so attributes can be attached to a user whose `id` is
  * derived elsewhere (e.g. from `anonymous_id`).
@@ -139,6 +140,7 @@ export function clearAccountInfo(): void {
 
 /**
  * Add custom attributes to the current account, merged into its `extraInfo`.
+ * Set an attribute value to `null` to remove it.
  * Standard fields (`id`, `name`) can only be set via `setAccountInfo`.
  * Requires `setAccountInfo` to have been called first; otherwise the call is ignored.
  * @param extraInfo - Custom attributes to merge into the account's `extraInfo`.

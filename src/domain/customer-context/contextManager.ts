@@ -88,11 +88,12 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
    * `id`) is a no-op until that field is set, while a context with no required field (user) accepts
    * attributes freely — even before any identity is set, so the backend can derive the id from
    * `anonymous_id`. Standard keys are never overwritten by `extraInfo` (see {@link getContext}), so
-   * this cannot change `id`/`name`/`email`.
+   * this cannot change `id`/`name`/`email`. Passing `null` for a custom attribute removes it,
+   * matching the mobile SDKs.
    */
   addExtraInfo(extraInfo: Context): void {
     if (!this.validateProperties(this.standardFields)) return;
-    this.extraInfo = { ...this.extraInfo, ...deepClone(extraInfo) };
+    this.extraInfo = mergeExtraInfo(this.extraInfo, extraInfo);
     this.recordCurrentContext();
   }
 
@@ -160,6 +161,18 @@ function toSpanMetaValue(value: unknown): string | undefined {
 
 function isValuePresent(value: unknown): boolean {
   return value !== undefined && value !== null && value !== '';
+}
+
+function mergeExtraInfo(current: Context, extraInfo: Context): Context {
+  const next = deepClone(current);
+  for (const [key, value] of Object.entries(deepClone(extraInfo))) {
+    if (value === null) {
+      delete next[key];
+    } else {
+      next[key] = value;
+    }
+  }
+  return next;
 }
 
 /**
