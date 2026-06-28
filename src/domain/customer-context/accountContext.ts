@@ -1,5 +1,6 @@
 import { SKIPPED } from '@datadog/js-core/assembly';
-import { ContextManager, type PropertiesConfig } from './contextManager';
+import { isEmptyObject } from '@datadog/browser-core';
+import { ContextManager, toSpanMeta, type ContextHistory, type PropertiesConfig } from './contextManager';
 import type { FormatHooks } from '../../assembly';
 
 export interface AccountInfo {
@@ -13,15 +14,29 @@ const ACCOUNT_PROPERTIES: PropertiesConfig = {
   name: { type: 'string' },
 };
 
+export const ACCOUNT_CONTEXT_HISTORY_FILE_NAME = '_dd_account_context_history';
+
 /**
- * Stores account information and injects it as `account` into RUM events via format hooks.
+ * Stores account information and injects it as `account` into RUM events and `meta.account.*` into spans.
  */
 export class AccountContext extends ContextManager<AccountInfo> {
-  constructor(hooks: FormatHooks) {
-    super('account', ACCOUNT_PROPERTIES);
-    hooks.registerRum(() => {
-      if (this.isEmpty()) return SKIPPED;
-      return { account: this.getContext() };
+  static async init(hooks: FormatHooks): Promise<AccountContext> {
+    const { initContextHistory } = await import('./contextHistory');
+    const history = await initContextHistory(ACCOUNT_CONTEXT_HISTORY_FILE_NAME);
+    return new AccountContext(hooks, history);
+  }
+
+  constructor(hooks: FormatHooks, history?: ContextHistory) {
+    super('account', ACCOUNT_PROPERTIES, history);
+    hooks.registerRum(({ startTime }) => {
+      const context = this.getContext(startTime);
+      if (isEmptyObject(context)) return SKIPPED;
+      return { account: context };
+    });
+    hooks.registerSpan(({ startTime }) => {
+      const context = this.getContext(startTime);
+      if (isEmptyObject(context)) return SKIPPED;
+      return { meta: toSpanMeta('account', context) };
     });
   }
 }

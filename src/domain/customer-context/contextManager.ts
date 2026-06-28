@@ -1,8 +1,15 @@
 import { combine, deepClone } from '@datadog/js-core/util';
+import { type TimeStamp, timeStampNow } from '@datadog/js-core/time';
 import { isEmptyObject } from '@datadog/browser-core';
 import { displayWarn } from '../../tools/display';
 
 export type Context = Record<string, unknown>;
+
+export interface ContextHistory {
+  add(value: Context, startTime: TimeStamp): void;
+  closeActive(endTime: TimeStamp): void;
+  find(startTime: TimeStamp): Context | undefined;
+}
 
 /**
  * Declares which context properties are required and/or constrained to a given format.
@@ -34,15 +41,19 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
 
   constructor(
     private readonly name: string,
-    private readonly propertiesConfig: PropertiesConfig = {}
+    private readonly propertiesConfig: PropertiesConfig = {},
+    private readonly history?: ContextHistory
   ) {}
 
   /**
    * Returns the flat context (standard fields plus extra attributes). Used by format hooks to
    * inject into events. Standard fields take precedence when a key appears in both stores.
    */
-  getContext(): Context {
-    return combine(this.extraInfo, this.standardFields);
+  getContext(startTime?: TimeStamp): Context {
+    if (startTime !== undefined && this.history) {
+      return this.history.find(startTime) ?? {};
+    }
+    return this.getCurrentContext();
   }
 
   /**
@@ -68,6 +79,7 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
 
     this.standardFields = candidate;
     this.extraInfo = extraInfo ?? {};
+    this.recordCurrentContext();
   }
 
   /**
@@ -81,11 +93,13 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
   addExtraInfo(extraInfo: Context): void {
     if (!this.validateProperties(this.standardFields)) return;
     this.extraInfo = { ...this.extraInfo, ...deepClone(extraInfo) };
+    this.recordCurrentContext();
   }
 
   clearContext(): void {
     this.standardFields = {};
     this.extraInfo = {};
+    this.recordCurrentContext();
   }
 
   /**
@@ -109,6 +123,39 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
     }
     return true;
   }
+
+  private getCurrentContext(): Context {
+    return combine(this.extraInfo, this.standardFields);
+  }
+
+  private recordCurrentContext(): void {
+    if (!this.history) return;
+
+    const now = timeStampNow();
+    this.history.closeActive(now);
+    if (!this.isEmpty()) {
+      this.history.add(deepClone(this.getCurrentContext()), now);
+    }
+  }
+}
+
+export function toSpanMeta(prefix: 'usr' | 'account', context: Context): Record<string, string> {
+  const meta: Record<string, string> = {};
+  for (const [key, value] of Object.entries(context)) {
+    const metaValue = toSpanMetaValue(value);
+    if (metaValue !== undefined) {
+      meta[`meta.${prefix}.${key}`] = metaValue;
+    }
+  }
+  return meta;
+}
+
+function toSpanMetaValue(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === 'string') return value;
+
+  const json = JSON.stringify(value);
+  return typeof json === 'string' ? json : undefined;
 }
 
 function isValuePresent(value: unknown): boolean {

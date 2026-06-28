@@ -51,8 +51,8 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   const hooks = createFormatHooks();
 
   registerCommonContext(config, hooks);
-  userContext = new UserContext(hooks);
-  accountContext = new AccountContext(hooks);
+  userContext = await UserContext.init(hooks);
+  accountContext = await AccountContext.init(hooks);
   startTelemetry(eventManager, config);
   sessionManager = await SessionManager.start(eventManager, hooks, config);
 
@@ -78,7 +78,7 @@ export function stopSession(): void {
 }
 
 /**
- * Set the user information. The user info is attached to all subsequent RUM events.
+ * Set the user information. The user info is attached to all subsequent supported events.
  * An `id` is required: calls without one are ignored (with a warning). To attach attributes to a
  * user whose `id` is managed elsewhere (e.g. derived from `anonymous_id`), use `addUserExtraInfo`.
  * @param user - The user information, including an `id`.
@@ -95,7 +95,7 @@ export function getUserInfo(): UserInfo | undefined {
 }
 
 /**
- * Clear all user information.
+ * Clear all user information from subsequent supported events.
  */
 export function clearUserInfo(): void {
   callMonitored(() => userContext?.clearContext());
@@ -113,7 +113,7 @@ export function addUserExtraInfo(extraInfo: Record<string, unknown>): void {
 }
 
 /**
- * Set the account information. The account info is attached to all subsequent RUM events.
+ * Set the account information. The account info is attached to all subsequent supported events.
  * @param accountInfo - The account information containing at least an `id`.
  */
 export function setAccountInfo(accountInfo: AccountInfo): void {
@@ -128,7 +128,7 @@ export function getAccountInfo(): AccountInfo | undefined {
 }
 
 /**
- * Clear all account information.
+ * Clear all account information from subsequent supported events.
  */
 export function clearAccountInfo(): void {
   callMonitored(() => accountContext?.clearContext());
