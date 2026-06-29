@@ -30,16 +30,44 @@ describe('StandardBatchConsumer — request construction', () => {
   });
 
   describe('request headers', () => {
-    it('includes the User-Agent and DD-API-KEY headers', async () => {
+    let request: Request;
+
+    beforeEach(async () => {
       fsMocks.readdir.mockResolvedValue(['test.log']);
       fsMocks.readFile.mockResolvedValue('{"event":"data"}');
+      await consumer.upload();
+      [request] = vi.mocked(fetch).mock.calls[0] as [Request];
+    });
+
+    it.each([
+      { header: 'Content-Type', expected: 'application/json' },
+      { header: 'DD-API-KEY', expected: config.clientToken },
+      { header: 'DD-EVP-ORIGIN', expected: 'electron' },
+      { header: 'DD-EVP-ORIGIN-VERSION', expected: 'test' },
+      { header: 'User-Agent', expected: TEST_USER_AGENT },
+    ])('includes $header header', ({ header, expected }) => {
+      expect(request.headers.get(header)).toEqual(expected);
+    });
+
+    it('includes a DD-REQUEST-ID header with a UUID format', () => {
+      expect(request.headers.get('DD-REQUEST-ID')).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      );
+    });
+
+    it('generates a fresh DD-REQUEST-ID for each request', async () => {
+      fsMocks.readdir.mockResolvedValue(['a.log', 'b.log']);
+      fsMocks.readFile.mockResolvedValue('{"event":"data"}');
+      vi.mocked(fetch).mockClear();
 
       await consumer.upload();
 
-      const [request] = vi.mocked(fetch).mock.calls[0] as [Request];
-      expect(request.headers.get('User-Agent')).toBe(TEST_USER_AGENT);
-      expect(request.headers.get('DD-API-KEY')).toBe(config.clientToken);
-      expect(request.headers.get('Content-Type')).toBe('application/json');
+      const [req1, req2] = vi.mocked(fetch).mock.calls.map(([r]) => r as Request);
+      const id1 = req1.headers.get('DD-REQUEST-ID');
+      const id2 = req2.headers.get('DD-REQUEST-ID');
+      expect(id1).toBeTruthy();
+      expect(id2).toBeTruthy();
+      expect(id1).not.toBe(id2);
     });
   });
 

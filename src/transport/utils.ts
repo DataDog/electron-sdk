@@ -19,9 +19,11 @@ export function computeIntakeHostname(site: string, proxy?: string): string {
 }
 
 export function computeIntakeUrlForTrack(site: string, trackType: string, proxy?: string): string {
+  const path = `/api/v2/${trackType}?ddsource=electron`;
+
   if (proxy) {
-    return `${proxy}?ddforward=${encodeURIComponent(`/api/v2/${trackType}`)}`;
+    return `${proxy}?ddforward=${encodeURIComponent(path)}`;
   }
 
-  return `https://browser-intake-${computeIntakeSite(site)}/api/v2/${trackType}`;
+  return `https://browser-intake-${computeIntakeSite(site)}${path}`;
 }
