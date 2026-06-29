@@ -85,6 +85,26 @@ describe('registerCommonContext', () => {
       warnSpy.mockRestore();
     });
 
+    it('warns when a tag exceeds the 200-character size limit', () => {
+      const warnSpy = vi.spyOn(display, 'displayWarn').mockReturnValue(undefined);
+
+      // 'env:' = 4 chars, so value of 197 chars = 201-char tag (first value > 200)
+      triggerMainRum(makeConfig({ env: 'a'.repeat(197) }));
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('env:'));
+      warnSpy.mockRestore();
+    });
+
+    it('does not warn when a tag is exactly at the size limit', () => {
+      const warnSpy = vi.spyOn(display, 'displayWarn').mockReturnValue(undefined);
+
+      // 'env:' = 4 chars, so value of 196 chars = exactly 200
+      triggerMainRum(makeConfig({ env: 'a'.repeat(196) }));
+
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+
     it.each([
       { configKey: 'service' as const, tagKey: 'service', raw: 'my-service:prod' },
       { configKey: 'env' as const, tagKey: 'env', raw: 'prod.eu/west' },

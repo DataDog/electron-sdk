@@ -51,19 +51,21 @@ function buildDdtags(configuration: Configuration): string {
   return tags.join(',');
 }
 
+const TAG_SIZE_LIMIT = 200;
+
 function buildTag(key: string, value: string): string {
   const tag = `${key}:${value}`;
   const sanitized = sanitizeTag(tag);
-  if (hasForbiddenTagCharacters(sanitized)) {
+  if (tag.length > TAG_SIZE_LIMIT || hasForbiddenTagCharacters(sanitized)) {
     displayWarn(
-      `Tag "${tag}" contains invalid characters and will be sanitized by the backend. See https://docs.datadoghq.com/getting_started/tagging/#defining-tags`
+      `Tag "${tag}" doesn't meet tag requirements and will be sanitized. See https://docs.datadoghq.com/getting_started/tagging/#defining-tags`
     );
   }
   return sanitized;
 }
 
 // Commas delimit tags in the ddtags string, so any comma in a value would corrupt the list.
-// Other invalid characters are forwarded to the backend for sanitization.
+// Other invalid characters and oversized tags are forwarded to the backend for sanitization.
 function sanitizeTag(tag: string): string {
   return tag.replace(/,/g, '_');
 }
