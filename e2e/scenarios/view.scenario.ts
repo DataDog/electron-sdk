@@ -9,7 +9,7 @@ test('emits an initial active view event on SDK init', async ({ mainPage, intake
   const events = await intake.getEventsByType('view');
   expect(events).toHaveLength(1);
 
-  const view = events[0].body as RumViewEvent;
+  const { body: view, headers } = events[0] as { body: RumViewEvent; headers: Record<string, string> };
 
   expect(view.ddtags).toMatch(/sdk_version:\d+\.\d+\.\d+/);
   expect(view.ddtags).toContain('env:test');
@@ -17,6 +17,9 @@ test('emits an initial active view event on SDK init', async ({ mainPage, intake
   expect(view.ddtags).toContain('version:1.0.0');
   expect(view.service).toBe('e2e-test-app');
   expect(view.version).toBe('1.0.0');
+  expect(headers['dd-evp-origin']).toBe('electron');
+  expect(headers['dd-evp-origin-version']).toMatch(/^\d+\.\d+\.\d+$/);
+  expect(headers['dd-request-id']).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   expect(view.view.name).toBe('main process');
   expect(view.view.url).toBe('electron://main-process');
   expect(view.view.is_active).toBe(true);
