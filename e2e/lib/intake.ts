@@ -11,6 +11,7 @@ export interface ReceivedEvent {
   timestamp: number;
   body: unknown;
   headers: Record<string, string>;
+  ddforward: string;
 }
 
 export interface Trace {
@@ -36,13 +37,14 @@ export class Intake {
   private traces: Trace[] = [];
   private port = 0;
 
-  private storeRumEvents(parsedBody: unknown, headers: Record<string, string>) {
+  private storeRumEvents(parsedBody: unknown, headers: Record<string, string>, ddforward: string) {
     const items = Array.isArray(parsedBody) ? (parsedBody as unknown[]) : [parsedBody];
     for (const item of items) {
       this.rumEvents.push({
         timestamp: Date.now(),
         body: item,
         headers,
+        ddforward,
       });
     }
   }
@@ -88,7 +90,7 @@ export class Intake {
               this.storeTraces(parsedBody);
             } else {
               // Default: treat as RUM events (covers /api/v2/rum and any other path)
-              this.storeRumEvents(parsedBody, headers);
+              this.storeRumEvents(parsedBody, headers, ddforward);
             }
 
             res.writeHead(202, { 'Content-Type': 'application/json' });

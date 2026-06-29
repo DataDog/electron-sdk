@@ -1,9 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { TimeStamp } from '@datadog/js-core/time';
 import { registerCommonContext } from './commonContext';
 import { createFormatHooks } from './hooks';
 import { EventSource } from '../event';
 import type { Configuration } from '../config';
+import * as display from '../tools/display';
 
 const T0 = 0 as TimeStamp;
 
@@ -69,6 +70,32 @@ describe('registerCommonContext', () => {
 
       expect(tags).toContain(`${tagKey}:${sanitized}`);
       expect(tags.some((t) => t.includes(','))).toBe(false);
+    });
+
+    it.each([
+      { configKey: 'service' as const, tagKey: 'service', raw: 'my service' },
+      { configKey: 'env' as const, tagKey: 'env', raw: 'prod!eu' },
+      { configKey: 'version' as const, tagKey: 'version', raw: '1.0 0' },
+    ])('warns when $tagKey value contains forbidden characters', ({ configKey, tagKey, raw }) => {
+      const warnSpy = vi.spyOn(display, 'displayWarn').mockReturnValue(undefined);
+
+      triggerMainRum(makeConfig({ [configKey]: raw }));
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(`${tagKey}:${raw}`));
+      warnSpy.mockRestore();
+    });
+
+    it.each([
+      { configKey: 'service' as const, tagKey: 'service', raw: 'my-service:prod' },
+      { configKey: 'env' as const, tagKey: 'env', raw: 'prod.eu/west' },
+      { configKey: 'service' as const, tagKey: 'service', raw: 'my,service' },
+    ])('does not warn when $tagKey value contains only allowed special characters', ({ configKey, raw }) => {
+      const warnSpy = vi.spyOn(display, 'displayWarn').mockReturnValue(undefined);
+
+      triggerMainRum(makeConfig({ [configKey]: raw }));
+
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
     });
 
     it.each([

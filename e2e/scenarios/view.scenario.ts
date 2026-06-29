@@ -9,7 +9,15 @@ test('emits an initial active view event on SDK init', async ({ mainPage, intake
   const events = await intake.getEventsByType('view');
   expect(events).toHaveLength(1);
 
-  const { body: view, headers } = events[0] as { body: RumViewEvent; headers: Record<string, string> };
+  const {
+    body: view,
+    headers,
+    ddforward,
+  } = events[0] as {
+    body: RumViewEvent;
+    headers: Record<string, string>;
+    ddforward: string;
+  };
 
   expect(view.ddtags).toMatch(/sdk_version:\d+\.\d+\.\d+/);
   expect(view.ddtags).toContain('env:test');
@@ -17,6 +25,8 @@ test('emits an initial active view event on SDK init', async ({ mainPage, intake
   expect(view.ddtags).toContain('version:1.0.0');
   expect(view.service).toBe('e2e-test-app');
   expect(view.version).toBe('1.0.0');
+  expect(ddforward).toContain('/api/v2/rum');
+  expect(ddforward).toContain('ddsource=electron');
   expect(headers['dd-evp-origin']).toBe('electron');
   expect(headers['dd-evp-origin-version']).toMatch(/^\d+\.\d+\.\d+$/);
   expect(headers['dd-request-id']).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
