@@ -44,8 +44,13 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
 }
 
 function buildDdtags(configuration: Configuration): string {
-  const tags = [`sdk_version:${__SDK_VERSION__}`, `service:${configuration.service}`];
-  if (configuration.env) tags.push(`env:${configuration.env}`);
-  if (configuration.version) tags.push(`version:${configuration.version}`);
+  const tags = [`sdk_version:${__SDK_VERSION__}`, `service:${sanitizeTagValue(configuration.service)}`];
+  if (configuration.env) tags.push(`env:${sanitizeTagValue(configuration.env)}`);
+  if (configuration.version) tags.push(`version:${sanitizeTagValue(configuration.version)}`);
   return tags.join(',');
+}
+
+// Commas delimit tags in the ddtags string, so any comma in a value would corrupt the list.
+function sanitizeTagValue(value: string): string {
+  return value.replace(/,/g, '_');
 }

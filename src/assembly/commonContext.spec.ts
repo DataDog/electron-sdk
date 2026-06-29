@@ -61,6 +61,17 @@ describe('registerCommonContext', () => {
     });
 
     it.each([
+      { configKey: 'service' as const, tagKey: 'service', raw: 'my,service', sanitized: 'my_service' },
+      { configKey: 'env' as const, tagKey: 'env', raw: 'prod,us', sanitized: 'prod_us' },
+      { configKey: 'version' as const, tagKey: 'version', raw: '1.0,0', sanitized: '1.0_0' },
+    ])('replaces commas in $tagKey value to avoid corrupting ddtags', ({ configKey, tagKey, raw, sanitized }) => {
+      const tags = parseDdtags(triggerMainRum(makeConfig({ [configKey]: raw })));
+
+      expect(tags).toContain(`${tagKey}:${sanitized}`);
+      expect(tags.some((t) => t.includes(','))).toBe(false);
+    });
+
+    it.each([
       { configKey: 'env' as const, tagKey: 'env' },
       { configKey: 'version' as const, tagKey: 'version' },
     ])('omits $tagKey tag when $configKey is not configured', ({ configKey, tagKey }) => {
