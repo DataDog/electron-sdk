@@ -21,7 +21,7 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
           version: configuration.version,
           application: { id: configuration.applicationId },
           session: { type: 'user' },
-          ddtags: `sdk_version:${__SDK_VERSION__}`,
+          ddtags: buildDdtags(configuration),
           _dd: { format_version: 2 },
         };
     }
@@ -41,4 +41,11 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
       '_dd.application.id': configuration.applicationId,
     },
   }));
+}
+
+function buildDdtags(configuration: Configuration): string {
+  const tags = [`sdk_version:${__SDK_VERSION__}`, `service:${configuration.service}`];
+  if (configuration.env) tags.push(`env:${configuration.env}`);
+  if (configuration.version) tags.push(`version:${configuration.version}`);
+  return tags.join(',');
 }

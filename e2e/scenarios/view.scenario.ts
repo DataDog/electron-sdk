@@ -12,6 +12,11 @@ test('emits an initial active view event on SDK init', async ({ mainPage, intake
   const view = events[0].body as RumViewEvent;
 
   expect(view.ddtags).toMatch(/sdk_version:\d+\.\d+\.\d+/);
+  expect(view.ddtags).toContain('env:test');
+  expect(view.ddtags).toContain('service:e2e-test-app');
+  expect(view.ddtags).toContain('version:1.0.0');
+  expect(view.service).toBe('e2e-test-app');
+  expect(view.version).toBe('1.0.0');
   expect(view.view.name).toBe('main process');
   expect(view.view.url).toBe('electron://main-process');
   expect(view.view.is_active).toBe(true);
