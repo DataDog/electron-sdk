@@ -2,7 +2,7 @@ import { ipcMain } from 'electron';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { combine } from '@datadog/js-core/util';
 import { DISCARDED } from '@datadog/js-core/assembly';
-import type { DefaultPrivacyLevel } from '@datadog/browser-core';
+import { isEmptyObject, type DefaultPrivacyLevel } from '@datadog/browser-core';
 import { EventKind, EventSource, EventTrack, LifecycleKind } from '../event';
 import type { EventManager, ServerRumEvent } from '../event';
 import { monitor, addError as addTelemetryError } from '../domain/telemetry';
@@ -68,7 +68,8 @@ export class RendererPipeline {
         this.handleRumEvent(bridgeEvent.event);
         break;
       case 'log':
-        // TODO(RUM-15047)
+        // TODO(RUM-15047): when Logs are implemented, enrich them with user/account context
+        // matching mobile: `usr.*` and `account.*`.
         break;
       case 'internal_telemetry':
         // TODO(RUM-15253)
@@ -98,13 +99,25 @@ export class RendererPipeline {
       return;
     }
 
+    // The renderer's own user/account context takes precedence: only inject the
+    // main-process values when the renderer event doesn't already carry them.
+    // session/application/container always come from the main process.
+    const overrides = { ...(hookResult ?? {}) };
+    if (hasContext(data.usr)) delete overrides.usr;
+    if (hasContext(data.account)) delete overrides.account;
+
     const serverEvent: ServerRumEvent = {
       kind: EventKind.SERVER,
       track: EventTrack.RUM,
       source: EventSource.RENDERER,
-      data: combine(data, hookResult ?? {}),
+      data: combine(data, overrides),
     };
 
     this.eventManager.notify(serverEvent);
   }
+}
+
+/** Whether the renderer event already carries a non-empty context object. */
+function hasContext(context: object | undefined): boolean {
+  return context !== undefined && !isEmptyObject(context);
 }

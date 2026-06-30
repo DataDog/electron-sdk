@@ -36,6 +36,12 @@ interface ElectronAPI {
   mainFetchApiNet: () => Promise<unknown>;
   openRumExplorer: () => Promise<void>;
   flushTransport: () => Promise<void>;
+  setUserInfo: () => Promise<void>;
+  addUserExtraInfo: () => Promise<void>;
+  clearUserInfo: () => Promise<void>;
+  setAccountInfo: () => Promise<void>;
+  addAccountExtraInfo: () => Promise<void>;
+  clearAccountInfo: () => Promise<void>;
 }
 
 declare global {
@@ -198,6 +204,17 @@ if (rendererFetchBtn) {
       });
   });
 }
+
+// --- User & Account Context buttons ---
+
+setupDemoButton('set-user-info', 'main:set-user-info', () => window.electronAPI.setUserInfo());
+setupDemoButton('add-user-extra-info', 'main:add-user-extra-info', () => window.electronAPI.addUserExtraInfo());
+setupDemoButton('clear-user-info', 'main:clear-user-info', () => window.electronAPI.clearUserInfo());
+setupDemoButton('set-account-info', 'main:set-account-info', () => window.electronAPI.setAccountInfo());
+setupDemoButton('add-account-extra-info', 'main:add-account-extra-info', () =>
+  window.electronAPI.addAccountExtraInfo()
+);
+setupDemoButton('clear-account-info', 'main:clear-account-info', () => window.electronAPI.clearAccountInfo());
 
 setupDemoButton('main-fetch', 'main:fetch-api', () => window.electronAPI.mainFetchApi());
 setupDemoButton('main-fetch-fetch', 'main:fetch-api-fetch', () => window.electronAPI.mainFetchApiFetch());

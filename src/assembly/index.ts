@@ -1,12 +1,12 @@
-export { MainAssembly } from './MainAssembly';
-export { RendererPipeline } from './RendererPipeline';
-export type { BridgeOptions } from './RendererPipeline';
-export { createFormatHooks } from './hooks';
 export { registerCommonContext } from './commonContext';
+export { createFormatHooks } from './hooks';
 export type {
   FormatHooks,
   RumAssembleParams,
-  TelemetryAssembleParams,
-  SpanAssembleParams,
   RumEventType,
+  SpanAssembleParams,
+  TelemetryAssembleParams,
 } from './hooks';
+export { MainAssembly } from './MainAssembly';
+export { RendererPipeline } from './RendererPipeline';
+export type { BridgeOptions } from './RendererPipeline';
