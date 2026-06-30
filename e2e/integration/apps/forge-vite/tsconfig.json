@@ -6,7 +6,7 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "rootDir": "./src",
+    "rootDir": ".",
     "outDir": ".vite"
   },
   "include": ["src", "*.config.ts", "forge.config.ts"]
