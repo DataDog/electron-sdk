@@ -2,6 +2,35 @@
 
 All notable changes to `@datadog/electron-sdk` are documented here.
 
+## [0.5.0] - 2026-06-30
+
+### ✨ Features
+
+- [RUM-15525] Add `sessionSampleRate` configuration option (#139)
+
+### 🐛 Bug Fixes
+
+- 🐛 fix missing fields on main-process RUM events and intake requests (#157)
+
+### 📝 Documentation
+
+- 📝 Update PR template and copilot instructions
+- 📝 improve copilot review comment structure (#143)
+- 📝 add code review guide for agents (#141)
+
+### Internal
+
+- ⬆️ update browser-sdk to 7.4.0 and js-core to 0.0.4 (#145)
+- 👷 Update dependency eslint-plugin-unicorn to v68 (#156)
+- 👷 Update actions/checkout action to v7 (#154)
+- 👷 fix typecheck for unbuilt json-schema-to-typescript fork (#148)
+- 👷 exclude worktree directories from linting and formatting (#147)
+- 👷 Update all non-major dependencies (minor/patch) (#120)
+- 👷 Update dependency lint-staged to v17 (#128)
+- ♻️ split Assembly into MainAssembly and RendererPipeline (#133)
+- ♻️ replace time imports from browser-core with js-core/time (#138)
+- [RUM-16912] Refactor transport layer for extensibility (#140)
+
 ## [0.4.0] - 2026-06-17
 
 ### ✨ Features
