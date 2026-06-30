@@ -41,13 +41,13 @@ __metadata:
   linkType: hard
 
 "@datadog/electron-sdk@file:../../integration-sdk.tgz::locator=forge-vite%40workspace%3A.":
-  version: 0.4.0
-  resolution: "@datadog/electron-sdk@file:../../integration-sdk.tgz#../../integration-sdk.tgz::hash=572c13&locator=forge-vite%40workspace%3A."
+  version: 0.5.0
+  resolution: "@datadog/electron-sdk@file:../../integration-sdk.tgz#../../integration-sdk.tgz::hash=e16046&locator=forge-vite%40workspace%3A."
   dependencies:
     dd-trace: "npm:5.109.0"
   peerDependencies:
     electron: ">=39"
-  checksum: 10c0/1a1439240866b335eef43583df5e607cd558cfc1cd5674920071eacd8b88d800b632c13086dd5b91ca6a070cafc7f62215ffe5cdf32bb77b36d1edcb65a4410e
+  checksum: 10c0/4ed3c62b1fbd380cbb53f645d4e2bbaf816c308ce2bb5bb9d75ef668c753c9f0a5bccbd772051d3622dc551e17adad18d39cb4bcba4aa8dad326719ee56a1bab
   languageName: node
   linkType: hard
 
