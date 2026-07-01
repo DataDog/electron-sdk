@@ -59,7 +59,7 @@ const config = [
         sourcemap: true,
       },
     ],
-    external: ['electron'],
+    external: ['electron', 'dd-trace'],
     plugins: sharedPlugins,
   },
   // Vite plugin: ensures dd-trace initializes before hoisted requires
@@ -161,6 +161,16 @@ const config = [
       format: 'esm',
     },
     plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
+  },
+  // Preload script: renderer bridge, output as plain CJS for BrowserWindow injection
+  {
+    input: 'src/entries/preload.ts',
+    output: {
+      file: 'dist/preload.js',
+      format: 'cjs',
+    },
+    external: ['electron'],
+    plugins: sharedPlugins,
   },
 ];
 
