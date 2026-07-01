@@ -116,6 +116,13 @@ export class MainPage {
     );
   }
 
+  async mainNetFetch(url: string): Promise<number> {
+    return await this.page.evaluate(
+      (u) => (globalThis as unknown as ElectronAppWindow).electronAPI.mainNetFetch(u),
+      url
+    );
+  }
+
   async mainPing(): Promise<string> {
     return await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.ping());
   }
