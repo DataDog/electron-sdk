@@ -5,26 +5,22 @@
  *   import '@datadog/electron-sdk/instrument';
  *   import { app, BrowserWindow } from 'electron';
  *
- * Initializes dd-trace with the electron exporter so it can hook
- * require('electron') and wrap BrowserWindow for automatic preload injection.
+ * Initializes dd-trace with the electron exporter.
  *
  * Note: Bundlers may break the import order dd-trace needs. Use the bundler
  * plugins provided by the SDK to ensure correct behavior:
  * - Vite: datadogVitePlugin from '@datadog/electron-sdk/vite-plugin'
  * - Webpack: DatadogWebpackPlugin from '@datadog/electron-sdk/webpack-plugin'
  */
-import { createRequire } from 'node:module';
-
-// Support both CJS (__filename) and ESM (import.meta.url) contexts
-const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
+// TODO remove when dd-trace electron plugin is dropped
+import ddTrace from './instrument-prelude';
+import { displayWarn } from '../tools/display';
 
 try {
-  const tracer = (_require('dd-trace') as { default: typeof import('dd-trace').default }).default;
-
-  tracer.init({
+  ddTrace.init({
     // TODO: remove cast when dd-trace releases a fix
     experimental: { exporter: 'electron' as 'datadog' },
   });
 } catch {
-  console.warn('[datadog] dd-trace not found — monitoring will not work');
+  displayWarn('dd-trace not found, monitoring will not work');
 }
