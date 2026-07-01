@@ -10,7 +10,7 @@ function resolvePackage(id: string): string {
 
 export function resolvePreloadPath(_resolvePackage = resolvePackage): string | undefined {
   try {
-    return _resolvePackage('@datadog/electron-sdk/electron/preload');
+    return _resolvePackage('@datadog/electron-sdk/preload');
   } catch {
     // Package-relative resolution fails when instrument.cjs is loaded via a symlink (e.g. Yarn
     // portal) and the symlink target is resolved to the real path before module lookups start.
