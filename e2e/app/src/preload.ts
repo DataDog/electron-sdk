@@ -20,6 +20,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   mainFetch: (url: string) => ipcRenderer.invoke('mainFetch', url),
   mainHttpRequest: (url: string) => ipcRenderer.invoke('mainHttpRequest', url),
   mainNetRequest: (url: string) => ipcRenderer.invoke('mainNetRequest', url),
+  mainNetFetch: (url: string) => ipcRenderer.invoke('mainNetFetch', url),
+  mainFireAndForget: () =>
+    new Promise<void>((resolve) => {
+      ipcRenderer.once('mainFireAndForgetAck', () => resolve());
+      ipcRenderer.send('mainFireAndForget');
+    }),
+  triggerMainSend: () =>
+    new Promise<void>((resolve) => {
+      ipcRenderer.once('mainPush', () => resolve());
+      void ipcRenderer.invoke('triggerMainSend');
+    }),
   flushTransport: () => ipcRenderer.invoke('flushTransport'),
   crash: () => ipcRenderer.invoke('crash'),
   ping: () => ipcRenderer.invoke('ping'),

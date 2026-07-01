@@ -143,6 +143,14 @@ void app.whenReady().then(async () => {
 
   ipcMain.handle('ping', () => 'pong');
 
+  ipcMain.on('mainFireAndForget', (event) => {
+    event.sender.send('mainFireAndForgetAck');
+  });
+
+  ipcMain.handle('triggerMainSend', () => {
+    mainWindow?.webContents.send('mainPush', 'hello');
+  });
+
   ipcMain.handle('crash', () => {
     process.crash();
   });
