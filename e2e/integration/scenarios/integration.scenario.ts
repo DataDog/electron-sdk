@@ -28,8 +28,9 @@ test.describe('view event on startup @integration', () => {
   test('sends a view event with a session id on startup', async ({ window, intake }) => {
     await flushTransport(window);
 
-    const [event] = await intake.getEventsByType('view');
-    const view = event.body as RumViewEvent;
+    const viewEvents = await intake.getEventsByType('view');
+    expect(viewEvents).toHaveLength(1);
+    const view = viewEvents[0].body as RumViewEvent;
 
     expect(view.type).toBe('view');
     expect(view.session.id).toBeDefined();

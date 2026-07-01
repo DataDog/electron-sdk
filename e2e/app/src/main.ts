@@ -137,11 +137,25 @@ void app.whenReady().then(async () => {
       })
   );
 
+  ipcMain.handle('mainNetFetch', async (_event, url: string) => {
+    const res = await net.fetch(url);
+    await res.text();
+    return res.status;
+  });
+
   ipcMain.handle('flushTransport', async () => {
     await _flushTransport();
   });
 
   ipcMain.handle('ping', () => 'pong');
+
+  ipcMain.on('mainFireAndForget', (event) => {
+    event.sender.send('mainFireAndForgetAck');
+  });
+
+  ipcMain.handle('triggerMainSend', () => {
+    mainWindow?.webContents.send('mainPush', 'hello');
+  });
 
   ipcMain.handle('crash', () => {
     process.crash();

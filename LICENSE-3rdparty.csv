@@ -40,6 +40,7 @@ npm-dev,eslint-plugin-prettier,MIT,Copyright (c) 2017 Andres Suarez and Teddy Ka
 npm-dev,eslint-plugin-unicorn,MIT,Copyright (c) Sindre Sorhus
 npm-dev,husky,MIT,Copyright (c) 2021 typicode
 npm-dev,json-schema-to-typescript,MIT,Copyright (c) 2017 Boris Cherny
+npm-dev,jsdom,MIT,Copyright (c) 2010 Elijah Insua
 npm-dev,lint-staged,MIT,Copyright (c) 2016 Andrey Okonetchnikov
 npm-dev,node-loader,MIT,Copyright (c) JS Foundation and other contributors
 npm-dev,playwright,Apache-2.0,Copyright Microsoft Corporation
