@@ -4,16 +4,12 @@
  * This plugin handles dd-trace initialization and dependency externalization
  * for both CJS and ESM esbuild output formats.
  *
- * For CJS output: prepends a banner that initializes dd-trace via require()
- * before any application code. dd-trace hooks require('electron') to wrap
- * BrowserWindow with automatic preload injection.
+ * For CJS output: prepends a banner that loads @datadog/electron-sdk/instrument,
+ * which patches BrowserWindow with automatic preload injection.
  *
- * For ESM output: prepends a banner that initializes dd-trace and registers
- * dd-trace's preload script directly via session.registerPreloadScript().
- * In ESM, static imports are loaded before any module code evaluates, so
- * dd-trace's IITM hooks cannot intercept `import 'electron'` for automatic
- * BrowserWindow wrapping. The direct preload registration achieves the same
- * result using dd-trace's preload script.
+ * For ESM output: prepends a banner that loads @datadog/electron-sdk/instrument
+ * via createRequire (ESM modules don't have a global require). instrument.ts
+ * handles defaultSession preload registration and IPC patching via patchBrowserWindow.
  *
  * Usage:
  *   import { datadogEsbuildPlugin } from '@datadog/electron-sdk/esbuild-plugin';
@@ -23,6 +19,11 @@
  *   });
  */
 
+import { createRequire } from 'node:module';
+import { cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 interface EsbuildPlugin {
   name: string;
   setup: (build: {
@@ -30,32 +31,20 @@ interface EsbuildPlugin {
       format?: string;
       banner?: { js?: string };
       external?: string[];
+      outdir?: string;
+      outfile?: string;
     };
+    onEnd: (cb: () => void) => void;
   }) => void;
 }
 
-const DD_TRACE_PRELOAD = 'dd-trace/packages/datadog-instrumentations/src/electron/preload.js';
-
 const CJS_BANNER = 'try{require("@datadog/electron-sdk/instrument")}catch{}';
 
-// ESM banner: initialize dd-trace and register the preload script directly.
-// IITM cannot wrap BrowserWindow in ESM because static imports are loaded
-// before module code evaluates, so we register the preload via session API.
+// ESM modules don't have a global require, so we use createRequire to load instrument.ts,
+// which handles defaultSession preload registration and IPC patching via patchBrowserWindow.
 const ESM_BANNER = `
 import { createRequire as __ddCR } from "module";
-try {
-  const __ddR = __ddCR(import.meta.url);
-  __ddR("@datadog/electron-sdk/instrument");
-  const __ddP = __ddR.resolve("${DD_TRACE_PRELOAD}");
-  const { app: __ddApp, session: __ddSes } = __ddR("electron");
-  const __ddReg = () => {
-    try {
-      __ddSes.defaultSession.registerPreloadScript({ type: "frame", filePath: __ddP });
-    } catch {}
-  };
-  if (__ddApp.isReady()) __ddReg();
-  else __ddApp.once("ready", __ddReg);
-} catch {}
+try { __ddCR(import.meta.url)("@datadog/electron-sdk/instrument"); } catch {}
 `.trim();
 
 export function datadogEsbuildPlugin(): EsbuildPlugin {
@@ -80,6 +69,50 @@ export function datadogEsbuildPlugin(): EsbuildPlugin {
         }
       }
       build.initialOptions.external = external;
+
+      const currentFile = typeof __filename !== 'undefined' ? __filename : fileURLToPath(import.meta.url);
+      const _require = createRequire(currentFile);
+
+      build.onEnd(() => {
+        const outDir =
+          build.initialOptions.outdir ??
+          (build.initialOptions.outfile ? dirname(build.initialOptions.outfile) : undefined);
+        if (!outDir) return;
+
+        const destModules = join(outDir, 'node_modules');
+        const visited = new Set<string>();
+
+        function copyPackageTree(pkg: string): void {
+          if (visited.has(pkg)) return;
+          visited.add(pkg);
+
+          try {
+            const entryPath = _require.resolve(pkg);
+            let pkgDir = dirname(entryPath);
+            while (pkgDir !== dirname(pkgDir) && !existsSync(join(pkgDir, 'package.json'))) {
+              pkgDir = dirname(pkgDir);
+            }
+
+            const destDir = join(destModules, pkg);
+            if (!existsSync(destDir)) {
+              mkdirSync(dirname(destDir), { recursive: true });
+              cpSync(pkgDir, destDir, { recursive: true });
+            }
+
+            const pkgJson = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) as {
+              dependencies?: Record<string, string>;
+            };
+            for (const dep of Object.keys(pkgJson.dependencies ?? {})) {
+              copyPackageTree(dep);
+            }
+          } catch {
+            console.warn(`[datadog] Failed to copy package '${pkg}' to build output`);
+          }
+        }
+
+        copyPackageTree('dd-trace');
+        copyPackageTree('@datadog/electron-sdk');
+      });
     },
   };
 }

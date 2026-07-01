@@ -9,7 +9,7 @@
  * This plugin:
  * 1. Externalizes dd-trace and the electron-sdk so they remain as runtime
  *    requires (not bundled), preserving module hook mechanics.
- * 2. Prepends dd-trace initialization (via @datadog/electron-sdk/instrument)
+ * 2. Prepends SDK initialization (via @datadog/electron-sdk/instrument)
  *    to the very top of the main process entry chunk, ensuring hooks are
  *    registered before any hoisted requires. No manual import needed.
  * 3. Copies dd-trace and @datadog/electron-sdk into the build output's
@@ -32,57 +32,23 @@ interface VitePlugin {
   name: string;
   config?: () => { build: { rollupOptions: { external: RegExp[] } } };
   renderChunk?: (code: string, chunk: { isEntry: boolean }, options: { format: string }) => string | null;
-  generateBundle?: () => void;
   writeBundle?: (options: { dir?: string }) => void;
 }
-
-interface PluginContext {
-  emitFile: (file: { type: string; fileName: string; source: string | Uint8Array }) => void;
-}
-
-const DD_TRACE_PRELOAD = 'dd-trace/packages/datadog-instrumentations/src/electron/preload.js';
-
-// dd-trace resolves its preload at: join(__dirname, 'electron', 'preload.js')
-// When bundled, __dirname is the output directory, so we emit the file there.
-const DD_TRACE_PRELOAD_PATH = 'electron/preload.js';
 
 const CJS_BANNER =
   'try { require("node:module").createRequire(__filename)("@datadog/electron-sdk/instrument"); } catch {}';
 
-// ESM banner: initialize dd-trace and register the preload script directly.
-// In ESM, static imports are loaded before module code evaluates, so dd-trace's
-// IITM hooks cannot intercept `import 'electron'` for automatic BrowserWindow
-// wrapping. The direct preload registration achieves the same result.
+// ESM modules don't have a global require, so we use createRequire to load instrument.ts,
+// which handles defaultSession preload registration and IPC patching via patchBrowserWindow.
 const ESM_BANNER = `
 import { createRequire as __ddCR } from "module";
-try {
-  const __ddR = __ddCR(import.meta.url);
-  __ddR("@datadog/electron-sdk/instrument");
-  const __ddP = __ddR.resolve("${DD_TRACE_PRELOAD}");
-  const { app: __ddApp, session: __ddSes } = __ddR("electron");
-  const __ddReg = () => {
-    try {
-      __ddSes.defaultSession.registerPreloadScript({ type: "frame", filePath: __ddP });
-    } catch {}
-  };
-  if (__ddApp.isReady()) __ddReg();
-  else __ddApp.once("ready", __ddReg);
-} catch {}
+try { __ddCR(import.meta.url)("@datadog/electron-sdk/instrument"); } catch {}
 `.trim();
 
 export function datadogVitePlugin(): VitePlugin {
-  let preloadSource: string | undefined;
   // Support both CJS (__filename) and ESM (import.meta.url) contexts at build time
   const currentFile = typeof __filename !== 'undefined' ? __filename : fileURLToPath(import.meta.url);
   const _require = createRequire(currentFile);
-
-  // Resolve dd-trace's preload file at build time (node_modules is available here)
-  try {
-    const preloadPath = _require.resolve('dd-trace/packages/datadog-instrumentations/src/electron/preload.js');
-    preloadSource = readFileSync(preloadPath, 'utf8');
-  } catch {
-    console.warn('[datadog] dd-trace not found — the preload script will not be bundled and monitoring will not work');
-  }
 
   return {
     name: 'datadog-electron-sdk',
@@ -99,15 +65,6 @@ export function datadogVitePlugin(): VitePlugin {
       if (!chunk.isEntry) return null;
       const banner = options.format === 'es' ? ESM_BANNER : CJS_BANNER;
       return `${banner}\n${code}`;
-    },
-    generateBundle(this: PluginContext) {
-      if (preloadSource) {
-        this.emitFile({
-          type: 'asset',
-          fileName: DD_TRACE_PRELOAD_PATH,
-          source: preloadSource,
-        });
-      }
     },
     writeBundle(options) {
       // Copy externalized packages and their transitive dependencies into
