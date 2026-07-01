@@ -1,8 +1,6 @@
 import { createRequire } from 'node:module';
 import { addError } from '../telemetry';
-import { patchIpcHandleContext, patchFetchContext } from './tracingPatches';
 
-// Support both CJS (__filename) and ESM (import.meta.url) contexts
 const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
 
 interface ExporterWithFlush {
@@ -21,16 +19,8 @@ export class Tracing {
     try {
       const tracer = (_require('dd-trace') as { default: typeof import('dd-trace').default }).default;
 
-      // dd-trace is initialized early via @datadog/electron-sdk/instrument (before require('electron')).
-      // tracer.init() is a no-op if already initialized, so we only configure plugins here.
-      // Service/env/version are set by SpanProcessor on each span payload,
-      // overriding dd-trace's defaults with the SDK config values.
-      tracer.use('electron');
-      tracer.use('http');
-
-      patchIpcHandleContext(tracer);
-      patchFetchContext(tracer);
-
+      // tracer.init() is a no-op if already called by instrument.ts.
+      // Service/env/version are set per-span by SpanProcessor.
       // TODO(RUM-16445) discuss a more reliable way to flush the exporter
       const internalExporter = (tracer as unknown as TracerInternals)._tracer?._exporter;
       if (internalExporter && typeof (internalExporter as ExporterWithFlush).flush === 'function') {
