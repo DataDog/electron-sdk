@@ -69,3 +69,29 @@ test('electron.main.send span is parented to the electron.main.handle span that 
   expect(sendSpan.trace_id).toBe(handleSpan.trace_id);
   expect(sendSpan.parent_id).toBe(handleSpan.span_id);
 });
+
+const httpSpanCases: {
+  description: string;
+  invoke: (p: MainPage, url: string) => Promise<number>;
+  ipcChannel: string;
+}[] = [
+  { description: 'fetch', invoke: (p, url) => p.mainFetch(url), ipcChannel: 'mainFetch' },
+  { description: 'net.request', invoke: (p, url) => p.mainNetRequest(url), ipcChannel: 'mainNetRequest' },
+  { description: 'net.fetch', invoke: (p, url) => p.mainNetFetch(url), ipcChannel: 'mainNetFetch' },
+];
+
+for (const { description, invoke, ipcChannel } of httpSpanCases) {
+  test(`${description}: http span and IPC span share the same trace`, async ({ mainPage, intake, testServer }) => {
+    await mainPage.flushTransport();
+
+    const url = testServer.urlFor(200);
+    const status = await invoke(mainPage, url);
+    expect(status).toBe(200);
+    await mainPage.flushTransport();
+
+    const ipcSpan = await intake.waitForSpan((s) => s.name === 'electron.main.handle' && s.resource === ipcChannel);
+
+    const httpSpan = await intake.waitForSpan((s) => s.name === 'http.request' && s.trace_id === ipcSpan.trace_id);
+    expect(httpSpan.parent_id).toBe(ipcSpan.span_id);
+  });
+}

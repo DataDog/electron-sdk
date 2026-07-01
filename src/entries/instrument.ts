@@ -8,6 +8,7 @@
  * Initializes dd-trace with the electron exporter, then:
  * - patches BrowserWindow to inject the bridge preload
  * - wraps ipcMain and webContents for IPC span instrumentation
+ * - patches net to http span instrumentation
  *
  * Note: Bundlers may break the import order dd-trace needs. Use the bundler
  * plugins provided by the SDK to ensure correct behavior:
@@ -20,6 +21,7 @@ import { displayWarn } from '../tools/display';
 import { createRequire } from 'node:module';
 import { resolvePreloadPath, patchBrowserWindow } from '../instrument/browserWindow';
 import { patchIpcMain, patchWebContents } from '../instrument/ipc';
+import { patchNet } from '../instrument/net';
 
 const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
 
@@ -35,6 +37,7 @@ try {
 interface ElectronModule {
   ipcMain?: Electron.IpcMain;
   BrowserWindow?: typeof Electron.BrowserWindow;
+  net?: Electron.Net;
 }
 
 try {
@@ -55,6 +58,9 @@ try {
     }
     if (electron.BrowserWindow) {
       patchWebContents(electron.BrowserWindow);
+    }
+    if (electron.net) {
+      patchNet(electron.net);
     }
   }
 } catch {
