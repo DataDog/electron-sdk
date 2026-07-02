@@ -1,3 +1,4 @@
+import '@datadog/electron-sdk/instrument';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, ipcMain } from 'electron';

@@ -19,9 +19,7 @@
 import ddTrace from './instrument-prelude';
 import { display } from '../tools/display';
 import { createRequire } from 'node:module';
-import { resolvePreloadPath, patchBrowserWindow } from '../instrument/browserWindow';
-import { patchIpcMain, patchWebContents } from '../instrument/ipc';
-import { patchNet } from '../instrument/net';
+import { instrumentElectron } from '../instrument/instrumentElectron';
 
 const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
 
@@ -34,34 +32,12 @@ try {
   display.warn('dd-trace not found, monitoring will not work');
 }
 
-interface ElectronModule {
-  ipcMain?: Electron.IpcMain;
-  BrowserWindow?: typeof Electron.BrowserWindow;
-  net?: Electron.Net;
-}
-
 try {
-  const electron = _require('electron') as string | ElectronModule;
+  const electron = _require('electron') as string | typeof import('electron');
 
   // In plain Node, 'electron' exports the binary path string — skip patching there.
   if (typeof electron !== 'string') {
-    const preloadPath = resolvePreloadPath();
-    if (preloadPath) {
-      try {
-        patchBrowserWindow(electron as typeof import('electron'), preloadPath);
-      } catch {
-        // skip if BrowserWindow is not patchable in this context
-      }
-    }
-    if (electron.ipcMain) {
-      patchIpcMain(electron.ipcMain);
-    }
-    if (electron.BrowserWindow) {
-      patchWebContents(electron.BrowserWindow);
-    }
-    if (electron.net) {
-      patchNet(electron.net);
-    }
+    instrumentElectron(electron);
   }
 } catch {
   // electron not available (e.g. during unit testing) — skip patching

@@ -92,6 +92,16 @@ test.describe('main-process fetch resource @integration', () => {
     expect(span.meta['_dd.session.id']).toBe(view.session.id);
     expect(span.meta['_dd.view.id']).toBe(view.view.id);
     expect(span.service).toBe('integration-test-app');
+
+    // Regression guard for double-instrumentation. Each app follows the README
+    // (`import '@datadog/electron-sdk/instrument'`) while also using a bundler plugin that injects
+    // the instrumentation banner, so the instrumentation entry is evaluated twice (CJS banner +
+    // ESM import). Without the idempotency guard, net.fetch is wrapped twice and emits duplicate
+    // nested http.request spans. Assert exactly one span was recorded for this request.
+    const requestSpans = intake.getSpans(
+      (s) => s.name === 'http.request' && BigInt(`0x${s.trace_id}`) === BigInt(resource._dd.trace_id!)
+    );
+    expect(requestSpans).toHaveLength(1);
   });
 });
 

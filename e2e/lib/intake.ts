@@ -206,6 +206,11 @@ export class Intake {
     }
   }
 
+  /** Returns all received spans (across every trace) matching the predicate. */
+  getSpans(predicate: (span: Span) => boolean = () => true): Span[] {
+    return this.traces.flatMap((trace) => trace.spans).filter(predicate);
+  }
+
   clear(): void {
     this.rumEvents = [];
     this.traces = [];
