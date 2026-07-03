@@ -1,7 +1,7 @@
 import type { Configuration } from '../config';
 import { EventSource } from '../event';
 import type { FormatHooks } from './hooks';
-import { displayWarn } from '../tools/display';
+import { display } from '../tools/display';
 
 /**
  * Define the common attributes for the events of each format
@@ -57,7 +57,7 @@ function buildTag(key: string, value: string): string {
   const tag = `${key}:${value}`;
   const sanitized = sanitizeTag(tag);
   if (tag.length > TAG_SIZE_LIMIT || hasForbiddenTagCharacters(sanitized)) {
-    displayWarn(
+    display.warn(
       `Tag "${tag}" doesn't meet tag requirements and will be sanitized. See https://docs.datadoghq.com/getting_started/tagging/#defining-tags`
     );
   }

@@ -1,8 +1,8 @@
 import { mockFs } from '../mocks.specUtil';
 
-import * as display from './display';
+import { display } from './display';
 vi.mock('./display', () => ({
-  displayError: vi.fn(),
+  display: { error: vi.fn() },
 }));
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -134,7 +134,7 @@ describe('DiskValueHistory', () => {
       );
     });
 
-    it('calls displayError on write failure', async () => {
+    it('calls display.error on write failure', async () => {
       mfs.readFile.mockRejectedValue(new Error('ENOENT'));
       mfs.writeFile.mockRejectedValue(new Error('disk full'));
       const history = await DiskValueHistory.init<string>({ filePath: FILE_PATH, expireDelay: EXPIRE_DELAY });
@@ -142,7 +142,7 @@ describe('DiskValueHistory', () => {
       history.add('session-a', T0);
       await vi.advanceTimersByTimeAsync(0);
 
-      expect(display.displayError).toHaveBeenCalled();
+      expect(display.error).toHaveBeenCalled();
     });
   });
 

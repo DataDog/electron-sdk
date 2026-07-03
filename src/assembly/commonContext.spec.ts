@@ -4,7 +4,7 @@ import { registerCommonContext } from './commonContext';
 import { createFormatHooks } from './hooks';
 import { EventSource } from '../event';
 import type { Configuration } from '../config';
-import * as display from '../tools/display';
+import { display } from '../tools/display';
 
 const T0 = 0 as TimeStamp;
 
@@ -77,7 +77,7 @@ describe('registerCommonContext', () => {
       { configKey: 'env' as const, tagKey: 'env', raw: 'prod!eu' },
       { configKey: 'version' as const, tagKey: 'version', raw: '1.0 0' },
     ])('warns when $tagKey value contains forbidden characters', ({ configKey, tagKey, raw }) => {
-      const warnSpy = vi.spyOn(display, 'displayWarn').mockReturnValue(undefined);
+      const warnSpy = vi.spyOn(display, 'warn').mockReturnValue(undefined);
 
       triggerMainRum(makeConfig({ [configKey]: raw }));
 
@@ -86,7 +86,7 @@ describe('registerCommonContext', () => {
     });
 
     it('warns when a tag exceeds the 200-character size limit', () => {
-      const warnSpy = vi.spyOn(display, 'displayWarn').mockReturnValue(undefined);
+      const warnSpy = vi.spyOn(display, 'warn').mockReturnValue(undefined);
 
       // 'env:' = 4 chars, so value of 197 chars = 201-char tag (first value > 200)
       triggerMainRum(makeConfig({ env: 'a'.repeat(197) }));
@@ -96,7 +96,7 @@ describe('registerCommonContext', () => {
     });
 
     it('does not warn when a tag is exactly at the size limit', () => {
-      const warnSpy = vi.spyOn(display, 'displayWarn').mockReturnValue(undefined);
+      const warnSpy = vi.spyOn(display, 'warn').mockReturnValue(undefined);
 
       // 'env:' = 4 chars, so value of 196 chars = exactly 200
       triggerMainRum(makeConfig({ env: 'a'.repeat(196) }));
@@ -110,7 +110,7 @@ describe('registerCommonContext', () => {
       { configKey: 'env' as const, tagKey: 'env', raw: 'prod.eu/west' },
       { configKey: 'service' as const, tagKey: 'service', raw: 'my,service' },
     ])('does not warn when $tagKey value contains only allowed special characters', ({ configKey, raw }) => {
-      const warnSpy = vi.spyOn(display, 'displayWarn').mockReturnValue(undefined);
+      const warnSpy = vi.spyOn(display, 'warn').mockReturnValue(undefined);
 
       triggerMainRum(makeConfig({ [configKey]: raw }));
 

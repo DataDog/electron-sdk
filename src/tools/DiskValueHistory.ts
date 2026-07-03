@@ -1,7 +1,7 @@
 import * as fs from 'node:fs/promises';
 import type { TimeStamp } from '@datadog/js-core/time';
 import { TimeStampValueHistory, type TimeStampHistoryEntry } from './TimeStampValueHistory';
-import { displayError } from './display';
+import { display } from './display';
 
 /**
  * Disk-backed extension of TimeStampValueHistory. All in-memory operations delegate to an
@@ -16,7 +16,7 @@ import { displayError } from './display';
  * disk, because JSON.stringify converts Infinity to null. On load, entries with `endTime: null`
  * are restored as active (endTime = Infinity).
  *
- * Error handling: write failures are logged via displayError and do not throw.
+ * Error handling: write failures are logged via display.error and do not throw.
  * Read/parse failures leave the history empty (silent fallback).
  */
 export class DiskValueHistory<T> {
@@ -82,7 +82,7 @@ export class DiskValueHistory<T> {
     this.pendingWrite = this.pendingWrite
       .then(() => fs.writeFile(this.filePath, snapshot, 'utf-8'))
       .catch((error) => {
-        displayError('Failed to persist value history:', error);
+        display.error('Failed to persist value history:', error);
       });
   }
 }

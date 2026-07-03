@@ -7,7 +7,7 @@ import { EventFormat, EventKind, EventManager } from '../../../event';
 import type { CrashReport } from '../../../wasm';
 import type { RawRumError } from '../rawRumData.types';
 import type { RumErrorEvent } from '../rumEvent.types';
-import { displayError, displayInfo } from '../../../tools/display';
+import { display } from '../../../tools/display';
 import { addError, monitor } from '../../telemetry';
 
 /**
@@ -39,7 +39,7 @@ export class CrashCollection {
 
     // Dynamic import to avoid loading the ~1.6MB WASM binary into memory when there are no dumps
     const { processMinidump } = await import('../../../wasm');
-    displayInfo(`${dmpFiles.length} crash dumps to process`);
+    display.info(`${dmpFiles.length} crash dumps to process`);
 
     for (const filePath of dmpFiles) {
       try {
@@ -59,10 +59,10 @@ export class CrashCollection {
         await fs.unlink(filePath);
       } catch (error) {
         addError(error);
-        displayError('Failed to process crash dump:', filePath, error);
+        display.error('Failed to process crash dump:', filePath, error);
       }
     }
-    displayInfo(`Crash dump processing done.`);
+    display.info(`Crash dump processing done.`);
   }
 }
 

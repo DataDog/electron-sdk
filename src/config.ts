@@ -1,6 +1,6 @@
 import { ONE_SECOND } from '@datadog/js-core/time';
 import { ONE_KIBI_BYTE, ONE_MEBI_BYTE, DefaultPrivacyLevel } from '@datadog/browser-core';
-import { displayError } from './tools/display';
+import { display } from './tools/display';
 
 const VALID_DATADOG_SITES = [
   'datadoghq.com',
@@ -62,7 +62,7 @@ export interface Configuration {
 
 function validateRequiredString(value: unknown, fieldName: string): string | undefined {
   if (typeof value !== 'string' || value.length === 0) {
-    displayError(`Configuration error: '${fieldName}' must be a non-empty string`);
+    display.error(`Configuration error: '${fieldName}' must be a non-empty string`);
     return undefined;
   }
   return value;
@@ -70,7 +70,7 @@ function validateRequiredString(value: unknown, fieldName: string): string | und
 
 function validateSite(value: unknown): string | undefined {
   if (typeof value !== 'string' || value.length === 0 || !(VALID_DATADOG_SITES as readonly string[]).includes(value)) {
-    displayError(`Configuration error: 'site' must be one of: ${VALID_DATADOG_SITES.join(', ')}`);
+    display.error(`Configuration error: 'site' must be one of: ${VALID_DATADOG_SITES.join(', ')}`);
     return undefined;
   }
   return value;
@@ -93,7 +93,7 @@ function validateSessionSampleRate(value: unknown): number | undefined {
     return 100;
   }
   if (!Number.isFinite(value) || (value as number) < 0 || (value as number) > 100) {
-    displayError("Configuration error: 'sessionSampleRate' must be a number between 0 and 100");
+    display.error("Configuration error: 'sessionSampleRate' must be a number between 0 and 100");
     return undefined;
   }
   return value as number;
@@ -104,7 +104,7 @@ function validateTelemetrySampleRate(value: unknown): number | undefined {
     return 20;
   }
   if (!Number.isFinite(value) || (value as number) < 0 || (value as number) > 100) {
-    displayError("Configuration error: 'telemetrySampleRate' must be a number between 0 and 100");
+    display.error("Configuration error: 'telemetrySampleRate' must be a number between 0 and 100");
     return undefined;
   }
   return value as number;
@@ -121,7 +121,7 @@ function validateDefaultPrivacyLevel(value: unknown): DefaultPrivacyLevel {
     return DefaultPrivacyLevel.MASK;
   }
   if (typeof value !== 'string' || !(VALID_PRIVACY_LEVELS as readonly string[]).includes(value)) {
-    displayError(`Configuration error: 'defaultPrivacyLevel' must be one of: ${VALID_PRIVACY_LEVELS.join(', ')}`);
+    display.error(`Configuration error: 'defaultPrivacyLevel' must be one of: ${VALID_PRIVACY_LEVELS.join(', ')}`);
     return DefaultPrivacyLevel.MASK;
   }
   return value as DefaultPrivacyLevel;
@@ -132,7 +132,7 @@ function validateAllowedWebViewHosts(value: unknown): string[] {
     return [];
   }
   if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
-    displayError("Configuration error: 'allowedWebViewHosts' must be an array of strings");
+    display.error("Configuration error: 'allowedWebViewHosts' must be an array of strings");
     return [];
   }
   return value;
