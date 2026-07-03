@@ -25,9 +25,6 @@ export const BatchUploadFrequencies = {
   FREQUENT: 5 * ONE_SECOND,
 } as const;
 
-export type BatchSize = 'SMALL' | 'MEDIUM' | 'LARGE';
-export type UploadFrequency = 'RARE' | 'NORMAL' | 'FREQUENT';
-
 export interface InitConfiguration {
   site: string;
   proxy?: string;
@@ -38,8 +35,6 @@ export interface InitConfiguration {
   version?: string;
   sessionSampleRate?: number;
   telemetrySampleRate?: number;
-  batchSize?: BatchSize;
-  uploadFrequency?: UploadFrequency;
   defaultPrivacyLevel?: DefaultPrivacyLevel;
   allowedWebViewHosts?: string[];
 }
@@ -54,8 +49,6 @@ export interface Configuration {
   proxy?: string;
   sessionSampleRate: number;
   telemetrySampleRate: number;
-  batchSize?: BatchSize;
-  uploadFrequency?: UploadFrequency;
   defaultPrivacyLevel: DefaultPrivacyLevel;
   allowedWebViewHosts: string[];
 }

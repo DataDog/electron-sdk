@@ -31,21 +31,17 @@ export class Transport {
   }
 
   /**
-   * Creates a {@link BatchManager} configured with the resolved batch size,
+   * Creates a {@link BatchManager} configured with the default batch size,
    * upload frequency, and storage path for the given track type.
    */
   private async createBatchManager(trackType: EventTrack) {
     const path = this.basePath;
-    const batchSize = this.config.batchSize ? BatchSizes[this.config.batchSize] : BatchSizes.MEDIUM;
-    const uploadFrequency = this.config.uploadFrequency
-      ? BatchUploadFrequencies[this.config.uploadFrequency]
-      : BatchUploadFrequencies.NORMAL;
 
     const manager = await BatchManager.create(this.config, {
       path,
       trackType,
-      batchSize,
-      uploadFrequency,
+      batchSize: BatchSizes.MEDIUM,
+      uploadFrequency: BatchUploadFrequencies.NORMAL,
     });
     this.batchManagers.push(manager);
 
