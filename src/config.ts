@@ -1,17 +1,8 @@
+import { validateAndBuildConfiguration } from '@datadog/js-core/configuration';
+import type { ConfigurationSchema, InferredConfig } from '@datadog/js-core/configuration';
 import { ONE_SECOND } from '@datadog/js-core/time';
 import { ONE_KIBI_BYTE, ONE_MEBI_BYTE, DefaultPrivacyLevel } from '@datadog/browser-core';
 import { display } from './tools/display';
-
-const VALID_DATADOG_SITES = [
-  'datadoghq.com',
-  'datadoghq.eu',
-  'us3.datadoghq.com',
-  'us5.datadoghq.com',
-  'ap1.datadoghq.com',
-  'ap2.datadoghq.com',
-  'ddog-gov.com',
-  'datad0g.com', // Internal staging site
-] as const;
 
 export const BatchSizes = {
   SMALL: 16 * ONE_KIBI_BYTE,
@@ -39,127 +30,27 @@ export interface InitConfiguration {
   allowedWebViewHosts?: string[];
 }
 
-export interface Configuration {
-  site: string;
-  service: string;
-  clientToken: string;
-  applicationId: string;
-  env?: string;
-  version?: string;
-  proxy?: string;
-  sessionSampleRate: number;
-  telemetrySampleRate: number;
-  defaultPrivacyLevel: DefaultPrivacyLevel;
-  allowedWebViewHosts: string[];
-}
+const CONFIG_SCHEMA = {
+  site: { type: 'site', required: true },
+  service: { type: 'string', required: true },
+  clientToken: { type: 'string', required: true },
+  applicationId: { type: 'string', required: true },
+  env: { type: 'string' },
+  version: { type: 'string' },
+  proxy: { type: 'string' },
+  sessionSampleRate: { type: 'percentage', default: 100 },
+  telemetrySampleRate: { type: 'percentage', default: 20 },
+  defaultPrivacyLevel: {
+    type: 'enum',
+    values: [DefaultPrivacyLevel.MASK, DefaultPrivacyLevel.ALLOW, DefaultPrivacyLevel.MASK_USER_INPUT],
+    strict: false,
+    default: DefaultPrivacyLevel.MASK,
+  },
+  allowedWebViewHosts: { type: 'string', multiple: true, strict: false, default: [] as string[] },
+} as const satisfies ConfigurationSchema;
 
-function validateRequiredString(value: unknown, fieldName: string): string | undefined {
-  if (typeof value !== 'string' || value.length === 0) {
-    display.error(`Configuration error: '${fieldName}' must be a non-empty string`);
-    return undefined;
-  }
-  return value;
-}
-
-function validateSite(value: unknown): string | undefined {
-  if (typeof value !== 'string' || value.length === 0 || !(VALID_DATADOG_SITES as readonly string[]).includes(value)) {
-    display.error(`Configuration error: 'site' must be one of: ${VALID_DATADOG_SITES.join(', ')}`);
-    return undefined;
-  }
-  return value;
-}
-
-function validateOptionalString(value: unknown): string | undefined {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-
-  if (typeof value !== 'string') {
-    return undefined;
-  }
-
-  return value.length > 0 ? value : undefined;
-}
-
-function validateSessionSampleRate(value: unknown): number | undefined {
-  if (value === undefined || value === null) {
-    return 100;
-  }
-  if (!Number.isFinite(value) || (value as number) < 0 || (value as number) > 100) {
-    display.error("Configuration error: 'sessionSampleRate' must be a number between 0 and 100");
-    return undefined;
-  }
-  return value as number;
-}
-
-function validateTelemetrySampleRate(value: unknown): number | undefined {
-  if (value === undefined || value === null) {
-    return 20;
-  }
-  if (!Number.isFinite(value) || (value as number) < 0 || (value as number) > 100) {
-    display.error("Configuration error: 'telemetrySampleRate' must be a number between 0 and 100");
-    return undefined;
-  }
-  return value as number;
-}
-
-const VALID_PRIVACY_LEVELS: readonly DefaultPrivacyLevel[] = [
-  DefaultPrivacyLevel.MASK,
-  DefaultPrivacyLevel.ALLOW,
-  DefaultPrivacyLevel.MASK_USER_INPUT,
-];
-
-function validateDefaultPrivacyLevel(value: unknown): DefaultPrivacyLevel {
-  if (value === undefined || value === null) {
-    return DefaultPrivacyLevel.MASK;
-  }
-  if (typeof value !== 'string' || !(VALID_PRIVACY_LEVELS as readonly string[]).includes(value)) {
-    display.error(`Configuration error: 'defaultPrivacyLevel' must be one of: ${VALID_PRIVACY_LEVELS.join(', ')}`);
-    return DefaultPrivacyLevel.MASK;
-  }
-  return value as DefaultPrivacyLevel;
-}
-
-function validateAllowedWebViewHosts(value: unknown): string[] {
-  if (value === undefined || value === null) {
-    return [];
-  }
-  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
-    display.error("Configuration error: 'allowedWebViewHosts' must be an array of strings");
-    return [];
-  }
-  return value;
-}
+export type Configuration = InferredConfig<typeof CONFIG_SCHEMA>;
 
 export function buildConfiguration(initConfig: InitConfiguration): Configuration | undefined {
-  const service = validateRequiredString(initConfig.service, 'service');
-  const clientToken = validateRequiredString(initConfig.clientToken, 'clientToken');
-  const applicationId = validateRequiredString(initConfig.applicationId, 'applicationId');
-  const site = validateSite(initConfig.site);
-
-  if (service === undefined || clientToken === undefined || applicationId === undefined || site === undefined) {
-    return undefined;
-  }
-
-  const proxy = validateOptionalString(initConfig.proxy);
-  const sessionSampleRate = validateSessionSampleRate(initConfig.sessionSampleRate);
-  const telemetrySampleRate = validateTelemetrySampleRate(initConfig.telemetrySampleRate);
-
-  if (sessionSampleRate === undefined || telemetrySampleRate === undefined) {
-    return undefined;
-  }
-
-  return {
-    site,
-    service,
-    clientToken,
-    applicationId,
-    env: validateOptionalString(initConfig.env),
-    version: validateOptionalString(initConfig.version),
-    proxy,
-    sessionSampleRate,
-    telemetrySampleRate,
-    defaultPrivacyLevel: validateDefaultPrivacyLevel(initConfig.defaultPrivacyLevel),
-    allowedWebViewHosts: validateAllowedWebViewHosts(initConfig.allowedWebViewHosts),
-  };
+  return validateAndBuildConfiguration(initConfig, CONFIG_SCHEMA, display);
 }

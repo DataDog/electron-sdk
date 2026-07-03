@@ -4,7 +4,7 @@ import type { InitConfiguration } from './config';
 
 import { display } from './tools/display';
 vi.mock('./tools/display', () => ({
-  display: { error: vi.fn() },
+  display: { debug: vi.fn(), log: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
 describe('buildConfiguration', () => {
@@ -128,22 +128,8 @@ describe('buildConfiguration', () => {
   });
 
   describe('site validation', () => {
-    const VALID_DATADOG_SITES = [
-      'datadoghq.com',
-      'datadoghq.eu',
-      'us3.datadoghq.com',
-      'us5.datadoghq.com',
-      'ap1.datadoghq.com',
-      'ap2.datadoghq.com',
-      'ddog-gov.com',
-      'datad0g.com',
-    ];
-
     it.each([
-      { value: undefined, description: 'undefined' },
-      { value: '', description: 'empty string' },
       { value: 123, description: 'number' },
-      { value: null, description: 'null' },
       { value: 'invalid-site.com', description: 'invalid site' },
     ])('returns undefined and logs error when site is $description', ({ value }) => {
       const config = {
@@ -152,9 +138,21 @@ describe('buildConfiguration', () => {
       } as unknown as InitConfiguration;
 
       expect(buildConfiguration(config)).toBeUndefined();
-      expect(display.error).toHaveBeenCalledWith(
-        `Configuration error: 'site' must be one of: ${VALID_DATADOG_SITES.join(', ')}`
-      );
+      expect(display.error).toHaveBeenCalledWith(expect.stringContaining('"site" must be a valid Datadog site'));
+    });
+
+    it.each([
+      { value: undefined, description: 'undefined' },
+      { value: '', description: 'empty string' },
+      { value: null, description: 'null' },
+    ])('returns undefined and logs "is required" when site is $description', ({ value }) => {
+      const config = {
+        ...DEFAULT_CONFIG,
+        site: value,
+      } as unknown as InitConfiguration;
+
+      expect(buildConfiguration(config)).toBeUndefined();
+      expect(display.error).toHaveBeenCalledWith('"site" is required');
     });
 
     it.each([
@@ -188,7 +186,7 @@ describe('buildConfiguration', () => {
 
       buildConfiguration(config);
 
-      expect(display.error).toHaveBeenCalledWith("Configuration error: 'service' must be a non-empty string");
+      expect(display.error).toHaveBeenCalledWith('"service" is required');
     });
 
     it('logs error for empty clientToken', () => {
@@ -199,7 +197,7 @@ describe('buildConfiguration', () => {
 
       buildConfiguration(config);
 
-      expect(display.error).toHaveBeenCalledWith("Configuration error: 'clientToken' must be a non-empty string");
+      expect(display.error).toHaveBeenCalledWith('"clientToken" is required');
     });
 
     it('includes field name in error message', () => {
@@ -213,7 +211,7 @@ describe('buildConfiguration', () => {
       expect(display.error).toHaveBeenCalledWith(expect.stringContaining('service'));
     });
 
-    it('logs multiple errors when multiple fields are invalid', () => {
+    it('stops at the first invalid required field when multiple fields are invalid', () => {
       const config = {
         ...DEFAULT_CONFIG,
         service: '',
@@ -222,9 +220,8 @@ describe('buildConfiguration', () => {
 
       buildConfiguration(config);
 
-      expect(display.error).toHaveBeenCalledTimes(2);
-      expect(display.error).toHaveBeenCalledWith("Configuration error: 'service' must be a non-empty string");
-      expect(display.error).toHaveBeenCalledWith("Configuration error: 'clientToken' must be a non-empty string");
+      expect(display.error).toHaveBeenCalledTimes(1);
+      expect(display.error).toHaveBeenCalledWith('"service" is required');
     });
   });
 
@@ -256,7 +253,7 @@ describe('buildConfiguration', () => {
 
       expect(result?.defaultPrivacyLevel).toBe('mask');
       expect(display.error).toHaveBeenCalledWith(
-        "Configuration error: 'defaultPrivacyLevel' must be one of: mask, allow, mask-user-input"
+        '"defaultPrivacyLevel" must be one of: "mask", "allow", "mask-user-input"'
       );
     });
 
@@ -290,20 +287,40 @@ describe('buildConfiguration', () => {
       expect(result?.allowedWebViewHosts).toEqual(['example.com', 'other.com']);
     });
 
+    it('normalizes a single string value to a single-element array', () => {
+      const config = {
+        ...DEFAULT_CONFIG,
+        allowedWebViewHosts: 'not-an-array',
+      } as unknown as InitConfiguration;
+
+      const result = buildConfiguration(config);
+
+      expect(result?.allowedWebViewHosts).toEqual(['not-an-array']);
+      expect(display.error).not.toHaveBeenCalled();
+    });
+
     it.each([
-      { value: 'not-an-array', description: 'string' },
       { value: 123, description: 'number' },
       { value: [123, 456], description: 'array of non-strings' },
-      { value: ['valid', 123], description: 'mixed array' },
     ])('logs error and uses default when $description', ({ value }) => {
       const config = { ...DEFAULT_CONFIG, allowedWebViewHosts: value } as unknown as InitConfiguration;
 
       const result = buildConfiguration(config);
 
       expect(result?.allowedWebViewHosts).toEqual([]);
-      expect(display.error).toHaveBeenCalledWith(
-        "Configuration error: 'allowedWebViewHosts' must be an array of strings"
-      );
+      expect(display.error).toHaveBeenCalledWith('"allowedWebViewHosts" must be a non-empty string');
+    });
+
+    it('silently keeps valid items and drops invalid ones in a mixed array', () => {
+      const config = {
+        ...DEFAULT_CONFIG,
+        allowedWebViewHosts: ['valid', 123],
+      } as unknown as InitConfiguration;
+
+      const result = buildConfiguration(config);
+
+      expect(result?.allowedWebViewHosts).toEqual(['valid']);
+      expect(display.error).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -344,9 +361,7 @@ describe('buildConfiguration', () => {
       const result = buildConfiguration(config);
 
       expect(result).toBeUndefined();
-      expect(display.error).toHaveBeenCalledWith(
-        "Configuration error: 'sessionSampleRate' must be a number between 0 and 100"
-      );
+      expect(display.error).toHaveBeenCalledWith('"sessionSampleRate" must be a number between 0 and 100');
     });
 
     it.each([
@@ -391,9 +406,7 @@ describe('buildConfiguration', () => {
       const result = buildConfiguration(config);
 
       expect(result).toBeUndefined();
-      expect(display.error).toHaveBeenCalledWith(
-        "Configuration error: 'telemetrySampleRate' must be a number between 0 and 100"
-      );
+      expect(display.error).toHaveBeenCalledWith('"telemetrySampleRate" must be a number between 0 and 100');
     });
 
     it.each([

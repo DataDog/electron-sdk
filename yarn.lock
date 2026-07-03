@@ -83,7 +83,7 @@ __metadata:
   resolution: "@datadog/electron-sdk@workspace:."
   dependencies:
     "@datadog/browser-core": "npm:7.4.0"
-    "@datadog/js-core": "npm:0.0.4"
+    "@datadog/js-core": "portal:/Users/thomas.lebeau/go/src/github.com/DataDog/browser-sdk/.claude/worktrees/js-core-configuration/packages/js-core"
     "@eslint/js": "npm:10.0.1"
     "@playwright/test": "npm:1.61.0"
     "@rollup/plugin-commonjs": "npm:29.0.3"
@@ -132,6 +132,12 @@ __metadata:
   checksum: 10c0/b1223c4baa8e98f764dc03f881cd84b3c9b065c1b63d0fa1d70c3f7fc2b1cd6b226242120699e940b3648520f49eb2d87226623fe7556743cfdf701154e9a294
   languageName: node
   linkType: hard
+
+"@datadog/js-core@portal:/Users/thomas.lebeau/go/src/github.com/DataDog/browser-sdk/.claude/worktrees/js-core-configuration/packages/js-core::locator=%40datadog%2Felectron-sdk%40workspace%3A.":
+  version: 0.0.0-use.local
+  resolution: "@datadog/js-core@portal:/Users/thomas.lebeau/go/src/github.com/DataDog/browser-sdk/.claude/worktrees/js-core-configuration/packages/js-core::locator=%40datadog%2Felectron-sdk%40workspace%3A."
+  languageName: node
+  linkType: soft
 
 "@datadog/libdatadog@npm:0.9.4":
   version: 0.9.4
