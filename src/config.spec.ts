@@ -2,9 +2,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { buildConfiguration } from './config';
 import type { InitConfiguration } from './config';
 
-import * as display from './tools/display';
+import { display } from './tools/display';
 vi.mock('./tools/display', () => ({
-  displayError: vi.fn(),
+  display: { error: vi.fn() },
 }));
 
 describe('buildConfiguration', () => {
@@ -46,7 +46,7 @@ describe('buildConfiguration', () => {
 
       buildConfiguration(config);
 
-      expect(display.displayError).toHaveBeenCalledWith(expect.stringContaining(fieldName));
+      expect(display.error).toHaveBeenCalledWith(expect.stringContaining(fieldName));
     });
   });
 
@@ -152,7 +152,7 @@ describe('buildConfiguration', () => {
       } as unknown as InitConfiguration;
 
       expect(buildConfiguration(config)).toBeUndefined();
-      expect(display.displayError).toHaveBeenCalledWith(
+      expect(display.error).toHaveBeenCalledWith(
         `Configuration error: 'site' must be one of: ${VALID_DATADOG_SITES.join(', ')}`
       );
     });
@@ -188,7 +188,7 @@ describe('buildConfiguration', () => {
 
       buildConfiguration(config);
 
-      expect(display.displayError).toHaveBeenCalledWith("Configuration error: 'service' must be a non-empty string");
+      expect(display.error).toHaveBeenCalledWith("Configuration error: 'service' must be a non-empty string");
     });
 
     it('logs error for empty clientToken', () => {
@@ -199,9 +199,7 @@ describe('buildConfiguration', () => {
 
       buildConfiguration(config);
 
-      expect(display.displayError).toHaveBeenCalledWith(
-        "Configuration error: 'clientToken' must be a non-empty string"
-      );
+      expect(display.error).toHaveBeenCalledWith("Configuration error: 'clientToken' must be a non-empty string");
     });
 
     it('includes field name in error message', () => {
@@ -212,7 +210,7 @@ describe('buildConfiguration', () => {
 
       buildConfiguration(config);
 
-      expect(display.displayError).toHaveBeenCalledWith(expect.stringContaining('service'));
+      expect(display.error).toHaveBeenCalledWith(expect.stringContaining('service'));
     });
 
     it('logs multiple errors when multiple fields are invalid', () => {
@@ -224,11 +222,9 @@ describe('buildConfiguration', () => {
 
       buildConfiguration(config);
 
-      expect(display.displayError).toHaveBeenCalledTimes(2);
-      expect(display.displayError).toHaveBeenCalledWith("Configuration error: 'service' must be a non-empty string");
-      expect(display.displayError).toHaveBeenCalledWith(
-        "Configuration error: 'clientToken' must be a non-empty string"
-      );
+      expect(display.error).toHaveBeenCalledTimes(2);
+      expect(display.error).toHaveBeenCalledWith("Configuration error: 'service' must be a non-empty string");
+      expect(display.error).toHaveBeenCalledWith("Configuration error: 'clientToken' must be a non-empty string");
     });
   });
 
@@ -259,7 +255,7 @@ describe('buildConfiguration', () => {
       const result = buildConfiguration(config);
 
       expect(result?.defaultPrivacyLevel).toBe('mask');
-      expect(display.displayError).toHaveBeenCalledWith(
+      expect(display.error).toHaveBeenCalledWith(
         "Configuration error: 'defaultPrivacyLevel' must be one of: mask, allow, mask-user-input"
       );
     });
@@ -273,7 +269,7 @@ describe('buildConfiguration', () => {
       const result = buildConfiguration(config);
 
       expect(result?.defaultPrivacyLevel).toBe('mask');
-      expect(display.displayError).not.toHaveBeenCalled();
+      expect(display.error).not.toHaveBeenCalled();
     });
   });
 
@@ -305,7 +301,7 @@ describe('buildConfiguration', () => {
       const result = buildConfiguration(config);
 
       expect(result?.allowedWebViewHosts).toEqual([]);
-      expect(display.displayError).toHaveBeenCalledWith(
+      expect(display.error).toHaveBeenCalledWith(
         "Configuration error: 'allowedWebViewHosts' must be an array of strings"
       );
     });
@@ -319,7 +315,7 @@ describe('buildConfiguration', () => {
       const result = buildConfiguration(config);
 
       expect(result?.allowedWebViewHosts).toEqual([]);
-      expect(display.displayError).not.toHaveBeenCalled();
+      expect(display.error).not.toHaveBeenCalled();
     });
   });
 
@@ -348,7 +344,7 @@ describe('buildConfiguration', () => {
       const result = buildConfiguration(config);
 
       expect(result).toBeUndefined();
-      expect(display.displayError).toHaveBeenCalledWith(
+      expect(display.error).toHaveBeenCalledWith(
         "Configuration error: 'sessionSampleRate' must be a number between 0 and 100"
       );
     });
@@ -362,7 +358,7 @@ describe('buildConfiguration', () => {
       const result = buildConfiguration(config);
 
       expect(result?.sessionSampleRate).toBe(100);
-      expect(display.displayError).not.toHaveBeenCalled();
+      expect(display.error).not.toHaveBeenCalled();
     });
   });
 
@@ -395,7 +391,7 @@ describe('buildConfiguration', () => {
       const result = buildConfiguration(config);
 
       expect(result).toBeUndefined();
-      expect(display.displayError).toHaveBeenCalledWith(
+      expect(display.error).toHaveBeenCalledWith(
         "Configuration error: 'telemetrySampleRate' must be a number between 0 and 100"
       );
     });
@@ -409,7 +405,7 @@ describe('buildConfiguration', () => {
       const result = buildConfiguration(config);
 
       expect(result?.telemetrySampleRate).toBe(20);
-      expect(display.displayError).not.toHaveBeenCalled();
+      expect(display.error).not.toHaveBeenCalled();
     });
   });
 });

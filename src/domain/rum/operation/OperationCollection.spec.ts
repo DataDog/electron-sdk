@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OperationCollection, type FeatureOperationOptions } from './OperationCollection';
 import { EventFormat, EventKind, EventManager, type RawRumEvent } from '../../../event';
 import type { RawRumVital } from '../rawRumData.types';
-import { displayError, displayWarn } from '../../../tools/display';
+import { display } from '../../../tools/display';
 
 vi.mock('../../../tools/display', () => ({
-  displayError: vi.fn(),
-  displayWarn: vi.fn(),
-  displayInfo: vi.fn(),
+  display: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+  },
 }));
 
 // Strict RFC 4122 v4 — matches the schema pattern and browser-core's generateUUID output.
@@ -103,31 +105,31 @@ describe('OperationCollection', () => {
       operationCollection.getApi().startOperation('');
 
       expect(rawRumEvents).toHaveLength(0);
-      expect(displayError).toHaveBeenCalledOnce();
-      expect(vi.mocked(displayError).mock.calls[0][0]).toContain('operation name cannot be empty');
+      expect(display.error).toHaveBeenCalledOnce();
+      expect(vi.mocked(display.error).mock.calls[0][0]).toContain('operation name cannot be empty');
     });
 
     it('VAL-02: whitespace-only name is rejected and no event is emitted', () => {
       operationCollection.getApi().startOperation('   ');
 
       expect(rawRumEvents).toHaveLength(0);
-      expect(displayError).toHaveBeenCalledOnce();
-      expect(vi.mocked(displayError).mock.calls[0][0]).toContain('operation name cannot be empty');
+      expect(display.error).toHaveBeenCalledOnce();
+      expect(vi.mocked(display.error).mock.calls[0][0]).toContain('operation name cannot be empty');
     });
 
     it('VAL-03: empty operationKey is rejected as blank', () => {
       operationCollection.getApi().startOperation('login', { operationKey: '' });
 
       expect(rawRumEvents).toHaveLength(0);
-      expect(displayError).toHaveBeenCalledOnce();
-      expect(vi.mocked(displayError).mock.calls[0][0]).toContain('operation key cannot be empty');
+      expect(display.error).toHaveBeenCalledOnce();
+      expect(vi.mocked(display.error).mock.calls[0][0]).toContain('operation key cannot be empty');
     });
 
     it('VAL-04: whitespace-only operationKey is rejected', () => {
       operationCollection.getApi().startOperation('login', { operationKey: '   ' });
 
       expect(rawRumEvents).toHaveLength(0);
-      expect(displayError).toHaveBeenCalledOnce();
+      expect(display.error).toHaveBeenCalledOnce();
     });
 
     it('VAL-05: undefined operationKey is valid and results in an unkeyed operation', () => {
@@ -136,33 +138,33 @@ describe('OperationCollection', () => {
       expect(rawRumEvents).toHaveLength(1);
       const data = rawRumEvents[0].data as RawRumVital;
       expect(data.vital.operation_key).toBeUndefined();
-      expect(displayError).not.toHaveBeenCalled();
+      expect(display.error).not.toHaveBeenCalled();
     });
 
     it('VAL-07: blank name on succeedOperation is rejected', () => {
       operationCollection.getApi().succeedOperation('');
       expect(rawRumEvents).toHaveLength(0);
-      expect(displayError).toHaveBeenCalledOnce();
+      expect(display.error).toHaveBeenCalledOnce();
     });
 
     it('VAL-07: blank name on failOperation is rejected', () => {
       operationCollection.getApi().failOperation('', 'error');
       expect(rawRumEvents).toHaveLength(0);
-      expect(displayError).toHaveBeenCalledOnce();
+      expect(display.error).toHaveBeenCalledOnce();
     });
 
     it('VAL-07: blank operationKey is rejected on succeedOperation', () => {
       operationCollection.getApi().succeedOperation('login', { operationKey: '' });
       expect(rawRumEvents).toHaveLength(0);
-      expect(displayError).toHaveBeenCalledOnce();
-      expect(vi.mocked(displayError).mock.calls[0][0]).toContain('operation key cannot be empty');
+      expect(display.error).toHaveBeenCalledOnce();
+      expect(vi.mocked(display.error).mock.calls[0][0]).toContain('operation key cannot be empty');
     });
 
     it('VAL-07: blank operationKey is rejected on failOperation', () => {
       operationCollection.getApi().failOperation('login', 'error', { operationKey: '   ' });
       expect(rawRumEvents).toHaveLength(0);
-      expect(displayError).toHaveBeenCalledOnce();
-      expect(vi.mocked(displayError).mock.calls[0][0]).toContain('operation key cannot be empty');
+      expect(display.error).toHaveBeenCalledOnce();
+      expect(vi.mocked(display.error).mock.calls[0][0]).toContain('operation key cannot be empty');
     });
 
     // The public API is typed as `(name: string, options?: FeatureOperationOptions)`, but the validator accepts
@@ -177,8 +179,8 @@ describe('OperationCollection', () => {
     ])('rejects non-object %s as options and emits no event', (_label, badOptions) => {
       operationCollection.getApi().startOperation('login', badOptions as unknown as FeatureOperationOptions);
       expect(rawRumEvents).toHaveLength(0);
-      expect(displayError).toHaveBeenCalledOnce();
-      expect(vi.mocked(displayError).mock.calls[0][0]).toContain('options must be an object');
+      expect(display.error).toHaveBeenCalledOnce();
+      expect(vi.mocked(display.error).mock.calls[0][0]).toContain('options must be an object');
     });
 
     it.each([
@@ -187,8 +189,8 @@ describe('OperationCollection', () => {
     ])('rejects non-string %s as name and emits no event', (_label, badName) => {
       operationCollection.getApi().startOperation(badName as unknown as string);
       expect(rawRumEvents).toHaveLength(0);
-      expect(displayError).toHaveBeenCalledOnce();
-      expect(vi.mocked(displayError).mock.calls[0][0]).toContain('operation name cannot be empty');
+      expect(display.error).toHaveBeenCalledOnce();
+      expect(vi.mocked(display.error).mock.calls[0][0]).toContain('operation name cannot be empty');
     });
   });
 
@@ -214,9 +216,9 @@ describe('OperationCollection', () => {
 
       expect(rawRumEvents).toHaveLength(1);
       expect((rawRumEvents[0].data as RawRumVital).vital.name).toBe(name);
-      expect(displayWarn).toHaveBeenCalledOnce();
-      expect(vi.mocked(displayWarn).mock.calls[0][0]).toContain('does not match');
-      expect(vi.mocked(displayWarn).mock.calls[0][0]).toContain('still be sent');
+      expect(display.warn).toHaveBeenCalledOnce();
+      expect(vi.mocked(display.warn).mock.calls[0][0]).toContain('does not match');
+      expect(vi.mocked(display.warn).mock.calls[0][0]).toContain('still be sent');
     });
 
     it.each([
@@ -235,7 +237,7 @@ describe('OperationCollection', () => {
       operationCollection.getApi().startOperation(name);
 
       expect(rawRumEvents).toHaveLength(1);
-      expect(displayWarn).not.toHaveBeenCalled();
+      expect(display.warn).not.toHaveBeenCalled();
       expect((rawRumEvents[0].data as RawRumVital).vital.name).toBe(name);
     });
 
@@ -243,7 +245,7 @@ describe('OperationCollection', () => {
       operationCollection.getApi().succeedOperation('user login');
       expect(rawRumEvents).toHaveLength(1);
       expect((rawRumEvents[0].data as RawRumVital).vital.step_type).toBe('end');
-      expect(displayWarn).toHaveBeenCalledOnce();
+      expect(display.warn).toHaveBeenCalledOnce();
     });
 
     it('warns but still emits on failOperation with invalid characters', () => {
@@ -252,14 +254,14 @@ describe('OperationCollection', () => {
       const data = rawRumEvents[0].data as RawRumVital;
       expect(data.vital.step_type).toBe('end');
       expect(data.vital.failure_reason).toBe('error');
-      expect(displayWarn).toHaveBeenCalledOnce();
+      expect(display.warn).toHaveBeenCalledOnce();
     });
 
     it('does not restrict operationKey to the same character set', () => {
       // operation_key has no character-set constraint in the schema.
       operationCollection.getApi().startOperation('login', { operationKey: 'session-42 / user foo' });
       expect(rawRumEvents).toHaveLength(1);
-      expect(displayWarn).not.toHaveBeenCalled();
+      expect(display.warn).not.toHaveBeenCalled();
       expect((rawRumEvents[0].data as RawRumVital).vital.operation_key).toBe('session-42 / user foo');
     });
   });
@@ -273,7 +275,7 @@ describe('OperationCollection', () => {
 
       const data = rawRumEvents[0].data as RawRumVital;
       expect(data.vital.failure_reason).toBe(reason);
-      expect(displayWarn).not.toHaveBeenCalled();
+      expect(display.warn).not.toHaveBeenCalled();
     });
 
     // Unknown / off-enum `failureReason` values can only reach this code path from JS callers that bypass the TS
@@ -294,9 +296,9 @@ describe('OperationCollection', () => {
       const data = rawRumEvents[0].data as RawRumVital;
       expect(data.vital.step_type).toBe('end');
       expect(data.vital.failure_reason).toBe(reason);
-      expect(displayWarn).toHaveBeenCalledOnce();
-      expect(vi.mocked(displayWarn).mock.calls[0][0]).toContain('failure reason');
-      expect(vi.mocked(displayWarn).mock.calls[0][0]).toContain('still be sent');
+      expect(display.warn).toHaveBeenCalledOnce();
+      expect(vi.mocked(display.warn).mock.calls[0][0]).toContain('failure reason');
+      expect(vi.mocked(display.warn).mock.calls[0][0]).toContain('still be sent');
     });
 
     it('captures a non-zero startTime from timeStampNow on the emitted raw event', () => {
@@ -337,14 +339,14 @@ describe('OperationCollection', () => {
       operationCollection.getApi().startOperation('login');
 
       expect(rawRumEvents).toHaveLength(2);
-      expect(displayError).not.toHaveBeenCalled();
+      expect(display.error).not.toHaveBeenCalled();
     });
 
     it('does not warn on succeed without a prior start', () => {
       operationCollection.getApi().succeedOperation('login');
 
       expect(rawRumEvents).toHaveLength(1);
-      expect(displayError).not.toHaveBeenCalled();
+      expect(display.error).not.toHaveBeenCalled();
     });
 
     it('does not warn on fail without a prior start', () => {
@@ -354,7 +356,7 @@ describe('OperationCollection', () => {
       const data = rawRumEvents[0].data as RawRumVital;
       expect(data.vital.step_type).toBe('end');
       expect(data.vital.failure_reason).toBe('error');
-      expect(displayError).not.toHaveBeenCalled();
+      expect(display.error).not.toHaveBeenCalled();
     });
 
     it('does not warn on double-stop', () => {
@@ -364,7 +366,7 @@ describe('OperationCollection', () => {
       api.succeedOperation('login');
 
       expect(rawRumEvents).toHaveLength(3);
-      expect(displayError).not.toHaveBeenCalled();
+      expect(display.error).not.toHaveBeenCalled();
     });
   });
 
@@ -378,7 +380,7 @@ describe('OperationCollection', () => {
       api.failOperation('upload', 'error', { operationKey: 'b' });
 
       expect(rawRumEvents).toHaveLength(4);
-      expect(displayError).not.toHaveBeenCalled();
+      expect(display.error).not.toHaveBeenCalled();
       const payloads = rawRumEvents.map((e) => (e.data as RawRumVital).vital);
       expect(payloads[0]).toMatchObject({ step_type: 'start', operation_key: 'a' });
       expect(payloads[1]).toMatchObject({ step_type: 'start', operation_key: 'b' });
@@ -391,7 +393,7 @@ describe('OperationCollection', () => {
       operationCollection.getApi().startOperation('login', { operationKey: 'k1' });
 
       expect(rawRumEvents).toHaveLength(2);
-      expect(displayError).not.toHaveBeenCalled();
+      expect(display.error).not.toHaveBeenCalled();
     });
   });
 
@@ -473,8 +475,8 @@ describe('OperationCollection', () => {
       api.succeedFeatureOperation('login');
       api.failFeatureOperation('login', 'error');
 
-      expect(displayWarn).toHaveBeenCalledTimes(3);
-      const messages = vi.mocked(displayWarn).mock.calls.map((c) => c[0] as string);
+      expect(display.warn).toHaveBeenCalledTimes(3);
+      const messages = vi.mocked(display.warn).mock.calls.map((c) => c[0] as string);
       expect(messages.some((m) => m.includes('startFeatureOperation') && m.includes('startOperation'))).toBe(true);
       expect(messages.some((m) => m.includes('succeedFeatureOperation') && m.includes('succeedOperation'))).toBe(true);
       expect(messages.some((m) => m.includes('failFeatureOperation') && m.includes('failOperation'))).toBe(true);
@@ -487,7 +489,7 @@ describe('OperationCollection', () => {
       api.startFeatureOperation('login');
 
       // The deprecation warning fires once; the events are still emitted.
-      expect(displayWarn).toHaveBeenCalledOnce();
+      expect(display.warn).toHaveBeenCalledOnce();
       expect(rawRumEvents).toHaveLength(3);
     });
 
@@ -497,7 +499,7 @@ describe('OperationCollection', () => {
       api.succeedOperation('login');
       api.failOperation('login', 'error');
 
-      expect(displayWarn).not.toHaveBeenCalled();
+      expect(display.warn).not.toHaveBeenCalled();
       expect(rawRumEvents).toHaveLength(3);
     });
 
@@ -505,9 +507,9 @@ describe('OperationCollection', () => {
       operationCollection.getApi().startFeatureOperation('');
       expect(rawRumEvents).toHaveLength(0);
       // The deprecation warning still fires before validation.
-      expect(displayWarn).toHaveBeenCalledOnce();
-      expect(displayError).toHaveBeenCalledOnce();
-      expect(vi.mocked(displayError).mock.calls[0][0]).toContain('startOperation: operation name cannot be empty');
+      expect(display.warn).toHaveBeenCalledOnce();
+      expect(display.error).toHaveBeenCalledOnce();
+      expect(vi.mocked(display.error).mock.calls[0][0]).toContain('startOperation: operation name cannot be empty');
     });
   });
 });

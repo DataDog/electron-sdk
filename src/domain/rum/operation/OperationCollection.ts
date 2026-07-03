@@ -2,7 +2,7 @@ import { timeStampNow } from '@datadog/js-core/time';
 import { isIndexableObject } from '@datadog/js-core/util';
 import { type Context, generateUUID } from '@datadog/browser-core';
 import { EventFormat, EventKind, EventManager } from '../../../event';
-import { displayError, displayWarn } from '../../../tools/display';
+import { display } from '../../../tools/display';
 import type { RawRumVital } from '../rawRumData.types';
 
 type OperationMethod = 'startOperation' | 'succeedOperation' | 'failOperation';
@@ -108,7 +108,7 @@ export class OperationCollection {
     const canonical = DEPRECATED_TO_CANONICAL[deprecatedMethod];
     if (!this.warnedDeprecations.has(deprecatedMethod)) {
       this.warnedDeprecations.add(deprecatedMethod);
-      displayWarn(
+      display.warn(
         `${deprecatedMethod}() is deprecated and will be removed in a future major release. Use ${canonical}() instead.`
       );
     }
@@ -171,28 +171,28 @@ const VALID_FAILURE_REASONS: readonly FailureReason[] = ['error', 'abandoned', '
 
 function validateArgs(method: OperationMethod, name: unknown, options: unknown, failureReason?: unknown): boolean {
   if (!isValidString(name)) {
-    displayError(`${method}: operation name cannot be empty or blank. Event will not be sent.`);
+    display.error(`${method}: operation name cannot be empty or blank. Event will not be sent.`);
     return false;
   }
   if (!VALID_OPERATION_NAME_REGEX.test(name)) {
     // Warn but do not drop — the backend decides on character-set policy.
-    displayWarn(
+    display.warn(
       `${method}: operation name '${name}' does not match the backend-accepted pattern [\\w.@$-]* (letters, digits, _ . @ $ -). The event will still be sent and may be rejected by the backend.`
     );
   }
   if (options !== undefined && !isIndexableObject(options)) {
-    displayError(`${method}: options must be an object when provided. Event will not be sent.`);
+    display.error(`${method}: options must be an object when provided. Event will not be sent.`);
     return false;
   }
   if (isIndexableObject(options) && options.operationKey !== undefined && !isValidString(options.operationKey)) {
-    displayError(`${method}: operation key cannot be empty or blank. Event will not be sent.`);
+    display.error(`${method}: operation key cannot be empty or blank. Event will not be sent.`);
     return false;
   }
   if (failureReason !== undefined && !VALID_FAILURE_REASONS.includes(failureReason as FailureReason)) {
     // Warn but do not drop — the backend is the source of truth on the enum policy and `failureReason` carries the
     // most diagnostic value of any field on a fail event, so swallowing it on a typo would lose more signal than it
     // protects. JSON.stringify keeps the warning safe when JS callers pass non-string values.
-    displayWarn(
+    display.warn(
       `${method}: failure reason ${JSON.stringify(failureReason)} is not one of the expected values '${VALID_FAILURE_REASONS.join("' | '")}'. The event will still be sent and may be rejected by the backend.`
     );
   }

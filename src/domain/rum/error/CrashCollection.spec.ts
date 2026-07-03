@@ -19,8 +19,10 @@ vi.mock('electron', () => ({
 }));
 
 vi.mock('../../../tools/display', () => ({
-  displayError: vi.fn(),
-  displayInfo: vi.fn(),
+  display: {
+    error: vi.fn(),
+    info: vi.fn(),
+  },
 }));
 
 vi.mock('../../telemetry', () => ({
@@ -40,7 +42,7 @@ import { EventManager, EventKind, EventFormat, type RawRumEvent } from '../../..
 import { processMinidump } from '../../../wasm';
 import type { CrashReport } from '../../../wasm';
 import type { RawRumError } from '../rawRumData.types';
-import { displayError } from '../../../tools/display';
+import { display } from '../../../tools/display';
 import { addError } from '../../telemetry';
 
 vi.mock('node:fs/promises');
@@ -449,7 +451,7 @@ describe('CrashCollection', () => {
     await startAndFlush(eventManager);
 
     expect(rawRumEvents).toHaveLength(1);
-    expect(displayError).toHaveBeenCalledWith(
+    expect(display.error).toHaveBeenCalledWith(
       'Failed to process crash dump:',
       '/mock/crash/dumps/bad.dmp',
       expect.any(Error)
