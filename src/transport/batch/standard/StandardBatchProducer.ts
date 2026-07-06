@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import type { StandardServerEvent } from '../../../event';
 import { BatchProducer } from '../BatchProducer';
 import type { BatchProducerConfig } from '../BatchProducer';
 
@@ -40,11 +41,11 @@ export class StandardBatchProducer extends BatchProducer {
     await this.rotateBatch();
   }
 
-  /** Serializes data as a JSON line and appends it to the current batch file, rotating first if the size limit would be exceeded. */
-  protected async writeData(data: unknown) {
+  /** Serializes the event's `data` as a JSON line and appends it to the current batch file, rotating first if the size limit would be exceeded. */
+  protected async writeData(event: StandardServerEvent) {
     await this.ensureTrackDirectoryExists();
 
-    const serialized = `${JSON.stringify(data)}\n`;
+    const serialized = `${JSON.stringify(event.data)}\n`;
     const dataSize = Buffer.byteLength(serialized, 'utf8');
 
     if (this.currentBatchSize + dataSize > this.batchSize && this.currentBatchSize > 0) {

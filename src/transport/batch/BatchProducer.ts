@@ -1,6 +1,7 @@
 import { dateNow } from '@datadog/js-core/time';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { display } from '../../tools/display';
 
 /** Configuration for a {@link BatchProducer} instance. */
 export interface BatchProducerConfig {
@@ -16,6 +17,8 @@ export interface BatchProducerConfig {
 export abstract class BatchProducer {
   protected trackPath: string;
   protected writeQueue: Promise<void> = Promise.resolve();
+  /** Prefix used for generated batch file names. Subclasses may override. */
+  protected fileNamePrefix = 'batch';
   private fileSequence = 0;
 
   protected constructor(config: BatchProducerConfig) {
@@ -26,8 +29,10 @@ export abstract class BatchProducer {
   post(data: unknown) {
     this.writeQueue = this.writeQueue
       .then(() => this.writeData(data))
-      .catch(() => {
-        // Silently ignore write errors to ensure the queue continues processing
+      .catch((error) => {
+        // Disk write failure is an environment issue the SDK cannot fix (disk full, permissions):
+        // surface it to the customer and keep the queue alive.
+        display.error('Failed to write batch to disk', error);
       });
   }
 
@@ -67,7 +72,7 @@ export abstract class BatchProducer {
 
   /** Generates a unique `.tmp` file name for a new batch. */
   protected generateBatchFileName() {
-    return `batch-${dateNow()}-${++this.fileSequence}.tmp`;
+    return `${this.fileNamePrefix}-${dateNow()}-${++this.fileSequence}.tmp`;
   }
 
   /** Renames a `.tmp` batch file to `.log` so the consumer can pick it up. */

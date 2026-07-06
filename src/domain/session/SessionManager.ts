@@ -1,4 +1,4 @@
-import { ONE_MINUTE } from '@datadog/js-core/time';
+import { ONE_MINUTE, timeStampNow, type TimeStamp } from '@datadog/js-core/time';
 import { deepClone } from '@datadog/js-core/util';
 import { generateUUID, type Subscription } from '@datadog/browser-core';
 import { type EndUserActivityEvent, EventKind, EventManager, LifecycleKind } from '../../event';
@@ -52,10 +52,12 @@ export class SessionManager {
     return deepClone(this.currentSession);
   }
 
-  // Id of the currently tracked session (active and sampled), or undefined. Backed by
-  // SessionContext so it stays consistent with what the RUM/span/telemetry hooks attribute.
-  getTrackedSessionId(): string | undefined {
-    return this.sessionContext.getActiveSessionId();
+  // Id of the tracked session (active and sampled) covering the given time, defaulting to now, or
+  // undefined. Backed by SessionContext so it stays consistent with what the RUM/span/telemetry hooks
+  // attribute; pass a capture time to attribute an event to the session that produced it rather than
+  // the current one (e.g. a profile flushed asynchronously after a renewal).
+  getTrackedSessionId(at: TimeStamp = timeStampNow()): string | undefined {
+    return this.sessionContext.getTrackedSessionId(at);
   }
 
   expire(): void {

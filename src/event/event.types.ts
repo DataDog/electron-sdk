@@ -30,6 +30,13 @@ export type ServerEvent =
   | ServerSpansEvent
   | ServerProfileEvent;
 
+/**
+ * Server events transported as newline-delimited JSON, i.e. every {@link ServerEvent} whose
+ * `data` is the full payload to serialize. Excludes {@link ServerProfileEvent}, which carries
+ * an additional `trace` field and is transported as a multipart profile.
+ */
+export type StandardServerEvent = Exclude<ServerEvent, ServerProfileEvent>;
+
 export interface ServerRumEvent {
   kind: typeof EventKind.SERVER;
   track: typeof EventTrack.RUM;
