@@ -18,6 +18,7 @@ interface IntegrationTestWindow {
     flushTransport: () => Promise<void>;
     crash: () => Promise<void>;
     mainFetch: (url: string) => Promise<number>;
+    openCustomSessionWindow: () => Promise<void>;
   };
   __integrationTest?: {
     triggerRendererError: (message: string) => void;
@@ -28,8 +29,9 @@ test.describe('view event on startup @integration', () => {
   test('sends a view event with a session id on startup', async ({ window, intake }) => {
     await flushTransport(window);
 
-    const [event] = await intake.getEventsByType('view');
-    const view = event.body as RumViewEvent;
+    const viewEvents = await intake.getEventsByType('view');
+    expect(viewEvents).toHaveLength(1);
+    const view = viewEvents[0].body as RumViewEvent;
 
     expect(view.type).toBe('view');
     expect(view.session.id).toBeDefined();
@@ -90,6 +92,42 @@ test.describe('main-process fetch resource @integration', () => {
     expect(span.meta['_dd.session.id']).toBe(view.session.id);
     expect(span.meta['_dd.view.id']).toBe(view.view.id);
     expect(span.service).toBe('integration-test-app');
+
+    // Regression guard for double-instrumentation. Each app follows the README
+    // (`import '@datadog/electron-sdk/instrument'`) while also using a bundler plugin that injects
+    // the instrumentation banner, so the instrumentation entry is evaluated twice (CJS banner +
+    // ESM import). Without the idempotency guard, net.fetch is wrapped twice and emits duplicate
+    // nested http.request spans. Assert exactly one span was recorded for this request.
+    const requestSpans = intake.getSpans(
+      (s) => s.name === 'http.request' && BigInt(`0x${s.trace_id}`) === BigInt(resource._dd.trace_id!)
+    );
+    expect(requestSpans).toHaveLength(1);
+  });
+});
+
+test.describe('custom-session window instrumentation @integration', () => {
+  test('injects the bridge preload into a window on a non-default session', async ({ window, electronApp, intake }) => {
+    // Open a second window on a custom (persisted partition) session and grab its renderer page.
+    const newWindow = electronApp.waitForEvent('window');
+    await window.evaluate(() =>
+      (globalThis as unknown as IntegrationTestWindow).electronAPI?.openCustomSessionWindow()
+    );
+    const customWindow = await newWindow;
+    await customWindow.waitForLoadState('load');
+    await customWindow.waitForTimeout(ONE_SECOND);
+
+    // Trigger a renderer error in the custom-session window. It only reaches the intake if the SDK
+    // registered the bridge preload on that custom session (via app 'session-created'), not just on
+    // the default session.
+    const message = 'custom-session renderer error';
+    await customWindow.evaluate(
+      (m) => (globalThis as unknown as IntegrationTestWindow).__integrationTest?.triggerRendererError(m),
+      message
+    );
+    await customWindow.waitForTimeout(ONE_SECOND);
+
+    const errors = await flushUntilEventArrives(window, intake, 'error', 1, 15 * ONE_SECOND);
+    expect(errors.some((e) => (e.body as RumErrorEvent).error.message === message)).toBe(true);
   });
 });
 

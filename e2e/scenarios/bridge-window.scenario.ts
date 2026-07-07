@@ -15,6 +15,7 @@ test.describe('bridge window — file:// window', () => {
     await mainPage.flushTransport();
 
     const bridgeViews = await intake.waitForEventCount('view', 1, { predicate: isBridgeView });
+    expect(bridgeViews).toHaveLength(1);
     const view = bridgeViews[0].body as RumViewEvent;
 
     expect(view.view.url).toContain('bridge-window.html');
@@ -31,6 +32,7 @@ test.describe('bridge window — http:// window', () => {
     await mainPage.flushTransport();
 
     const bridgeViews = await intake.waitForEventCount('view', 1, { predicate: isBridgeView });
+    expect(bridgeViews).toHaveLength(1);
     const view = bridgeViews[0].body as RumViewEvent;
 
     expect(view.view.url).toMatch(/^http:\/\/localhost:\d+/);
@@ -51,6 +53,7 @@ test.describe('bridge window — contextIsolation: false', () => {
     await mainPage.flushTransport();
 
     const bridgeViews = await intake.waitForEventCount('view', 1, { predicate: isBridgeView });
+    expect(bridgeViews).toHaveLength(1);
     const view = bridgeViews[0].body as RumViewEvent;
 
     expect(view.view.url).toContain('bridge-window.html');
