@@ -76,4 +76,6 @@ whether the affected apps are covered.
 ### Reuse over reinvention
 
 Before adding a new utility, check `@datadog/browser-core` and `@datadog/js-core` — utilities are
-progressively migrating to `@datadog/js-core`, so check both.
+progressively migrating to `@datadog/js-core`, so check both. This applies to small type guards and
+predicates too: use `getType` / `isIndexableObject` from `@datadog/js-core/util` for object shape
+checks rather than open-coding `typeof x === 'object' && x !== null`.

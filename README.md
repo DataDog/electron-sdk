@@ -126,6 +126,7 @@ await esbuild.build({
 - **RUM Resources** — Capture RUM resources from main process network calls
 - **Traces** — Capture traces for network calls, command execution, IPC messages on main process
 - **Renderer Events** — Capture RUM events from renderer processes via the browser SDK
+- **Renderer Profiling** — Collect JS Self-Profiling data from renderer pages and correlate it with RUM
 - **Operation Monitoring** _(experimental)_ — Track start / succeed / fail steps of critical user-facing workflows
 
 ### Operation Monitoring _(experimental)_
@@ -154,6 +155,31 @@ failOperation('upload', 'abandoned', { operationKey: 'cover_photo' });
 ```
 
 The renderer process keeps using `@datadog/browser-rum` directly (with the `feature_operation_vital` experimental flag enabled on its init). API signatures match exactly, so you can start an operation in one process and complete it in the other — the backend correlates steps by `name` + `operationKey`.
+
+### Renderer Profiling
+
+The Browser SDK can collect code-level performance data (via the [JS Self-Profiling API](https://developer.mozilla.org/en-US/docs/Web/API/JS_Self-Profiling_API)) for renderer pages and correlate it with RUM views and long tasks.
+
+**1. Enable profiling from the main process.** Set `profilingSampleRate` on the Electron SDK `init()`:
+
+```ts
+await init({
+  clientToken: '<CLIENT_TOKEN>',
+  applicationId: '<APPLICATION_ID>',
+  site: 'datadoghq.com',
+  service: 'my-electron-app',
+  profilingSampleRate: 100, // percentage of sampled sessions that are profiled (0–100)
+});
+```
+
+The Electron SDK owns the profiling sampling decision; setting `profilingSampleRate` in the renderer's `datadogRum.init` has no effect.
+
+**2. Serve the renderer with the `js-profiling` Document Policy.**
+
+The JS Self-Profiling API is only available when the page is delivered with the `Document-Policy: js-profiling` HTTP response header. Because response headers cannot be attached to the `file://` protocol, serve the renderer over a protocol that can set headers instead:
+
+- a custom protocol via [`protocol.handle`](https://www.electronjs.org/docs/latest/api/protocol#protocolhandlescheme-handler)
+- a local HTTP server (`http://localhost:<port>`)
 
 ## API
 
@@ -206,17 +232,18 @@ interface FeatureOperationOptions {
 
 ### Configuration Options
 
-| Option                | Type                                     | Required | Default  | Description                                                                                                                        |
-| --------------------- | ---------------------------------------- | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `clientToken`         | `string`                                 | Yes      | —        | Datadog client token                                                                                                               |
-| `applicationId`       | `string`                                 | Yes      | —        | RUM application ID                                                                                                                 |
-| `site`                | `string`                                 | Yes      | —        | Datadog site (e.g. `datadoghq.com`, `datadoghq.eu`, `us3.datadoghq.com`, `us5.datadoghq.com`, `ap1.datadoghq.com`, `ddog-gov.com`) |
-| `service`             | `string`                                 | Yes      | —        | Service name                                                                                                                       |
-| `env`                 | `string`                                 | No       | —        | Application environment                                                                                                            |
-| `version`             | `string`                                 | No       | —        | Application version                                                                                                                |
-| `sessionSampleRate`   | `number`                                 | No       | `100`    | Percentage of sessions to collect (0–100). `0` collects no sessions; `100` collects all sessions.                                  |
-| `telemetrySampleRate` | `number`                                 | No       | `20`     | Telemetry sample rate (0–100)                                                                                                      |
-| `batchSize`           | `'SMALL' \| 'MEDIUM' \| 'LARGE'`         | No       | —        | Batch size for event uploads                                                                                                       |
-| `uploadFrequency`     | `'RARE' \| 'NORMAL' \| 'FREQUENT'`       | No       | —        | Upload frequency for event batches                                                                                                 |
-| `defaultPrivacyLevel` | `'mask' \| 'allow' \| 'mask-user-input'` | No       | `'mask'` | Default privacy level for renderer session replay                                                                                  |
-| `allowedWebViewHosts` | `string[]`                               | No       | `[]`     | Hostnames allowed for the renderer bridge                                                                                          |
+| Option                | Type                                     | Required | Default  | Description                                                                                                                               |
+| --------------------- | ---------------------------------------- | -------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `clientToken`         | `string`                                 | Yes      | —        | Datadog client token                                                                                                                      |
+| `applicationId`       | `string`                                 | Yes      | —        | RUM application ID                                                                                                                        |
+| `site`                | `string`                                 | Yes      | —        | Datadog site (e.g. `datadoghq.com`, `datadoghq.eu`, `us3.datadoghq.com`, `us5.datadoghq.com`, `ap1.datadoghq.com`, `ddog-gov.com`)        |
+| `service`             | `string`                                 | Yes      | —        | Service name                                                                                                                              |
+| `env`                 | `string`                                 | No       | —        | Application environment                                                                                                                   |
+| `version`             | `string`                                 | No       | —        | Application version                                                                                                                       |
+| `sessionSampleRate`   | `number`                                 | No       | `100`    | Percentage of sessions to collect (0–100). `0` collects no sessions; `100` collects all sessions.                                         |
+| `profilingSampleRate` | `number`                                 | No       | `0`      | Percentage of sampled sessions that are profiled (0–100). `0` disables renderer profiling. See [Renderer Profiling](#renderer-profiling). |
+| `telemetrySampleRate` | `number`                                 | No       | `20`     | Telemetry sample rate (0–100)                                                                                                             |
+| `batchSize`           | `'SMALL' \| 'MEDIUM' \| 'LARGE'`         | No       | —        | Batch size for event uploads                                                                                                              |
+| `uploadFrequency`     | `'RARE' \| 'NORMAL' \| 'FREQUENT'`       | No       | —        | Upload frequency for event batches                                                                                                        |
+| `defaultPrivacyLevel` | `'mask' \| 'allow' \| 'mask-user-input'` | No       | `'mask'` | Default privacy level for renderer session replay                                                                                         |
+| `allowedWebViewHosts` | `string[]`                               | No       | `[]`     | Hostnames allowed for the renderer bridge                                                                                                 |
