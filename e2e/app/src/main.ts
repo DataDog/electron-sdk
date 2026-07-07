@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import {
   init,
   addError,
+  addAction,
   _generateTelemetryError,
   _flushTransport,
   stopSession,
@@ -87,6 +88,11 @@ void app.whenReady().then(async () => {
 
   ipcMain.handle('generateManualError', (_event, startTime?: number) => {
     addError(new Error('test manual error'), { context: { foo: 'bar' }, startTime });
+  });
+
+  ipcMain.handle('addAction', (_event, name: string, context?: Record<string, unknown>) => {
+    // IPC carries arbitrary JSON; cast to the SDK's Context at the call boundary.
+    addAction(name, context as Parameters<typeof addAction>[1]);
   });
 
   ipcMain.handle('startOperation', (_event, name: string, options?: FeatureOperationOptions) => {
