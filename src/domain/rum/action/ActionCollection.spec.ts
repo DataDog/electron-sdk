@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ActionCollection } from './ActionCollection';
-import { EventFormat, EventKind, EventManager, type RawRumEvent } from '../../../event';
+import { type Event, EventFormat, EventKind, EventManager, LifecycleKind, type RawRumEvent } from '../../../event';
 import type { RawRumAction } from '../rawRumData.types';
 
 // Strict RFC 4122 v4 — matches the schema pattern and browser-core's generateUUID output.
@@ -106,6 +106,21 @@ describe('ActionCollection', () => {
 
       expect(rawRumEvents).toHaveLength(3);
       expect(rawRumEvents.map((e) => (e.data as RawRumAction).action.target.name)).toEqual(['a', 'b', 'a']);
+    });
+  });
+
+  describe('session activity', () => {
+    it('signals END_USER_ACTIVITY before the action so an expired session can renew', () => {
+      const sequence: string[] = [];
+      const em = new EventManager();
+      em.registerHandler<Event>({
+        canHandle: (event): event is Event => event.kind === EventKind.LIFECYCLE || event.kind === EventKind.RAW,
+        handle: (event) => sequence.push(event.kind === EventKind.LIFECYCLE ? event.lifecycle : 'action'),
+      });
+
+      new ActionCollection(em).getApi().addAction('menu_open');
+
+      expect(sequence).toEqual([LifecycleKind.END_USER_ACTIVITY, 'action']);
     });
   });
 

@@ -1,6 +1,6 @@
 import { timeStampNow } from '@datadog/js-core/time';
 import { type Context, generateUUID } from '@datadog/browser-core';
-import { EventFormat, EventKind, EventManager } from '../../../event';
+import { EventFormat, EventKind, EventManager, LifecycleKind } from '../../../event';
 import type { RawRumAction } from '../rawRumData.types';
 
 /**
@@ -20,6 +20,10 @@ export class ActionCollection {
   }
 
   private emitAction(name: string, context?: Context): void {
+    // An action is user activity: signal it first so an expired session is renewed before the event is assembled
+    // (mirrors renderer click actions in RendererPipeline), otherwise the action falls outside the closed view window.
+    this.eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.END_USER_ACTIVITY });
+
     const startTime = timeStampNow();
     const data: RawRumAction = {
       type: 'action',

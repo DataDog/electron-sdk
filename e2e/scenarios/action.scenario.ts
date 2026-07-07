@@ -36,3 +36,17 @@ test('emits one custom action per call, preserving the given names', async ({ ma
   const actions = (await intake.waitForEventCount('action', 2)).map((e) => e.body as RumActionEvent);
   expect(actions.map((a) => a.action.target?.name).sort()).toEqual(['first', 'second']);
 });
+
+test('a custom action renews an expired session from the main process alone', async ({ mainPage, intake }) => {
+  await mainPage.flushTransport();
+  const initialView = (await intake.getEventsByType('view'))[0].body as RumViewEvent;
+
+  await mainPage.stopSession();
+  await mainPage.addAction('tray_opened');
+  await mainPage.flushTransport();
+
+  const action = (await intake.waitForEventCount('action', 1))[0].body as RumActionEvent;
+  expect(action.action.target?.name).toBe('tray_opened');
+  // The action lands on a new session, proving it renewed the expired one without any renderer activity.
+  expect(action.session.id).not.toBe(initialView.session.id);
+});
