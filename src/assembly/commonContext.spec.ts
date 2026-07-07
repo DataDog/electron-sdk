@@ -29,6 +29,16 @@ function triggerMainRum(config: Configuration) {
   return hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN }) as Record<string, unknown>;
 }
 
+function triggerRendererRum(config: Configuration) {
+  const hooks = createFormatHooks();
+  registerCommonContext(config, hooks);
+  return hooks.triggerRum({
+    eventType: 'view',
+    startTime: T0,
+    source: EventSource.RENDERER,
+  }) as Record<string, unknown>;
+}
+
 function parseDdtags(result: Record<string, unknown>): string[] {
   return ((result.ddtags as string) ?? '').split(',').filter(Boolean);
 }
@@ -126,6 +136,35 @@ describe('registerCommonContext', () => {
       const tags = parseDdtags(triggerMainRum(makeConfig({ [configKey]: undefined })));
 
       expect(tags.some((t) => t.startsWith(`${tagKey}:`))).toBe(false);
+    });
+  });
+
+  describe('sampling rates in _dd.configuration', () => {
+    it.each([EventSource.MAIN, EventSource.RENDERER])(
+      'injects the Electron SDK session and profiling sample rates for %s events',
+      (source) => {
+        const config = makeConfig({ sessionSampleRate: 42, profilingSampleRate: 100 });
+        const result = source === EventSource.MAIN ? triggerMainRum(config) : triggerRendererRum(config);
+
+        expect((result._dd as { configuration: unknown }).configuration).toEqual({
+          session_sample_rate: 42,
+          profiling_sample_rate: 100,
+        });
+      }
+    );
+
+    it('preserves format_version on MAIN events alongside the configuration', () => {
+      const result = triggerMainRum(makeConfig());
+
+      expect(result._dd).toMatchObject({ format_version: 2 });
+    });
+  });
+
+  describe('RENDERER RUM events', () => {
+    it('adds the electron container source', () => {
+      const result = triggerRendererRum(makeConfig());
+
+      expect(result.container).toEqual({ source: 'electron' });
     });
   });
 });

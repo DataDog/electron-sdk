@@ -4,15 +4,20 @@ import { DISCARDED } from '@datadog/js-core/assembly';
 import { RendererPipeline, type BridgeOptions } from './RendererPipeline';
 import { createFormatHooks, type FormatHooks } from './hooks';
 import {
+  EventFormat,
   EventKind,
   EventManager,
   EventSource,
   EventTrack,
   LifecycleKind,
+  type BrowserProfileEvent,
+  type BrowserProfilerTrace,
   type EndUserActivityEvent,
+  type RawProfileEvent,
   type ServerRumEvent,
 } from '../event';
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
+import { createTestConfiguration } from '../mocks.specUtil';
 
 const { mockIpcMainOn, mockAddError } = vi.hoisted(() => {
   const mockIpcMainOn = vi.fn();
@@ -29,10 +34,7 @@ vi.mock('../domain/telemetry', () => ({
   addError: mockAddError,
 }));
 
-const DEFAULT_OPTIONS: BridgeOptions = {
-  defaultPrivacyLevel: 'mask',
-  allowedWebViewHosts: [],
-};
+const DEFAULT_CONFIG = createTestConfiguration({ profilingSampleRate: 0 });
 
 const RENDERER_RUM_DATA = {
   type: 'view',
@@ -89,7 +91,7 @@ describe('RendererPipeline', () => {
       handle: (event) => serverEvents.push(event),
     });
 
-    new RendererPipeline(eventManager, hooks, DEFAULT_OPTIONS);
+    new RendererPipeline(eventManager, hooks, DEFAULT_CONFIG);
   });
 
   it('registers IPC listeners on BRIDGE_CHANNEL and CONFIG_CHANNEL', () => {
@@ -97,17 +99,54 @@ describe('RendererPipeline', () => {
     expect(mockIpcMainOn).toHaveBeenCalledWith(CONFIG_CHANNEL, expect.any(Function));
   });
 
-  it('returns bridgeOptions on CONFIG_CHANNEL', () => {
-    const options: BridgeOptions = { defaultPrivacyLevel: 'allow', allowedWebViewHosts: ['example.com'] };
+  it('returns bridgeOptions derived from config on CONFIG_CHANNEL', () => {
+    const config = createTestConfiguration({
+      defaultPrivacyLevel: 'allow',
+      allowedWebViewHosts: ['example.com'],
+      profilingSampleRate: 0,
+    });
     vi.clearAllMocks();
     const handlers: Record<string, (event: unknown) => void> = {};
     mockIpcMainOn.mockImplementation((channel: string, cb: (event: unknown) => void) => {
       handlers[channel] = cb;
     });
-    new RendererPipeline(eventManager, hooks, options);
+    new RendererPipeline(eventManager, hooks, config);
     const event = { returnValue: undefined as unknown };
     handlers[CONFIG_CHANNEL](event);
-    expect(event.returnValue).toEqual(options);
+    expect(event.returnValue).toEqual({
+      defaultPrivacyLevel: 'allow',
+      allowedWebViewHosts: ['example.com'],
+      capabilities: [],
+    });
+  });
+
+  describe('capabilities', () => {
+    function getIpcHandlers(): Record<string, (event: unknown) => void> {
+      vi.clearAllMocks();
+      const handlers: Record<string, (event: unknown) => void> = {};
+      mockIpcMainOn.mockImplementation((channel: string, cb: (event: unknown) => void) => {
+        handlers[channel] = cb;
+      });
+      return handlers;
+    }
+
+    it('advertises the profiles capability when profilingSampleRate > 0', () => {
+      const config = createTestConfiguration({ profilingSampleRate: 100 });
+      const handlers = getIpcHandlers();
+      new RendererPipeline(new EventManager(), createFormatHooks(), config);
+      const event = { returnValue: undefined as unknown };
+      handlers[CONFIG_CHANNEL](event);
+      expect((event.returnValue as BridgeOptions).capabilities).toEqual(['profiles']);
+    });
+
+    it('advertises no capabilities when profilingSampleRate is 0', () => {
+      const config = createTestConfiguration({ profilingSampleRate: 0 });
+      const handlers = getIpcHandlers();
+      new RendererPipeline(new EventManager(), createFormatHooks(), config);
+      const event = { returnValue: undefined as unknown };
+      handlers[CONFIG_CHANNEL](event);
+      expect((event.returnValue as BridgeOptions).capabilities).toEqual([]);
+    });
   });
 
   describe('rum events', () => {
@@ -229,6 +268,38 @@ describe('RendererPipeline', () => {
         kind: EventKind.LIFECYCLE,
         lifecycle: LifecycleKind.END_USER_ACTIVITY,
       });
+    });
+  });
+
+  describe('profile bridge events', () => {
+    it('dispatches RawProfileEvent when bridge sends a profile message', () => {
+      const profilePayload = {
+        profile: { format: 'json' } as BrowserProfileEvent,
+        trace: {} as BrowserProfilerTrace,
+      };
+      const received: RawProfileEvent[] = [];
+      eventManager.registerHandler<RawProfileEvent>({
+        canHandle: (e): e is RawProfileEvent => e.kind === EventKind.RAW && e.format === EventFormat.PROFILE,
+        handle: (e) => received.push(e),
+      });
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'profile', event: profilePayload }));
+
+      expect(received).toHaveLength(1);
+      expect(received[0].format).toBe(EventFormat.PROFILE);
+      expect(received[0].data).toEqual(profilePayload.profile);
+      expect(received[0].trace).toEqual(profilePayload.trace);
+      expect(received[0].source).toBe(EventSource.RENDERER);
+    });
+
+    it('reports telemetry error and drops malformed profile payloads', () => {
+      const spy = vi.spyOn(eventManager, 'notify');
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'profile', event: { trace: {} } }));
+
+      expect(spy).not.toHaveBeenCalled();
+      expect(mockAddError).toHaveBeenCalledOnce();
+      expect((mockAddError.mock.calls[0][0] as Error).message).toContain('malformed profile');
     });
   });
 

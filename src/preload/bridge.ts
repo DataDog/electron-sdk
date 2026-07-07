@@ -14,6 +14,7 @@ if (!window[DD_BRIDGE_INIT]) {
   interface BridgeConfig {
     defaultPrivacyLevel?: string;
     allowedWebViewHosts?: string[];
+    capabilities?: string[];
   }
 
   const config = ipcRenderer.sendSync(CONFIG_CHANNEL) as BridgeConfig | null;
@@ -24,7 +25,7 @@ if (!window[DD_BRIDGE_INIT]) {
 
   const bridge = {
     getCapabilities(): string {
-      return '[]';
+      return JSON.stringify(config?.capabilities ?? []);
     },
     getPrivacyLevel(): string {
       return defaultPrivacyLevel;
