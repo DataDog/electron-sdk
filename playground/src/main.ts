@@ -54,11 +54,30 @@ function createWindow() {
   });
 }
 
+function createNewWindow() {
+  const win = new BrowserWindow({
+    width: 1024,
+    height: 768,
+    show: !isTestMode,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  void win.loadFile(path.join(__dirname, 'index.html'));
+}
+
 // IPC handler to get internal context
 ipcMain.handle('get-internal-context', () => getInternalContext());
 
 ipcMain.handle('stop-session', () => {
   stopSession();
+});
+
+ipcMain.handle('open-new-window', () => {
+  createNewWindow();
 });
 
 ipcMain.handle('generateTelemetryError', () => {

@@ -20,6 +20,7 @@ datadogRum.init({
 interface ElectronAPI {
   getInternalContext: () => Promise<{ session_id: string } | undefined>;
   stopSession: () => Promise<void>;
+  openNewWindow: () => Promise<void>;
   generateTelemetryError: () => Promise<void>;
   generateUncaughtException: () => Promise<void>;
   generateUnhandledRejection: () => Promise<void>;
@@ -118,6 +119,12 @@ unhandledRejectionButton.addEventListener('click', () => {
 const crashBtn = document.getElementById('crash-btn') as HTMLButtonElement;
 crashBtn.addEventListener('click', () => {
   void window.electronAPI.crash();
+});
+
+// Handle new window button click
+const newWindowBtn = document.getElementById('new-window-btn') as HTMLButtonElement;
+newWindowBtn.addEventListener('click', () => {
+  void window.electronAPI.openNewWindow();
 });
 
 // Handle open in RUM Explorer button click
