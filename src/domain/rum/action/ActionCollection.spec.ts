@@ -81,8 +81,6 @@ describe('ActionCollection', () => {
     });
   });
 
-  // Parity: action names are free text. The browser, iOS and Android SDKs all emit the name verbatim with no
-  // emptiness or character-set validation (only operation/vital names — which are facet paths — are validated).
   describe('name handling (free text, no validation)', () => {
     it.each([
       ['empty', ''],
@@ -99,8 +97,6 @@ describe('ActionCollection', () => {
     });
   });
 
-  // Electron intentionally keeps no per-action state in the main process (matches OperationCollection): renderer
-  // actions bridged from the browser-sdk would desync any main-side tracking. Every call emits unconditionally.
   describe('no local tracking', () => {
     it('emits one event per call with no cross-call coupling', () => {
       const api = actionCollection.getApi();

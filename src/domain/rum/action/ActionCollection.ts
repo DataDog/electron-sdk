@@ -4,13 +4,7 @@ import { EventFormat, EventKind, EventManager } from '../../../event';
 import type { RawRumAction } from '../rawRumData.types';
 
 /**
- * Collect manually-tracked RUM custom actions emitted from the main process.
- *
- * Parity note: the browser-sdk, iOS and Android all accept the action name verbatim — no emptiness or character-set
- * check (unlike operation/vital names, which are facet paths). None of them attach `frustration`, `loading_time` or
- * error/resource counts to a *custom* action: those are click/scope concepts. The main process has no DOM either, so
- * this only exposes `addAction` producing a `custom` action; auto-tracked click actions arrive from the renderer over
- * the bridge already assembled.
+ * Collect manually-tracked RUM custom actions (`addAction`) emitted from the main process.
  */
 export class ActionCollection {
   constructor(private readonly eventManager: EventManager) {}
