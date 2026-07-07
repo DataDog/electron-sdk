@@ -17,6 +17,7 @@ function makeConfig(overrides: Partial<Configuration> = {}): Configuration {
     defaultPrivacyLevel: 'mask',
     allowedWebViewHosts: [],
     sessionSampleRate: 100,
+    profilingSampleRate: 0,
     telemetrySampleRate: 20,
     ...overrides,
   };
