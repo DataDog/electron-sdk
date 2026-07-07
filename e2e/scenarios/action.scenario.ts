@@ -16,7 +16,7 @@ test('emits a custom action event attached to the main-process view', async ({ m
   expect(action.action.type).toBe('custom');
   expect(action.action.target?.name).toBe('checkout_submitted');
   expect(action.action.id).toBeDefined();
-  expect((action as { context?: Record<string, unknown> }).context).toMatchObject({ cartId: 'abc' });
+  expect(action.context).toMatchObject({ cartId: 'abc' });
 
   // Common RUM context is populated by the main-process Assembly pipeline.
   expect(action.session.id).toBe(view.session.id);

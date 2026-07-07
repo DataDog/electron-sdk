@@ -82,8 +82,17 @@ export function addError(error: unknown, options?: ErrorOptions): void {
 /**
  * Add a custom RUM action, attached to the current main-process view.
  *
+ * Use it for main-process events that never reach the renderer/DOM (native menu or tray clicks, auto-update steps,
+ * background workflows). Auto-tracked click actions keep coming from the Browser SDK in the renderer.
+ *
  * @param name - Name of the action, stored as `action.target.name`.
  * @param context - Custom attributes stored under the event's `context`.
+ * @example
+ * ```ts
+ * autoUpdater.on('update-downloaded', (info) => {
+ *   addAction('update_downloaded', { version: info.version });
+ * });
+ * ```
  */
 export function addAction(name: string, context?: Context): void {
   callMonitored(() => rumApi?.addAction(name, context));
