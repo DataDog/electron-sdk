@@ -102,7 +102,7 @@ export class BatchManager {
     const { path: configPath, trackType, batchSize } = batchConfig;
 
     const trackPath = path.join(configPath, trackType);
-    const intakeUrl = computeIntakeUrlForTrack(config.site, trackType, config.proxy);
+    const intakeUrl = computeIntakeUrlForTrack(config.site, trackType, { proxy: config.proxy });
 
     const consumerConfig: BatchConsumerConfig = { trackPath, intakeUrl, clientToken };
 
