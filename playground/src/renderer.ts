@@ -24,6 +24,7 @@ interface ElectronAPI {
   generateUncaughtException: () => Promise<void>;
   generateUnhandledRejection: () => Promise<void>;
   crash: () => Promise<void>;
+  addAction: (name: string, context?: Record<string, unknown>) => Promise<void>;
   mainFetchApi: () => Promise<unknown>;
   startOperation: (name: string, options?: { operationKey?: string }) => Promise<void>;
   succeedOperation: (name: string, options?: { operationKey?: string }) => Promise<void>;
@@ -217,6 +218,13 @@ setupDemoButton('op-keyed-start', 'main:start-operation(upload/photo_1)', () =>
 );
 setupDemoButton('op-keyed-succeed', 'main:succeed-operation(upload/photo_1)', () =>
   window.electronAPI.succeedOperation('upload', { operationKey: 'photo_1' })
+);
+
+// --- Custom Action demo buttons ---
+
+setupDemoButton('action-add', 'main:add-action(menu_open)', () => window.electronAPI.addAction('menu_open'));
+setupDemoButton('action-add-ctx', 'main:add-action(file_exported)', () =>
+  window.electronAPI.addAction('file_exported', { format: 'pdf' })
 );
 
 // Simulate 5 parallel file uploads with different operation_keys, then complete
