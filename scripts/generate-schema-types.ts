@@ -63,6 +63,11 @@ const SCHEMAS: SchemaConfig[] = [
     outputPath: 'src/domain/telemetry/telemetryEvent.types.ts',
     typeName: 'TelemetryEvent',
   },
+  {
+    schemaPath: 'rum-events-format/schemas/profiling-browser-schema.json',
+    outputPath: 'src/domain/profiling/profilingEvent.types.ts',
+    typeName: 'BrowserProfiling',
+  },
 ];
 
 async function generateTypesForSchema(config: SchemaConfig) {
