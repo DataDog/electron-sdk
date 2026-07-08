@@ -146,6 +146,36 @@ describe('StandardBatchProducer', () => {
     });
   });
 
+  describe('overflow eviction', () => {
+    it('evicts the oldest .log files when the pending count exceeds the cap', async () => {
+      // 102 pending .log files, cap is 100 -> the 2 oldest (lexically first) should be evicted.
+      const logFiles = Array.from({ length: 102 }, (_, i) => `batch-${String(i).padStart(4, '0')}.log`);
+      fsMocks.unlink.mockResolvedValue(undefined);
+
+      const producer = await StandardBatchProducer.create(config);
+      fsMocks.readdir.mockResolvedValue(logFiles);
+
+      producer.post({ data: { a: 1 } });
+      await producer.flush();
+
+      expect(fsMocks.unlink).toHaveBeenCalledTimes(2);
+      expect(fsMocks.unlink).toHaveBeenCalledWith(path.join(config.trackPath, 'batch-0000.log'));
+      expect(fsMocks.unlink).toHaveBeenCalledWith(path.join(config.trackPath, 'batch-0001.log'));
+    });
+
+    it('does not evict when the pending count is within the cap', async () => {
+      fsMocks.readdir.mockResolvedValue(['batch-0000.log', 'batch-0001.log']);
+      fsMocks.unlink.mockResolvedValue(undefined);
+
+      const producer = await StandardBatchProducer.create(config);
+
+      producer.post({ data: { a: 1 } });
+      await producer.flush();
+
+      expect(fsMocks.unlink).not.toHaveBeenCalled();
+    });
+  });
+
   describe('rotation behavior', () => {
     it('flush() renames current batch from .tmp to .log', async () => {
       const producer = await StandardBatchProducer.create(config);
