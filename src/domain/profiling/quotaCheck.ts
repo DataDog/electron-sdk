@@ -44,6 +44,11 @@ function parseQuotaResult(body: unknown, httpStatusFallback: QuotaResult): Quota
   };
 }
 
+/**
+ * Query the profiling quota intake for a session. Follows the shared profiling quota check spec that all
+ * SDK implementations conform to:
+ * https://datadoghq.atlassian.net/wiki/spaces/CS0/pages/6959073426/Profiling+quota+check
+ */
 export function checkProfilingQuota(
   config: Configuration,
   sessionId: string,
