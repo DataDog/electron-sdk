@@ -20,7 +20,7 @@ export class ProfilingCollection {
   // gated on the quota decision of the session that captured it, not the current one, so a profile flushed
   // after a renewal is still dropped if its own session was denied. Absence means "not denied" (allowed or
   // still pending the async check, i.e. optimistic).
-  private readonly deniedSessions = new Map<string, QuotaReason>();
+  private readonly quotaDeniedSessions = new Map<string, QuotaReason>();
 
   constructor(
     eventManager: EventManager,
@@ -52,12 +52,13 @@ export class ProfilingCollection {
         // `has_profile` stays false either way).
         return { _dd: { profiling: null } };
       }
-      const quotaReason = this.deniedSessions.get(sessionId);
-      if (quotaReason !== undefined) {
+      const quotaDeniedReason = this.quotaDeniedSessions.get(sessionId);
+      if (quotaDeniedReason !== undefined) {
         return {
-          _dd: { profiling: { status: 'stopped', quota_reason: quotaReason } },
+          _dd: { profiling: { status: 'stopped', quota_reason: quotaDeniedReason } },
         };
       }
+      // Sampled in and allowed: keep the renderer's own `_dd.profiling`.
       return SKIPPED;
     });
 
@@ -101,7 +102,7 @@ export class ProfilingCollection {
         if (result.decision === 'quota_ko') {
           // Record the denial against the session it was checked for, so profiles are gated on their own
           // session's decision.
-          this.deniedSessions.set(sessionId, result.reason);
+          this.quotaDeniedSessions.set(sessionId, result.reason);
         }
       })
     );
@@ -118,7 +119,7 @@ export class ProfilingCollection {
     if (sessionId === undefined || !this.isProfilingSampled(sessionId)) {
       return null;
     }
-    if (this.deniedSessions.has(sessionId)) {
+    if (this.quotaDeniedSessions.has(sessionId)) {
       return null;
     }
 
