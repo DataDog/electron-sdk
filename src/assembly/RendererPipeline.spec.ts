@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED } from '@datadog/js-core/assembly';
-import { RendererPipeline, type BridgeOptions } from './RendererPipeline';
+import { RendererPipeline } from './RendererPipeline';
+import type { BridgeOptions } from '../common';
 import { createFormatHooks, type FormatHooks } from './hooks';
 import {
   EventKind,
@@ -14,10 +15,11 @@ import {
 } from '../event';
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
 
-const { mockIpcMainOn, mockAddError } = vi.hoisted(() => {
+const { mockIpcMainOn, mockAddError, mockSetBridgeConfig } = vi.hoisted(() => {
   const mockIpcMainOn = vi.fn();
   const mockAddError = vi.fn();
-  return { mockIpcMainOn, mockAddError };
+  const mockSetBridgeConfig = vi.fn();
+  return { mockIpcMainOn, mockAddError, mockSetBridgeConfig };
 });
 
 vi.mock('electron', () => ({
@@ -28,6 +30,11 @@ vi.mock('../domain/telemetry', () => ({
   monitor: (fn: () => void) => fn,
   addError: mockAddError,
 }));
+
+vi.mock('../common', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../common')>();
+  return { ...actual, setBridgeConfig: mockSetBridgeConfig };
+});
 
 const DEFAULT_OPTIONS: BridgeOptions = {
   defaultPrivacyLevel: 'mask',
@@ -92,22 +99,17 @@ describe('RendererPipeline', () => {
     new RendererPipeline(eventManager, hooks, DEFAULT_OPTIONS);
   });
 
-  it('registers IPC listeners on BRIDGE_CHANNEL and CONFIG_CHANNEL', () => {
+  it('registers a listener on BRIDGE_CHANNEL', () => {
     expect(mockIpcMainOn).toHaveBeenCalledWith(BRIDGE_CHANNEL, expect.any(Function));
-    expect(mockIpcMainOn).toHaveBeenCalledWith(CONFIG_CHANNEL, expect.any(Function));
   });
 
-  it('returns bridgeOptions on CONFIG_CHANNEL', () => {
-    const options: BridgeOptions = { defaultPrivacyLevel: 'allow', allowedWebViewHosts: ['example.com'] };
-    vi.clearAllMocks();
-    const handlers: Record<string, (event: unknown) => void> = {};
-    mockIpcMainOn.mockImplementation((channel: string, cb: (event: unknown) => void) => {
-      handlers[channel] = cb;
-    });
-    new RendererPipeline(eventManager, hooks, options);
-    const event = { returnValue: undefined as unknown };
-    handlers[CONFIG_CHANNEL](event);
-    expect(event.returnValue).toEqual(options);
+  it('does NOT register a listener on CONFIG_CHANNEL (responder lives in instrument)', () => {
+    const channels = mockIpcMainOn.mock.calls.map((call) => call[0] as string);
+    expect(channels).not.toContain(CONFIG_CHANNEL);
+  });
+
+  it('publishes the real config to the shared holder via setBridgeConfig', () => {
+    expect(mockSetBridgeConfig).toHaveBeenCalledWith(DEFAULT_OPTIONS);
   });
 
   describe('rum events', () => {

@@ -2,18 +2,12 @@ import { ipcMain } from 'electron';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { combine } from '@datadog/js-core/util';
 import { DISCARDED } from '@datadog/js-core/assembly';
-import type { DefaultPrivacyLevel } from '@datadog/browser-core';
 import { EventKind, EventSource, EventTrack, LifecycleKind } from '../event';
 import type { EventManager, ServerRumEvent } from '../event';
 import { monitor, addError as addTelemetryError } from '../domain/telemetry';
-import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
+import { BRIDGE_CHANNEL, setBridgeConfig, type BridgeOptions } from '../common';
 import type { FormatHooks } from './hooks';
 import type { RumEvent } from '../domain/rum';
-
-export interface BridgeOptions {
-  defaultPrivacyLevel: DefaultPrivacyLevel;
-  allowedWebViewHosts: string[];
-}
 
 type BridgeEventType = 'rum' | 'log' | 'internal_telemetry';
 
@@ -46,12 +40,9 @@ export class RendererPipeline {
       })
     );
 
-    ipcMain.on(
-      CONFIG_CHANNEL,
-      monitor((event: { returnValue: unknown }) => {
-        event.returnValue = this.bridgeOptions;
-      })
-    );
+    // The CONFIG_CHANNEL responder is registered at instrument time; here we publish the real config
+    // so it replaces the fallback returned for windows loaded before init().
+    setBridgeConfig(this.bridgeOptions);
   }
 
   private onBridgeMessage(msg: string): void {
