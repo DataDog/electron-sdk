@@ -175,6 +175,18 @@ try {
 }
 ```
 
+### `addAction(name: string, context?: Context): void`
+
+Report a custom RUM action from the main process, attached to the current view. Use it for main-process events that never reach the renderer/DOM — native menu or tray clicks, auto-update steps, background workflows. Auto-tracked click actions are still collected by the Browser SDK in the renderer.
+
+```ts
+import { addAction } from '@datadog/electron-sdk';
+
+autoUpdater.on('update-downloaded', (info) => {
+  addAction('update_downloaded', { version: info.version });
+});
+```
+
 ### `startOperation(name: string, options?: FeatureOperationOptions): void`
 
 Start a RUM Operation step. Pair every `startOperation` with exactly one `succeedOperation` or `failOperation`. Use `options.operationKey` to distinguish parallel operations sharing the same `name`.

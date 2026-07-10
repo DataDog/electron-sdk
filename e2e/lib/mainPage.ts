@@ -7,6 +7,7 @@ interface ElectronAppWindow {
   electronAPI: {
     generateTelemetryErrors: (count: number) => Promise<void>;
     generateManualError: (startTime?: number) => Promise<void>;
+    addAction: (name: string, context?: Record<string, unknown>) => Promise<void>;
     startOperation: (name: string, options?: FeatureOperationOptions) => Promise<void>;
     succeedOperation: (name: string, options?: FeatureOperationOptions) => Promise<void>;
     failOperation: (name: string, failureReason: FailureReason, options?: FeatureOperationOptions) => Promise<void>;
@@ -73,6 +74,13 @@ export class MainPage {
     await this.page.evaluate(
       (ts) => (globalThis as unknown as ElectronAppWindow).electronAPI.generateManualError(ts),
       startTime
+    );
+  }
+
+  async addAction(name: string, context?: Record<string, unknown>) {
+    await this.page.evaluate(
+      ({ name, context }) => (globalThis as unknown as ElectronAppWindow).electronAPI.addAction(name, context),
+      { name, context }
     );
   }
 

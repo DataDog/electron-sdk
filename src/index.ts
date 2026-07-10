@@ -1,3 +1,4 @@
+import type { Context } from '@datadog/browser-core';
 import { MainAssembly, RendererPipeline, createFormatHooks, registerCommonContext } from './assembly';
 import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
@@ -76,6 +77,22 @@ export function stopSession(): void {
  */
 export function addError(error: unknown, options?: ErrorOptions): void {
   callMonitored(() => rumApi?.addError(error, options));
+}
+
+/**
+ * Add a custom RUM action, attached to the current main-process view.
+ *
+ * @param name - Name of the action, stored as `action.target.name`.
+ * @param context - Custom attributes stored under the event's `context`.
+ * @example
+ * ```ts
+ * autoUpdater.on('update-downloaded', (info) => {
+ *   addAction('update_downloaded', { version: info.version });
+ * });
+ * ```
+ */
+export function addAction(name: string, context?: Context): void {
+  callMonitored(() => rumApi?.addAction(name, context));
 }
 
 /**
@@ -188,6 +205,7 @@ export type { InitConfiguration } from './config';
 export type {
   FailureReason,
   FeatureOperationOptions,
+  RumActionEvent,
   RumErrorEvent,
   RumResourceEvent,
   RumViewEvent,

@@ -1,7 +1,7 @@
 // Must be imported before 'electron' — instruments electron for tracing and preload injection.
 import '@datadog/electron-sdk/instrument';
 
-import { app, BrowserWindow, ipcMain, net, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, net, shell } from 'electron';
 import * as path from 'node:path';
 import * as https from 'node:https';
 import {
@@ -10,6 +10,7 @@ import {
   _flushTransport,
   getInternalContext,
   _generateTelemetryError,
+  addAction,
   startOperation,
   succeedOperation,
   failOperation,
@@ -52,6 +53,33 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+}
+
+// Native application menu — handlers run in the main process, so a custom action can be sent (and the
+// session stopped) without any renderer/web-UI interaction.
+function buildAppMenu() {
+  const template: Electron.MenuItemConstructorOptions[] = [
+    ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),
+    {
+      label: 'Datadog',
+      submenu: [
+        {
+          label: 'Send custom action (main process)',
+          accelerator: 'CmdOrCtrl+Shift+A',
+          click: () => {
+            addAction('native_menu_action', { source: 'appMenu' });
+            void _flushTransport();
+          },
+        },
+        {
+          label: 'Stop session (main process)',
+          accelerator: 'CmdOrCtrl+Shift+S',
+          click: () => stopSession(),
+        },
+      ],
+    },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 // IPC handler to get internal context
@@ -109,6 +137,10 @@ ipcMain.handle('crash', () => {
   process.crash();
 });
 
+ipcMain.handle('main:add-action', (_event, name: string, context?: Record<string, unknown>) => {
+  addAction(name, context as Parameters<typeof addAction>[1]);
+});
+
 // --- Operation Monitoring demo handlers ---
 
 ipcMain.handle('main:start-operation', (_event, name: string, options?: FeatureOperationOptions) => {
@@ -163,6 +195,7 @@ void app.whenReady().then(async () => {
   console.log('SDK init result:', result);
 
   createWindow();
+  buildAppMenu();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

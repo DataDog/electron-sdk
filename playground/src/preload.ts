@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   generateUncaughtException: () => ipcRenderer.invoke('generateUncaughtException'),
   generateUnhandledRejection: () => ipcRenderer.invoke('generateUnhandledRejection'),
   crash: () => ipcRenderer.invoke('crash'),
+  addAction: (name: string, context?: Record<string, unknown>) => ipcRenderer.invoke('main:add-action', name, context),
   mainFetchApi: () => ipcRenderer.invoke('main:fetch-api'),
   startOperation: (name: string, options?: { operationKey?: string }) =>
     ipcRenderer.invoke('main:start-operation', name, options),
