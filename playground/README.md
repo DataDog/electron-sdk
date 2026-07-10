@@ -6,7 +6,7 @@ Developer sandbox for `@datadog/electron-sdk` — experiment with SDK features, 
 
 ```bash
 # From the repo root — builds SDK + playground with hot reload
-yarn dev:playground
+yarn dev
 
 # Or standalone (playground only, requires SDK already built)
 cd playground && yarn dev

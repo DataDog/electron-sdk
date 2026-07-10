@@ -45,7 +45,7 @@ import { generateUUID, Observable, ONE_MINUTE } from '@datadog/browser-core';
 ## Imports and Exports
 
 - **`node:` protocol** for Node.js builtins (enforced by `unicorn/prefer-node-protocol`)
-- **Barrel imports** when an `index.ts` exists (enforced by `force-barrel-imports`)
+- **Barrel imports** when an `index.ts` exists (enforced by `local/no-internal-modules`)
 - **Only export what is needed** — keep internal implementation details private
 
 ## Cleanup
