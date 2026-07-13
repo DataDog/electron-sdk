@@ -135,6 +135,23 @@ describe('DurationVitalCollection', () => {
     expect(rawRumEvents).toHaveLength(0);
   });
 
+  it('does not retain a vital started with invalid options', () => {
+    api.startDurationVital('checkout', { context: 'invalid' } as never);
+    api.stopDurationVital('checkout');
+
+    expect(rawRumEvents).toHaveLength(0);
+    expect(display.error).toHaveBeenCalledOnce();
+  });
+
+  it('does not consume a pending vital when stop options are invalid', () => {
+    api.startDurationVital('checkout');
+    api.stopDurationVital('checkout', { description: 42 } as never);
+    api.stopDurationVital('checkout');
+
+    expect(rawRumEvents).toHaveLength(1);
+    expect(display.error).toHaveBeenCalledOnce();
+  });
+
   it('clears pending vitals when stopped', () => {
     api.startDurationVital('checkout');
     collection.stop();
