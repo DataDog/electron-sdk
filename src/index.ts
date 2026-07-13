@@ -3,7 +3,13 @@ import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
 import { RumCollection } from './domain/rum';
 import { SessionManager } from './domain/session';
-import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './domain/rum';
+import type {
+  AddDurationVitalOptions,
+  DurationVitalOptions,
+  ErrorOptions,
+  FailureReason,
+  FeatureOperationOptions,
+} from './domain/rum';
 import { callMonitored, startTelemetry } from './domain/telemetry';
 import { EventManager } from './event';
 import { Transport } from './transport';
@@ -76,6 +82,57 @@ export function stopSession(): void {
  */
 export function addError(error: unknown, options?: ErrorOptions): void {
   callMonitored(() => rumApi?.addError(error, options));
+}
+
+/**
+ * Add an already-completed custom duration vital.
+ *
+ * `startTime` is a UNIX timestamp in milliseconds and `duration` is expressed in milliseconds.
+ *
+ * @example
+ * ```ts
+ * addDurationVital('database.migration', {
+ *   startTime: Date.now() - 1_500,
+ *   duration: 1_500,
+ *   context: { migration: 'users' },
+ * });
+ * ```
+ */
+export function addDurationVital(name: string, options: AddDurationVitalOptions): void {
+  callMonitored(() => rumApi?.addDurationVital(name, options));
+}
+
+/**
+ * Start measuring a custom duration vital.
+ *
+ * Use `vitalKey` when multiple instances with the same name can overlap. The matching stop call must happen in the
+ * same Electron process.
+ *
+ * @example
+ * ```ts
+ * startDurationVital('document.open', { vitalKey: documentId });
+ * await openDocument(documentId);
+ * stopDurationVital('document.open', { vitalKey: documentId });
+ * ```
+ */
+export function startDurationVital(name: string, options?: DurationVitalOptions): void {
+  callMonitored(() => rumApi?.startDurationVital(name, options));
+}
+
+/**
+ * Stop a custom duration vital started with `startDurationVital`.
+ *
+ * Context and description supplied here are merged with the start options.
+ *
+ * @example
+ * ```ts
+ * startDurationVital('cache.warmup');
+ * await warmCache();
+ * stopDurationVital('cache.warmup', { context: { entries: 42 } });
+ * ```
+ */
+export function stopDurationVital(name: string, options?: DurationVitalOptions): void {
+  callMonitored(() => rumApi?.stopDurationVital(name, options));
 }
 
 /**
@@ -186,12 +243,15 @@ export function getInternalContext(): InternalContext | undefined {
 
 export type { InitConfiguration } from './config';
 export type {
+  AddDurationVitalOptions,
+  DurationVitalOptions,
   FailureReason,
   FeatureOperationOptions,
   RumErrorEvent,
   RumResourceEvent,
   RumViewEvent,
   RumVitalEvent,
+  RumVitalDurationEvent,
   RumVitalOperationStepEvent,
 } from './domain/rum';
 export type { TelemetryErrorEvent } from './domain/telemetry';

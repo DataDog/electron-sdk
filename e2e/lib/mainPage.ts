@@ -1,5 +1,10 @@
 import type { ElectronApplication, Page } from '@playwright/test';
-import type { FailureReason, FeatureOperationOptions } from '@datadog/electron-sdk';
+import type {
+  AddDurationVitalOptions,
+  DurationVitalOptions,
+  FailureReason,
+  FeatureOperationOptions,
+} from '@datadog/electron-sdk';
 import { BridgeWindowPage } from './bridgeWindowPage';
 
 // declare exposed IPC methods called directly in tests
@@ -7,6 +12,9 @@ interface ElectronAppWindow {
   electronAPI: {
     generateTelemetryErrors: (count: number) => Promise<void>;
     generateManualError: (startTime?: number) => Promise<void>;
+    addDurationVital: (name: string, options: AddDurationVitalOptions) => Promise<void>;
+    startDurationVital: (name: string, options?: DurationVitalOptions) => Promise<void>;
+    stopDurationVital: (name: string, options?: DurationVitalOptions) => Promise<void>;
     startOperation: (name: string, options?: FeatureOperationOptions) => Promise<void>;
     succeedOperation: (name: string, options?: FeatureOperationOptions) => Promise<void>;
     failOperation: (name: string, failureReason: FailureReason, options?: FeatureOperationOptions) => Promise<void>;
@@ -73,6 +81,27 @@ export class MainPage {
     await this.page.evaluate(
       (ts) => (globalThis as unknown as ElectronAppWindow).electronAPI.generateManualError(ts),
       startTime
+    );
+  }
+
+  async addDurationVital(name: string, options: AddDurationVitalOptions) {
+    await this.page.evaluate(
+      ({ name, options }) => (globalThis as unknown as ElectronAppWindow).electronAPI.addDurationVital(name, options),
+      { name, options }
+    );
+  }
+
+  async startDurationVital(name: string, options?: DurationVitalOptions) {
+    await this.page.evaluate(
+      ({ name, options }) => (globalThis as unknown as ElectronAppWindow).electronAPI.startDurationVital(name, options),
+      { name, options }
+    );
+  }
+
+  async stopDurationVital(name: string, options?: DurationVitalOptions) {
+    await this.page.evaluate(
+      ({ name, options }) => (globalThis as unknown as ElectronAppWindow).electronAPI.stopDurationVital(name, options),
+      { name, options }
     );
   }
 

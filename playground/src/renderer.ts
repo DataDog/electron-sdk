@@ -1,5 +1,16 @@
 import { datadogRum } from '@datadog/browser-rum';
 
+interface DurationVitalOptions {
+  vitalKey?: string;
+  context?: Record<string, unknown>;
+  description?: string;
+}
+
+interface AddDurationVitalOptions extends DurationVitalOptions {
+  startTime: number;
+  duration: number;
+}
+
 // Initialize the browser RUM SDK in the renderer process.
 // It auto-detects the DatadogEventBridge exposed by the electron-sdk preload
 // and sends all collected events (fetch, XHR, DOM, errors, views) through it
@@ -25,6 +36,9 @@ interface ElectronAPI {
   generateUnhandledRejection: () => Promise<void>;
   crash: () => Promise<void>;
   mainFetchApi: () => Promise<unknown>;
+  addDurationVital: (name: string, options: AddDurationVitalOptions) => Promise<void>;
+  startDurationVital: (name: string, options?: DurationVitalOptions) => Promise<void>;
+  stopDurationVital: (name: string, options?: DurationVitalOptions) => Promise<void>;
   startOperation: (name: string, options?: { operationKey?: string }) => Promise<void>;
   succeedOperation: (name: string, options?: { operationKey?: string }) => Promise<void>;
   failOperation: (
@@ -202,6 +216,29 @@ if (rendererFetchBtn) {
 setupDemoButton('main-fetch', 'main:fetch-api', () => window.electronAPI.mainFetchApi());
 setupDemoButton('main-fetch-fetch', 'main:fetch-api-fetch', () => window.electronAPI.mainFetchApiFetch());
 setupDemoButton('main-fetch-net', 'main:fetch-api-net', () => window.electronAPI.mainFetchApiNet());
+
+// --- Custom duration vital demo buttons ---
+
+setupDemoButton('vital-add', 'main:add-duration-vital(database.migration)', () =>
+  window.electronAPI.addDurationVital('database.migration', {
+    startTime: Date.now() - 1_500,
+    duration: 1_500,
+    context: { database: 'documents' },
+    description: 'Playground direct duration',
+  })
+);
+setupDemoButton('vital-start', 'main:start-duration-vital(document.open)', () =>
+  window.electronAPI.startDurationVital('document.open', {
+    vitalKey: 'playground-document',
+    context: { source: 'playground' },
+  })
+);
+setupDemoButton('vital-stop', 'main:stop-duration-vital(document.open)', () =>
+  window.electronAPI.stopDurationVital('document.open', {
+    vitalKey: 'playground-document',
+    context: { result: 'success' },
+  })
+);
 
 // --- Operation Monitoring demo buttons ---
 

@@ -126,7 +126,34 @@ await esbuild.build({
 - **RUM Resources** — Capture RUM resources from main process network calls
 - **Traces** — Capture traces for network calls, command execution, IPC messages on main process
 - **Renderer Events** — Capture RUM events from renderer processes via the browser SDK
+- **Custom Duration Vitals** — Measure user-defined durations in the main process
 - **Operation Monitoring** _(experimental)_ — Track start / succeed / fail steps of critical user-facing workflows
+
+### Custom Duration Vitals
+
+Record an already-known duration, or measure one between a start and stop call:
+
+```ts
+import { addDurationVital, startDurationVital, stopDurationVital } from '@datadog/electron-sdk';
+
+addDurationVital('database.migration', {
+  startTime: Date.now() - 1_500,
+  duration: 1_500,
+  context: { database: 'documents' },
+});
+
+startDurationVital('document.open', {
+  vitalKey: 'document-42',
+  context: { source: 'recent-files' },
+});
+await openDocument();
+stopDurationVital('document.open', {
+  vitalKey: 'document-42',
+  context: { result: 'success' },
+});
+```
+
+Times passed to the API are in milliseconds. Use `vitalKey` to measure overlapping durations with the same name; it identifies the measurement but is not included in the event. A measurement must be started and stopped in the same process. In renderer processes, use the equivalent `@datadog/browser-rum` APIs directly.
 
 ### Operation Monitoring _(experimental)_
 
@@ -172,6 +199,36 @@ try {
   riskyOperation();
 } catch (error) {
   addError(error, { context: { component: 'sync' } });
+}
+```
+
+### `addDurationVital(name: string, options: AddDurationVitalOptions): void`
+
+Record a custom duration vital with an explicit start time and duration, in milliseconds.
+
+### `startDurationVital(name: string, options?: DurationVitalOptions): void`
+
+Start measuring a custom duration vital. Starting another vital with the same `name` and `vitalKey` replaces the pending measurement.
+
+### `stopDurationVital(name: string, options?: DurationVitalOptions): void`
+
+Stop and record a pending custom duration vital. Options from the start and stop calls are deeply merged, with stop values taking precedence. Stopping an unknown vital has no effect.
+
+```ts
+interface DurationVitalOptions {
+  /** Distinguishes parallel measurements sharing the same `name`. */
+  vitalKey?: string;
+  /** Free-form attributes attached to the event. */
+  context?: Record<string, unknown>;
+  /** Free-form description attached to `vital.description`. */
+  description?: string;
+}
+
+interface AddDurationVitalOptions extends DurationVitalOptions {
+  /** Unix timestamp in milliseconds. */
+  startTime: number;
+  /** Duration in milliseconds. */
+  duration: number;
 }
 ```
 

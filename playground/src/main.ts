@@ -10,9 +10,14 @@ import {
   _flushTransport,
   getInternalContext,
   _generateTelemetryError,
+  addDurationVital,
+  startDurationVital,
+  stopDurationVital,
   startOperation,
   succeedOperation,
   failOperation,
+  type AddDurationVitalOptions,
+  type DurationVitalOptions,
   type FailureReason,
   type FeatureOperationOptions,
 } from '@datadog/electron-sdk';
@@ -107,6 +112,20 @@ ipcMain.handle('main:fetch-api-net', async () => {
 // IPC handler to crash the main process
 ipcMain.handle('crash', () => {
   process.crash();
+});
+
+// --- Custom duration vital demo handlers ---
+
+ipcMain.handle('main:add-duration-vital', (_event, name: string, options: AddDurationVitalOptions) => {
+  addDurationVital(name, options);
+});
+
+ipcMain.handle('main:start-duration-vital', (_event, name: string, options?: DurationVitalOptions) => {
+  startDurationVital(name, options);
+});
+
+ipcMain.handle('main:stop-duration-vital', (_event, name: string, options?: DurationVitalOptions) => {
+  stopDurationVital(name, options);
 });
 
 // --- Operation Monitoring demo handlers ---
