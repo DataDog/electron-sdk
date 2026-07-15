@@ -78,21 +78,6 @@ describe('ProfileBatchProducer', () => {
       expect(fsMocks.rename).toHaveBeenCalledWith(tmpPath, logPath);
     });
 
-    it('evicts the oldest profiles when the pending count exceeds the cap', async () => {
-      const logFiles = Array.from({ length: 102 }, (_, i) => `profile-${String(i).padStart(4, '0')}.log`);
-      fsMocks.unlink.mockResolvedValue(undefined);
-
-      const producer = await ProfileBatchProducer.create({ trackPath: TRACK_PATH });
-      fsMocks.readdir.mockResolvedValue(logFiles);
-
-      producer.post({ data: {}, trace: {} });
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-
-      expect(fsMocks.unlink).toHaveBeenCalledTimes(2);
-      expect(fsMocks.unlink).toHaveBeenCalledWith(path.join(TRACK_PATH, 'profile-0000.log'));
-      expect(fsMocks.unlink).toHaveBeenCalledWith(path.join(TRACK_PATH, 'profile-0001.log'));
-    });
-
     it('gives concurrent same-millisecond posts distinct file names', async () => {
       const producer = await ProfileBatchProducer.create({ trackPath: TRACK_PATH });
 

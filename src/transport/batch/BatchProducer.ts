@@ -19,11 +19,6 @@ export abstract class BatchProducer {
   protected writeQueue: Promise<void> = Promise.resolve();
   /** Prefix used for generated batch file names. Subclasses may override. */
   protected fileNamePrefix = 'batch';
-  /**
-   * Maximum number of pending `.log` files kept on disk. Beyond this, the oldest are evicted.
-   * Last-resort bound against unbounded growth when uploads fail for a long time. Subclasses may override.
-   */
-  protected maxLogFiles = 100;
   private fileSequence = 0;
 
   protected constructor(config: BatchProducerConfig) {
@@ -34,7 +29,6 @@ export abstract class BatchProducer {
   post(data: unknown) {
     this.writeQueue = this.writeQueue
       .then(() => this.writeData(data))
-      .then(() => this.evictOverflow())
       .catch((error) => {
         // Disk write failure is an environment issue the SDK cannot fix (disk full, permissions):
         // surface it to the customer and keep the queue alive.
@@ -73,28 +67,6 @@ export abstract class BatchProducer {
       }
     } catch {
       // Directory read failed — nothing to recover
-    }
-  }
-
-  /**
-   * Deletes the oldest `.log` files when the pending count exceeds {@link maxLogFiles}.
-   * Filenames sort chronologically, so the lexically-first files are the oldest. Never throws.
-   *
-   * Eviction is intentionally silent: it runs on every write, so logging each drop would spam
-   * while the buffer stays full. The signal of a sustained outage is the upload failures, not this cap.
-   */
-  private async evictOverflow() {
-    let logFiles: string[];
-    try {
-      logFiles = (await fs.readdir(this.trackPath)).filter((file) => file.endsWith('.log')).sort();
-    } catch {
-      // Directory unreadable — nothing to evict
-      return;
-    }
-
-    const overflow = logFiles.length - this.maxLogFiles;
-    for (let i = 0; i < overflow; i++) {
-      await fs.unlink(path.join(this.trackPath, logFiles[i])).catch(() => undefined);
     }
   }
 
