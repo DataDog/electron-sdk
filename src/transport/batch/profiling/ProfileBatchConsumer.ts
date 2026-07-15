@@ -25,6 +25,14 @@ export class ProfileBatchConsumer extends BatchConsumer {
 
     const [eventJson, traceJson] = lines;
 
+    // A crash mid-write can leave a recovered `.log` with two non-empty but truncated JSON lines.
+    // Validate both parse before uploading; otherwise intake rejects the payload and the file is
+    // retried on every cycle forever. Drop it instead.
+    if (!isValidJson(eventJson) || !isValidJson(traceJson)) {
+      display.warn('Dropping malformed profile: event or trace is not valid JSON');
+      return null;
+    }
+
     let compressed: Buffer;
     try {
       compressed = await deflate(Buffer.from(traceJson));
@@ -50,6 +58,15 @@ export class ProfileBatchConsumer extends BatchConsumer {
       },
       body: formData,
     });
+  }
+}
+
+function isValidJson(line: string): boolean {
+  try {
+    JSON.parse(line);
+    return true;
+  } catch {
+    return false;
   }
 }
 

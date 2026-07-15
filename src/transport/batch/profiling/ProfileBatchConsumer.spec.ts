@@ -129,6 +129,18 @@ describe('ProfileBatchConsumer', () => {
       expect(display.warn).toHaveBeenCalled();
     });
 
+    it('drops, warns, and deletes files with truncated (invalid JSON) lines', async () => {
+      // A crash mid-write can leave two non-empty but truncated lines on disk.
+      fsMocks.readdir.mockResolvedValue(['profile.log']);
+      fsMocks.readFile.mockResolvedValue('{"format":"json"}\n{"traceStart":123');
+
+      await consumer.upload();
+
+      expect(fetch).not.toHaveBeenCalled();
+      expect(fsMocks.unlink).toHaveBeenCalledTimes(1);
+      expect(display.warn).toHaveBeenCalled();
+    });
+
     it('drops, warns, and deletes the file when trace compression fails', async () => {
       const zlib = await import('node:zlib');
       vi.mocked(zlib.default.deflate).mockImplementationOnce(((_buf: Buffer, cb: (err: Error | null) => void) =>
