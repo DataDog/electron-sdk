@@ -181,6 +181,16 @@ The JS Self-Profiling API is only available when the page is delivered with the 
 - a custom protocol via [`protocol.handle`](https://www.electronjs.org/docs/latest/api/protocol#protocolhandlescheme-handler)
 - a local HTTP server (`http://localhost:<port>`)
 
+If you use a custom protocol, it must also be registered as privileged (`standard` and `secure`) _before_ the app is ready — otherwise the JS Self-Profiling API stays unavailable even with the header, because the scheme is not treated as a secure context:
+
+```ts
+import { protocol } from 'electron';
+
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+]);
+```
+
 ## API
 
 ### `init(config: InitConfiguration): Promise<boolean>`
