@@ -207,6 +207,20 @@ describe('SpanProcessor', () => {
       expect(collected.length).toBeGreaterThan(0);
     });
 
+    it('should not treat proxy subdomains as intake (matches the proxy host exactly)', () => {
+      processor.stop();
+      processor = new SpanProcessor(eventManager, hooks, {
+        env: 'test',
+        service: 'test-service',
+        site: 'datadoghq.com',
+        proxy: 'https://proxy.example.com/api/v2/rum',
+      } as Configuration);
+      // A customer request to a subdomain of the proxy host is their own traffic and must be traced.
+      publish([[createSpan({ meta: { 'http.url': 'https://api.proxy.example.com/data', 'http.method': 'GET' } })]]);
+
+      expect(collected.length).toBeGreaterThan(0);
+    });
+
     it('should filter spans whose resource contains the intake hostname', () => {
       const span = createSpan({
         type: 'dns',
