@@ -207,6 +207,14 @@ The SDK injects a preload script (`@datadog/electron-sdk/preload`) into every re
 - `app.on('session-created')`: registers the preload on every session as it is created, covering windows on any session (default or a custom `partition`/`session`) without depending on how the app constructs `BrowserWindow`. This is robust even when a static ESM `import { BrowserWindow } from 'electron'` captured the original class before instrumentation ran.
 - `session.defaultSession.registerPreloadScript()` on `app` ready: the default session usually already exists by the time instrumentation runs (so `session-created` has fired for it before the listener was attached), so it is registered explicitly.
 
+### Bridge-config lifecycle
+
+The preload fetches bridge configuration from the main process synchronously at load time via a `datadog:bridge-config` IPC request. This config controls the renderer's `defaultPrivacyLevel` and `allowedWebViewHosts`.
+
+The responder is registered at **instrument time** (when `@datadog/electron-sdk/instrument` loads), backed by a process-global holder keyed with `Symbol.for('@datadog/electron-sdk:bridgeConfig')`. The holder is seeded with safe fallback values (`defaultPrivacyLevel: 'mask'`, `allowedWebViewHosts: []`) so the bridge works immediately, even before `init()` runs. When `init()` executes, `RendererPipeline` calls `setBridgeConfig` to replace the holder's value with the real configuration.
+
+The process-global (`Symbol.for`) is required because `instrument` and the `init()` bundle are separate CommonJS module instances: a module-level variable would not be shared between them, so they would always read the fallback.
+
 ### Bundler plugins
 
 The instrumentation entry point must run before `require('electron')`. Bundlers can break this ordering requirement in different ways:
