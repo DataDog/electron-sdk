@@ -1,8 +1,42 @@
 import '@datadog/electron-sdk/instrument';
-import { app, BrowserWindow, ipcMain, net } from 'electron';
+import { app, BrowserWindow, ipcMain, net, protocol } from 'electron';
 import * as http from 'node:http';
 import * as fs from 'node:fs';
 import { join } from 'node:path';
+
+// A custom scheme must be registered as privileged (standard + secure) before app ready so that pages
+// served through it can use the JS Self-Profiling API when the response carries the Document-Policy header.
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+]);
+
+let appProtocolRegistered = false;
+
+function serveBridgeWindowOverAppProtocol(): void {
+  if (appProtocolRegistered) {
+    return;
+  }
+  appProtocolRegistered = true;
+  protocol.handle('app', (request) => {
+    const { pathname } = new URL(request.url);
+    const fileName = pathname === '/' ? 'bridge-window.html' : pathname.replace(/^\//, '');
+    const ext = fileName.split('.').pop();
+    const contentType =
+      ext === 'html'
+        ? 'text/html'
+        : ext === 'js'
+          ? 'application/javascript'
+          : ext === 'map'
+            ? 'application/json'
+            : 'application/octet-stream';
+    const headers: Record<string, string> = { 'Content-Type': contentType };
+    // Only the HTML document needs the policy that enables the profiler.
+    if (ext === 'html') {
+      headers['Document-Policy'] = 'js-profiling';
+    }
+    return new Response(fs.readFileSync(join(__dirname, fileName)), { headers });
+  });
+}
 import {
   init,
   addError,
@@ -31,7 +65,7 @@ function startRendererHttpServer(): Promise<number> {
 
       if (_req.url === '/' || _req.url?.endsWith('.html')) {
         const html = fs.readFileSync(htmlPath, 'utf-8');
-        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.writeHead(200, { 'Content-Type': 'text/html', 'Document-Policy': 'js-profiling' });
         res.end(html);
       } else if (_req.url?.endsWith('.js')) {
         const js = fs.readFileSync(jsPath, 'utf-8');
@@ -214,6 +248,20 @@ void app.whenReady().then(async () => {
       },
     });
     void win.loadURL(`http://localhost:${port}`);
+  });
+
+  ipcMain.handle('openBridgeAppProtocolWindow', () => {
+    serveBridgeWindowOverAppProtocol();
+    const win = new BrowserWindow({
+      width: 800,
+      height: 600,
+      show: isDebugMode,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+    void win.loadURL('app://bridge/');
   });
 
   // In deferred-init mode the e2e opens the window itself via __ddE2E; don't auto-open at startup.

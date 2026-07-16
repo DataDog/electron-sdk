@@ -3,6 +3,7 @@ import type { DefaultPrivacyLevel } from '@datadog/browser-core';
 export interface BridgeOptions {
   defaultPrivacyLevel: DefaultPrivacyLevel;
   allowedWebViewHosts: string[];
+  capabilities: string[];
 }
 
 // The instrument entry (instrument.cjs/.mjs) and init() (main index bundle) are separate module
@@ -18,7 +19,10 @@ function getHolder(): BridgeConfigHolder {
   const store = globalThis as unknown as Record<symbol, BridgeConfigHolder | undefined>;
   let holder = store[BRIDGE_CONFIG];
   if (!holder) {
-    holder = { value: { defaultPrivacyLevel: 'mask', allowedWebViewHosts: [] } };
+    // Advertise profiling by default: capabilities is a continuous signal (unlike privacy/hosts, which a
+    // frame reads once), so a window that loads before init() can still profile, with events delivered
+    // once init() wires up the bridge. init() replaces this with the config-derived value.
+    holder = { value: { defaultPrivacyLevel: 'mask', allowedWebViewHosts: [], capabilities: ['profiles'] } };
     store[BRIDGE_CONFIG] = holder;
   }
   return holder;
@@ -29,7 +33,7 @@ export function getBridgeConfig(): BridgeOptions {
   // Return a copy (including a fresh array) so callers cannot mutate the shared holder and corrupt
   // subsequent responses.
   const { value } = getHolder();
-  return { ...value, allowedWebViewHosts: [...value.allowedWebViewHosts] };
+  return { ...value, allowedWebViewHosts: [...value.allowedWebViewHosts], capabilities: [...value.capabilities] };
 }
 
 /** Replaces the bridge config the responder returns. Called by init() once the real config is known. */

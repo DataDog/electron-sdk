@@ -3,8 +3,12 @@ import path from 'node:path';
 import type { StandardBatchProducerConfig as ProducerConfig } from './StandardBatchProducer';
 import { mockFs } from '../../../mocks.specUtil';
 import { StandardBatchProducer } from './StandardBatchProducer';
+import { display } from '../../../tools/display';
 
 vi.mock('node:fs/promises');
+vi.mock('../../../tools/display', () => ({
+  display: { error: vi.fn() },
+}));
 const fsMocks = mockFs();
 
 vi.mock('@datadog/js-core/time', () => ({
@@ -100,8 +104,8 @@ describe('StandardBatchProducer', () => {
     it('serializes each post as JSON + newline and appends to the same .tmp file until rotation', async () => {
       const producer = await StandardBatchProducer.create(config);
 
-      producer.post({ a: 1 });
-      producer.post({ b: 2 });
+      producer.post({ data: { a: 1 } });
+      producer.post({ data: { b: 2 } });
       await producer.flush();
 
       const tmp = path.join(config.trackPath, 'batch-1234567890-1.tmp');
@@ -114,9 +118,9 @@ describe('StandardBatchProducer', () => {
     it('writes posts in call order', async () => {
       const producer = await StandardBatchProducer.create(config);
 
-      producer.post({ order: 1 });
-      producer.post({ order: 2 });
-      producer.post({ order: 3 });
+      producer.post({ data: { order: 1 } });
+      producer.post({ data: { order: 2 } });
+      producer.post({ data: { order: 3 } });
 
       await producer.flush();
 
@@ -127,16 +131,18 @@ describe('StandardBatchProducer', () => {
       expect(fsMocks.appendFile.mock.calls[2][1]).toBe(`{"order":3}\n`);
     });
 
-    it('swallows appendFile errors and keeps queue processing subsequent posts', async () => {
+    it('reports write errors to the customer and keeps the queue processing subsequent posts', async () => {
+      vi.mocked(display.error).mockClear();
       fsMocks.appendFile.mockRejectedValueOnce(new Error('write failed')).mockResolvedValueOnce(undefined);
 
       const producer = await StandardBatchProducer.create(config);
 
-      producer.post({ bad: true });
-      producer.post({ good: true });
+      producer.post({ data: { bad: true } });
+      producer.post({ data: { good: true } });
 
       await expect(producer.flush()).resolves.not.toThrow();
       expect(fsMocks.appendFile).toHaveBeenCalledTimes(2);
+      expect(display.error).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -144,7 +150,7 @@ describe('StandardBatchProducer', () => {
     it('flush() renames current batch from .tmp to .log', async () => {
       const producer = await StandardBatchProducer.create(config);
 
-      producer.post({ event: 'test' });
+      producer.post({ data: { event: 'test' } });
       await producer.flush();
 
       const tmp = path.join(config.trackPath, 'batch-1234567890-1.tmp');
@@ -172,8 +178,8 @@ describe('StandardBatchProducer', () => {
         .mockReturnValueOnce(111) // first tmp
         .mockReturnValueOnce(222); // second tmp after rotation
 
-      producer.post({ x: '123' });
-      producer.post({ x: '123' });
+      producer.post({ data: { x: '123' } });
+      producer.post({ data: { x: '123' } });
       await producer.flush();
 
       const tmp1 = path.join(small.trackPath, 'batch-111-1.tmp');
@@ -197,10 +203,10 @@ describe('StandardBatchProducer', () => {
 
       const producer = await StandardBatchProducer.create(config);
 
-      producer.post({ first: true });
+      producer.post({ data: { first: true } });
       await producer.flush();
 
-      producer.post({ second: true });
+      producer.post({ data: { second: true } });
       await producer.flush();
 
       const tmp1 = path.join(config.trackPath, 'batch-1000-1.tmp');
@@ -220,7 +226,7 @@ describe('StandardBatchProducer', () => {
 
       const producer = await StandardBatchProducer.create(config);
 
-      producer.post({ event: 'test' });
+      producer.post({ data: { event: 'test' } });
       await producer.flush();
 
       expect(fsMocks.mkdir).toHaveBeenCalledWith(config.trackPath, { recursive: true });
@@ -229,7 +235,7 @@ describe('StandardBatchProducer', () => {
     it('does not mkdir when access succeeds during a write', async () => {
       const producer = await StandardBatchProducer.create(config);
 
-      producer.post({ event: 'test' });
+      producer.post({ data: { event: 'test' } });
       await producer.flush();
 
       expect(fsMocks.mkdir).not.toHaveBeenCalled();

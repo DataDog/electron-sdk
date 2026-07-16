@@ -45,12 +45,14 @@ import { generateUUID, Observable, ONE_MINUTE } from '@datadog/browser-core';
 ## Imports and Exports
 
 - **`node:` protocol** for Node.js builtins (enforced by `unicorn/prefer-node-protocol`)
-- **Barrel imports** when an `index.ts` exists (enforced by `force-barrel-imports`)
+- **Barrel imports** when an `index.ts` exists (enforced by `local/no-internal-modules`)
 - **Only export what is needed** — keep internal implementation details private
 
 ## Cleanup
 
-Components should provide a `stop()` method that unsubscribes listeners to avoid leaking between tests and to support a future full SDK stop. Format hooks are tied to SDK lifetime and don't need cleanup.
+A component that owns a releasable resource (a timer, an observable subscription, a file watcher) must expose a `stop()` that releases it. Instantiating such a component in a test then requires releasing that resource on teardown — via `stop()`, or by controlling it (e.g. `vi.useFakeTimers()` for timers) — so it does not leak into other tests.
+
+Components that hold no such resource don't need a `stop()`, and a `stop()` with no production caller is fine as long as it releases a real resource. Format hooks are tied to SDK lifetime and don't need cleanup.
 
 ## DRY
 

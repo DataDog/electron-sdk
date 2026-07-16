@@ -16,6 +16,7 @@ declare global {
       openBridgeFileWindow: () => Promise<void>;
       openBridgeFileWindowNoIsolation: () => Promise<void>;
       openBridgeHttpWindow: () => Promise<void>;
+      openBridgeAppProtocolWindow: () => Promise<void>;
     };
   }
 }

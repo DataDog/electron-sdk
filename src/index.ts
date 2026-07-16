@@ -9,6 +9,7 @@ import { EventManager } from './event';
 import { Transport } from './transport';
 import { Tracing } from './domain/tracing/Tracing';
 import { SpanProcessor } from './domain/tracing/SpanProcessor';
+import { ProfilingCollection } from './domain/profiling';
 
 let sessionManager: SessionManager | undefined;
 let eventManager: EventManager | undefined;
@@ -52,6 +53,8 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   new MainAssembly(eventManager, hooks);
   new RendererPipeline(eventManager, hooks, config);
+
+  new ProfilingCollection(eventManager, sessionManager, config, hooks);
 
   if (tracing.enabled) {
     new SpanProcessor(eventManager, hooks, config);

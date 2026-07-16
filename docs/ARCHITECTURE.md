@@ -100,8 +100,8 @@ The `EventManager` provides a handler-based pipeline for processing events.
 
 #### Event Kinds
 
-- **`RawEvent`**: emitted by main-process domain code, contains event-specific data and a format (`RUM` | `TELEMETRY`). Renderer events bypass this kind entirely (see `RendererPipeline`).
-- **`ServerEvent`**: ready for transport, tagged with a track (`RUM` | `LOGS` | `SPANS`) and a source (`MAIN` | `RENDERER`).
+- **`RawEvent`**: emitted by main-process domain code, contains event-specific data and a format (`RUM` | `TELEMETRY` | `PROFILE`). Most renderer events bypass this kind entirely (see `RendererPipeline`).
+- **`ServerEvent`**: ready for transport, tagged with a track (`RUM` | `LOGS` | `SPANS` | `PROFILE`) and a source (`MAIN` | `RENDERER`).
 - **`LifecycleEvent`**: internal signals (e.g., `END_USER_ACTIVITY`, `SESSION_RENEW`), not sent to intake.
 
 #### Handler Pattern
@@ -114,7 +114,7 @@ See `src/event/` and `src/domain/assembly.ts`.
 
 Two handlers transform events into `ServerEvent`s:
 
-- **`MainAssembly`**: handles `RawEvent`s (always main-process originated), enriches them via `triggerRum` / `triggerTelemetry` hooks, and emits `ServerEvent`s with `source: MAIN`.
+- **`MainAssembly`**: handles main-process `RawEvent`s (excluding profile events), enriches them via `triggerRum` / `triggerTelemetry` hooks, and emits `ServerEvent`s with `source: MAIN`.
 - **`RendererPipeline`**: owns the renderer IPC channel, receives pre-assembled RUM events from the Browser SDK, enriches them via `triggerRum` with `source: EventSource.RENDERER`, and emits `ServerRumEvent`s with `source: RENDERER` directly, bypassing the `RawEvent` pipeline entirely.
 
 #### Format Hooks
@@ -129,16 +129,38 @@ Hooks are used by different parts of the SDK to attach their context (e.g., `reg
 
 See `src/assembly/` and `src/assembly/commonContext.ts`.
 
-## SDK Telemetry
+## Error Reporting
 
-Internal observability for the SDK itself. Captures SDK errors and sends them as telemetry events.
+Failures are routed by _who can act on them_:
 
-- **Sampling**: controlled by `telemetrySampleRate` config, evaluated once per session.
-- **Rate limiting**: capped per session, counter resets on `SESSION_RENEW`.
-- **Error collection**: wrappers catch uncaught errors and errors in callbacks, emitting them as telemetry events.
-- **Monitored execution**: any SDK code that runs in response to a Node.js or Electron callback, an event listener, or a promise settlement must run through `callMonitored`/`monitor`, so a failure anywhere in the SDK is captured as telemetry rather than thrown into app code or surfaced as an unhandled rejection. This is not limited to tracing: it applies to all SDK logic reached from such entry points. For wrapped methods, the `monitorInstrumentation()` helper (`src/domain/telemetry/monitorInstrumentation.ts`) applies this automatically, running the SDK hooks monitored while calling the original method raw so its return value and thrown errors always propagate unchanged; if the SDK hooks fail, the wrapper quietly no-ops and the original call still runs.
+- **Datadog, via SDK telemetry** — for failures in the SDK's own logic, i.e. bugs the SDK team can fix.
+  Reported through `addError` and the `monitor`/`callMonitored` wrappers, which capture errors from SDK
+  code reached by a Node.js/Electron callback, listener, or promise settlement instead of letting them
+  surface into the host app. Sampled (`telemetrySampleRate`) and rate-limited per session. See
+  `src/domain/telemetry/`.
+- **The customer, via console logs** — for environment failures the SDK cannot fix but the integrating
+  app can: disk full or unwritable, a corrupt batch file on disk, a missing peer dependency. Surfaced
+  through `display` (`src/tools/display`) at `warn`/`error`, and deliberately kept out of telemetry
+  since they are not SDK bugs.
 
-See `src/domain/telemetry/`.
+## Profiling
+
+Profiles originate in the renderer (the Browser SDK's profiler) and reach the main process over the bridge
+as `PROFILE` events. `ProfilingCollection` gates them on profiling sampling and a backend quota check, then
+emits `ServerProfileEvent`s on the `PROFILE` track (transported as multipart, separate from RUM).
+
+The Electron SDK is **authoritative for the profiling quota decision** and enriches the renderer's RUM
+events' `_dd.profiling` context accordingly (via a `registerRum` hook, merged by `combine`):
+
+- On `quota_ko` it sets `status: 'stopped'` and `quota_reason`, mirroring the Browser SDK's `stopProfiling`.
+- For a session it sampled out, it suppresses the context (`_dd.profiling: null`, since `combine` cannot
+  delete a key; `null` is equivalent to absent for the backend).
+- Otherwise it contributes nothing: the **renderer owns `status` / `error_reason`**.
+
+This keeps `_dd.profiling` consistent whether an app runs the Browser SDK standalone or inside Electron.
+Two bridge limitations are intentionally out of scope (documented in `RendererPipeline` and
+`ProfilingCollection`): capabilities are advertised globally rather than per session, and the SDK cannot
+signal the renderer to stop its profiler on `quota_ko`.
 
 ## Instrumentation & Tracing
 

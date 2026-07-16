@@ -18,12 +18,21 @@ export function computeIntakeHostname(site: string, proxy?: string): string {
   return `browser-intake-${computeIntakeSite(site)}`;
 }
 
-export function computeIntakeUrlForTrack(site: string, trackType: string, proxy?: string): string {
-  const path = `/api/v2/${trackType}?ddsource=electron`;
+export function computeIntakeUrlForTrack(
+  site: string,
+  trackType: string,
+  options?: { proxy?: string; subdomain?: string }
+): string {
+  const { proxy, subdomain } = options ?? {};
+  // Use '&' separator if trackType already contains query params (e.g. profiling/quota?session_id=...)
+  const separator = trackType.includes('?') ? '&' : '?';
+  const path = `/api/v2/${trackType}${separator}ddsource=electron`;
 
   if (proxy) {
-    return `${proxy}?ddforward=${encodeURIComponent(path)}`;
+    const ddforward = encodeURIComponent(path);
+    const subdomainParam = subdomain ? `&ddforwardSubdomain=${subdomain}` : '';
+    return `${proxy}?ddforward=${ddforward}${subdomainParam}`;
   }
-
-  return `https://browser-intake-${computeIntakeSite(site)}${path}`;
+  const subdomainPrefix = subdomain ? `${subdomain}.` : '';
+  return `https://${subdomainPrefix}browser-intake-${computeIntakeSite(site)}${path}`;
 }
