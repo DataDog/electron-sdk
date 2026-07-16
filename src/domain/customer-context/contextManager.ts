@@ -1,13 +1,15 @@
 import { combine, deepClone } from '@datadog/js-core/util';
 import { type TimeStamp, timeStampNow } from '@datadog/js-core/time';
 import { isEmptyObject } from '@datadog/browser-core';
-import { displayWarn } from '../../tools/display';
+import { display } from '../../tools/display';
+import { initContextHistory } from './contextHistory';
 
 export type Context = Record<string, unknown>;
 
 export interface ContextHistory {
   add(value: Context, startTime: TimeStamp): void;
   closeActive(endTime: TimeStamp): void;
+  closeAndAdd(value: Context, atTime: TimeStamp): void;
   find(startTime: TimeStamp): Context | undefined;
 }
 
@@ -29,8 +31,8 @@ export type PropertiesConfig = Record<
  *
  * It keeps the standard fields (validated, e.g. `id`/`name`) and the free-form `extraInfo`
  * attributes in two separate stores, so it never has to flatten/unflatten between the public
- * "info" shape and the flat shape sent on events. When a key appears in both stores, the standard
- * field wins (see {@link getContext}).
+ * "info" shape and the flat shape sent on events. Keys declared as standard fields are excluded
+ * from `extraInfo`, so they can only be set through the validated top-level properties.
  *
  * It owns the cloning and validation concerns shared by every context (user, account, and later
  * global context), so each context only needs to register its hook and declare its config.
@@ -74,11 +76,11 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
 
   setContext(info: T): void {
     const { extraInfo, ...standardFields } = deepClone(info) as Context & { extraInfo?: Context };
-    const candidate = pickDefined(standardFields);
+    const candidate = pickNonNullish(standardFields);
     if (!this.validateProperties(candidate)) return;
 
     this.standardFields = candidate;
-    this.extraInfo = extraInfo ?? {};
+    this.extraInfo = this.filterReservedKeys(extraInfo ?? {});
     this.recordCurrentContext();
   }
 
@@ -87,13 +89,12 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
    * when the current standard fields are valid: a context with a required field (account needs an
    * `id`) is a no-op until that field is set, while a context with no required field (user) accepts
    * attributes freely — even before any identity is set, so the backend can derive the id from
-   * `anonymous_id`. Standard keys are never overwritten by `extraInfo` (see {@link getContext}), so
-   * this cannot change `id`/`name`/`email`. Passing `null` for a custom attribute removes it,
-   * matching the mobile SDKs.
+   * `anonymous_id`. Standard keys are excluded from `extraInfo`, so this cannot change
+   * `id`/`name`/`email`. Passing `null` for a custom attribute removes it, matching the mobile SDKs.
    */
   addExtraInfo(extraInfo: Context): void {
     if (!this.validateProperties(this.standardFields)) return;
-    this.extraInfo = mergeExtraInfo(this.extraInfo, extraInfo);
+    this.extraInfo = mergeExtraInfo(this.extraInfo, this.filterReservedKeys(extraInfo));
     this.recordCurrentContext();
   }
 
@@ -113,12 +114,12 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
       const value = standardFields[key];
 
       if (required && !isValuePresent(value)) {
-        displayWarn(`The property "${key}" of ${this.name} is required; the context will not be updated.`);
+        display.warn(`The property "${key}" of ${this.name} is required; the context will not be updated.`);
         return false;
       }
 
       if (type === 'string' && isValuePresent(value) && typeof value !== 'string') {
-        displayWarn(`The property "${key}" of ${this.name} must be a string; the context will not be updated.`);
+        display.warn(`The property "${key}" of ${this.name} must be a string; the context will not be updated.`);
         return false;
       }
     }
@@ -129,13 +130,22 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
     return combine(this.extraInfo, this.standardFields);
   }
 
+  private filterReservedKeys(extraInfo: Context): Context {
+    const filtered = deepClone(extraInfo);
+    for (const key of Object.keys(this.propertiesConfig)) {
+      delete filtered[key];
+    }
+    return filtered;
+  }
+
   private recordCurrentContext(): void {
     if (!this.history) return;
 
     const now = timeStampNow();
-    this.history.closeActive(now);
-    if (!this.isEmpty()) {
-      this.history.add(deepClone(this.getCurrentContext()), now);
+    if (this.isEmpty()) {
+      this.history.closeActive(now);
+    } else {
+      this.history.closeAndAdd(deepClone(this.getCurrentContext()), now);
     }
   }
 }
@@ -145,10 +155,22 @@ export function toSpanMeta(prefix: 'usr' | 'account', context: Context): Record<
   for (const [key, value] of Object.entries(context)) {
     const metaValue = toSpanMetaValue(value);
     if (metaValue !== undefined) {
-      meta[`meta.${prefix}.${key}`] = metaValue;
+      meta[`${prefix}.${key}`] = metaValue;
     }
   }
   return meta;
+}
+
+/**
+ * Creates a context instance with a disk-backed crash-attribution history.
+ * Extracts the shared history initialization boilerplate from each context subclass.
+ */
+export async function initContextWithHistory<T>(
+  construct: (history: ContextHistory) => T,
+  historyFileName: string
+): Promise<T> {
+  const history = await initContextHistory(historyFileName);
+  return construct(history);
 }
 
 function toSpanMetaValue(value: unknown): string | undefined {
@@ -168,7 +190,7 @@ function mergeExtraInfo(current: Context, extraInfo: Context): Context {
   for (const [key, value] of Object.entries(deepClone(extraInfo))) {
     if (value === null) {
       delete next[key];
-    } else {
+    } else if (value !== undefined) {
       next[key] = value;
     }
   }
@@ -176,16 +198,16 @@ function mergeExtraInfo(current: Context, extraInfo: Context): Context {
 }
 
 /**
- * Filters out entries whose value is `undefined`, so unset standard fields are not stored as
- * explicit `undefined` keys.
+ * Filters out entries whose value is `undefined` or `null`, so unset optional standard fields are
+ * not stored with values that violate their schema types.
  *
  * @param context - The object to filter.
- * @returns A shallow copy of `context` keeping only entries whose value is defined.
+ * @returns A shallow copy of `context` keeping only non-nullish entries.
  */
-function pickDefined(context: Context): Context {
+function pickNonNullish(context: Context): Context {
   const result: Context = {};
   for (const [key, value] of Object.entries(context)) {
-    if (value !== undefined) result[key] = value;
+    if (value !== undefined && value !== null) result[key] = value;
   }
   return result;
 }

@@ -162,6 +162,27 @@ describe('DiskValueHistory', () => {
     });
   });
 
+  describe('closeAndAdd()', () => {
+    it('persists a single write containing both the closed and new entry', async () => {
+      mfs.readFile.mockRejectedValue(new Error('ENOENT'));
+      const history = await DiskValueHistory.init<string>({ filePath: FILE_PATH, expireDelay: EXPIRE_DELAY });
+
+      history.add('old', T0);
+      await vi.advanceTimersByTimeAsync(0); // flush the initial add write
+      mfs.writeFile.mockClear();
+
+      history.closeAndAdd('new', T10);
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Exactly one write, containing the final state (old closed + new open)
+      expect(mfs.writeFile).toHaveBeenCalledTimes(1);
+      const written = JSON.parse(mfs.writeFile.mock.calls[0][1] as string) as TimeStampHistoryEntry<string>[];
+      expect(written).toHaveLength(2);
+      expect(written[0]).toMatchObject({ startTime: T10, endTime: null, value: 'new' });
+      expect(written[1]).toMatchObject({ startTime: T0, endTime: T10, value: 'old' });
+    });
+  });
+
   describe('find()', () => {
     it('delegates to underlying TimeStampValueHistory', async () => {
       mfs.readFile.mockRejectedValue(new Error('ENOENT'));

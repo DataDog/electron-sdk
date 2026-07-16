@@ -74,13 +74,26 @@ describe('TimeStampValueHistory', () => {
       expect(history.find(T20)).toBe('a');
     });
 
-    it('returns the closed entry for a query after endTime', () => {
+    it('returns undefined for a query at or after endTime (exclusive end boundary)', () => {
       const history = new TimeStampValueHistory<string>({ expireDelay: EXPIRE_DELAY });
 
       history.add('a', T10);
       history.closeActive(T30);
 
+      // exclusive end: a query exactly at endTime is outside the closed entry
+      expect(history.find(T30)).toBeUndefined();
       expect(history.find(T40)).toBeUndefined();
+    });
+
+    it('returns undefined at the clear timestamp when no successor is added (same-millisecond clear)', () => {
+      const history = new TimeStampValueHistory<string>({ expireDelay: EXPIRE_DELAY });
+
+      history.add('a', T10);
+      // Simulate clearContext: close the active entry without adding a successor
+      history.closeActive(T30);
+
+      // An event captured at exactly T30 must NOT receive the cleared context
+      expect(history.find(T30)).toBeUndefined();
     });
 
     it('closes only the latest active entry (index 0)', () => {

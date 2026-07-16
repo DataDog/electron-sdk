@@ -256,6 +256,34 @@ describe('RendererPipeline', () => {
       expect(serverEvents[0].data.usr).toEqual({ id: 'main-user' });
     });
 
+    it('merges main-process usr with an anonymous-only renderer usr', () => {
+      hooks.registerRum(() => ({ usr: { id: 'main-user', name: 'Alice' } }));
+      const event = { ...RENDERER_RUM_DATA, usr: { anonymous_id: 'anonymous-user' } };
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event }));
+
+      expect(serverEvents[0].data.usr).toEqual({
+        anonymous_id: 'anonymous-user',
+        id: 'main-user',
+        name: 'Alice',
+      });
+    });
+
+    it('preserves an explicit renderer usr that also has an anonymous id', () => {
+      hooks.registerRum(() => ({ usr: { id: 'main-user', email: 'main@example.com' } }));
+      const event = {
+        ...RENDERER_RUM_DATA,
+        usr: { anonymous_id: 'anonymous-user', id: 'renderer-user' },
+      };
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event }));
+
+      expect(serverEvents[0].data.usr).toEqual({
+        anonymous_id: 'anonymous-user',
+        id: 'renderer-user',
+      });
+    });
+
     it('keeps the renderer usr untouched when the main process has none', () => {
       hooks.registerRum(() => ({ session: { id: 'main-session' } }));
       const event = { ...RENDERER_RUM_DATA, usr: { id: 'renderer-user' } };

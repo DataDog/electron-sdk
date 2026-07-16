@@ -1,8 +1,8 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { EventSource } from '../../event';
-import { createFormatHooks, type FormatHooks } from '../../assembly';
-import { UserContext } from './userContext';
+import { createFormatHooks, type FormatHooks, type RumEventType } from '../../assembly';
+import { UserContext, type UserInfo } from './userContext';
 import type { ContextHistory } from './contextManager';
 
 const T0 = 0 as TimeStamp;
@@ -11,8 +11,8 @@ describe('UserContext', () => {
   let hooks: FormatHooks;
   let userContext: UserContext;
 
-  function triggerRum() {
-    return hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN });
+  function triggerRum(eventType: RumEventType = 'view') {
+    return hooks.triggerRum({ eventType, startTime: T0, source: EventSource.MAIN });
   }
 
   function triggerSpan() {
@@ -43,12 +43,12 @@ describe('UserContext', () => {
 
       expect(triggerSpan()).toEqual({
         meta: {
-          'meta.usr.id': 'user-1',
-          'meta.usr.name': 'Alice',
-          'meta.usr.email': 'alice@example.com',
-          'meta.usr.plan': 'premium',
-          'meta.usr.beta': 'true',
-          'meta.usr.count': '2',
+          'usr.id': 'user-1',
+          'usr.name': 'Alice',
+          'usr.email': 'alice@example.com',
+          'usr.plan': 'premium',
+          'usr.beta': 'true',
+          'usr.count': '2',
         },
       });
     });
@@ -59,28 +59,49 @@ describe('UserContext', () => {
 
       expect(triggerSpan()).toMatchObject({
         meta: {
-          'meta.usr.id': 'user-1',
-          'meta.usr.name': 'Alice',
+          'usr.id': 'user-1',
+          'usr.name': 'Alice',
         },
       });
     });
   });
 
   describe('historical context', () => {
+    it('emits nothing when no context was active at the event start time', () => {
+      const find = vi.fn(() => undefined);
+      const history = createHistory(find);
+      hooks = createFormatHooks();
+      userContext = new UserContext(hooks, history);
+
+      hooks.registerRum(() => ({ date: 1 }));
+      expect(triggerRum('error')).toEqual({ date: 1 });
+    });
+
     it('uses the user context matching the event start time', () => {
       const find = vi.fn(() => ({ id: 'historical-user', plan: 'premium' }));
       const history = createHistory(find);
       hooks = createFormatHooks();
       userContext = new UserContext(hooks, history);
 
-      expect(triggerRum()).toEqual({ usr: { id: 'historical-user', plan: 'premium' } });
+      expect(triggerRum('error')).toEqual({ usr: { id: 'historical-user', plan: 'premium' } });
       expect(triggerSpan()).toEqual({
         meta: {
-          'meta.usr.id': 'historical-user',
-          'meta.usr.plan': 'premium',
+          'usr.id': 'historical-user',
+          'usr.plan': 'premium',
         },
       });
       expect(find).toHaveBeenCalledWith(T0);
+    });
+
+    it('uses the current user context for view updates', () => {
+      const find = vi.fn(() => ({ id: 'historical-user' }));
+      const history = createHistory(find);
+      hooks = createFormatHooks();
+      userContext = new UserContext(hooks, history);
+      userContext.setContext({ id: 'current-user' });
+
+      expect(triggerRum('view')).toEqual({ usr: { id: 'current-user' } });
+      expect(find).not.toHaveBeenCalled();
     });
   });
 
@@ -125,12 +146,11 @@ describe('UserContext', () => {
       expect(userContext.getInfo()).toBeUndefined();
     });
 
-    it('keeps a set standard field but lets extraInfo fill an unset one', () => {
+    it('excludes standard fields from extraInfo', () => {
       userContext.setContext({ id: 'user-1', extraInfo: { id: 'injected', name: 'injected' } });
 
-      const result = triggerRum();
-      // id is set, so it wins over extraInfo; name is unset, so extraInfo fills it.
-      expect(result).toEqual({ usr: { id: 'user-1', name: 'injected' } });
+      expect(userContext.getInfo()).toEqual({ id: 'user-1' });
+      expect(triggerRum()).toEqual({ usr: { id: 'user-1' } });
     });
 
     it('does not leak nested extraInfo mutations after set', () => {
@@ -166,6 +186,13 @@ describe('UserContext', () => {
       const info = userContext.getInfo()!;
       expect(info).toEqual({ id: 'user-1' });
       expect('name' in info).toBe(false);
+    });
+
+    it('does not retain optional standard fields passed as null', () => {
+      userContext.setContext({ id: 'user-1', name: null, email: null } as unknown as UserInfo);
+
+      expect(userContext.getInfo()).toEqual({ id: 'user-1' });
+      expect(triggerRum()).toEqual({ usr: { id: 'user-1' } });
     });
 
     it('returns a deep copy that does not affect internal state', () => {
@@ -237,18 +264,27 @@ describe('UserContext', () => {
       expect(triggerRum()).toEqual({ usr: { id: 'user-1', role: 'admin', cohort: 'a' } });
       expect(triggerSpan()).toEqual({
         meta: {
-          'meta.usr.id': 'user-1',
-          'meta.usr.role': 'admin',
-          'meta.usr.cohort': 'a',
+          'usr.id': 'user-1',
+          'usr.role': 'admin',
+          'usr.cohort': 'a',
         },
       });
     });
 
-    it('does not override standard fields in the emitted event', () => {
-      userContext.setContext({ id: 'user-1', name: 'Alice' });
-      userContext.addExtraInfo({ id: 'hacked', name: 'hacked' });
+    it('does not remove an existing custom field when the new value is undefined', () => {
+      userContext.setContext({ id: 'user-1', extraInfo: { plan: 'premium' } });
+      userContext.addExtraInfo({ plan: undefined });
 
-      expect(triggerRum()).toEqual({ usr: { id: 'user-1', name: 'Alice' } });
+      expect(userContext.getInfo()).toEqual({ id: 'user-1', extraInfo: { plan: 'premium' } });
+      expect(triggerRum()).toEqual({ usr: { id: 'user-1', plan: 'premium' } });
+    });
+
+    it('does not add standard fields through extraInfo', () => {
+      userContext.setContext({ id: 'user-1' });
+      userContext.addExtraInfo({ id: 'hacked', name: 'hacked', email: 'hacked@example.com' });
+
+      expect(userContext.getInfo()).toEqual({ id: 'user-1' });
+      expect(triggerRum()).toEqual({ usr: { id: 'user-1' } });
     });
 
     it('works without a user set (anonymous-id scenario)', () => {
@@ -275,6 +311,7 @@ function createHistory(find: ContextHistory['find']): ContextHistory {
   return {
     add: vi.fn(),
     closeActive: vi.fn(),
+    closeAndAdd: vi.fn(),
     find,
   };
 }

@@ -1,6 +1,12 @@
 import { SKIPPED } from '@datadog/js-core/assembly';
 import { isEmptyObject } from '@datadog/browser-core';
-import { ContextManager, toSpanMeta, type ContextHistory, type PropertiesConfig } from './contextManager';
+import {
+  ContextManager,
+  toSpanMeta,
+  initContextWithHistory,
+  type ContextHistory,
+  type PropertiesConfig,
+} from './contextManager';
 import type { FormatHooks } from '../../assembly';
 
 export interface AccountInfo {
@@ -17,19 +23,19 @@ const ACCOUNT_PROPERTIES: PropertiesConfig = {
 export const ACCOUNT_CONTEXT_HISTORY_FILE_NAME = '_dd_account_context_history';
 
 /**
- * Stores account information and injects it as `account` into RUM events and `meta.account.*` into spans.
+ * Stores account information and injects it as `account` into RUM events and `account.*` tags into spans.
  */
 export class AccountContext extends ContextManager<AccountInfo> {
-  static async init(hooks: FormatHooks): Promise<AccountContext> {
-    const { initContextHistory } = await import('./contextHistory');
-    const history = await initContextHistory(ACCOUNT_CONTEXT_HISTORY_FILE_NAME);
-    return new AccountContext(hooks, history);
+  static init(hooks: FormatHooks): Promise<AccountContext> {
+    return initContextWithHistory((history) => new AccountContext(hooks, history), ACCOUNT_CONTEXT_HISTORY_FILE_NAME);
   }
 
   constructor(hooks: FormatHooks, history?: ContextHistory) {
     super('account', ACCOUNT_PROPERTIES, history);
-    hooks.registerRum(({ startTime }) => {
-      const context = this.getContext(startTime);
+    hooks.registerRum(({ eventType, startTime }) => {
+      // View updates retain the view's original start time, but should reflect the customer context
+      // active when the update is emitted. Other events use history for start-time attribution.
+      const context = this.getContext(eventType === 'view' ? undefined : startTime);
       if (isEmptyObject(context)) return SKIPPED;
       return { account: context };
     });

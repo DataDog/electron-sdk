@@ -24,6 +24,13 @@ export class ProfileBatchConsumer extends BatchConsumer {
     }
 
     const [eventJson, traceJson] = lines;
+    try {
+      JSON.parse(eventJson);
+      JSON.parse(traceJson);
+    } catch (error) {
+      display.warn('Dropping malformed profile: event and trace must be valid JSON', error);
+      return null;
+    }
 
     let compressed: Buffer;
     try {

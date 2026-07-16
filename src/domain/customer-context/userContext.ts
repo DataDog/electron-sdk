@@ -1,7 +1,13 @@
 import { SKIPPED } from '@datadog/js-core/assembly';
 import { isEmptyObject } from '@datadog/browser-core';
-import { ContextManager, toSpanMeta, type ContextHistory, type PropertiesConfig } from './contextManager';
-import { displayWarn } from '../../tools/display';
+import {
+  ContextManager,
+  toSpanMeta,
+  initContextWithHistory,
+  type ContextHistory,
+  type PropertiesConfig,
+} from './contextManager';
+import { display } from '../../tools/display';
 import type { FormatHooks } from '../../assembly';
 
 export interface UserInfo {
@@ -24,19 +30,19 @@ const USER_PROPERTIES: PropertiesConfig = {
 export const USER_CONTEXT_HISTORY_FILE_NAME = '_dd_user_context_history';
 
 /**
- * Stores user information and injects it as `usr` into RUM events and `meta.usr.*` into spans.
+ * Stores user information and injects it as `usr` into RUM events and `usr.*` tags into spans.
  */
 export class UserContext extends ContextManager<UserInfo> {
-  static async init(hooks: FormatHooks): Promise<UserContext> {
-    const { initContextHistory } = await import('./contextHistory');
-    const history = await initContextHistory(USER_CONTEXT_HISTORY_FILE_NAME);
-    return new UserContext(hooks, history);
+  static init(hooks: FormatHooks): Promise<UserContext> {
+    return initContextWithHistory((history) => new UserContext(hooks, history), USER_CONTEXT_HISTORY_FILE_NAME);
   }
 
   constructor(hooks: FormatHooks, history?: ContextHistory) {
     super('user', USER_PROPERTIES, history);
-    hooks.registerRum(({ startTime }) => {
-      const context = this.getContext(startTime);
+    hooks.registerRum(({ eventType, startTime }) => {
+      // View updates retain the view's original start time, but should reflect the customer context
+      // active when the update is emitted. Other events use history for start-time attribution.
+      const context = this.getContext(eventType === 'view' ? undefined : startTime);
       if (isEmptyObject(context)) return SKIPPED;
       return { usr: context };
     });
@@ -54,7 +60,7 @@ export class UserContext extends ContextManager<UserInfo> {
    */
   setUserInfo(user: UserInfo): void {
     if (!user.id) {
-      displayWarn(
+      display.warn(
         'setUserInfo: an "id" is required; the user will not be set. Use addUserExtraInfo to add attributes without an id.'
       );
       return;

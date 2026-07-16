@@ -107,3 +107,25 @@ test('attaches both user and account info to the same event', async ({ mainPage,
   expect(error.usr).toEqual({ id: 'user-1', name: 'Alice' });
   expect(error.account).toEqual({ id: 'account-1', name: 'Acme Corp' });
 });
+
+test('enriches spans with usr.* tags when user context is set', async ({ mainPage, intake }) => {
+  await mainPage.setUserInfo({ id: 'user-1', name: 'Alice' });
+
+  await mainPage.mainPing();
+  await mainPage.flushTransport();
+
+  const span = await intake.waitForSpan((s) => s.name === 'electron.main.handle' && s.resource === 'ping');
+  expect(span.meta['usr.id']).toBe('user-1');
+  expect(span.meta['usr.name']).toBe('Alice');
+});
+
+test('enriches spans with account.* tags when account context is set', async ({ mainPage, intake }) => {
+  await mainPage.setAccountInfo({ id: 'account-1', name: 'Acme Corp' });
+
+  await mainPage.mainPing();
+  await mainPage.flushTransport();
+
+  const span = await intake.waitForSpan((s) => s.name === 'electron.main.handle' && s.resource === 'ping');
+  expect(span.meta['account.id']).toBe('account-1');
+  expect(span.meta['account.name']).toBe('Acme Corp');
+});

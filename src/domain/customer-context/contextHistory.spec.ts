@@ -5,7 +5,7 @@ vi.mock('electron', () => ({
 }));
 
 vi.mock('../../tools/display', () => ({
-  displayError: vi.fn(),
+  display: { error: vi.fn() },
 }));
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

@@ -1,8 +1,8 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { EventSource } from '../../event';
-import { createFormatHooks, type FormatHooks } from '../../assembly';
-import { AccountContext } from './accountContext';
+import { createFormatHooks, type FormatHooks, type RumEventType } from '../../assembly';
+import { AccountContext, type AccountInfo } from './accountContext';
 import type { ContextHistory } from './contextManager';
 
 const T0 = 0 as TimeStamp;
@@ -11,8 +11,8 @@ describe('AccountContext', () => {
   let hooks: FormatHooks;
   let accountContext: AccountContext;
 
-  function triggerRum() {
-    return hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN });
+  function triggerRum(eventType: RumEventType = 'view') {
+    return hooks.triggerRum({ eventType, startTime: T0, source: EventSource.MAIN });
   }
 
   function triggerSpan() {
@@ -42,11 +42,11 @@ describe('AccountContext', () => {
 
       expect(triggerSpan()).toEqual({
         meta: {
-          'meta.account.id': 'account-1',
-          'meta.account.name': 'Acme Corp',
-          'meta.account.tier': 'enterprise',
-          'meta.account.paid': 'true',
-          'meta.account.seats': '10',
+          'account.id': 'account-1',
+          'account.name': 'Acme Corp',
+          'account.tier': 'enterprise',
+          'account.paid': 'true',
+          'account.seats': '10',
         },
       });
     });
@@ -57,28 +57,49 @@ describe('AccountContext', () => {
 
       expect(triggerSpan()).toMatchObject({
         meta: {
-          'meta.account.id': 'account-1',
-          'meta.account.name': 'Acme',
+          'account.id': 'account-1',
+          'account.name': 'Acme',
         },
       });
     });
   });
 
   describe('historical context', () => {
+    it('emits nothing when no context was active at the event start time', () => {
+      const find = vi.fn(() => undefined);
+      const history = createHistory(find);
+      hooks = createFormatHooks();
+      accountContext = new AccountContext(hooks, history);
+
+      hooks.registerRum(() => ({ date: 1 }));
+      expect(triggerRum('error')).toEqual({ date: 1 });
+    });
+
     it('uses the account context matching the event start time', () => {
       const find = vi.fn(() => ({ id: 'historical-account', tier: 'enterprise' }));
       const history = createHistory(find);
       hooks = createFormatHooks();
       accountContext = new AccountContext(hooks, history);
 
-      expect(triggerRum()).toEqual({ account: { id: 'historical-account', tier: 'enterprise' } });
+      expect(triggerRum('error')).toEqual({ account: { id: 'historical-account', tier: 'enterprise' } });
       expect(triggerSpan()).toEqual({
         meta: {
-          'meta.account.id': 'historical-account',
-          'meta.account.tier': 'enterprise',
+          'account.id': 'historical-account',
+          'account.tier': 'enterprise',
         },
       });
       expect(find).toHaveBeenCalledWith(T0);
+    });
+
+    it('uses the current account context for view updates', () => {
+      const find = vi.fn(() => ({ id: 'historical-account' }));
+      const history = createHistory(find);
+      hooks = createFormatHooks();
+      accountContext = new AccountContext(hooks, history);
+      accountContext.setContext({ id: 'current-account' });
+
+      expect(triggerRum('view')).toEqual({ account: { id: 'current-account' } });
+      expect(find).not.toHaveBeenCalled();
     });
   });
 
@@ -119,12 +140,11 @@ describe('AccountContext', () => {
       expect(accountContext.getInfo()).toBeUndefined();
     });
 
-    it('keeps a set standard field but lets extraInfo fill an unset one', () => {
+    it('excludes standard fields from extraInfo', () => {
       accountContext.setContext({ id: 'account-1', extraInfo: { id: 'injected', name: 'injected' } });
 
-      const result = triggerRum();
-      // id is set, so it wins over extraInfo; name is unset, so extraInfo fills it.
-      expect(result).toEqual({ account: { id: 'account-1', name: 'injected' } });
+      expect(accountContext.getInfo()).toEqual({ id: 'account-1' });
+      expect(triggerRum()).toEqual({ account: { id: 'account-1' } });
     });
 
     it('does not leak nested extraInfo mutations after set', () => {
@@ -153,6 +173,13 @@ describe('AccountContext', () => {
       const info = accountContext.getInfo()!;
       expect(info).toEqual({ id: 'account-1' });
       expect('name' in info).toBe(false);
+    });
+
+    it('does not retain optional standard fields passed as null', () => {
+      accountContext.setContext({ id: 'account-1', name: null } as unknown as AccountInfo);
+
+      expect(accountContext.getInfo()).toEqual({ id: 'account-1' });
+      expect(triggerRum()).toEqual({ account: { id: 'account-1' } });
     });
 
     it('returns a deep copy that does not affect internal state', () => {
@@ -204,18 +231,19 @@ describe('AccountContext', () => {
       expect(triggerRum()).toEqual({ account: { id: 'account-1', region: 'us', plan: 'pro' } });
       expect(triggerSpan()).toEqual({
         meta: {
-          'meta.account.id': 'account-1',
-          'meta.account.region': 'us',
-          'meta.account.plan': 'pro',
+          'account.id': 'account-1',
+          'account.region': 'us',
+          'account.plan': 'pro',
         },
       });
     });
 
-    it('does not override standard fields in the emitted event', () => {
-      accountContext.setContext({ id: 'account-1', name: 'Acme' });
+    it('does not add standard fields through extraInfo', () => {
+      accountContext.setContext({ id: 'account-1' });
       accountContext.addExtraInfo({ id: 'hacked', name: 'hacked' });
 
-      expect(triggerRum()).toEqual({ account: { id: 'account-1', name: 'Acme' } });
+      expect(accountContext.getInfo()).toEqual({ id: 'account-1' });
+      expect(triggerRum()).toEqual({ account: { id: 'account-1' } });
     });
 
     it('is ignored when no account is set', () => {
@@ -242,6 +270,7 @@ function createHistory(find: ContextHistory['find']): ContextHistory {
   return {
     add: vi.fn(),
     closeActive: vi.fn(),
+    closeAndAdd: vi.fn(),
     find,
   };
 }

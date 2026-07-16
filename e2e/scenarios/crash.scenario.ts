@@ -38,3 +38,34 @@ test('emits a crash error event after a native crash', async ({ intake }) => {
     await cleanupUserDataDir(userDataDir);
   }
 });
+
+test('crash error event carries user and account context set before the crash', async ({ intake }) => {
+  const userDataDir = await createUserDataDir();
+
+  // Phase 1: Launch, set user/account context, then crash
+  const { electronApp: firstElectronApp, mainPage: firstMainPage } = await launchAppManually(intake, userDataDir);
+  await firstMainPage.flushTransport();
+
+  await firstMainPage.setUserInfo({ id: 'crash-user', name: 'Alice' });
+  await firstMainPage.setAccountInfo({ id: 'crash-account', name: 'Acme Corp' });
+
+  const appClosed = firstElectronApp.waitForEvent('close');
+  firstMainPage.crash();
+  await appClosed;
+  intake.clear();
+
+  // Phase 2: Relaunch and verify the crash event is enriched with the pre-crash context
+  const { electronApp: secondElectronApp, mainPage: secondMainPage } = await launchAppManually(intake, userDataDir);
+  try {
+    await secondMainPage.flushTransport();
+    const errorEvents = await intake.getEventsByType('error', { timeout: 15_000 });
+    const error = errorEvents[0].body as RumErrorEvent;
+
+    expect(error.error.is_crash).toBe(true);
+    expect(error.usr).toMatchObject({ id: 'crash-user', name: 'Alice' });
+    expect(error.account).toMatchObject({ id: 'crash-account', name: 'Acme Corp' });
+  } finally {
+    await secondElectronApp.close();
+    await cleanupUserDataDir(userDataDir);
+  }
+});

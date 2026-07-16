@@ -73,6 +73,12 @@ export class DiskValueHistory<T> {
     this.persistToDisk();
   }
 
+  closeAndAdd(value: T, atTime: TimeStamp): void {
+    this.history.closeActive(atTime);
+    this.history.add(value, atTime);
+    this.persistToDisk();
+  }
+
   getEntries(): readonly TimeStampHistoryEntry<T>[] {
     return this.history.getEntries();
   }
