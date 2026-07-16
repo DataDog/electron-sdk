@@ -28,6 +28,28 @@ export class BridgeWindowPage {
     await this.waitForIpcPropagation();
   }
 
+  async generateLongTask(durationMs = 500): Promise<void> {
+    await this.page.evaluate(
+      (duration) =>
+        new Promise<void>((resolve) => {
+          setTimeout(() => {
+            const start = Date.now();
+            while (Date.now() - start < duration) {
+              /* block to generate a long task */
+            }
+            resolve();
+          }, 0);
+        }),
+      durationMs
+    );
+  }
+
+  async triggerProfilingFlush(): Promise<void> {
+    await this.page.close({ runBeforeUnload: true });
+    // Wait for IPC propagation: beforeunload → bridge send → main process → write queue
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
   private async waitForIpcPropagation() {
     // Wait for event propagation: renderer → bridge IPC -> main → transport
     await this.page.waitForTimeout(1000);

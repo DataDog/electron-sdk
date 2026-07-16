@@ -1,6 +1,6 @@
 import { app } from 'electron';
 import * as path from 'node:path';
-import { timeStampNow } from '@datadog/js-core/time';
+import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED, SKIPPED } from '@datadog/js-core/assembly';
 import type { FormatHooks } from '../../assembly';
 import { DiskValueHistory } from '../../tools/DiskValueHistory';
@@ -43,11 +43,11 @@ export class SessionContext {
     this.history.add(sessionId, timeStampNow());
   }
 
-  // Returns the tracked session id at the current time, or undefined if there is none.
-  // A session is absent here when it has expired (entry closed) or was not sampled (never added),
-  // so this is the single source of truth for "is there a tracked session right now".
-  getActiveSessionId(): string | undefined {
-    return this.history.find(timeStampNow());
+  // Returns the tracked session id covering the given time (defaults to now), or undefined if there is none.
+  // A session is absent here when it had expired by then (entry closed) or was not sampled (never added),
+  // so this is the single source of truth for "which tracked session covered this instant".
+  getTrackedSessionId(at: TimeStamp = timeStampNow()): string | undefined {
+    return this.history.find(at);
   }
 
   close(): void {

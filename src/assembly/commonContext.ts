@@ -7,12 +7,20 @@ import { display } from '../tools/display';
  * Define the common attributes for the events of each format
  */
 export function registerCommonContext(configuration: Configuration, hooks: FormatHooks) {
+  // The Electron SDK owns the sampling decisions (including for renderer bridge events in bridge mode),
+  // so it is authoritative for the rates reported on every RUM event.
+  const ddConfiguration = {
+    session_sample_rate: configuration.sessionSampleRate,
+    profiling_sample_rate: configuration.profilingSampleRate,
+  };
+
   hooks.registerRum(({ source }) => {
     switch (source) {
       case EventSource.RENDERER:
         return {
           application: { id: configuration.applicationId },
           container: { source: 'electron' },
+          _dd: { configuration: ddConfiguration },
         };
       case EventSource.MAIN:
         return {
@@ -23,7 +31,7 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
           application: { id: configuration.applicationId },
           session: { type: 'user' },
           ddtags: buildDdtags(configuration),
-          _dd: { format_version: 2 },
+          _dd: { format_version: 2, configuration: ddConfiguration },
         };
     }
   });
