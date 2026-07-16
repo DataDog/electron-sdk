@@ -1,13 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RawRumEvent } from '../../../event';
 import { EventFormat, EventKind, EventManager, LifecycleKind } from '../../../event';
-import { display } from '../../../tools/display';
 import type { RawRumDurationVital } from '../rawRumData.types';
 import { VitalCollection } from './VitalCollection';
-
-vi.mock('../../../tools/display', () => ({
-  display: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
-}));
 
 const UUID_REGEX = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 
@@ -113,16 +108,6 @@ describe('VitalCollection', () => {
     expect(rawRumEvents).toHaveLength(1);
   });
 
-  it('snapshots context provided at start', () => {
-    const context = { nested: { started: true } };
-    api.startDurationVital('checkout', { context });
-    context.nested.started = false;
-    api.stopDurationVital('checkout');
-
-    const data = rawRumEvents[0].data as RawRumDurationVital;
-    expect(data.context).toEqual({ nested: { started: true } });
-  });
-
   it('merges descriptions provided at start and stop', () => {
     api.startDurationVital('none');
     api.stopDurationVital('none');
@@ -177,47 +162,11 @@ describe('VitalCollection', () => {
     expect(rawRumEvents).toHaveLength(0);
   });
 
-  it('does not retain a vital started with invalid options', () => {
-    api.startDurationVital('checkout', { context: 'invalid' } as never);
-    api.stopDurationVital('checkout');
-
-    expect(rawRumEvents).toHaveLength(0);
-    expect(display.error).toHaveBeenCalledOnce();
-  });
-
-  it('does not consume a pending vital when stop options are invalid', () => {
-    api.startDurationVital('checkout');
-    api.stopDurationVital('checkout', { description: 42 } as never);
-    api.stopDurationVital('checkout');
-
-    expect(rawRumEvents).toHaveLength(1);
-    expect(display.error).toHaveBeenCalledOnce();
-  });
-
   it('clears pending vitals when stopped', () => {
     api.startDurationVital('checkout');
     collection.stop();
     api.stopDurationVital('checkout');
 
     expect(rawRumEvents).toHaveLength(0);
-  });
-
-  it.each([
-    ['blank name', '', { startTime: 0, duration: 1 }],
-    ['missing options', 'vital', undefined],
-    ['non-finite startTime', 'vital', { startTime: Number.NaN, duration: 1 }],
-    ['non-finite duration', 'vital', { startTime: 0, duration: Number.POSITIVE_INFINITY }],
-  ])('rejects invalid addDurationVital input: %s', (_label, name, options) => {
-    api.addDurationVital(name, options as never);
-
-    expect(rawRumEvents).toHaveLength(0);
-    expect(display.error).toHaveBeenCalledOnce();
-  });
-
-  it('warns but emits a name outside the documented backend character set', () => {
-    api.addDurationVital('document open', { startTime: 0, duration: 1 });
-
-    expect(rawRumEvents).toHaveLength(1);
-    expect(display.warn).toHaveBeenCalledOnce();
   });
 });

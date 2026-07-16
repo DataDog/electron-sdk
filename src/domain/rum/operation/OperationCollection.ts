@@ -169,6 +169,7 @@ const VALID_OPERATION_NAME_REGEX = /^[\w.@$-]*$/;
 // warn but still emit so the backend (source of truth on the enum policy) gets to decide.
 const VALID_FAILURE_REASONS: readonly FailureReason[] = ['error', 'abandoned', 'other'];
 
+// TODO(RUM-17397): Move validation and sanitization to the public API layer and share common behavior across APIs.
 function validateArgs(method: OperationMethod, name: unknown, options: unknown, failureReason?: unknown): boolean {
   if (!isValidString(name)) {
     display.error(`${method}: operation name cannot be empty or blank. Event will not be sent.`);
