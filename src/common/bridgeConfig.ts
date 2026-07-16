@@ -19,9 +19,8 @@ function getHolder(): BridgeConfigHolder {
   const store = globalThis as unknown as Record<symbol, BridgeConfigHolder | undefined>;
   let holder = store[BRIDGE_CONFIG];
   if (!holder) {
-    // Advertise profiling by default: capabilities is a continuous signal (unlike privacy/hosts, which a
-    // frame reads once), so a window that loads before init() can still profile, with events delivered
-    // once init() wires up the bridge. init() replaces this with the config-derived value.
+    // Capabilities advertise which features the bridge supports. Profiling is advertised by default to
+    // signal support, consistent with the other Datadog SDKs. init() replaces this with the config value.
     holder = { value: { defaultPrivacyLevel: 'mask', allowedWebViewHosts: [], capabilities: ['profiles'] } };
     store[BRIDGE_CONFIG] = holder;
   }
