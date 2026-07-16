@@ -2,6 +2,24 @@
 
 All notable changes to `@datadog/electron-sdk` are documented here.
 
+## [0.6.0] - 2026-07-16
+
+### ✨ Features
+
+- ✨ [RUM-16632] add browser profiling support (#168)
+- ✨ [RUM-17020] move Electron IPC and net instrumentation from dd-trace into the SDK (#152)
+
+### 🐛 Bug Fixes
+
+- 🐛 [RUM-17016] register bridge-config responder at instrument time (#170)
+
+### Internal
+
+- Documentation fixes (#169)
+- refactor(tools): use shared createDisplay util from js-core (#160)
+- 👷 Update all non-major dependencies (minor/patch) (#153)
+- 👷 Update dependency concurrently to v10 (#155)
+
 ## [0.5.0] - 2026-06-30
 
 ### ✨ Features

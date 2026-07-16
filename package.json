@@ -1,6 +1,6 @@
 {
   "name": "@datadog/electron-sdk",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "DataDog SDK for Electron applications",
   "packageManager": "yarn@4.17.0",
   "main": "./dist/index.cjs",
