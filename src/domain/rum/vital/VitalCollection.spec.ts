@@ -3,7 +3,7 @@ import type { RawRumEvent } from '../../../event';
 import { EventFormat, EventKind, EventManager, LifecycleKind } from '../../../event';
 import { display } from '../../../tools/display';
 import type { RawRumDurationVital } from '../rawRumData.types';
-import { DurationVitalCollection } from './DurationVitalCollection';
+import { VitalCollection } from './VitalCollection';
 
 vi.mock('../../../tools/display', () => ({
   display: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
@@ -11,10 +11,10 @@ vi.mock('../../../tools/display', () => ({
 
 const UUID_REGEX = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 
-describe('DurationVitalCollection', () => {
+describe('VitalCollection', () => {
   let eventManager: EventManager;
-  let collection: DurationVitalCollection;
-  let api: ReturnType<DurationVitalCollection['getApi']>;
+  let collection: VitalCollection;
+  let api: ReturnType<VitalCollection['getApi']>;
   let rawRumEvents: RawRumEvent[];
 
   beforeEach(() => {
@@ -26,7 +26,7 @@ describe('DurationVitalCollection', () => {
       canHandle: (event): event is RawRumEvent => event.kind === EventKind.RAW && event.format === EventFormat.RUM,
       handle: (event) => rawRumEvents.push(event),
     });
-    collection = new DurationVitalCollection(eventManager);
+    collection = new VitalCollection(eventManager);
     api = collection.getApi();
   });
 
@@ -113,18 +113,60 @@ describe('DurationVitalCollection', () => {
     expect(rawRumEvents).toHaveLength(1);
   });
 
-  it('snapshots and deep-merges start and stop options', () => {
+  it('snapshots context provided at start', () => {
     const context = { nested: { started: true } };
-    api.startDurationVital('checkout', { context, description: 'start' });
+    api.startDurationVital('checkout', { context });
     context.nested.started = false;
-    api.stopDurationVital('checkout', {
-      context: { nested: { stopped: true } },
-      description: 'stop',
-    });
+    api.stopDurationVital('checkout');
 
     const data = rawRumEvents[0].data as RawRumDurationVital;
-    expect(data.context).toEqual({ nested: { started: true, stopped: true } });
-    expect(data.vital.description).toBe('stop');
+    expect(data.context).toEqual({ nested: { started: true } });
+  });
+
+  it('merges descriptions provided at start and stop', () => {
+    api.startDurationVital('none');
+    api.stopDurationVital('none');
+
+    api.startDurationVital('start-only', { description: 'start' });
+    api.stopDurationVital('start-only');
+
+    api.startDurationVital('stop-only');
+    api.stopDurationVital('stop-only', { description: 'stop' });
+
+    api.startDurationVital('both', { description: 'start' });
+    api.stopDurationVital('both', { description: 'stop' });
+
+    expect(rawRumEvents.map((event) => (event.data as RawRumDurationVital).vital.description)).toEqual([
+      undefined,
+      'start',
+      'stop',
+      'stop',
+    ]);
+  });
+
+  it('merges contexts provided at start and stop', () => {
+    api.startDurationVital('none');
+    api.stopDurationVital('none');
+
+    api.startDurationVital('start-only', { context: { start: 'defined' } });
+    api.stopDurationVital('start-only');
+
+    api.startDurationVital('stop-only');
+    api.stopDurationVital('stop-only', { context: { stop: 'defined' } });
+
+    api.startDurationVital('both', { context: { nested: { start: 'defined' } } });
+    api.stopDurationVital('both', { context: { nested: { stop: 'defined' } } });
+
+    api.startDurationVital('conflict', { context: { precedence: 'start' } });
+    api.stopDurationVital('conflict', { context: { precedence: 'stop' } });
+
+    expect(rawRumEvents.map((event) => (event.data as RawRumDurationVital).context)).toEqual([
+      undefined,
+      { start: 'defined' },
+      { stop: 'defined' },
+      { nested: { start: 'defined', stop: 'defined' } },
+      { precedence: 'stop' },
+    ]);
   });
 
   it('clears pending vitals when the session renews', () => {

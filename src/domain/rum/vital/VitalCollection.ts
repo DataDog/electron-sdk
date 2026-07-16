@@ -38,7 +38,7 @@ interface PendingDurationVital {
 type DurationVitalMethod = 'addDurationVital' | 'startDurationVital' | 'stopDurationVital';
 
 /** Collect custom duration-vital events emitted from the main process. */
-export class DurationVitalCollection {
+export class VitalCollection {
   private readonly pendingVitals = new Map<string, PendingDurationVital>();
   private readonly sessionRenewSubscription: Subscription;
 
@@ -116,7 +116,7 @@ export class DurationVitalCollection {
     const data: RawRumDurationVital = {
       type: 'vital',
       date: vital.startTime,
-      context: vital.options.context ?? {},
+      context: vital.options.context,
       vital: {
         id: vital.id,
         name: vital.name,

@@ -8,7 +8,7 @@ import {
   RumVitalOperationStepEvent,
 } from './rumEvent.types';
 
-export type RawRumData = RawRumView | RawRumError | RawRumVital | RawRumDurationVital | RawRumResource;
+export type RawRumData = RawRumView | RawRumError | RawRumOperationStepVital | RawRumDurationVital | RawRumResource;
 
 export interface RawRumView extends RecursivePartial<RumViewEvent> {
   type: 'view';
@@ -61,7 +61,7 @@ export interface RawRumError extends RecursivePartial<RumErrorEvent> {
 
 type RumVitalOperationStepEventVital = NonNullable<RumVitalOperationStepEvent['vital']>;
 
-export interface RawRumVital extends RecursivePartial<RumVitalOperationStepEvent> {
+export interface RawRumOperationStepVital extends RecursivePartial<RumVitalOperationStepEvent> {
   type: 'vital';
   date: TimeStamp;
   context?: Record<string, unknown>;

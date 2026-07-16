@@ -3,7 +3,7 @@ import { isIndexableObject } from '@datadog/js-core/util';
 import { type Context, generateUUID } from '@datadog/browser-core';
 import { EventFormat, EventKind, EventManager } from '../../../event';
 import { display } from '../../../tools/display';
-import type { RawRumVital } from '../rawRumData.types';
+import type { RawRumOperationStepVital } from '../rawRumData.types';
 
 type OperationMethod = 'startOperation' | 'succeedOperation' | 'failOperation';
 
@@ -122,7 +122,7 @@ export class OperationCollection {
     failureReason?: FailureReason
   ): void {
     const startTime = timeStampNow();
-    const vital: RawRumVital['vital'] = {
+    const vital: RawRumOperationStepVital['vital'] = {
       id: generateUUID(),
       name,
       type: 'operation_step',
@@ -138,7 +138,7 @@ export class OperationCollection {
       vital.description = options.description;
     }
 
-    const data: RawRumVital = {
+    const data: RawRumOperationStepVital = {
       type: 'vital',
       date: startTime,
       context: options?.context ?? {},
