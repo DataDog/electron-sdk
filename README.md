@@ -77,6 +77,8 @@ await init({
 });
 ```
 
+> **Deferred init caveat:** if `init()` is called after some windows are already open (e.g. behind a user-consent gate), those windows keep the fallback configuration (`defaultPrivacyLevel: 'mask'`, no extra `allowedWebViewHosts`, and the default advertised capabilities) until they are reloaded, because the renderer reads bridge config once at load time. Your `init()` configuration still governs what is actually sent to Datadog, so this only affects renderer-side behavior. Navigation is never blocked.
+
 #### Renderer process setup
 
 In order to monitor the renderer process, you must [set up the Browser SDK](https://docs.datadoghq.com/real_user_monitoring/application_monitoring/browser/setup/) in pages loaded by the renderer.

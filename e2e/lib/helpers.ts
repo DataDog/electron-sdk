@@ -100,7 +100,8 @@ async function launchApp(
   intake: Intake,
   userDataDir: string,
   rumBrowserSdk: Record<string, unknown> | null = null,
-  sdkConfigOverrides: Partial<InitConfiguration> | null = null
+  sdkConfigOverrides: Partial<InitConfiguration> | null = null,
+  extraEnv: Record<string, string> = {}
 ): Promise<ElectronApplication> {
   const env: Record<string, string> = {};
   for (const key of HOST_ENV_ALLOWLIST) {
@@ -123,7 +124,7 @@ async function launchApp(
     telemetrySampleRate: 100,
     defaultPrivacyLevel: 'mask',
     allowedWebViewHosts: [],
-    ...sdkConfigOverrides,
+    ...(sdkConfigOverrides ?? {}),
   };
   env.DD_ELECTRON_SDK_CONFIG = JSON.stringify(electronSdkConfig);
 
@@ -138,6 +139,8 @@ async function launchApp(
       ...rumBrowserSdk,
     });
   }
+
+  Object.assign(env, extraEnv);
 
   return electron.launch({
     executablePath: electronPath,
@@ -170,6 +173,19 @@ export async function launchAppManually(
   const electronApp = await launchApp(intake, userDataDir);
   const { window } = await waitForWindowLoaded(electronApp);
   return { electronApp, window, mainPage: new MainPage(window) };
+}
+
+export async function launchDeferredInitApp(intake: Intake, userDataDir: string): Promise<ElectronApplication> {
+  return launchApp(
+    intake,
+    userDataDir,
+    null,
+    {
+      allowedWebViewHosts: ['deferred-init.example.com'],
+      defaultPrivacyLevel: 'allow',
+    },
+    { DD_E2E_DEFER_INIT: '1' }
+  );
 }
 
 export async function createUserDataDir(): Promise<string> {

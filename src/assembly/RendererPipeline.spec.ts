@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED } from '@datadog/js-core/assembly';
-import { RendererPipeline, type BridgeOptions } from './RendererPipeline';
+import { RendererPipeline } from './RendererPipeline';
+import type { BridgeOptions } from '../common';
 import { createFormatHooks, type FormatHooks } from './hooks';
 import {
   EventFormat,
@@ -19,10 +20,11 @@ import {
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
 import { createTestConfiguration } from '../mocks.specUtil';
 
-const { mockIpcMainOn, mockAddError } = vi.hoisted(() => {
+const { mockIpcMainOn, mockAddError, mockSetBridgeConfig } = vi.hoisted(() => {
   const mockIpcMainOn = vi.fn();
   const mockAddError = vi.fn();
-  return { mockIpcMainOn, mockAddError };
+  const mockSetBridgeConfig = vi.fn();
+  return { mockIpcMainOn, mockAddError, mockSetBridgeConfig };
 });
 
 vi.mock('electron', () => ({
@@ -33,6 +35,11 @@ vi.mock('../domain/telemetry', () => ({
   monitor: (fn: () => void) => fn,
   addError: mockAddError,
 }));
+
+vi.mock('../common', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../common')>();
+  return { ...actual, setBridgeConfig: mockSetBridgeConfig };
+});
 
 const DEFAULT_CONFIG = createTestConfiguration({ profilingSampleRate: 0 });
 
@@ -94,26 +101,24 @@ describe('RendererPipeline', () => {
     new RendererPipeline(eventManager, hooks, DEFAULT_CONFIG);
   });
 
-  it('registers IPC listeners on BRIDGE_CHANNEL and CONFIG_CHANNEL', () => {
+  it('registers a listener on BRIDGE_CHANNEL', () => {
     expect(mockIpcMainOn).toHaveBeenCalledWith(BRIDGE_CHANNEL, expect.any(Function));
-    expect(mockIpcMainOn).toHaveBeenCalledWith(CONFIG_CHANNEL, expect.any(Function));
   });
 
-  it('returns bridgeOptions derived from config on CONFIG_CHANNEL', () => {
+  it('does NOT register a listener on CONFIG_CHANNEL (responder lives in instrument)', () => {
+    const channels = mockIpcMainOn.mock.calls.map((call) => call[0] as string);
+    expect(channels).not.toContain(CONFIG_CHANNEL);
+  });
+
+  it('publishes bridgeOptions derived from config via setBridgeConfig', () => {
     const config = createTestConfiguration({
       defaultPrivacyLevel: 'allow',
       allowedWebViewHosts: ['example.com'],
       profilingSampleRate: 0,
     });
-    vi.clearAllMocks();
-    const handlers: Record<string, (event: unknown) => void> = {};
-    mockIpcMainOn.mockImplementation((channel: string, cb: (event: unknown) => void) => {
-      handlers[channel] = cb;
-    });
+    mockSetBridgeConfig.mockClear();
     new RendererPipeline(eventManager, hooks, config);
-    const event = { returnValue: undefined as unknown };
-    handlers[CONFIG_CHANNEL](event);
-    expect(event.returnValue).toEqual({
+    expect(mockSetBridgeConfig).toHaveBeenCalledWith({
       defaultPrivacyLevel: 'allow',
       allowedWebViewHosts: ['example.com'],
       capabilities: [],
@@ -121,31 +126,18 @@ describe('RendererPipeline', () => {
   });
 
   describe('capabilities', () => {
-    function getIpcHandlers(): Record<string, (event: unknown) => void> {
-      vi.clearAllMocks();
-      const handlers: Record<string, (event: unknown) => void> = {};
-      mockIpcMainOn.mockImplementation((channel: string, cb: (event: unknown) => void) => {
-        handlers[channel] = cb;
-      });
-      return handlers;
-    }
-
     it('advertises the profiles capability when profilingSampleRate > 0', () => {
       const config = createTestConfiguration({ profilingSampleRate: 100 });
-      const handlers = getIpcHandlers();
+      mockSetBridgeConfig.mockClear();
       new RendererPipeline(new EventManager(), createFormatHooks(), config);
-      const event = { returnValue: undefined as unknown };
-      handlers[CONFIG_CHANNEL](event);
-      expect((event.returnValue as BridgeOptions).capabilities).toEqual(['profiles']);
+      expect((mockSetBridgeConfig.mock.calls[0]?.[0] as BridgeOptions).capabilities).toEqual(['profiles']);
     });
 
     it('advertises no capabilities when profilingSampleRate is 0', () => {
       const config = createTestConfiguration({ profilingSampleRate: 0 });
-      const handlers = getIpcHandlers();
+      mockSetBridgeConfig.mockClear();
       new RendererPipeline(new EventManager(), createFormatHooks(), config);
-      const event = { returnValue: undefined as unknown };
-      handlers[CONFIG_CHANNEL](event);
-      expect((event.returnValue as BridgeOptions).capabilities).toEqual([]);
+      expect((mockSetBridgeConfig.mock.calls[0]?.[0] as BridgeOptions).capabilities).toEqual([]);
     });
   });
 

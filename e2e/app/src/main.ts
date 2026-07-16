@@ -95,8 +95,23 @@ function startRendererHttpServer(): Promise<number> {
 
 void app.whenReady().then(async () => {
   const config = getConfiguration();
-  console.log('Initializing SDK with config:', config);
-  const initialized = await init(config);
+  // DD_E2E_DEFER_INIT reproduces the "init() gated behind user consent" flow: the SDK is instrumented
+  // (preload registered) but init() does not run and no window opens at startup. The e2e drives init and
+  // window creation from the main process via __ddE2E, so it can control the order of init vs window open
+  // (there is no renderer yet to use IPC).
+  let initialized = false;
+  if (process.env.DD_E2E_DEFER_INIT === '1') {
+    console.log('Deferring SDK init (DD_E2E_DEFER_INIT=1)');
+    (globalThis as Record<string, unknown>).__ddE2E = {
+      init: async () => {
+        initialized = await init(config);
+      },
+      openWindow: () => createWindow(),
+    };
+  } else {
+    console.log('Initializing SDK with config:', config);
+    initialized = await init(config);
+  }
   console.log('SDK initialized:', initialized);
 
   ipcMain.handle('generateTelemetryErrors', (_event, count: number) => {
@@ -249,7 +264,10 @@ void app.whenReady().then(async () => {
     void win.loadURL('app://bridge/');
   });
 
-  createWindow();
+  // In deferred-init mode the e2e opens the window itself via __ddE2E; don't auto-open at startup.
+  if (process.env.DD_E2E_DEFER_INIT !== '1') {
+    createWindow();
+  }
 });
 
 app.on('window-all-closed', () => {
