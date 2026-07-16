@@ -19,8 +19,9 @@ function getHolder(): BridgeConfigHolder {
   const store = globalThis as unknown as Record<symbol, BridgeConfigHolder | undefined>;
   let holder = store[BRIDGE_CONFIG];
   if (!holder) {
-    // Capabilities advertise which features the bridge supports. Profiling is advertised by default to
-    // signal support, consistent with the other Datadog SDKs. init() replaces this with the config value.
+    // Advertise the SDK's supported capabilities by default to signal support. init() replaces this with
+    // the config-derived value; that narrowing is only an optimization to save renderer work, since the
+    // Electron SDK config (not the advertised capability) governs what is actually sent to Datadog.
     holder = { value: { defaultPrivacyLevel: 'mask', allowedWebViewHosts: [], capabilities: ['profiles'] } };
     store[BRIDGE_CONFIG] = holder;
   }
