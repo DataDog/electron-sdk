@@ -3,6 +3,7 @@ import { isIndexableObject } from '@datadog/js-core/util';
 import { type Context, generateUUID } from '@datadog/browser-core';
 import { EventFormat, EventKind, EventManager } from '../../../event';
 import { display } from '../../../tools/display';
+import { isValidString, VALID_VITAL_NAME_REGEX } from '../../../tools/validation';
 import type { RawRumOperationStepVital } from '../rawRumData.types';
 
 type OperationMethod = 'startOperation' | 'succeedOperation' | 'failOperation';
@@ -154,17 +155,6 @@ export class OperationCollection {
   }
 }
 
-function isValidString(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0;
-}
-
-// Mirrors the backend's server-side `vital.name` character-set regex, `[\w.@$-]*` (letters, digits, `_`, `.`, `@`,
-// `$`, `-`). Names that fail this pattern generate a developer warning but the event is still emitted — the backend
-// is the source of truth on character-set policy, so client-side drop would force a customer SDK bump if the rule is
-// ever relaxed. Blank / empty names are a separate check: they are rejected here because the backend rejects them
-// with its own non-empty precondition before reaching the regex.
-const VALID_OPERATION_NAME_REGEX = /^[\w.@$-]*$/;
-
 // Mirrors the schema enum for `vital.failure_reason`. JS callers bypassing the TS signature could pass any string;
 // warn but still emit so the backend (source of truth on the enum policy) gets to decide.
 const VALID_FAILURE_REASONS: readonly FailureReason[] = ['error', 'abandoned', 'other'];
@@ -175,7 +165,7 @@ function validateArgs(method: OperationMethod, name: unknown, options: unknown, 
     display.error(`${method}: operation name cannot be empty or blank. Event will not be sent.`);
     return false;
   }
-  if (!VALID_OPERATION_NAME_REGEX.test(name)) {
+  if (!VALID_VITAL_NAME_REGEX.test(name)) {
     // Warn but do not drop — the backend decides on character-set policy.
     display.warn(
       `${method}: operation name '${name}' does not match the backend-accepted pattern [\\w.@$-]* (letters, digits, _ . @ $ -). The event will still be sent and may be rejected by the backend.`

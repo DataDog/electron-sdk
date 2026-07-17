@@ -1,23 +1,15 @@
-import { isIndexableObject } from '@datadog/js-core/util';
-import { sanitize } from '@datadog/browser-core';
 import { MainAssembly, RendererPipeline, createFormatHooks, registerCommonContext } from './assembly';
+import { setDurationVitalApi } from './api';
 import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
 import { RumCollection } from './domain/rum';
 import { SessionManager } from './domain/session';
-import type {
-  AddDurationVitalOptions,
-  DurationVitalOptions,
-  ErrorOptions,
-  FailureReason,
-  FeatureOperationOptions,
-} from './domain/rum';
+import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './domain/rum';
 import { callMonitored, startTelemetry } from './domain/telemetry';
 import { EventManager } from './event';
 import { Transport } from './transport';
 import { Tracing } from './domain/tracing/Tracing';
 import { SpanProcessor } from './domain/tracing/SpanProcessor';
-import { display } from './tools/display';
 
 let sessionManager: SessionManager | undefined;
 let eventManager: EventManager | undefined;
@@ -69,6 +61,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   transport = await Transport.create(config, eventManager);
   const rum = await RumCollection.start(eventManager, hooks);
   rumApi = rum.getApi();
+  setDurationVitalApi(rumApi);
 
   return true;
 }
@@ -85,79 +78,6 @@ export function stopSession(): void {
  */
 export function addError(error: unknown, options?: ErrorOptions): void {
   callMonitored(() => rumApi?.addError(error, options));
-}
-
-/**
- * Add an already-completed custom duration vital.
- *
- * `startTime` is a UNIX timestamp in milliseconds and `duration` is expressed in milliseconds.
- *
- * @example
- * ```ts
- * addDurationVital('database.migration', {
- *   startTime: Date.now() - 1_500,
- *   duration: 1_500,
- *   context: { migration: 'users' },
- * });
- * ```
- */
-export function addDurationVital(name: string, options: AddDurationVitalOptions): void {
-  callMonitored(() => {
-    if (!validateDurationVitalArgs('addDurationVital', name, options, true)) {
-      return;
-    }
-    const sanitizedOptions = sanitizeDurationVitalOptions(options);
-    rumApi?.addDurationVital(name, {
-      ...sanitizedOptions,
-      startTime: options.startTime,
-      duration: options.duration,
-    });
-  });
-}
-
-/**
- * Start measuring a custom duration vital.
- *
- * Use `vitalKey` when multiple instances with the same name can overlap. The matching stop call must happen in the
- * same Electron process.
- *
- * @example
- * ```ts
- * startDurationVital('document.open', { vitalKey: documentId });
- * await openDocument(documentId);
- * stopDurationVital('document.open', { vitalKey: documentId });
- * ```
- */
-export function startDurationVital(name: string, options?: DurationVitalOptions): void {
-  callMonitored(() => {
-    if (!validateDurationVitalArgs('startDurationVital', name, options, false)) {
-      return;
-    }
-    const sanitizedOptions = sanitizeDurationVitalOptions(options);
-    rumApi?.startDurationVital(name, sanitizedOptions);
-  });
-}
-
-/**
- * Stop a custom duration vital started with `startDurationVital`.
- *
- * Context and description supplied here are merged with the start options.
- *
- * @example
- * ```ts
- * startDurationVital('cache.warmup');
- * await warmCache();
- * stopDurationVital('cache.warmup', { context: { entries: 42 } });
- * ```
- */
-export function stopDurationVital(name: string, options?: DurationVitalOptions): void {
-  callMonitored(() => {
-    if (!validateDurationVitalArgs('stopDurationVital', name, options, false)) {
-      return;
-    }
-    const sanitizedOptions = sanitizeDurationVitalOptions(options);
-    rumApi?.stopDurationVital(name, sanitizedOptions);
-  });
 }
 
 /**
@@ -266,86 +186,7 @@ export function getInternalContext(): InternalContext | undefined {
   return { session_id: sessionId };
 }
 
-function sanitizeDurationVitalOptions(options?: DurationVitalOptions): DurationVitalOptions {
-  if (!options) {
-    return {};
-  }
-  return {
-    vitalKey: options.vitalKey,
-    context: options.context === undefined ? undefined : sanitize(options.context),
-    description: options.description === undefined ? undefined : sanitize(options.description),
-  };
-}
-
-function validateDurationVitalArgs(
-  method: DurationVitalMethod,
-  name: unknown,
-  options: unknown,
-  requireDuration: boolean
-): options is AddDurationVitalOptions | DurationVitalOptions | undefined {
-  if (typeof name !== 'string' || name.trim().length === 0) {
-    display.error(`${method}: vital name cannot be empty or blank. Event will not be sent.`);
-    return false;
-  }
-  if (!VALID_VITAL_NAME_REGEX.test(name)) {
-    display.warn(
-      `${method}: vital name '${name}' does not match the backend-accepted pattern [\\w.@$-]* (letters, digits, _ . @ $ -). The event will still be sent and may be rejected by the backend.`
-    );
-  }
-  if (requireDuration) {
-    if (!validateDurationOptions(method, options)) {
-      return false;
-    }
-  } else {
-    if (options === undefined) {
-      return true;
-    }
-    if (!isIndexableObject(options)) {
-      display.error(`${method}: options must be an object. Event will not be sent.`);
-      return false;
-    }
-  }
-  if (
-    options.vitalKey !== undefined &&
-    (typeof options.vitalKey !== 'string' || options.vitalKey.trim().length === 0)
-  ) {
-    display.error(`${method}: vital key cannot be empty or blank. Event will not be sent.`);
-    return false;
-  }
-  if (options.context !== undefined && !isIndexableObject(options.context)) {
-    display.error(`${method}: context must be an object when provided. Event will not be sent.`);
-    return false;
-  }
-  if (options.description !== undefined && typeof options.description !== 'string') {
-    display.error(`${method}: description must be a string when provided. Event will not be sent.`);
-    return false;
-  }
-  return true;
-}
-
-function validateDurationOptions(
-  method: DurationVitalMethod,
-  options: unknown
-): options is Record<string, unknown> & { startTime: number; duration: number } {
-  if (!isIndexableObject(options)) {
-    display.error(`${method}: options must be an object. Event will not be sent.`);
-    return false;
-  }
-  if (!isFiniteNumber(options.startTime) || !isFiniteNumber(options.duration)) {
-    display.error(`${method}: startTime and duration must be finite numbers. Event will not be sent.`);
-    return false;
-  }
-  return true;
-}
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
-}
-
-type DurationVitalMethod = 'addDurationVital' | 'startDurationVital' | 'stopDurationVital';
-
-const VALID_VITAL_NAME_REGEX = /^[\w.@$-]*$/;
-
+export { addDurationVital, startDurationVital, stopDurationVital } from './api';
 export type { InitConfiguration } from './config';
 export type {
   AddDurationVitalOptions,

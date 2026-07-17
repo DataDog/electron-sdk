@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { display, rumApi } = vi.hoisted(() => ({
   display: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
@@ -9,53 +9,19 @@ const { display, rumApi } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('./assembly', () => ({
-  MainAssembly: class {},
-  RendererPipeline: class {},
-  createFormatHooks: () => ({}),
-  registerCommonContext: vi.fn(),
-}));
-
-vi.mock('./config', () => ({ buildConfiguration: () => ({}) }));
-
-vi.mock('./domain/rum', () => ({
-  RumCollection: class {
-    static start() {
-      return Promise.resolve({ getApi: () => rumApi });
-    }
-  },
-}));
-
-vi.mock('./domain/session', () => ({
-  SESSION_TIME_OUT_DELAY: 0,
-  SessionManager: class {
-    static start() {
-      return Promise.resolve({ expire: vi.fn(), getTrackedSessionId: vi.fn() });
-    }
-  },
-}));
-
 vi.mock('./domain/telemetry', () => ({
   callMonitored: (callback: () => unknown) => callback(),
-  startTelemetry: vi.fn(),
 }));
-
-vi.mock('./domain/tracing/SpanProcessor', () => ({ SpanProcessor: class {} }));
-vi.mock('./domain/tracing/Tracing', () => ({
-  Tracing: class {
-    enabled = false;
-    flush = vi.fn();
-  },
-}));
-vi.mock('./event', () => ({ EventManager: class {} }));
 vi.mock('./tools/display', () => ({ display }));
-vi.mock('./transport', () => ({
-  Transport: { create: () => Promise.resolve({ flush: vi.fn() }) },
-}));
 
-import { addDurationVital, init, startDurationVital, stopDurationVital } from './index';
+import { addDurationVital, setDurationVitalApi, startDurationVital, stopDurationVital } from './api';
 
 describe.sequential('duration vital public API', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setDurationVitalApi(undefined);
+  });
+
   it('validates arguments before initialization', () => {
     addDurationVital('', { startTime: 0, duration: 1 });
 
@@ -64,12 +30,8 @@ describe.sequential('duration vital public API', () => {
   });
 
   describe('after initialization', () => {
-    beforeAll(async () => {
-      await init({} as never);
-    });
-
     beforeEach(() => {
-      vi.clearAllMocks();
+      setDurationVitalApi(rumApi);
     });
 
     it('sanitizes and forwards duration vital options', () => {
