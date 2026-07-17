@@ -8,11 +8,15 @@ import {
   EventSource,
   EventTrack,
   type RawEvent,
+  type RawProfileEvent,
   type ServerEvent,
 } from '../event';
 import type { FormatHooks } from './hooks';
 import { RumEvent } from '../domain/rum';
 import { TelemetryEvent } from '../domain/telemetry';
+
+// Raw events assembled through the standard main-process hook pipeline.
+type StandardRawEvent = Exclude<RawEvent, RawProfileEvent>;
 
 /**
  * Transforms main-process RawEvents into ServerEvents by enriching them with
@@ -23,8 +27,9 @@ export class MainAssembly {
     private eventManager: EventManager,
     private hooks: FormatHooks
   ) {
-    this.eventManager.registerHandler<RawEvent>({
-      canHandle: (event) => event.kind === EventKind.RAW,
+    this.eventManager.registerHandler<StandardRawEvent>({
+      canHandle: (event): event is StandardRawEvent =>
+        event.kind === EventKind.RAW && event.format !== EventFormat.PROFILE,
       handle: (event, notify) => {
         const result = this.assembleMainProcessEvent(event);
         if (result !== DISCARDED) {
@@ -34,7 +39,7 @@ export class MainAssembly {
     });
   }
 
-  private assembleMainProcessEvent(event: RawEvent): ServerEvent | DISCARDED {
+  private assembleMainProcessEvent(event: StandardRawEvent): ServerEvent | DISCARDED {
     const startTime = event.startTime ?? timeStampNow();
     const source = EventSource.MAIN;
 

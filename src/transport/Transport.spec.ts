@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BatchSizes, BatchUploadFrequencies } from '../config';
-import type { RawEvent, ServerEvent } from '../event';
+import type { RawEvent, ServerEvent, ServerProfileEvent } from '../event';
 import { EventKind, EventSource, EventTrack, EventManager } from '../event';
 import { createTestConfiguration } from '../mocks.specUtil';
 import { Transport } from './Transport';
@@ -52,6 +52,22 @@ describe('Transport', () => {
 
       expect(mockBatchCreate).toHaveBeenCalled();
     });
+
+    it('should setup the PROFILE track when profiling is enabled', async () => {
+      await Transport.create(config, eventManager);
+
+      const tracks = mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType);
+      expect(tracks).toContain(EventTrack.PROFILE);
+    });
+
+    it('should skip the PROFILE track when profiling is disabled', async () => {
+      const configWithoutProfiling = createTestConfiguration({ profilingSampleRate: 0 });
+      await Transport.create(configWithoutProfiling, eventManager);
+
+      const tracks = mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType);
+      expect(tracks).not.toContain(EventTrack.PROFILE);
+      expect(tracks).toEqual([EventTrack.RUM, EventTrack.SPANS]);
+    });
   });
 
   describe('event handling', () => {
@@ -64,7 +80,11 @@ describe('Transport', () => {
         data: { test: 'data' },
       } as unknown as ServerEvent);
 
-      expect(mockBatchPost).toHaveBeenCalledWith({ test: 'data' });
+      expect(mockBatchPost).toHaveBeenCalledWith({
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        data: { test: 'data' },
+      });
     });
 
     it('should not handle events that do not match', async () => {
@@ -91,14 +111,32 @@ describe('Transport', () => {
 
       expect(mockBatchPost).not.toHaveBeenCalled();
     });
+
+    it('should forward SERVER PROFILE events to a batch manager', async () => {
+      await Transport.create(config, eventManager);
+
+      eventManager.notify({
+        kind: EventKind.SERVER,
+        track: EventTrack.PROFILE,
+        data: { start: 0 },
+        trace: { spans: [] },
+      } as unknown as ServerProfileEvent);
+
+      expect(mockBatchPost).toHaveBeenCalledWith({
+        kind: EventKind.SERVER,
+        track: EventTrack.PROFILE,
+        data: { start: 0 },
+        trace: { spans: [] },
+      });
+    });
   });
 
   describe('flush', () => {
-    it('should flush all batch managers', async () => {
+    it('should flush all batch managers including profiling', async () => {
       const transport = await Transport.create(config, eventManager);
       await transport.flush();
 
-      expect(mockBatchFlush).toHaveBeenCalledTimes(2);
+      expect(mockBatchFlush).toHaveBeenCalledTimes(3);
     });
   });
 

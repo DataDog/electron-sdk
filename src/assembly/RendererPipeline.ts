@@ -1,21 +1,16 @@
 import { ipcMain } from 'electron';
 import { type TimeStamp } from '@datadog/js-core/time';
-import { combine } from '@datadog/js-core/util';
+import { combine, isIndexableObject } from '@datadog/js-core/util';
 import { DISCARDED } from '@datadog/js-core/assembly';
-import type { DefaultPrivacyLevel } from '@datadog/browser-core';
-import { EventKind, EventSource, EventTrack, LifecycleKind } from '../event';
-import type { EventManager, ServerRumEvent } from '../event';
+import { EventKind, EventSource, EventTrack, LifecycleKind, EventFormat } from '../event';
+import type { EventManager, ServerRumEvent, BrowserProfileEvent, BrowserProfilerTrace } from '../event';
 import { monitor, addError as addTelemetryError } from '../domain/telemetry';
-import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
+import { BRIDGE_CHANNEL, setBridgeConfig, type BridgeOptions } from '../common';
 import type { FormatHooks } from './hooks';
 import type { RumEvent } from '../domain/rum';
+import { Configuration } from '../config';
 
-export interface BridgeOptions {
-  defaultPrivacyLevel: DefaultPrivacyLevel;
-  allowedWebViewHosts: string[];
-}
-
-type BridgeEventType = 'rum' | 'log' | 'internal_telemetry';
+type BridgeEventType = 'rum' | 'log' | 'internal_telemetry' | 'profile';
 
 interface BridgeEvent {
   eventType: BridgeEventType;
@@ -34,11 +29,21 @@ interface BridgeEvent {
  * would be discarded (its timestamp falls outside the closed session window).
  */
 export class RendererPipeline {
+  private readonly bridgeOptions: BridgeOptions;
   constructor(
     private readonly eventManager: EventManager,
     private readonly hooks: FormatHooks,
-    private readonly bridgeOptions: BridgeOptions
+    config: Configuration
   ) {
+    this.bridgeOptions = {
+      defaultPrivacyLevel: config.defaultPrivacyLevel,
+      allowedWebViewHosts: config.allowedWebViewHosts,
+      // Capabilities are resolved once here and advertised globally, not per session. Bridge mode has no
+      // channel to notify the renderer on session renew/expire or capability changes, so the browser SDK
+      // cannot adjust its per-session behavior (e.g. stop profiling a sampled-out session). Out of scope for now.
+      capabilities: config.profilingSampleRate > 0 ? ['profiles'] : [],
+    };
+
     ipcMain.on(
       BRIDGE_CHANNEL,
       monitor((_ipcEvent: unknown, msg: string) => {
@@ -46,12 +51,9 @@ export class RendererPipeline {
       })
     );
 
-    ipcMain.on(
-      CONFIG_CHANNEL,
-      monitor((event: { returnValue: unknown }) => {
-        event.returnValue = this.bridgeOptions;
-      })
-    );
+    // The CONFIG_CHANNEL responder is registered at instrument time; here we publish the real config
+    // so it replaces the fallback returned for windows loaded before init().
+    setBridgeConfig(this.bridgeOptions);
   }
 
   private onBridgeMessage(msg: string): void {
@@ -73,6 +75,23 @@ export class RendererPipeline {
       case 'internal_telemetry':
         // TODO(RUM-15253)
         break;
+      case 'profile': {
+        const payload = bridgeEvent.event as { profile?: BrowserProfileEvent; trace?: BrowserProfilerTrace };
+        // Validate the renderer-supplied shape early: a malformed message without a profile/trace would
+        // otherwise fail later at serialization/upload with no useful context.
+        if (!isIndexableObject(payload?.profile) || !isIndexableObject(payload?.trace)) {
+          addTelemetryError(new Error('Received malformed profile bridge event'));
+          return;
+        }
+        this.eventManager.notify({
+          kind: EventKind.RAW,
+          source: EventSource.RENDERER,
+          format: EventFormat.PROFILE,
+          data: payload.profile,
+          trace: payload.trace,
+        });
+        break;
+      }
       default:
         addTelemetryError(new Error(`Unhandled bridge event type: ${String(bridgeEvent.eventType)}`));
     }

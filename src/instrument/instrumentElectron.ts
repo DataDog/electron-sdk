@@ -1,6 +1,7 @@
 import { resolvePreloadPath, patchBrowserWindow } from './browserWindow';
 import { patchIpcMain, patchWebContents } from './ipc';
 import { patchNet } from './net';
+import { registerBridgeConfigResponder } from './registerBridgeConfig';
 
 // Applied at most once per electron module. The instrumentation entry point can be evaluated twice
 // in the same process: bundler plugins inject a CJS banner that requires it (instrument.cjs) while
@@ -33,6 +34,8 @@ export function instrumentElectron(electron: typeof import('electron')): void {
   }
   if (electron.ipcMain) {
     patchIpcMain(electron.ipcMain);
+    // Register the bridge-config responder after patching so it always exists, even before init().
+    registerBridgeConfigResponder(electron.ipcMain);
   }
   if (electron.BrowserWindow) {
     patchWebContents(electron.BrowserWindow);

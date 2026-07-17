@@ -188,9 +188,35 @@ describe('SpanProcessor', () => {
       expect(collected).toHaveLength(0);
     });
 
+    it('should filter out requests to intake subdomains (e.g. the profiling quota host)', () => {
+      const span = createSpan({
+        meta: {
+          'http.url': 'https://quota.browser-intake-datadoghq.com/api/v2/profiling/quota',
+          'http.method': 'GET',
+        },
+      });
+      publish([[span]]);
+
+      expect(collected).toHaveLength(0);
+    });
+
     it('should not filter localhost requests when no proxy is configured', () => {
       const span = createSpan({ meta: { 'http.url': 'http://localhost:3000/api/data', 'http.method': 'GET' } });
       publish([[span]]);
+
+      expect(collected.length).toBeGreaterThan(0);
+    });
+
+    it('should not treat proxy subdomains as intake (matches the proxy host exactly)', () => {
+      processor.stop();
+      processor = new SpanProcessor(eventManager, hooks, {
+        env: 'test',
+        service: 'test-service',
+        site: 'datadoghq.com',
+        proxy: 'https://proxy.example.com/api/v2/rum',
+      } as Configuration);
+      // A customer request to a subdomain of the proxy host is their own traffic and must be traced.
+      publish([[createSpan({ meta: { 'http.url': 'https://api.proxy.example.com/data', 'http.method': 'GET' } })]]);
 
       expect(collected.length).toBeGreaterThan(0);
     });

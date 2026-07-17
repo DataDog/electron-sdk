@@ -9,7 +9,6 @@ import { BatchManager } from './batch';
  * through dedicated {@link BatchManager} instances for disk-buffered delivery.
  */
 export class Transport {
-  private tracks: EventTrack[] = [EventTrack.RUM, EventTrack.SPANS];
   private batchManagers: BatchManager[] = [];
   private basePath: string;
 
@@ -23,11 +22,24 @@ export class Transport {
   /** Creates and fully initializes a Transport instance. */
   static async create(config: Configuration, eventManager: EventManager) {
     const transport = new Transport(config, eventManager);
-    for (const track of transport.tracks) {
+    for (const track of transport.getTracks()) {
       await transport.setupTrackBatching(track);
     }
 
     return transport;
+  }
+
+  /**
+   * Tracks to buffer and upload. The PROFILE track is only set up when profiling can produce data
+   * (matching the `profiles` capability gating in RendererPipeline), to avoid idle disk and scheduler
+   * work in apps that never enable profiling.
+   */
+  private getTracks(): EventTrack[] {
+    const tracks: EventTrack[] = [EventTrack.RUM, EventTrack.SPANS];
+    if (this.config.profilingSampleRate > 0) {
+      tracks.push(EventTrack.PROFILE);
+    }
+    return tracks;
   }
 
   /**
@@ -62,7 +74,7 @@ export class Transport {
     this.eventManager.registerHandler<ServerEvent>({
       canHandle: (event): event is ServerEvent => event.kind === EventKind.SERVER && event.track === track,
       handle: (event) => {
-        batchManager.post(event.data);
+        batchManager.post(event);
       },
     });
   }

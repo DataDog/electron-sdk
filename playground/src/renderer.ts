@@ -213,6 +213,34 @@ if (rendererFetchBtn) {
   });
 }
 
+// Block the main thread to generate a long task so the profiler emits a profile
+// (profiles < 5s are only sent when they contain a long task). The work runs through named
+// functions so the JS Self-Profiling samples attribute to renderer.js rather than to the
+// native `Date.now` builtin of a bare spin loop.
+function churn(seed: number): number {
+  let value = seed;
+  for (let i = 0; i < 500_000; i++) {
+    value = (value + Math.sqrt(i) * Math.sin(i)) % 1e9;
+  }
+  return value;
+}
+
+function runLongTask(): number {
+  let acc = 0;
+  const start = Date.now();
+  while (Date.now() - start < 500) {
+    acc = churn(acc);
+  }
+  return acc;
+}
+
+const longTaskBtn = document.getElementById('generate-long-task') as HTMLButtonElement | null;
+if (longTaskBtn) {
+  longTaskBtn.addEventListener('click', () => {
+    runLongTask();
+  });
+}
+
 setupDemoButton('main-fetch', 'main:fetch-api', () => window.electronAPI.mainFetchApi());
 setupDemoButton('main-fetch-fetch', 'main:fetch-api-fetch', () => window.electronAPI.mainFetchApiFetch());
 setupDemoButton('main-fetch-net', 'main:fetch-api-net', () => window.electronAPI.mainFetchApiNet());

@@ -74,7 +74,7 @@ export abstract class BatchConsumer {
    */
   protected async uploadBatch(filePath: string): Promise<boolean> {
     const lines = await this.readBatchFile(filePath);
-    const request = this.buildRequest(lines);
+    const request = await this.buildRequest(lines);
 
     if (!request) {
       await fs.unlink(filePath).catch(() => undefined);
@@ -97,6 +97,7 @@ export abstract class BatchConsumer {
    * Builds the HTTP {@link Request} for the given batch file lines.
    * Return `null` if the lines produce no sendable payload — the base class
    * will delete the file and skip the network call.
+   * May be async to allow payload transforms (e.g. compression).
    */
-  protected abstract buildRequest(lines: string[]): Request | null;
+  protected abstract buildRequest(lines: string[]): Promise<Request | null> | Request | null;
 }

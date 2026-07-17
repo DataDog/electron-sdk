@@ -2,10 +2,13 @@ import path from 'node:path';
 import { setTimeout } from '@datadog/browser-core';
 import type { Configuration } from '../../config';
 import { addError } from '../../domain/telemetry';
+import { EventTrack } from '../../event';
+import type { ServerEvent } from '../../event';
 import { computeIntakeUrlForTrack } from '../utils';
 import { BatchConsumer } from './BatchConsumer';
 import type { BatchConsumerConfig } from './BatchConsumer';
 import { BatchProducer } from './BatchProducer';
+import { ProfileBatchConsumer, ProfileBatchProducer } from './profiling';
 import { StandardBatchConsumer } from './standard/StandardBatchConsumer';
 import { StandardBatchProducer } from './standard/StandardBatchProducer';
 import type { StandardBatchProducerConfig } from './standard/StandardBatchProducer';
@@ -40,9 +43,9 @@ export class BatchManager {
     return manager;
   }
 
-  /** Enqueues data to be written to the current batch file. */
-  post(data: unknown) {
-    this.producer.post(data);
+  /** Enqueues a server event to be written to the current batch file. */
+  post(event: ServerEvent) {
+    this.producer.post(event);
   }
 
   /** Drains the write queue, rotates the current batch, and uploads all pending files. */
@@ -93,6 +96,9 @@ export class BatchManager {
   /**
    * Creates the appropriate {@link BatchProducer} / {@link BatchConsumer} pair for the
    * given track type. Add a new branch here when introducing a new transport strategy.
+   *
+   * Each producer narrows `writeData()` to its track's event shape, so a mismatched pairing
+   * fails only at runtime. Keep each branch in sync with `Transport.setupTrackBatching`.
    */
   private static async createProducerConsumerPair(
     config: Configuration,
@@ -102,9 +108,15 @@ export class BatchManager {
     const { path: configPath, trackType, batchSize } = batchConfig;
 
     const trackPath = path.join(configPath, trackType);
-    const intakeUrl = computeIntakeUrlForTrack(config.site, trackType, config.proxy);
+    const intakeUrl = computeIntakeUrlForTrack(config.site, trackType, { proxy: config.proxy });
 
     const consumerConfig: BatchConsumerConfig = { trackPath, intakeUrl, clientToken };
+
+    if (trackType === EventTrack.PROFILE) {
+      const producer = await ProfileBatchProducer.create({ trackPath });
+      const consumer = new ProfileBatchConsumer(consumerConfig);
+      return { producer, consumer };
+    }
 
     const standardProducerConfig: StandardBatchProducerConfig = { trackPath, batchSize };
     const producer = await StandardBatchProducer.create(standardProducerConfig);

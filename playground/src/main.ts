@@ -1,8 +1,9 @@
 // Must be imported before 'electron' — instruments electron for tracing and preload injection.
 import '@datadog/electron-sdk/instrument';
 
-import { app, BrowserWindow, ipcMain, net, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, net, protocol, shell } from 'electron';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import * as https from 'node:https';
 import {
   init,
@@ -29,6 +30,35 @@ const isTestMode = process.env.DD_TEST_MODE === '1';
 
 let mainWindow: BrowserWindow | null = null;
 
+// Serving the renderer over a custom scheme (instead of file://) lets us attach the `Document-Policy: js-profiling`
+// response header, which is required to enable the JS Self-Profiling API. The scheme must be registered as
+// privileged before the app is ready.
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+]);
+
+function serveRendererOverAppProtocol(): void {
+  protocol.handle('app', (request) => {
+    const { pathname } = new URL(request.url);
+    const fileName = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '');
+    const ext = fileName.split('.').pop();
+    const contentType =
+      ext === 'html'
+        ? 'text/html'
+        : ext === 'js'
+          ? 'application/javascript'
+          : ext === 'map'
+            ? 'application/json'
+            : 'application/octet-stream';
+    const headers: Record<string, string> = { 'Content-Type': contentType };
+    // Only the HTML document needs the policy that enables the profiler.
+    if (ext === 'html') {
+      headers['Document-Policy'] = 'js-profiling';
+    }
+    return new Response(fs.readFileSync(path.join(__dirname, fileName)), { headers });
+  });
+}
+
 function createWindow() {
   const savedState = loadWindowState();
 
@@ -45,7 +75,7 @@ function createWindow() {
     },
   });
 
-  void mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  void mainWindow.loadURL('app://app/');
 
   // Save window state before reload or close
   mainWindow.on('close', () => {
@@ -177,10 +207,12 @@ void app.whenReady().then(async () => {
     ...CONF[ACTIVE_ENV],
     service: 'electron-playground',
     env: 'dev',
+    profilingSampleRate: 100,
     ...(process.env.DD_SDK_PROXY ? { proxy: process.env.DD_SDK_PROXY } : {}),
   });
   console.log('SDK init result:', result);
 
+  serveRendererOverAppProtocol();
   createWindow();
 
   app.on('activate', () => {

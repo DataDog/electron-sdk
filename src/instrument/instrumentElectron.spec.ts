@@ -3,6 +3,7 @@ import { instrumentElectron } from './instrumentElectron';
 import { patchBrowserWindow } from './browserWindow';
 import { patchIpcMain, patchWebContents } from './ipc';
 import { patchNet } from './net';
+import { registerBridgeConfigResponder } from './registerBridgeConfig';
 
 vi.mock('./browserWindow', () => ({
   resolvePreloadPath: vi.fn(() => '/fake/preload.js'),
@@ -14,6 +15,9 @@ vi.mock('./ipc', () => ({
 }));
 vi.mock('./net', () => ({
   patchNet: vi.fn(),
+}));
+vi.mock('./registerBridgeConfig', () => ({
+  registerBridgeConfigResponder: vi.fn(),
 }));
 
 function fakeElectron(): typeof import('electron') {
@@ -39,6 +43,8 @@ describe('instrumentElectron', () => {
     expect(patchIpcMain).toHaveBeenCalledTimes(1);
     expect(patchWebContents).toHaveBeenCalledTimes(1);
     expect(patchNet).toHaveBeenCalledTimes(1);
+    expect(registerBridgeConfigResponder).toHaveBeenCalledTimes(1);
+    expect(registerBridgeConfigResponder).toHaveBeenCalledWith(expect.anything());
   });
 
   it('is idempotent: a second call on the same electron module does not re-patch', () => {
@@ -51,6 +57,7 @@ describe('instrumentElectron', () => {
     expect(patchIpcMain).toHaveBeenCalledTimes(1);
     expect(patchWebContents).toHaveBeenCalledTimes(1);
     expect(patchNet).toHaveBeenCalledTimes(1);
+    expect(registerBridgeConfigResponder).toHaveBeenCalledTimes(1);
   });
 
   it('patches a different electron module independently', () => {

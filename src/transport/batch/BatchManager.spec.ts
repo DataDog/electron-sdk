@@ -1,21 +1,27 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { BatchManager } from './BatchManager';
-import { EventTrack } from '../../event';
+import { EventKind, EventTrack } from '../../event';
+import type { ServerEvent } from '../../event';
 import { BatchSizes, BatchUploadFrequencies } from '../../config';
 import { createTestConfiguration } from '../../mocks.specUtil';
 import type { BatchConfig } from './batchConfig.types';
 
-const { mockProducerPost, mockProducerFlush, mockConsumerUpload, mockProducerCreate } = vi.hoisted(() => {
-  const mockProducerPost = vi.fn();
-  const mockProducerFlush = vi.fn().mockResolvedValue(undefined);
-  const mockConsumerUpload = vi.fn().mockResolvedValue(undefined);
-  const mockProducerCreate = vi.fn().mockResolvedValue({
-    post: mockProducerPost,
-    flush: mockProducerFlush,
-  });
+const { mockProducerPost, mockProducerFlush, mockConsumerUpload, mockProducerCreate, mockProfileProducerCreate } =
+  vi.hoisted(() => {
+    const mockProducerPost = vi.fn();
+    const mockProducerFlush = vi.fn().mockResolvedValue(undefined);
+    const mockConsumerUpload = vi.fn().mockResolvedValue(undefined);
+    const mockProducerCreate = vi.fn().mockResolvedValue({
+      post: mockProducerPost,
+      flush: mockProducerFlush,
+    });
+    const mockProfileProducerCreate = vi.fn().mockResolvedValue({
+      post: vi.fn(),
+      flush: vi.fn().mockResolvedValue(undefined),
+    });
 
-  return { mockProducerPost, mockProducerFlush, mockConsumerUpload, mockProducerCreate };
-});
+    return { mockProducerPost, mockProducerFlush, mockConsumerUpload, mockProducerCreate, mockProfileProducerCreate };
+  });
 
 vi.mock('./standard/StandardBatchProducer', () => ({
   StandardBatchProducer: { create: mockProducerCreate },
@@ -24,6 +30,16 @@ vi.mock('./standard/StandardBatchProducer', () => ({
 vi.mock('./standard/StandardBatchConsumer', () => ({
   StandardBatchConsumer: vi.fn().mockImplementation(function (this: unknown) {
     return { upload: mockConsumerUpload };
+  }),
+}));
+
+vi.mock('./profiling/ProfileBatchProducer', () => ({
+  ProfileBatchProducer: { create: mockProfileProducerCreate },
+}));
+
+vi.mock('./profiling/ProfileBatchConsumer', () => ({
+  ProfileBatchConsumer: vi.fn().mockImplementation(function (this: unknown) {
+    return { upload: vi.fn().mockResolvedValue(undefined) };
   }),
 }));
 
@@ -77,6 +93,19 @@ describe('BatchManager', () => {
       });
     });
 
+    it('creates a ProfileBatchProducer/Consumer pair for the profile track', async () => {
+      const { ProfileBatchConsumer } = await import('./profiling/ProfileBatchConsumer');
+      await BatchManager.create(config, createBatchConfig({ trackType: EventTrack.PROFILE }));
+
+      expect(mockProfileProducerCreate).toHaveBeenCalledWith({ trackPath: '/mock/path/profile' });
+      expect(ProfileBatchConsumer).toHaveBeenCalledWith({
+        trackPath: '/mock/path/profile',
+        intakeUrl: 'https://mock-intake.com/api/v2/rum',
+        clientToken: 'test-token',
+      });
+      expect(mockProducerCreate).not.toHaveBeenCalled();
+    });
+
     it('should start the upload cycle after creation', async () => {
       await BatchManager.create(config, batchConfig);
 
@@ -90,11 +119,15 @@ describe('BatchManager', () => {
   describe('post', () => {
     it('should delegate to producer.post', async () => {
       const manager = await BatchManager.create(config, batchConfig);
-      const data = { test: 'data' };
+      const event = {
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        data: { test: 'data' },
+      } as unknown as ServerEvent;
 
-      manager.post(data);
+      manager.post(event);
 
-      expect(mockProducerPost).toHaveBeenCalledWith(data);
+      expect(mockProducerPost).toHaveBeenCalledWith(event);
     });
   });
 

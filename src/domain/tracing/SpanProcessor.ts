@@ -43,6 +43,7 @@ export class SpanProcessor {
   private channel: DiagnosticsChannel.Channel;
   private onMessage: (message: unknown) => void;
   private intakeHostname: string;
+  private matchIntakeSubdomains: boolean;
   private env: string;
   private service: string;
 
@@ -54,6 +55,9 @@ export class SpanProcessor {
     this.env = config.env ?? '';
     this.service = config.service;
     this.intakeHostname = computeIntakeHostname(config.site, config.proxy);
+    // The `quota.` subdomain only exists on the real Datadog intake host. When proxying, the intake
+    // hostname is the customer's proxy, whose subdomains are their own traffic — match it exactly.
+    this.matchIntakeSubdomains = !config.proxy;
     this.channel = DiagnosticsChannel.channel(DD_TRACE_SPAN_CHANNEL);
 
     this.onMessage = monitor((message: unknown) => {
@@ -97,7 +101,14 @@ export class SpanProcessor {
     const url = span.meta['http.url'];
     if (!url) return false;
     try {
-      return new URL(url).hostname === this.intakeHostname;
+      const { hostname } = new URL(url);
+      if (hostname === this.intakeHostname) {
+        return true;
+      }
+      // On the real Datadog intake, also match subdomains (e.g. the `quota.` host used by the profiling
+      // quota check), so the SDK never traces its own intake requests. Skipped when proxying to avoid
+      // matching unrelated subdomains of the customer's proxy host.
+      return this.matchIntakeSubdomains && hostname.endsWith(`.${this.intakeHostname}`);
     } catch {
       return false;
     }
