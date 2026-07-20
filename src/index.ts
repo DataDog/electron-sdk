@@ -131,6 +131,7 @@ export function addUserExtraInfo(extraInfo: Record<string, unknown>): void {
 
 /**
  * Set the account information. The account info is attached to all subsequent supported events.
+ * An `id` is required: calls without one are ignored (with a warning).
  * @param accountInfo - The account information containing at least an `id`.
  * @example
  * setAccountInfo({ id: 'account-456', name: 'Acme Corp' });

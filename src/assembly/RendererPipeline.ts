@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron';
 import { type TimeStamp } from '@datadog/js-core/time';
-import { combine, isIndexableObject } from '@datadog/js-core/util';
+import { combine, isIndexableObject, type RecursivePartial } from '@datadog/js-core/util';
 import { DISCARDED } from '@datadog/js-core/assembly';
 import { EventKind, EventSource, EventTrack, LifecycleKind, EventFormat } from '../event';
 import type { EventManager, ServerRumEvent, BrowserProfileEvent, BrowserProfilerTrace } from '../event';
@@ -119,18 +119,7 @@ export class RendererPipeline {
       return;
     }
 
-    // The renderer's own user/account context takes precedence. An anonymous-only renderer user
-    // is the exception: preserve its anonymous_id while enriching it with the main-process user.
-    // session/application/container always come from the main process.
-    const overrides = { ...(hookResult ?? {}) };
-    if (hasContext(data.usr)) {
-      if (isAnonymousOnlyUserContext(data.usr) && hasContext(overrides.usr)) {
-        overrides.usr = combine(overrides.usr, data.usr);
-      } else {
-        delete overrides.usr;
-      }
-    }
-    if (hasContext(data.account)) delete overrides.account;
+    const overrides = resolveCustomerContextOverrides(data, hookResult);
 
     const serverEvent: ServerRumEvent = {
       kind: EventKind.SERVER,
@@ -141,6 +130,27 @@ export class RendererPipeline {
 
     this.eventManager.notify(serverEvent);
   }
+}
+
+/**
+ * The renderer's own user/account context takes precedence. An anonymous-only renderer user
+ * is the exception: preserve its anonymous_id while enriching it with the main-process user.
+ * session/application/container always come from the main process.
+ */
+function resolveCustomerContextOverrides(
+  data: RumEvent,
+  hookResult: RecursivePartial<RumEvent> | null | undefined
+): RecursivePartial<RumEvent> {
+  const overrides = { ...(hookResult ?? {}) };
+  if (hasContext(data.usr)) {
+    if (isAnonymousOnlyUserContext(data.usr) && hasContext(overrides.usr)) {
+      overrides.usr = combine(overrides.usr, data.usr);
+    } else {
+      delete overrides.usr;
+    }
+  }
+  if (hasContext(data.account)) delete overrides.account;
+  return overrides;
 }
 
 /** Whether the renderer event already carries a non-empty context object. */
