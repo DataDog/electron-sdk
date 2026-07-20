@@ -1,21 +1,25 @@
-import { MainAssembly, RendererPipeline, createFormatHooks, registerCommonContext } from './assembly';
+import type { AccountInfo, UserInfo } from './domain/customer-context';
+import { AccountContext, UserContext } from './domain/customer-context';
+import { createFormatHooks, MainAssembly, registerCommonContext, RendererPipeline } from './assembly';
 import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
+import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './domain/rum';
 import { RumCollection } from './domain/rum';
 import { SessionManager } from './domain/session';
-import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './domain/rum';
 import { callMonitored, startTelemetry } from './domain/telemetry';
+import { SpanProcessor } from './domain/tracing/SpanProcessor';
+import { Tracing } from './domain/tracing/Tracing';
+import { ProfilingCollection } from './domain/profiling';
 import { EventManager } from './event';
 import { Transport } from './transport';
-import { Tracing } from './domain/tracing/Tracing';
-import { SpanProcessor } from './domain/tracing/SpanProcessor';
-import { ProfilingCollection } from './domain/profiling';
 
 let sessionManager: SessionManager | undefined;
 let eventManager: EventManager | undefined;
 let transport: Transport | undefined;
 let rumApi: ReturnType<RumCollection['getApi']> | undefined;
 let tracing: Tracing | undefined;
+let userContext: UserContext | undefined;
+let accountContext: AccountContext | undefined;
 
 /**
  * Internal SDK context
@@ -48,6 +52,8 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   const hooks = createFormatHooks();
 
   registerCommonContext(config, hooks);
+  userContext = await UserContext.init(hooks);
+  accountContext = await AccountContext.init(hooks);
   startTelemetry(eventManager, config);
   sessionManager = await SessionManager.start(eventManager, hooks, config);
 
@@ -72,6 +78,102 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
  */
 export function stopSession(): void {
   callMonitored(() => sessionManager?.expire());
+}
+
+/**
+ * Set the user information. The user info is attached to all subsequent supported events.
+ * An `id` is required: calls without one are ignored (with a warning). To attach attributes to a
+ * user whose `id` is managed elsewhere (e.g. derived from `anonymous_id`), use `addUserExtraInfo`.
+ * @param user - The user information, including an `id`.
+ * @example
+ * setUserInfo({ id: 'user-123', name: 'Alice', email: 'alice@example.com' });
+ * addUserExtraInfo({ plan: 'premium' });
+ * // Later, when the user logs out:
+ * clearUserInfo();
+ */
+export function setUserInfo(user: UserInfo & { id: string }): void {
+  callMonitored(() => userContext?.setUserInfo(user));
+}
+
+/**
+ * Return a copy of the current user information, or `undefined` if none is set.
+ * @example
+ * const user = getUserInfo(); // { id: 'user-123', name: 'Alice' }
+ */
+export function getUserInfo(): UserInfo | undefined {
+  return userContext?.getInfo();
+}
+
+/**
+ * Clear all user information from subsequent supported events.
+ * @example
+ * clearUserInfo();
+ */
+export function clearUserInfo(): void {
+  callMonitored(() => userContext?.clearContext());
+}
+
+/**
+ * Add custom attributes to the current user, merged into its `extraInfo`.
+ * Set an attribute value to `null` to remove it.
+ * Standard fields (`id`, `name`, `email`) can only be set via `setUserInfo`.
+ * Works even when no user has been set, so attributes can be attached to a user whose `id` is
+ * derived elsewhere (e.g. from `anonymous_id`).
+ * @param extraInfo - Custom attributes to merge into the user's `extraInfo`.
+ * @example
+ * addUserExtraInfo({ plan: 'premium', role: 'admin' });
+ * // Remove an attribute by setting it to null:
+ * addUserExtraInfo({ role: null });
+ */
+export function addUserExtraInfo(extraInfo: Record<string, unknown>): void {
+  callMonitored(() => userContext?.addExtraInfo(extraInfo));
+}
+
+/**
+ * Set the account information. The account info is attached to all subsequent supported events.
+ * An `id` is required: calls without one are ignored (with a warning).
+ * @param accountInfo - The account information containing at least an `id`.
+ * @example
+ * setAccountInfo({ id: 'account-456', name: 'Acme Corp' });
+ * addAccountExtraInfo({ tier: 'enterprise' });
+ * // Later, when the account is no longer active:
+ * clearAccountInfo();
+ */
+export function setAccountInfo(accountInfo: AccountInfo): void {
+  callMonitored(() => accountContext?.setContext(accountInfo));
+}
+
+/**
+ * Return a copy of the current account information, or `undefined` if none is set.
+ * @example
+ * const account = getAccountInfo(); // { id: 'account-456', name: 'Acme Corp' }
+ */
+export function getAccountInfo(): AccountInfo | undefined {
+  return accountContext?.getInfo();
+}
+
+/**
+ * Clear all account information from subsequent supported events.
+ * @example
+ * clearAccountInfo();
+ */
+export function clearAccountInfo(): void {
+  callMonitored(() => accountContext?.clearContext());
+}
+
+/**
+ * Add custom attributes to the current account, merged into its `extraInfo`.
+ * Set an attribute value to `null` to remove it.
+ * Standard fields (`id`, `name`) can only be set via `setAccountInfo`.
+ * Requires `setAccountInfo` to have been called first; otherwise the call is ignored.
+ * @param extraInfo - Custom attributes to merge into the account's `extraInfo`.
+ * @example
+ * addAccountExtraInfo({ tier: 'enterprise', region: 'us' });
+ * // Remove an attribute by setting it to null:
+ * addAccountExtraInfo({ region: null });
+ */
+export function addAccountExtraInfo(extraInfo: Record<string, unknown>): void {
+  callMonitored(() => accountContext?.addExtraInfo(extraInfo));
 }
 
 /**
@@ -187,6 +289,7 @@ export function getInternalContext(): InternalContext | undefined {
   return { session_id: sessionId };
 }
 
+export type { AccountInfo, UserInfo } from './domain/customer-context';
 export type { InitConfiguration } from './config';
 export type {
   FailureReason,

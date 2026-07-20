@@ -1,9 +1,10 @@
 import { ipcMain } from 'electron';
 import { type TimeStamp } from '@datadog/js-core/time';
-import { combine, isIndexableObject } from '@datadog/js-core/util';
+import { combine, isIndexableObject, type RecursivePartial } from '@datadog/js-core/util';
 import { DISCARDED } from '@datadog/js-core/assembly';
 import { EventKind, EventSource, EventTrack, LifecycleKind, EventFormat } from '../event';
 import type { EventManager, ServerRumEvent, BrowserProfileEvent, BrowserProfilerTrace } from '../event';
+import { isEmptyObject } from '@datadog/browser-core';
 import { monitor, addError as addTelemetryError } from '../domain/telemetry';
 import { BRIDGE_CHANNEL, setBridgeConfig, type BridgeOptions } from '../common';
 import type { FormatHooks } from './hooks';
@@ -70,7 +71,8 @@ export class RendererPipeline {
         this.handleRumEvent(bridgeEvent.event);
         break;
       case 'log':
-        // TODO(RUM-15047)
+        // TODO(RUM-15047): when Logs are implemented, enrich them with user/account context
+        // matching mobile: `usr.*` and `account.*`.
         break;
       case 'internal_telemetry':
         // TODO(RUM-15253)
@@ -117,13 +119,48 @@ export class RendererPipeline {
       return;
     }
 
+    const overrides = resolveCustomerContextOverrides(data, hookResult);
+
     const serverEvent: ServerRumEvent = {
       kind: EventKind.SERVER,
       track: EventTrack.RUM,
       source: EventSource.RENDERER,
-      data: combine(data, hookResult ?? {}),
+      data: combine(data, overrides),
     };
 
     this.eventManager.notify(serverEvent);
   }
+}
+
+/**
+ * The renderer's own user/account context takes precedence. An anonymous-only renderer user
+ * is the exception: preserve its anonymous_id while enriching it with the main-process user.
+ * session/application/container always come from the main process.
+ */
+function resolveCustomerContextOverrides(
+  data: RumEvent,
+  hookResult: RecursivePartial<RumEvent> | null | undefined
+): RecursivePartial<RumEvent> {
+  const overrides = { ...(hookResult ?? {}) };
+  if (hasContext(data.usr)) {
+    if (isAnonymousOnlyUserContext(data.usr) && hasContext(overrides.usr)) {
+      overrides.usr = combine(overrides.usr, data.usr);
+    } else {
+      delete overrides.usr;
+    }
+  }
+  if (hasContext(data.account)) delete overrides.account;
+  return overrides;
+}
+
+/** Whether the renderer event already carries a non-empty context object. */
+function hasContext(context: object | undefined): boolean {
+  return context !== undefined && !isEmptyObject(context);
+}
+
+/** Whether the renderer carries only Browser RUM's automatically generated anonymous user id. */
+function isAnonymousOnlyUserContext(context: RumEvent['usr']): boolean {
+  if (context === undefined) return false;
+  const keys = Object.keys(context);
+  return keys.length > 0 && keys.every((key) => key === 'anonymous_id');
 }

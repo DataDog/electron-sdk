@@ -32,6 +32,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       void ipcRenderer.invoke('triggerMainSend');
     }),
   flushTransport: () => ipcRenderer.invoke('flushTransport'),
+  setUserInfo: (user: Record<string, unknown>) => ipcRenderer.invoke('setUserInfo', user),
+  clearUserInfo: () => ipcRenderer.invoke('clearUserInfo'),
+  addUserExtraInfo: (extraInfo: Record<string, unknown>) => ipcRenderer.invoke('addUserExtraInfo', extraInfo),
+  setAccountInfo: (accountInfo: Record<string, unknown>) => ipcRenderer.invoke('setAccountInfo', accountInfo),
+  clearAccountInfo: () => ipcRenderer.invoke('clearAccountInfo'),
+  addAccountExtraInfo: (extraInfo: Record<string, unknown>) => ipcRenderer.invoke('addAccountExtraInfo', extraInfo),
   crash: () => ipcRenderer.invoke('crash'),
   ping: () => ipcRenderer.invoke('ping'),
   openBridgeFileWindow: () => ipcRenderer.invoke('openBridgeFileWindow'),

@@ -212,6 +212,88 @@ describe('RendererPipeline', () => {
     });
   });
 
+  describe('usr and account context', () => {
+    it('injects main-process usr when the renderer event has none', () => {
+      hooks.registerRum(() => ({ usr: { id: 'main-user', email: 'main@example.com' } }));
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
+
+      expect(serverEvents[0].data.usr).toEqual({ id: 'main-user', email: 'main@example.com' });
+    });
+
+    it('injects main-process account when the renderer event has none', () => {
+      hooks.registerRum(() => ({ account: { id: 'main-account', name: 'Acme' } }));
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
+
+      expect(serverEvents[0].data.account).toEqual({ id: 'main-account', name: 'Acme' });
+    });
+
+    it('preserves the renderer usr and does not inject main-process usr', () => {
+      hooks.registerRum(() => ({ usr: { id: 'main-user', email: 'main@example.com' } }));
+      const event = { ...RENDERER_RUM_DATA, usr: { id: 'renderer-user' } };
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event }));
+
+      expect(serverEvents[0].data.usr).toEqual({ id: 'renderer-user' });
+    });
+
+    it('preserves the renderer account and does not inject main-process account', () => {
+      hooks.registerRum(() => ({ account: { id: 'main-account', name: 'Acme' } }));
+      const event = { ...RENDERER_RUM_DATA, account: { id: 'renderer-account' } };
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event }));
+
+      expect(serverEvents[0].data.account).toEqual({ id: 'renderer-account' });
+    });
+
+    it('treats an empty renderer usr as absent and injects main-process usr', () => {
+      hooks.registerRum(() => ({ usr: { id: 'main-user' } }));
+      const event = { ...RENDERER_RUM_DATA, usr: {} };
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event }));
+
+      expect(serverEvents[0].data.usr).toEqual({ id: 'main-user' });
+    });
+
+    it('merges main-process usr with an anonymous-only renderer usr', () => {
+      hooks.registerRum(() => ({ usr: { id: 'main-user', name: 'Alice' } }));
+      const event = { ...RENDERER_RUM_DATA, usr: { anonymous_id: 'anonymous-user' } };
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event }));
+
+      expect(serverEvents[0].data.usr).toEqual({
+        anonymous_id: 'anonymous-user',
+        id: 'main-user',
+        name: 'Alice',
+      });
+    });
+
+    it('preserves an explicit renderer usr that also has an anonymous id', () => {
+      hooks.registerRum(() => ({ usr: { id: 'main-user', email: 'main@example.com' } }));
+      const event = {
+        ...RENDERER_RUM_DATA,
+        usr: { anonymous_id: 'anonymous-user', id: 'renderer-user' },
+      };
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event }));
+
+      expect(serverEvents[0].data.usr).toEqual({
+        anonymous_id: 'anonymous-user',
+        id: 'renderer-user',
+      });
+    });
+
+    it('keeps the renderer usr untouched when the main process has none', () => {
+      hooks.registerRum(() => ({ session: { id: 'main-session' } }));
+      const event = { ...RENDERER_RUM_DATA, usr: { id: 'renderer-user' } };
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event }));
+
+      expect(serverEvents[0].data.usr).toEqual({ id: 'renderer-user' });
+    });
+  });
+
   describe('user activity tracking', () => {
     it('emits END_USER_ACTIVITY for click actions', () => {
       const lifecycleEvents: unknown[] = [];
