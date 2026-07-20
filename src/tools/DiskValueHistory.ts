@@ -79,6 +79,13 @@ export class DiskValueHistory<T> {
     this.persistToDisk();
   }
 
+  pruneAndPersist(): void {
+    const pruned = this.history.pruneExpired();
+    if (pruned) {
+      this.persistToDisk();
+    }
+  }
+
   getEntries(): readonly TimeStampHistoryEntry<T>[] {
     return this.history.getEntries();
   }

@@ -61,6 +61,12 @@ export class TimeStampValueHistory<T> {
     return this.entries;
   }
 
+  pruneExpired(): boolean {
+    const before = this.entries.length;
+    this.pruneExpiredValues();
+    return this.entries.length < before;
+  }
+
   private pruneExpiredValues(): void {
     const oldTimeThreshold = Date.now() - this.expireDelay;
     while (this.entries.length > 0) {

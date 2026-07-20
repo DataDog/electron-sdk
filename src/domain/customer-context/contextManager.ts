@@ -10,6 +10,7 @@ export interface ContextHistory {
   add(value: Context, startTime: TimeStamp): void;
   closeActive(endTime: TimeStamp): void;
   closeAndAdd(value: Context, atTime: TimeStamp): void;
+  pruneAndPersist(): void;
   find(startTime: TimeStamp): Context | undefined;
 }
 
@@ -144,6 +145,7 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
     const now = timeStampNow();
     if (this.isEmpty()) {
       this.history.closeActive(now);
+      this.history.pruneAndPersist();
     } else {
       this.history.closeAndAdd(deepClone(this.getCurrentContext()), now);
     }
@@ -177,8 +179,13 @@ function toSpanMetaValue(value: unknown): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value === 'string') return value;
 
-  const json = JSON.stringify(value);
-  return typeof json === 'string' ? json : undefined;
+  try {
+    const json = JSON.stringify(value);
+    return typeof json === 'string' ? json : undefined;
+  } catch {
+    display.warn('Span tag value could not be serialized and will be skipped:', value);
+    return undefined;
+  }
 }
 
 function isValuePresent(value: unknown): boolean {

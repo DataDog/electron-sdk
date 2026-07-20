@@ -53,6 +53,15 @@ describe('UserContext', () => {
       });
     });
 
+    it('skips non-serializable extraInfo values without throwing', () => {
+      userContext.setContext({ id: 'user-1', extraInfo: { plan: 'premium', count: BigInt(1) } });
+
+      expect(() => triggerSpan()).not.toThrow();
+      expect(triggerSpan()).toEqual({
+        meta: { 'usr.id': 'user-1', 'usr.plan': 'premium' },
+      });
+    });
+
     it('does not let extraInfo override standard span meta fields', () => {
       userContext.setContext({ id: 'user-1', name: 'Alice' });
       userContext.addExtraInfo({ id: 'hacked', name: 'hacked' });
@@ -312,6 +321,7 @@ function createHistory(find: ContextHistory['find']): ContextHistory {
     add: vi.fn(),
     closeActive: vi.fn(),
     closeAndAdd: vi.fn(),
+    pruneAndPersist: vi.fn(),
     find,
   };
 }
