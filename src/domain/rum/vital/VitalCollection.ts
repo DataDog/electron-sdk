@@ -71,29 +71,28 @@ export class VitalCollection {
   }
 
   private start(name: string, options?: DurationVitalOptions): void {
-    const normalizedOptions = options ?? {};
-    this.pendingVitals.set(getDurationVitalKey(name, normalizedOptions), {
+    const normalized = normalizeOptions(name, options);
+    this.pendingVitals.set(normalized.key, {
       id: generateUUID(),
       name,
       startTime: timeStampNow(),
-      options: normalizedOptions,
+      options: normalized.options,
     });
   }
 
   private stopVital(name: string, options?: DurationVitalOptions): void {
-    const normalizedOptions = options ?? {};
-    const key = getDurationVitalKey(name, normalizedOptions);
-    const pending = this.pendingVitals.get(key);
+    const normalized = normalizeOptions(name, options);
+    const pending = this.pendingVitals.get(normalized.key);
     if (!pending) {
       return;
     }
 
-    this.pendingVitals.delete(key);
+    this.pendingVitals.delete(normalized.key);
     const stopTime = timeStampNow();
     this.emit({
       ...pending,
       duration: elapsed(pending.startTime, stopTime),
-      options: combine(pending.options, normalizedOptions),
+      options: combine(pending.options, normalized.options),
     });
   }
 
@@ -120,6 +119,10 @@ export class VitalCollection {
   }
 }
 
-function getDurationVitalKey(name: string, options: DurationVitalOptions): string {
-  return options.vitalKey ?? name;
+function normalizeOptions(name: string, options?: DurationVitalOptions) {
+  const normalizedOptions = options ?? {};
+  return {
+    key: normalizedOptions.vitalKey ?? name,
+    options: normalizedOptions,
+  };
 }
