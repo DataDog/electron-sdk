@@ -9,6 +9,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   generateUnhandledRejection: () => ipcRenderer.invoke('generateUnhandledRejection'),
   crash: () => ipcRenderer.invoke('crash'),
   mainFetchApi: () => ipcRenderer.invoke('main:fetch-api'),
+  addDurationVital: (
+    name: string,
+    options: {
+      startTime: number;
+      duration: number;
+      vitalKey?: string;
+      context?: Record<string, unknown>;
+      description?: string;
+    }
+  ) => ipcRenderer.invoke('main:add-duration-vital', name, options),
+  startDurationVital: (
+    name: string,
+    options?: { vitalKey?: string; context?: Record<string, unknown>; description?: string }
+  ) => ipcRenderer.invoke('main:start-duration-vital', name, options),
+  stopDurationVital: (
+    name: string,
+    options?: { vitalKey?: string; context?: Record<string, unknown>; description?: string }
+  ) => ipcRenderer.invoke('main:stop-duration-vital', name, options),
   startOperation: (name: string, options?: { operationKey?: string }) =>
     ipcRenderer.invoke('main:start-operation', name, options),
   succeedOperation: (name: string, options?: { operationKey?: string }) =>

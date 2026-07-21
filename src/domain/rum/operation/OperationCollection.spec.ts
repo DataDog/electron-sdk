@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OperationCollection, type FeatureOperationOptions } from './OperationCollection';
 import { EventFormat, EventKind, EventManager, type RawRumEvent } from '../../../event';
-import type { RawRumVital } from '../rawRumData.types';
+import type { RawRumOperationStepVital } from '../rawRumData.types';
 import { display } from '../../../tools/display';
 
 vi.mock('../../../tools/display', () => ({
@@ -37,7 +37,7 @@ describe('OperationCollection', () => {
       operationCollection.getApi().startOperation('login');
 
       expect(rawRumEvents).toHaveLength(1);
-      const data = rawRumEvents[0].data as RawRumVital;
+      const data = rawRumEvents[0].data as RawRumOperationStepVital;
       expect(data.type).toBe('vital');
       expect(data.vital.type).toBe('operation_step');
       expect(data.vital.step_type).toBe('start');
@@ -51,7 +51,7 @@ describe('OperationCollection', () => {
       operationCollection.getApi().succeedOperation('login');
 
       expect(rawRumEvents).toHaveLength(1);
-      const data = rawRumEvents[0].data as RawRumVital;
+      const data = rawRumEvents[0].data as RawRumOperationStepVital;
       expect(data.vital.step_type).toBe('end');
       expect(data.vital.failure_reason).toBeUndefined();
     });
@@ -60,7 +60,7 @@ describe('OperationCollection', () => {
       operationCollection.getApi().failOperation('login', 'error');
 
       expect(rawRumEvents).toHaveLength(1);
-      const data = rawRumEvents[0].data as RawRumVital;
+      const data = rawRumEvents[0].data as RawRumOperationStepVital;
       expect(data.vital.step_type).toBe('end');
       expect(data.vital.failure_reason).toBe('error');
     });
@@ -68,14 +68,14 @@ describe('OperationCollection', () => {
     it('API-04 / PAY-10: operationKey is forwarded to the event payload', () => {
       operationCollection.getApi().startOperation('login', { operationKey: 'abc' });
 
-      const data = rawRumEvents[0].data as RawRumVital;
+      const data = rawRumEvents[0].data as RawRumOperationStepVital;
       expect(data.vital.operation_key).toBe('abc');
     });
 
     it('API-05: options.context is forwarded to the event context', () => {
       operationCollection.getApi().startOperation('login', { context: { key: 'value' } });
 
-      const data = rawRumEvents[0].data as RawRumVital;
+      const data = rawRumEvents[0].data as RawRumOperationStepVital;
       expect(data.context).toEqual({ key: 'value' });
     });
 
@@ -84,15 +84,15 @@ describe('OperationCollection', () => {
       operationCollection.getApi().startOperation('login');
 
       expect(rawRumEvents).toHaveLength(2);
-      const firstId = (rawRumEvents[0].data as RawRumVital).vital.id;
-      const secondId = (rawRumEvents[1].data as RawRumVital).vital.id;
+      const firstId = (rawRumEvents[0].data as RawRumOperationStepVital).vital.id;
+      const secondId = (rawRumEvents[1].data as RawRumOperationStepVital).vital.id;
       expect(firstId).not.toBe(secondId);
     });
 
     it('forwards description into the vital section when provided', () => {
       operationCollection.getApi().startOperation('login', { description: 'user tapped login' });
 
-      const data = rawRumEvents[0].data as RawRumVital;
+      const data = rawRumEvents[0].data as RawRumOperationStepVital;
       expect(data.vital.description).toBe('user tapped login');
     });
   });
@@ -136,7 +136,7 @@ describe('OperationCollection', () => {
       operationCollection.getApi().startOperation('login', { operationKey: undefined });
 
       expect(rawRumEvents).toHaveLength(1);
-      const data = rawRumEvents[0].data as RawRumVital;
+      const data = rawRumEvents[0].data as RawRumOperationStepVital;
       expect(data.vital.operation_key).toBeUndefined();
       expect(display.error).not.toHaveBeenCalled();
     });
@@ -215,7 +215,7 @@ describe('OperationCollection', () => {
       operationCollection.getApi().startOperation(name);
 
       expect(rawRumEvents).toHaveLength(1);
-      expect((rawRumEvents[0].data as RawRumVital).vital.name).toBe(name);
+      expect((rawRumEvents[0].data as RawRumOperationStepVital).vital.name).toBe(name);
       expect(display.warn).toHaveBeenCalledOnce();
       expect(vi.mocked(display.warn).mock.calls[0][0]).toContain('does not match');
       expect(vi.mocked(display.warn).mock.calls[0][0]).toContain('still be sent');
@@ -238,20 +238,20 @@ describe('OperationCollection', () => {
 
       expect(rawRumEvents).toHaveLength(1);
       expect(display.warn).not.toHaveBeenCalled();
-      expect((rawRumEvents[0].data as RawRumVital).vital.name).toBe(name);
+      expect((rawRumEvents[0].data as RawRumOperationStepVital).vital.name).toBe(name);
     });
 
     it('warns but still emits on succeedOperation with invalid characters', () => {
       operationCollection.getApi().succeedOperation('user login');
       expect(rawRumEvents).toHaveLength(1);
-      expect((rawRumEvents[0].data as RawRumVital).vital.step_type).toBe('end');
+      expect((rawRumEvents[0].data as RawRumOperationStepVital).vital.step_type).toBe('end');
       expect(display.warn).toHaveBeenCalledOnce();
     });
 
     it('warns but still emits on failOperation with invalid characters', () => {
       operationCollection.getApi().failOperation('user login', 'error');
       expect(rawRumEvents).toHaveLength(1);
-      const data = rawRumEvents[0].data as RawRumVital;
+      const data = rawRumEvents[0].data as RawRumOperationStepVital;
       expect(data.vital.step_type).toBe('end');
       expect(data.vital.failure_reason).toBe('error');
       expect(display.warn).toHaveBeenCalledOnce();
@@ -262,7 +262,7 @@ describe('OperationCollection', () => {
       operationCollection.getApi().startOperation('login', { operationKey: 'session-42 / user foo' });
       expect(rawRumEvents).toHaveLength(1);
       expect(display.warn).not.toHaveBeenCalled();
-      expect((rawRumEvents[0].data as RawRumVital).vital.operation_key).toBe('session-42 / user foo');
+      expect((rawRumEvents[0].data as RawRumOperationStepVital).vital.operation_key).toBe('session-42 / user foo');
     });
   });
 
@@ -273,7 +273,7 @@ describe('OperationCollection', () => {
     it.each(['error', 'abandoned', 'other'] as const)('PAY-04: failure reason %s serialises correctly', (reason) => {
       operationCollection.getApi().failOperation('login', reason);
 
-      const data = rawRumEvents[0].data as RawRumVital;
+      const data = rawRumEvents[0].data as RawRumOperationStepVital;
       expect(data.vital.failure_reason).toBe(reason);
       expect(display.warn).not.toHaveBeenCalled();
     });
@@ -293,7 +293,7 @@ describe('OperationCollection', () => {
       operationCollection.getApi().failOperation('login', reason as 'error');
 
       expect(rawRumEvents).toHaveLength(1);
-      const data = rawRumEvents[0].data as RawRumVital;
+      const data = rawRumEvents[0].data as RawRumOperationStepVital;
       expect(data.vital.step_type).toBe('end');
       expect(data.vital.failure_reason).toBe(reason);
       expect(display.warn).toHaveBeenCalledOnce();
@@ -310,20 +310,20 @@ describe('OperationCollection', () => {
       expect(event.startTime).toBeDefined();
       expect(event.startTime).toBeGreaterThanOrEqual(before);
       expect(event.startTime).toBeLessThanOrEqual(after);
-      expect((event.data as RawRumVital).date).toBe(event.startTime);
+      expect((event.data as RawRumOperationStepVital).date).toBe(event.startTime);
     });
 
     it('omits vital.description when not provided', () => {
       operationCollection.getApi().startOperation('login');
 
-      const data = rawRumEvents[0].data as RawRumVital;
+      const data = rawRumEvents[0].data as RawRumOperationStepVital;
       expect('description' in data.vital).toBe(false);
     });
 
     it('defaults context to an empty object when options.context is omitted', () => {
       operationCollection.getApi().startOperation('login');
 
-      const data = rawRumEvents[0].data as RawRumVital;
+      const data = rawRumEvents[0].data as RawRumOperationStepVital;
       expect(data.context).toEqual({});
     });
   });
@@ -353,7 +353,7 @@ describe('OperationCollection', () => {
       operationCollection.getApi().failOperation('login', 'error');
 
       expect(rawRumEvents).toHaveLength(1);
-      const data = rawRumEvents[0].data as RawRumVital;
+      const data = rawRumEvents[0].data as RawRumOperationStepVital;
       expect(data.vital.step_type).toBe('end');
       expect(data.vital.failure_reason).toBe('error');
       expect(display.error).not.toHaveBeenCalled();
@@ -381,7 +381,7 @@ describe('OperationCollection', () => {
 
       expect(rawRumEvents).toHaveLength(4);
       expect(display.error).not.toHaveBeenCalled();
-      const payloads = rawRumEvents.map((e) => (e.data as RawRumVital).vital);
+      const payloads = rawRumEvents.map((e) => (e.data as RawRumOperationStepVital).vital);
       expect(payloads[0]).toMatchObject({ step_type: 'start', operation_key: 'a' });
       expect(payloads[1]).toMatchObject({ step_type: 'start', operation_key: 'b' });
       expect(payloads[2]).toMatchObject({ step_type: 'end', operation_key: 'a' });
@@ -406,14 +406,14 @@ describe('OperationCollection', () => {
       const longName = 'a'.repeat(500);
       operationCollection.getApi().startOperation(longName);
 
-      const data = rawRumEvents[0].data as RawRumVital;
+      const data = rawRumEvents[0].data as RawRumOperationStepVital;
       expect(data.vital.name).toBe(longName);
     });
 
     it('EDGE-06: schema-allowed special characters in operation name are preserved', () => {
       operationCollection.getApi().startOperation('login-v2@1.0.0');
 
-      const data = rawRumEvents[0].data as RawRumVital;
+      const data = rawRumEvents[0].data as RawRumOperationStepVital;
       expect(data.vital.name).toBe('login-v2@1.0.0');
     });
   });
@@ -435,7 +435,7 @@ describe('OperationCollection', () => {
       operationCollection.getApi().startFeatureOperation('login');
 
       expect(rawRumEvents).toHaveLength(1);
-      const data = rawRumEvents[0].data as RawRumVital;
+      const data = rawRumEvents[0].data as RawRumOperationStepVital;
       expect(data.vital.step_type).toBe('start');
       expect(data.vital.name).toBe('login');
     });
@@ -444,7 +444,7 @@ describe('OperationCollection', () => {
       operationCollection.getApi().succeedFeatureOperation('login');
 
       expect(rawRumEvents).toHaveLength(1);
-      const data = rawRumEvents[0].data as RawRumVital;
+      const data = rawRumEvents[0].data as RawRumOperationStepVital;
       expect(data.vital.step_type).toBe('end');
       expect(data.vital.failure_reason).toBeUndefined();
     });
@@ -453,7 +453,7 @@ describe('OperationCollection', () => {
       operationCollection.getApi().failFeatureOperation('login', 'error');
 
       expect(rawRumEvents).toHaveLength(1);
-      const data = rawRumEvents[0].data as RawRumVital;
+      const data = rawRumEvents[0].data as RawRumOperationStepVital;
       expect(data.vital.step_type).toBe('end');
       expect(data.vital.failure_reason).toBe('error');
     });
@@ -463,7 +463,7 @@ describe('OperationCollection', () => {
         .getApi()
         .startFeatureOperation('upload', { operationKey: 'k1', context: { foo: 'bar' }, description: 'desc' });
 
-      const data = rawRumEvents[0].data as RawRumVital;
+      const data = rawRumEvents[0].data as RawRumOperationStepVital;
       expect(data.vital.operation_key).toBe('k1');
       expect(data.vital.description).toBe('desc');
       expect(data.context).toEqual({ foo: 'bar' });

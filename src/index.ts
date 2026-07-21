@@ -1,6 +1,7 @@
+import { MainAssembly, RendererPipeline, createFormatHooks, registerCommonContext } from './assembly';
+import { setDurationVitalApi } from './api';
 import type { AccountInfo, UserInfo } from './domain/customer-context';
 import { AccountContext, UserContext } from './domain/customer-context';
-import { createFormatHooks, MainAssembly, registerCommonContext, RendererPipeline } from './assembly';
 import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
 import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './domain/rum';
@@ -69,6 +70,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   transport = await Transport.create(config, eventManager);
   const rum = await RumCollection.start(eventManager, hooks);
   rumApi = rum.getApi();
+  setDurationVitalApi(rumApi);
 
   return true;
 }
@@ -289,15 +291,19 @@ export function getInternalContext(): InternalContext | undefined {
   return { session_id: sessionId };
 }
 
+export { addDurationVital, startDurationVital, stopDurationVital } from './api';
 export type { AccountInfo, UserInfo } from './domain/customer-context';
 export type { InitConfiguration } from './config';
 export type {
+  AddDurationVitalOptions,
+  DurationVitalOptions,
   FailureReason,
   FeatureOperationOptions,
   RumErrorEvent,
   RumResourceEvent,
   RumViewEvent,
   RumVitalEvent,
+  RumVitalDurationEvent,
   RumVitalOperationStepEvent,
 } from './domain/rum';
 export type { TelemetryErrorEvent } from './domain/telemetry';

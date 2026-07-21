@@ -1,8 +1,14 @@
 import { type TimeStamp, type ServerDuration } from '@datadog/js-core/time';
 import { type RecursivePartial } from '@datadog/js-core/util';
-import { RumErrorEvent, RumResourceEvent, RumViewEvent, RumVitalOperationStepEvent } from './rumEvent.types';
+import {
+  RumErrorEvent,
+  RumResourceEvent,
+  RumViewEvent,
+  RumVitalDurationEvent,
+  RumVitalOperationStepEvent,
+} from './rumEvent.types';
 
-export type RawRumData = RawRumView | RawRumError | RawRumVital | RawRumResource;
+export type RawRumData = RawRumView | RawRumError | RawRumOperationStepVital | RawRumDurationVital | RawRumResource;
 
 export interface RawRumView extends RecursivePartial<RumViewEvent> {
   type: 'view';
@@ -55,7 +61,7 @@ export interface RawRumError extends RecursivePartial<RumErrorEvent> {
 
 type RumVitalOperationStepEventVital = NonNullable<RumVitalOperationStepEvent['vital']>;
 
-export interface RawRumVital extends RecursivePartial<RumVitalOperationStepEvent> {
+export interface RawRumOperationStepVital extends RecursivePartial<RumVitalOperationStepEvent> {
   type: 'vital';
   date: TimeStamp;
   context?: Record<string, unknown>;
@@ -67,6 +73,21 @@ export interface RawRumVital extends RecursivePartial<RumVitalOperationStepEvent
     step_type: RumVitalOperationStepEventVital['step_type'];
     operation_key?: string;
     failure_reason?: RumVitalOperationStepEventVital['failure_reason'];
+  };
+}
+
+type RumVitalDurationEventVital = NonNullable<RumVitalDurationEvent['vital']>;
+
+export interface RawRumDurationVital extends RecursivePartial<RumVitalDurationEvent> {
+  type: 'vital';
+  date: TimeStamp;
+  context?: Record<string, unknown>;
+  vital: {
+    id: string;
+    name: string;
+    description?: string;
+    type: RumVitalDurationEventVital['type'];
+    duration: ServerDuration;
   };
 }
 

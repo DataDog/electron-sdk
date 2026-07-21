@@ -43,6 +43,9 @@ import {
   _generateTelemetryError,
   _flushTransport,
   stopSession,
+  addDurationVital,
+  startDurationVital,
+  stopDurationVital,
   startOperation,
   succeedOperation,
   failOperation,
@@ -53,6 +56,8 @@ import {
   clearAccountInfo,
   addAccountExtraInfo,
   type FailureReason,
+  type AddDurationVitalOptions,
+  type DurationVitalOptions,
   type FeatureOperationOptions,
   type UserInfo,
   type AccountInfo,
@@ -144,6 +149,18 @@ void app.whenReady().then(async () => {
 
   ipcMain.handle('generateManualError', (_event, startTime?: number) => {
     addError(new Error('test manual error'), { context: { foo: 'bar' }, startTime });
+  });
+
+  ipcMain.handle('addDurationVital', (_event, name: string, options: AddDurationVitalOptions) => {
+    addDurationVital(name, options);
+  });
+
+  ipcMain.handle('startDurationVital', (_event, name: string, options?: DurationVitalOptions) => {
+    startDurationVital(name, options);
+  });
+
+  ipcMain.handle('stopDurationVital', (_event, name: string, options?: DurationVitalOptions) => {
+    stopDurationVital(name, options);
   });
 
   ipcMain.handle('startOperation', (_event, name: string, options?: FeatureOperationOptions) => {
