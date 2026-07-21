@@ -36,7 +36,7 @@ export class RendererPipeline {
     private readonly eventManager: EventManager,
     private readonly hooks: FormatHooks,
     config: Configuration,
-    private readonly rumEventMapper = new RumEventMapper()
+    private readonly rumEventMapper: RumEventMapper
   ) {
     this.bridgeOptions = {
       defaultPrivacyLevel: config.defaultPrivacyLevel,

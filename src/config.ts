@@ -32,7 +32,8 @@ export type UploadFrequency = 'RARE' | 'NORMAL' | 'FREQUENT';
 /**
  * Synchronous function called before a fully assembled RUM event is sent to Datadog.
  * Keep this callback fast. Only supported field changes are applied; other mutations are ignored.
- * Return false to discard the event. View and crash events cannot be discarded.
+ * Only an explicit false discards the event; any other return value keeps it. View and crash events cannot be
+ * discarded.
  *
  * @example
  * ```ts
@@ -62,8 +63,8 @@ export interface InitConfiguration {
   defaultPrivacyLevel?: DefaultPrivacyLevel;
   allowedWebViewHosts?: string[];
   /**
-   * Synchronously modify supported fields on fully assembled RUM events, or return false to discard an event.
-   * Other mutations are ignored. View and crash events cannot be discarded.
+   * Synchronously modify supported fields on fully assembled RUM events. Only an explicit false discards an event;
+   * other mutations are ignored. View and crash events cannot be discarded.
    *
    * @example
    * ```ts

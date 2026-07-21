@@ -153,13 +153,15 @@ await init({
 });
 ```
 
-Returning `false` discards the event. View and native crash events cannot be discarded. Editable fields follow the [Browser SDK `beforeSend` allowlist](https://docs.datadoghq.com/real_user_monitoring/guide/enrich-and-control-rum-data/); event identity, session, application, and other protected fields remain unchanged. Callback errors are logged and the event is still sent.
+Only returning `false` discards the event. View and native crash events cannot be discarded. Editable fields follow the [Browser SDK `beforeSend` allowlist](https://docs.datadoghq.com/real_user_monitoring/guide/enrich-and-control-rum-data/); event identity, session, application, and other protected fields remain unchanged. Callback errors are logged and the event is still sent.
 
 The callback is synchronous and should remain fast. It does not automatically detect PII. Unlike Browser SDK `beforeSend`, it receives no raw DOM, XHR, or original error context because those renderer objects cannot cross the process boundary.
 
 Renderer events have already passed through any `beforeSend` configured in the renderer's Browser SDK. The Electron callback runs afterward, once main-process context is added. It can run multiple times for the same view as its metrics change; internal `view_update` payloads are not exposed.
 
 Renderer view counters are computed by the Browser SDK before events reach the main process, so filtering a renderer event here does not retroactively adjust those counters.
+
+Filtering a renderer click action does not suppress its session activity, so it can still keep or renew the session.
 
 ### Custom Duration Vitals
 

@@ -211,12 +211,14 @@ describe('RumEventMapper', () => {
   });
 
   it('removes an empty context after beforeSend', () => {
-    const mapper = new RumEventMapper((event) => {
-      expect(event.context).toEqual({});
+    const originalEvent = createServerRumError();
+    const mapper = new RumEventMapper((modifiableEvent) => {
+      expect(originalEvent.context).toBeUndefined();
+      expect(modifiableEvent.context).toEqual({});
       return true;
     });
 
-    expect(mapper.map(createServerRumError())?.context).toBeUndefined();
+    expect(mapper.map(originalEvent)?.context).toBeUndefined();
   });
 
   it('removes context cleared by beforeSend', () => {

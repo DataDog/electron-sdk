@@ -28,7 +28,7 @@ export class MainAssembly {
   constructor(
     private eventManager: EventManager,
     private hooks: FormatHooks,
-    private rumEventMapper = new RumEventMapper()
+    private rumEventMapper: RumEventMapper
   ) {
     this.eventManager.registerHandler<StandardRawEvent>({
       canHandle: (event): event is StandardRawEvent =>

@@ -67,10 +67,10 @@ export class RumEventMapper {
       return event;
     }
 
-    event.context ??= {};
     // Unknown event types only expose common modifiable fields.
     const modifiableFieldPaths = MODIFIABLE_FIELD_PATHS_BY_EVENT[event.type] ?? COMMON_MODIFIABLE_FIELD_PATHS;
     const result = limitModification(event, modifiableFieldPaths, (modifiableEvent) => {
+      modifiableEvent.context ??= {};
       try {
         return beforeSend(modifiableEvent);
       } catch (error) {

@@ -121,7 +121,7 @@ describe('RendererPipeline', () => {
       profilingSampleRate: 0,
     });
     mockSetBridgeConfig.mockClear();
-    new RendererPipeline(eventManager, hooks, config);
+    new RendererPipeline(eventManager, hooks, config, new RumEventMapper());
     expect(mockSetBridgeConfig).toHaveBeenCalledWith({
       defaultPrivacyLevel: 'allow',
       allowedWebViewHosts: ['example.com'],
@@ -133,14 +133,14 @@ describe('RendererPipeline', () => {
     it('advertises the profiles capability when profilingSampleRate > 0', () => {
       const config = createTestConfiguration({ profilingSampleRate: 100 });
       mockSetBridgeConfig.mockClear();
-      new RendererPipeline(new EventManager(), createFormatHooks(), config);
+      new RendererPipeline(new EventManager(), createFormatHooks(), config, new RumEventMapper());
       expect((mockSetBridgeConfig.mock.calls[0]?.[0] as BridgeOptions).capabilities).toEqual(['profiles']);
     });
 
     it('advertises no capabilities when profilingSampleRate is 0', () => {
       const config = createTestConfiguration({ profilingSampleRate: 0 });
       mockSetBridgeConfig.mockClear();
-      new RendererPipeline(new EventManager(), createFormatHooks(), config);
+      new RendererPipeline(new EventManager(), createFormatHooks(), config, new RumEventMapper());
       expect((mockSetBridgeConfig.mock.calls[0]?.[0] as BridgeOptions).capabilities).toEqual([]);
     });
   });
