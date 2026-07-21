@@ -49,8 +49,8 @@ export class VitalCollection {
 
   getApi() {
     return {
-      addDurationVital: (name: string, options: AddDurationVitalOptions) => this.add(name, options),
-      startDurationVital: (name: string, options?: DurationVitalOptions) => this.start(name, options),
+      addDurationVital: (name: string, options: AddDurationVitalOptions) => this.addVital(name, options),
+      startDurationVital: (name: string, options?: DurationVitalOptions) => this.startVital(name, options),
       stopDurationVital: (name: string, options?: DurationVitalOptions) => this.stopVital(name, options),
     };
   }
@@ -60,7 +60,7 @@ export class VitalCollection {
     this.sessionRenewSubscription.unsubscribe();
   }
 
-  private add(name: string, options: AddDurationVitalOptions): void {
+  private addVital(name: string, options: AddDurationVitalOptions): void {
     this.emit({
       id: generateUUID(),
       name,
@@ -70,7 +70,7 @@ export class VitalCollection {
     });
   }
 
-  private start(name: string, options?: DurationVitalOptions): void {
+  private startVital(name: string, options?: DurationVitalOptions): void {
     const normalized = normalizeOptions(name, options);
     this.pendingVitals.set(normalized.key, {
       id: generateUUID(),
