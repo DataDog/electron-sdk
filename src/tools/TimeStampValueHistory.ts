@@ -16,7 +16,9 @@ export interface TimeStampHistoryEntry<T> {
  * Closed entries have a finite `endTime` set via `closeActive()`.
  *
  * Find semantics (newest-first):
- * Return the first entry where entry.startTime <= startTime AND startTime <= entry.endTime.
+ * Return the first entry where entry.startTime <= startTime AND startTime < entry.endTime.
+ * The end boundary is exclusive so that closeActive(T) followed immediately by add(_, T) never
+ * matches the closed entry at time T — standard half-open [start, end) interval semantics.
  * If no entry satisfies both bounds, returns undefined (event is discarded).
  *
  * Pruning: expired closed entries (endTime < Date.now() - expireDelay) are pruned on add().
@@ -38,7 +40,7 @@ export class TimeStampValueHistory<T> {
   find(startTime: TimeStamp): T | undefined {
     for (const entry of this.entries) {
       if (entry.startTime <= startTime) {
-        if (startTime <= entry.endTime) {
+        if (startTime < entry.endTime) {
           return entry.value;
         }
         break;
@@ -57,6 +59,12 @@ export class TimeStampValueHistory<T> {
 
   getEntries(): readonly TimeStampHistoryEntry<T>[] {
     return this.entries;
+  }
+
+  pruneExpired(): boolean {
+    const before = this.entries.length;
+    this.pruneExpiredValues();
+    return this.entries.length < before;
   }
 
   private pruneExpiredValues(): void {

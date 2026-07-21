@@ -130,6 +130,7 @@ await esbuild.build({
 - **Renderer Events** — Capture RUM events from renderer processes via the browser SDK
 - **Custom Duration Vitals** — Measure user-defined durations in the main process
 - **Renderer Profiling** — Collect JS Self-Profiling data from renderer pages and correlate it with RUM
+- **User & Account Info** — Attach user and account identity to all RUM events and traces
 - **Operation Monitoring** _(experimental)_ — Track start / succeed / fail steps of critical user-facing workflows
 
 ### Custom Duration Vitals
@@ -157,6 +158,30 @@ stopDurationVital('document.open', {
 ```
 
 Times passed to the API are in milliseconds. Use `vitalKey` to measure overlapping durations with the same name; it identifies the measurement but is not included in the event. A measurement must be started and stopped in the same process. In renderer processes, use the equivalent `@datadog/browser-rum` APIs directly.
+
+### User & Account Info
+
+Attach user and account identity to all subsequent RUM events and traces from the main process. The SDK propagates context to spans and renderer RUM events automatically.
+
+```ts
+import { setUserInfo, clearUserInfo, addUserExtraInfo } from '@datadog/electron-sdk';
+import { setAccountInfo, clearAccountInfo, addAccountExtraInfo } from '@datadog/electron-sdk';
+
+// On login
+setUserInfo({ id: 'user-123', name: 'Alice', email: 'alice@example.com' });
+setAccountInfo({ id: 'account-456', name: 'Acme Corp' });
+
+// Enrich with custom attributes
+addUserExtraInfo({ plan: 'premium', role: 'admin' });
+addAccountExtraInfo({ tier: 'enterprise', region: 'us' });
+
+// Remove a custom attribute
+addUserExtraInfo({ role: null });
+
+// On logout
+clearUserInfo();
+clearAccountInfo();
+```
 
 ### Operation Monitoring _(experimental)_
 
@@ -225,6 +250,55 @@ protocol.registerSchemesAsPrivileged([
 ### `init(config: InitConfiguration): Promise<boolean>`
 
 Initialize the SDK. Returns `true` on success, `false` if configuration is invalid.
+
+### `setUserInfo(user: UserInfo & { id: string }): void`
+
+Set the user identity. The user is attached to all subsequent RUM events and spans. An `id` is required; calls without one are ignored with a warning.
+
+```ts
+interface UserInfo {
+  id?: string;
+  name?: string;
+  email?: string;
+  extraInfo?: Record<string, unknown>;
+}
+```
+
+### `getUserInfo(): UserInfo | undefined`
+
+Return a copy of the current user, or `undefined` if none is set.
+
+### `clearUserInfo(): void`
+
+Remove the user from all subsequent events.
+
+### `addUserExtraInfo(extraInfo: Record<string, unknown>): void`
+
+Merge custom attributes into the user's `extraInfo`. Set a key to `null` to remove it. Works even before `setUserInfo` is called — useful when the user `id` is derived elsewhere (e.g. from `anonymous_id`). Standard fields (`id`, `name`, `email`) are ignored here.
+
+### `setAccountInfo(accountInfo: AccountInfo): void`
+
+Set the account identity. An `id` is required.
+
+```ts
+interface AccountInfo {
+  id: string;
+  name?: string;
+  extraInfo?: Record<string, unknown>;
+}
+```
+
+### `getAccountInfo(): AccountInfo | undefined`
+
+Return a copy of the current account, or `undefined` if none is set.
+
+### `clearAccountInfo(): void`
+
+Remove the account from all subsequent events.
+
+### `addAccountExtraInfo(extraInfo: Record<string, unknown>): void`
+
+Merge custom attributes into the account's `extraInfo`. Set a key to `null` to remove it. Requires `setAccountInfo` to have been called first. Standard fields (`id`, `name`) are ignored here.
 
 ### `addError(error: unknown, options?: ErrorOptions): void`
 

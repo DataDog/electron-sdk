@@ -17,6 +17,12 @@ import {
   startOperation,
   succeedOperation,
   failOperation,
+  setUserInfo,
+  clearUserInfo,
+  addUserExtraInfo,
+  setAccountInfo,
+  clearAccountInfo,
+  addAccountExtraInfo,
   type AddDurationVitalOptions,
   type DurationVitalOptions,
   type FailureReason,
@@ -156,6 +162,32 @@ ipcMain.handle('main:start-duration-vital', (_event, name: string, options?: Dur
 
 ipcMain.handle('main:stop-duration-vital', (_event, name: string, options?: DurationVitalOptions) => {
   stopDurationVital(name, options);
+});
+
+// --- User & Account context handlers ---
+
+ipcMain.handle('main:set-user-info', () => {
+  setUserInfo({ id: 'user-playground', name: 'Playground User', email: 'playground@example.com' });
+});
+
+ipcMain.handle('main:add-user-extra-info', () => {
+  addUserExtraInfo({ plan: 'premium' });
+});
+
+ipcMain.handle('main:clear-user-info', () => {
+  clearUserInfo();
+});
+
+ipcMain.handle('main:set-account-info', () => {
+  setAccountInfo({ id: 'account-playground', name: 'Playground Corp' });
+});
+
+ipcMain.handle('main:add-account-extra-info', () => {
+  addAccountExtraInfo({ tier: 'enterprise' });
+});
+
+ipcMain.handle('main:clear-account-info', () => {
+  clearAccountInfo();
 });
 
 // --- Operation Monitoring demo handlers ---

@@ -1,9 +1,11 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import type {
+  AccountInfo,
   AddDurationVitalOptions,
   DurationVitalOptions,
   FailureReason,
   FeatureOperationOptions,
+  UserInfo,
 } from '@datadog/electron-sdk';
 import { BridgeWindowPage } from './bridgeWindowPage';
 
@@ -25,6 +27,12 @@ interface ElectronAppWindow {
     mainFireAndForget: () => Promise<void>;
     triggerMainSend: () => Promise<void>;
     flushTransport: () => Promise<void>;
+    setUserInfo: (user: UserInfo) => Promise<void>;
+    clearUserInfo: () => Promise<void>;
+    addUserExtraInfo: (extraInfo: Record<string, unknown>) => Promise<void>;
+    setAccountInfo: (accountInfo: AccountInfo) => Promise<void>;
+    clearAccountInfo: () => Promise<void>;
+    addAccountExtraInfo: (extraInfo: Record<string, unknown>) => Promise<void>;
     ping: () => Promise<string>;
     stopSession: () => Promise<void>;
     openBridgeFileWindow: () => Promise<void>;
@@ -167,6 +175,39 @@ export class MainPage {
 
   async flushTransport() {
     await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.flushTransport());
+  }
+
+  async setUserInfo(user: UserInfo) {
+    await this.page.evaluate((u) => (globalThis as unknown as ElectronAppWindow).electronAPI.setUserInfo(u), user);
+  }
+
+  async clearUserInfo() {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.clearUserInfo());
+  }
+
+  async addUserExtraInfo(extraInfo: Record<string, unknown>) {
+    await this.page.evaluate(
+      (info) => (globalThis as unknown as ElectronAppWindow).electronAPI.addUserExtraInfo(info),
+      extraInfo
+    );
+  }
+
+  async setAccountInfo(accountInfo: AccountInfo) {
+    await this.page.evaluate(
+      (a) => (globalThis as unknown as ElectronAppWindow).electronAPI.setAccountInfo(a),
+      accountInfo
+    );
+  }
+
+  async clearAccountInfo() {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.clearAccountInfo());
+  }
+
+  async addAccountExtraInfo(extraInfo: Record<string, unknown>) {
+    await this.page.evaluate(
+      (info) => (globalThis as unknown as ElectronAppWindow).electronAPI.addAccountExtraInfo(info),
+      extraInfo
+    );
   }
 
   crash() {
