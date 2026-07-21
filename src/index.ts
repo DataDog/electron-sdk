@@ -1,4 +1,4 @@
-import { MainAssembly, RendererPipeline, createFormatHooks, registerCommonContext } from './assembly';
+import { MainAssembly, RendererPipeline, RumEventMapper, createFormatHooks, registerCommonContext } from './assembly';
 import { setDurationVitalApi } from './api';
 import type { AccountInfo, UserInfo } from './domain/customer-context';
 import { AccountContext, UserContext } from './domain/customer-context';
@@ -58,8 +58,9 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   startTelemetry(eventManager, config);
   sessionManager = await SessionManager.start(eventManager, hooks, config);
 
-  new MainAssembly(eventManager, hooks);
-  new RendererPipeline(eventManager, hooks, config);
+  const rumEventMapper = new RumEventMapper(config.beforeSend);
+  new MainAssembly(eventManager, hooks, rumEventMapper);
+  new RendererPipeline(eventManager, hooks, config, rumEventMapper);
 
   new ProfilingCollection(eventManager, sessionManager, config, hooks);
 
@@ -293,13 +294,14 @@ export function getInternalContext(): InternalContext | undefined {
 
 export { addDurationVital, startDurationVital, stopDurationVital } from './api';
 export type { AccountInfo, UserInfo } from './domain/customer-context';
-export type { InitConfiguration } from './config';
+export type { InitConfiguration, RumBeforeSend } from './config';
 export type {
   AddDurationVitalOptions,
   DurationVitalOptions,
   FailureReason,
   FeatureOperationOptions,
   RumErrorEvent,
+  RumEvent,
   RumResourceEvent,
   RumViewEvent,
   RumVitalEvent,

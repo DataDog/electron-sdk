@@ -147,8 +147,8 @@ void app.whenReady().then(async () => {
     void Promise.reject(new Error('test unhandled rejection'));
   });
 
-  ipcMain.handle('generateManualError', (_event, startTime?: number) => {
-    addError(new Error('test manual error'), { context: { foo: 'bar' }, startTime });
+  ipcMain.handle('generateManualError', (_event, startTime?: number, context?: Record<string, string>) => {
+    addError(new Error('test manual error'), { context: context ?? { foo: 'bar' }, startTime });
   });
 
   ipcMain.handle('addDurationVital', (_event, name: string, options: AddDurationVitalOptions) => {
@@ -348,7 +348,25 @@ function createWindow() {
 
 function getConfiguration(): InitConfiguration {
   if (process.env.DD_ELECTRON_SDK_CONFIG) {
-    return JSON.parse(process.env.DD_ELECTRON_SDK_CONFIG) as InitConfiguration;
+    const config = JSON.parse(process.env.DD_ELECTRON_SDK_CONFIG) as InitConfiguration;
+    if (process.env.DD_E2E_BEFORE_SEND_MODE === 'scrub-and-filter') {
+      config.beforeSend = (event) => {
+        if (event.type !== 'error') {
+          return true;
+        }
+        if (event.context?.beforeSend === 'drop' || event.error.message === 'beforeSend renderer drop') {
+          return false;
+        }
+        if (event.context?.beforeSend === 'scrub') {
+          event.error.message = 'redacted main error';
+          event.context = { ...event.context, beforeSend: undefined, secret: '[REDACTED]' };
+        } else if (event.error.message === 'beforeSend renderer secret') {
+          event.error.message = 'redacted renderer error';
+        }
+        return true;
+      };
+    }
+    return config;
   }
   throw new Error('DD_ELECTRON_SDK_CONFIG environment variable is not set');
 }

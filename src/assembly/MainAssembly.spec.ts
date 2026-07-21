@@ -1,7 +1,8 @@
-import { beforeEach, describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED } from '@datadog/js-core/assembly';
 import { MainAssembly } from './MainAssembly';
+import { RumEventMapper } from './RumEventMapper';
 import { createFormatHooks, type FormatHooks } from './hooks';
 import {
   EventFormat,
@@ -30,6 +31,7 @@ const RAW_TELEMETRY_DATA: RawTelemetryData = {
 describe('MainAssembly', () => {
   let eventManager: EventManager;
   let hooks: FormatHooks;
+  let rumEventMapper: RumEventMapper;
   let serverEvents: ServerEvent[];
 
   function notifyRawRumEvent(overrides?: Partial<RawRumEvent>) {
@@ -53,6 +55,7 @@ describe('MainAssembly', () => {
   beforeEach(() => {
     eventManager = new EventManager();
     hooks = createFormatHooks();
+    rumEventMapper = new RumEventMapper();
     serverEvents = [];
 
     eventManager.registerHandler<ServerEvent>({
@@ -60,7 +63,7 @@ describe('MainAssembly', () => {
       handle: (event) => serverEvents.push(event),
     });
 
-    new MainAssembly(eventManager, hooks);
+    new MainAssembly(eventManager, hooks, rumEventMapper);
   });
 
   it('favors raw event attributes over hook attributes', () => {
@@ -111,14 +114,40 @@ describe('MainAssembly', () => {
     expect((serverEvents[0] as ServerRumEvent).source).toBe(EventSource.MAIN);
   });
 
+  it('maps fully assembled RUM events after hooks', () => {
+    hooks.registerRum(() => ({ session: { id: 'hook-session' } }));
+    vi.spyOn(rumEventMapper, 'map').mockImplementation((event) => {
+      expect(event.session.id).toBe('hook-session');
+      if (event.type === 'error') {
+        event.error.message = 'mapped';
+      }
+      return event;
+    });
+
+    notifyRawRumEvent();
+
+    expect(serverEvents[0].data).toMatchObject({ error: { message: 'mapped' } });
+  });
+
+  it('does not emit RUM events discarded by the mapper', () => {
+    hooks.registerRum(() => ({}));
+    vi.spyOn(rumEventMapper, 'map').mockReturnValue(undefined);
+
+    notifyRawRumEvent();
+
+    expect(serverEvents).toHaveLength(0);
+  });
+
   describe('TELEMETRY events', () => {
     it('emits ServerTelemetryEvent with source MAIN', () => {
       hooks.registerTelemetry(() => ({}));
+      const mapSpy = vi.spyOn(rumEventMapper, 'map');
 
       notifyRawTelemetryEvent();
 
       expect(serverEvents).toHaveLength(1);
       expect((serverEvents[0] as ServerTelemetryEvent).source).toBe(EventSource.MAIN);
+      expect(mapSpy).not.toHaveBeenCalled();
     });
 
     it('discards telemetry events when hook returns DISCARDED', () => {

@@ -14,18 +14,21 @@ import {
 import type { FormatHooks } from './hooks';
 import { RumEvent } from '../domain/rum';
 import { TelemetryEvent } from '../domain/telemetry';
+import { RumEventMapper } from './RumEventMapper';
 
 // Raw events assembled through the standard main-process hook pipeline.
 type StandardRawEvent = Exclude<RawEvent, RawProfileEvent>;
 
 /**
  * Transforms main-process RawEvents into ServerEvents by enriching them with
- * contextual attributes (session, application, view, etc.) via format hooks.
+ * contextual attributes (session, application, view, etc.) via format hooks,
+ * then applies beforeSend to fully assembled RUM events.
  */
 export class MainAssembly {
   constructor(
     private eventManager: EventManager,
-    private hooks: FormatHooks
+    private hooks: FormatHooks,
+    private rumEventMapper = new RumEventMapper()
   ) {
     this.eventManager.registerHandler<StandardRawEvent>({
       canHandle: (event): event is StandardRawEvent =>
@@ -50,11 +53,15 @@ export class MainAssembly {
         source,
       });
       if (hookResult !== DISCARDED) {
+        const data = this.rumEventMapper.map(assembleData<RumEvent>(event.data, hookResult));
+        if (!data) {
+          return DISCARDED;
+        }
         return {
           kind: EventKind.SERVER,
           track: EventTrack.RUM,
           source: EventSource.MAIN,
-          data: assembleData<RumEvent>(event.data, hookResult),
+          data,
         };
       }
     }

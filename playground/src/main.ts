@@ -7,6 +7,7 @@ import * as fs from 'node:fs';
 import * as https from 'node:https';
 import {
   init,
+  addError,
   stopSession,
   _flushTransport,
   getInternalContext,
@@ -116,6 +117,12 @@ ipcMain.handle('generateUncaughtException', () => {
 // IPC handler to generate unhandled rejection
 ipcMain.handle('generateUnhandledRejection', () => {
   void Promise.reject(new Error('test unhandled rejection'));
+});
+
+ipcMain.handle('main:before-send-error', (_event, behavior: 'scrub' | 'filter') => {
+  addError(new Error('Sensitive error for beforeSend'), {
+    context: { beforeSend: behavior, email: 'customer@example.com' },
+  });
 });
 // --- IPC demo handlers (each one becomes a captured IPC resource) ---
 
@@ -240,6 +247,16 @@ void app.whenReady().then(async () => {
     service: 'electron-playground',
     env: 'dev',
     profilingSampleRate: 100,
+    beforeSend: (event) => {
+      if (event.context?.beforeSend === 'filter') {
+        return false;
+      }
+      if (event.type === 'error' && event.context?.beforeSend === 'scrub') {
+        event.error.message = '[REDACTED by beforeSend]';
+        event.context = { email: '[REDACTED]' };
+      }
+      return true;
+    },
     ...(process.env.DD_SDK_PROXY ? { proxy: process.env.DD_SDK_PROXY } : {}),
   });
   console.log('SDK init result:', result);

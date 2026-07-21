@@ -66,6 +66,7 @@ flowchart LR
     subgraph Assembly
         HOOKS{Format Hooks}
         COMBINE[combine]
+        MAPPER[beforeSend mapper]
     end
 
     subgraph "Hook Providers"
@@ -86,7 +87,9 @@ flowchart LR
     SC -. "session.id" .-> HOOKS
     VC -. "view.id, view.name, ..." .-> HOOKS
     HOOKS --> COMBINE
-    COMBINE -- ServerEvent --> BM
+    COMBINE -- RUM event --> MAPPER
+    MAPPER -- ServerEvent --> BM
+    COMBINE -- Other ServerEvent --> BM
     BM --> BP
     BM --> BC
     BP -. "write" .-> DISK[Disk]
@@ -116,6 +119,8 @@ Two handlers transform events into `ServerEvent`s:
 
 - **`MainAssembly`**: handles main-process `RawEvent`s (excluding profile events), enriches them via `triggerRum` / `triggerTelemetry` hooks, and emits `ServerEvent`s with `source: MAIN`.
 - **`RendererPipeline`**: owns the renderer IPC channel, receives pre-assembled RUM events from the Browser SDK, enriches them via `triggerRum` with `source: EventSource.RENDERER`, and emits `ServerRumEvent`s with `source: RENDERER` directly, bypassing the `RawEvent` pipeline entirely.
+
+Both paths apply the shared `RumEventMapper` after enrichment and before emitting the final `ServerRumEvent`. This lets `beforeSend` inspect the complete event and ensures filtered events never reach transport or main-view counters. Telemetry, profiles, and spans are not mapped; internal renderer `view_update` events are not exposed to the callback.
 
 #### Format Hooks
 

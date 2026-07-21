@@ -132,6 +132,34 @@ await esbuild.build({
 - **Renderer Profiling** — Collect JS Self-Profiling data from renderer pages and correlate it with RUM
 - **User & Account Info** — Attach user and account identity to all RUM events and traces
 - **Operation Monitoring** _(experimental)_ — Track start / succeed / fail steps of critical user-facing workflows
+- **Event Filtering and Scrubbing** — Modify or discard RUM events with `beforeSend`
+
+### Event Filtering and Scrubbing
+
+Use `beforeSend` to inspect fully assembled RUM events from both the main and renderer processes before they are sent to Datadog:
+
+```ts
+await init({
+  // ...
+  beforeSend: (event) => {
+    if (event.type === 'error') {
+      event.error.message = event.error.message.replace(/token=[^&\s]+/g, 'token=[REDACTED]');
+    }
+    if (event.context?.internal === true) {
+      return false;
+    }
+    return true;
+  },
+});
+```
+
+Returning `false` discards the event. View and native crash events cannot be discarded. Editable fields follow the [Browser SDK `beforeSend` allowlist](https://docs.datadoghq.com/real_user_monitoring/guide/enrich-and-control-rum-data/); event identity, session, application, and other protected fields remain unchanged. Callback errors are logged and the event is still sent.
+
+The callback is synchronous and should remain fast. It does not automatically detect PII. Unlike Browser SDK `beforeSend`, it receives no raw DOM, XHR, or original error context because those renderer objects cannot cross the process boundary.
+
+Renderer events have already passed through any `beforeSend` configured in the renderer's Browser SDK. The Electron callback runs afterward, once main-process context is added. It can run multiple times for the same view as its metrics change; internal `view_update` payloads are not exposed.
+
+Renderer view counters are computed by the Browser SDK before events reach the main process, so filtering a renderer event here does not retroactively adjust those counters.
 
 ### Custom Duration Vitals
 
@@ -390,3 +418,4 @@ interface FeatureOperationOptions {
 | `uploadFrequency`     | `'RARE' \| 'NORMAL' \| 'FREQUENT'`       | No       | —        | Upload frequency for event batches                                                                                                        |
 | `defaultPrivacyLevel` | `'mask' \| 'allow' \| 'mask-user-input'` | No       | `'mask'` | Default privacy level for renderer session replay                                                                                         |
 | `allowedWebViewHosts` | `string[]`                               | No       | `[]`     | Hostnames allowed for the renderer bridge                                                                                                 |
+| `beforeSend`          | `(event: RumEvent) => boolean`           | No       | —        | Modify or discard fully assembled RUM events before they are sent                                                                         |

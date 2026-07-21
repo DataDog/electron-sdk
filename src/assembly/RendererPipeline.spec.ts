@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED } from '@datadog/js-core/assembly';
 import { RendererPipeline } from './RendererPipeline';
+import { RumEventMapper } from './RumEventMapper';
 import type { BridgeOptions } from '../common';
 import { createFormatHooks, type FormatHooks } from './hooks';
 import {
@@ -18,6 +19,7 @@ import {
   type ServerRumEvent,
 } from '../event';
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
+import type { RumEvent } from '../domain/rum';
 import { createTestConfiguration } from '../mocks.specUtil';
 
 const { mockIpcMainOn, mockAddError, mockSetBridgeConfig } = vi.hoisted(() => {
@@ -79,12 +81,14 @@ describe('RendererPipeline', () => {
   let eventManager: EventManager;
   let hooks: FormatHooks;
   let simulateIpcMessage: (msg: string) => void;
+  let rumEventMapper: RumEventMapper;
   let serverEvents: ServerRumEvent[];
 
   beforeEach(() => {
     vi.clearAllMocks();
     eventManager = new EventManager();
     hooks = createFormatHooks();
+    rumEventMapper = new RumEventMapper();
     serverEvents = [];
 
     mockIpcMainOn.mockImplementation((channel: string, callback: (_event: unknown, msg: string) => void) => {
@@ -98,7 +102,7 @@ describe('RendererPipeline', () => {
       handle: (event) => serverEvents.push(event),
     });
 
-    new RendererPipeline(eventManager, hooks, DEFAULT_CONFIG);
+    new RendererPipeline(eventManager, hooks, DEFAULT_CONFIG, rumEventMapper);
   });
 
   it('registers a listener on BRIDGE_CHANNEL', () => {
@@ -210,6 +214,52 @@ describe('RendererPipeline', () => {
 
       expect(serverEvents).toHaveLength(0);
     });
+
+    it('maps events after injecting main-process context', () => {
+      hooks.registerRum(() => ({ session: { id: 'main-session' }, application: { id: 'main-app' } }));
+      vi.spyOn(rumEventMapper, 'map').mockImplementation((event) => {
+        expect(event.session.id).toBe('main-session');
+        event.context = { mapped: true };
+        return event;
+      });
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
+
+      expect(serverEvents[0].data.context).toEqual({ mapped: true });
+    });
+
+    it('does not emit events discarded by the mapper', () => {
+      hooks.registerRum(() => ({ session: { id: 'main-session' } }));
+      vi.spyOn(rumEventMapper, 'map').mockReturnValue(undefined);
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
+
+      expect(serverEvents).toHaveLength(0);
+    });
+
+    it('maps unknown renderer event types using common fields', () => {
+      hooks.registerRum(() => ({ session: { id: 'main-session' }, application: { id: 'main-app' } }));
+      const beforeSend = vi.fn((event: RumEvent) => {
+        event.context = { secret: '[REDACTED]' };
+        return true;
+      });
+      new RendererPipeline(eventManager, hooks, DEFAULT_CONFIG, new RumEventMapper(beforeSend));
+
+      simulateIpcMessage(
+        JSON.stringify({
+          eventType: 'rum',
+          event: { ...RENDERER_RUM_DATA, type: 'future_event', context: { secret: 'token' } },
+        })
+      );
+
+      expect(beforeSend).toHaveBeenCalledOnce();
+      expect(serverEvents).toHaveLength(1);
+      expect(serverEvents[0].data).toMatchObject({
+        type: 'future_event',
+        session: { id: 'main-session' },
+        context: { secret: '[REDACTED]' },
+      });
+    });
   });
 
   describe('usr and account context', () => {
@@ -318,6 +368,24 @@ describe('RendererPipeline', () => {
         handle: (e) => lifecycleEvents.push(e),
       });
       hooks.registerRum(() => DISCARDED);
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_CLICK_DATA }));
+
+      expect(lifecycleEvents).toContainEqual({
+        kind: EventKind.LIFECYCLE,
+        lifecycle: LifecycleKind.END_USER_ACTIVITY,
+      });
+      expect(serverEvents).toHaveLength(0);
+    });
+
+    it('emits END_USER_ACTIVITY for click actions even when beforeSend discards the event', () => {
+      const lifecycleEvents: unknown[] = [];
+      eventManager.registerHandler({
+        canHandle: (e): e is EndUserActivityEvent => e.kind === EventKind.LIFECYCLE,
+        handle: (e) => lifecycleEvents.push(e),
+      });
+      hooks.registerRum(() => ({ session: { id: 'session' } }));
+      vi.spyOn(rumEventMapper, 'map').mockReturnValue(undefined);
 
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_CLICK_DATA }));
 
