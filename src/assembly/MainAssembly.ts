@@ -43,7 +43,7 @@ export class MainAssembly {
     const startTime = event.startTime ?? timeStampNow();
     const source = EventSource.MAIN;
 
-    if (event.format === EventFormat.RUM && isRumEventType(event.data.type)) {
+    if (event.format === EventFormat.RUM && (isRumEventType(event.data.type) || event.data.type === 'process')) {
       const hookResult = this.hooks.triggerRum({
         eventType: event.data.type,
         startTime,

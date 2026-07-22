@@ -35,7 +35,7 @@ export class ProfilingCollection {
     // quota_ko, mirroring the browser SDK) and suppresses the context for sessions it sampled out. See the
     // Profiling / Error Reporting notes in docs/ARCHITECTURE.md.
     hooks.registerRum(({ source, eventType, startTime }) => {
-      if (source !== EventSource.RENDERER || !PROFILING_EVENT_TYPES.includes(eventType)) {
+      if (source !== EventSource.RENDERER || !PROFILING_EVENT_TYPES.includes(eventType as RumEventType)) {
         return SKIPPED;
       }
       // Resolve the session that produced the event from its start time (as SessionContext does for

@@ -9,7 +9,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { app } from 'electron';
 import { ProcessCollection, PROCESS_UPDATE_INTERVAL } from './ProcessCollection';
 import { EventManager, EventKind, EventFormat, LifecycleKind, type RawRumEvent } from '../../../event';
-import { createFormatHooks } from '../../../assembly';
 import { RawRumProcess } from '../rawRumData.types';
 
 describe('ProcessCollection', () => {
@@ -36,7 +35,7 @@ describe('ProcessCollection', () => {
       return app;
     });
 
-    processCollection = ProcessCollection.start(eventManager, createFormatHooks());
+    processCollection = ProcessCollection.start(eventManager);
   });
 
   afterEach(() => {

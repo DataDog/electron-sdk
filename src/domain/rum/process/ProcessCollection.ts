@@ -2,7 +2,6 @@ import { app } from 'electron';
 import { elapsed, ONE_MINUTE, timeStampNow, toServerDuration, type TimeStamp } from '@datadog/js-core/time';
 import { generateUUID } from '@datadog/browser-core';
 import { EventFormat, EventKind, type EventManager, type LifecycleEvent, LifecycleKind } from '../../../event';
-import type { FormatHooks } from '../../../assembly';
 import { setInterval } from '../../telemetry';
 import { ProcessContext } from './ProcessContext';
 import type { RawRumProcess } from '../rawRumData.types';
@@ -23,17 +22,13 @@ export class ProcessCollection {
   private mainState!: ProcessState;
   private readonly rendererStates = new Map<number, ProcessState>();
 
-  private constructor(
-    private readonly eventManager: EventManager,
-    // hooks reserved for enrichment hook in Task 7
-    _hooks: FormatHooks
-  ) {
+  private constructor(private readonly eventManager: EventManager) {
     const mainId = generateUUID();
     this.processContext = new ProcessContext({ id: mainId, name: undefined });
   }
 
-  static start(eventManager: EventManager, hooks: FormatHooks): ProcessCollection {
-    const collection = new ProcessCollection(eventManager, hooks);
+  static start(eventManager: EventManager): ProcessCollection {
+    const collection = new ProcessCollection(eventManager);
     collection.initMain();
     collection.initRendererTracking();
     return collection;
