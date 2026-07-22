@@ -50,6 +50,7 @@ interface ElectronAPI {
   mainFetchApiNet: () => Promise<unknown>;
   openRumExplorer: () => Promise<void>;
   flushTransport: () => Promise<void>;
+  openSecondaryWindow: () => Promise<void>;
   setUserInfo: () => Promise<void>;
   addUserExtraInfo: () => Promise<void>;
   clearUserInfo: () => Promise<void>;
@@ -348,3 +349,5 @@ if (parallelBtn) {
       });
   });
 }
+
+setupDemoButton('open-secondary-window', 'main:open-secondary-window', () => window.electronAPI.openSecondaryWindow());
