@@ -68,6 +68,13 @@ describe('ProcessCollection', () => {
       const last = rawRumEvents[rawRumEvents.length - 1].data as RawRumProcess;
       expect(last.process.exit_reason).toBeUndefined();
     });
+
+    it('stops emitting updates after SESSION_EXPIRED', () => {
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+      const countAfterExpiry = rawRumEvents.length;
+      vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL * 3);
+      expect(rawRumEvents).toHaveLength(countAfterExpiry); // no new events from timer
+    });
   });
 
   describe('renderer processes', () => {
