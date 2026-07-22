@@ -66,6 +66,7 @@ import {
 
 const isDebugMode = process.env.PWDEBUG === '1';
 let mainWindow: BrowserWindow | null = null;
+let testRendererWindow: BrowserWindow | null = null;
 let rendererHttpServer: http.Server | null = null;
 
 const noop = () => undefined;
@@ -246,6 +247,27 @@ void app.whenReady().then(async () => {
   });
 
   ipcMain.handle('ping', () => 'pong');
+
+  ipcMain.handle('openRendererProcess', () => {
+    testRendererWindow = new BrowserWindow({
+      width: 400,
+      height: 300,
+      show: isDebugMode,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+    void testRendererWindow.loadURL('about:blank');
+    testRendererWindow.on('closed', () => {
+      testRendererWindow = null;
+    });
+  });
+
+  ipcMain.handle('closeRendererProcess', () => {
+    testRendererWindow?.close();
+    testRendererWindow = null;
+  });
 
   ipcMain.on('mainFireAndForget', (event) => {
     event.sender.send('mainFireAndForgetAck');
