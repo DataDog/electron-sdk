@@ -35,6 +35,7 @@ import { buildRumExplorerUrl } from './main/utils';
 const isTestMode = process.env.DD_TEST_MODE === '1';
 
 let mainWindow: BrowserWindow | null = null;
+let secondaryWindow: BrowserWindow | null = null;
 
 // Serving the renderer over a custom scheme (instead of file://) lets us attach the `Document-Policy: js-profiling`
 // response header, which is required to enable the JS Self-Profiling API. The scheme must be registered as
@@ -230,6 +231,23 @@ ipcMain.handle('open-rum-explorer', () => {
   const ctx = getInternalContext();
   if (!ctx) return;
   void shell.openExternal(buildRumExplorerUrl(CONF[ACTIVE_ENV], ctx.session_id));
+});
+
+ipcMain.handle('main:open-secondary-window', () => {
+  if (secondaryWindow) return;
+  secondaryWindow = new BrowserWindow({
+    width: 500,
+    height: 400,
+    title: 'Secondary Renderer Process',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  void secondaryWindow.loadURL('app://app/secondary.html');
+  secondaryWindow.on('closed', () => {
+    secondaryWindow = null;
+  });
 });
 
 void app.whenReady().then(async () => {
