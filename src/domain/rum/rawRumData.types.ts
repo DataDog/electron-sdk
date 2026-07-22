@@ -121,9 +121,8 @@ export interface RawRumProcess {
   date: TimeStamp;
   process: {
     id: string;
-    role: 'main' | 'renderer' | 'utility';
+    role: 'main' | 'renderer';
     pid: number;
-    ppid?: number;
     name?: string;
     duration?: ServerDuration;
     exit_reason?: string;

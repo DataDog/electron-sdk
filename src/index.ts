@@ -82,7 +82,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   // ProcessCollection must start after MainAssembly and RumCollection so all
   // event handlers and format hooks (session, view) are registered before the
   // first process event is emitted.
-  const processCollection = ProcessCollection.start(eventManager, hooks);
+  const processCollection = ProcessCollection.start(eventManager);
   registerProcessContext(processCollection.processContext, hooks);
 
   return true;
