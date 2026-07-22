@@ -241,4 +241,81 @@ describe('StandardBatchProducer', () => {
       expect(fsMocks.mkdir).not.toHaveBeenCalled();
     });
   });
+
+  describe('overflow eviction', () => {
+    it('evicts the oldest .log files when the pending count exceeds the cap', async () => {
+      // 102 pending .log files, cap is 100 -> the 2 oldest should be evicted.
+      const logFiles = Array.from({ length: 102 }, (_, i) => `batch-${String(i).padStart(4, '0')}.log`);
+      fsMocks.unlink.mockResolvedValue(undefined);
+
+      const producer = await StandardBatchProducer.create(config);
+      fsMocks.readdir.mockResolvedValue(logFiles);
+
+      producer.post({ data: { event: 'test' } });
+      await producer.flush();
+
+      expect(fsMocks.unlink).toHaveBeenCalledTimes(2);
+      expect(fsMocks.unlink).toHaveBeenCalledWith(path.join(config.trackPath, 'batch-0000.log'));
+      expect(fsMocks.unlink).toHaveBeenCalledWith(path.join(config.trackPath, 'batch-0001.log'));
+    });
+
+    it('still evicts when the write fails (e.g. ENOSPC)', async () => {
+      // The full-disk case is exactly what the cap targets: a failed write must not skip eviction,
+      // or the backlog is never trimmed and no space is ever freed.
+      const logFiles = Array.from({ length: 102 }, (_, i) => `batch-${String(i).padStart(4, '0')}.log`);
+      fsMocks.unlink.mockResolvedValue(undefined);
+
+      const producer = await StandardBatchProducer.create(config);
+      fsMocks.readdir.mockResolvedValue(logFiles);
+      fsMocks.appendFile.mockRejectedValue(new Error('ENOSPC'));
+
+      producer.post({ data: { event: 'test' } });
+      await producer.flush();
+
+      expect(fsMocks.unlink).toHaveBeenCalledWith(path.join(config.trackPath, 'batch-0000.log'));
+      expect(fsMocks.unlink).toHaveBeenCalledWith(path.join(config.trackPath, 'batch-0001.log'));
+    });
+
+    it('orders by sequence numerically, not lexically, when timestamps tie', async () => {
+      // Real names carry an unpadded sequence: batch-<ms>-<seq>. With the same ms, a lexical sort would
+      // rank seq 10 before seq 9; the oldest are seq 1 and 2, not seq 1 and 10.
+      const logFiles = Array.from({ length: 102 }, (_, i) => `batch-100-${i + 1}.log`);
+      fsMocks.unlink.mockResolvedValue(undefined);
+
+      const producer = await StandardBatchProducer.create(config);
+      fsMocks.readdir.mockResolvedValue(logFiles);
+
+      producer.post({ data: { event: 'test' } });
+      await producer.flush();
+
+      expect(fsMocks.unlink).toHaveBeenCalledTimes(2);
+      expect(fsMocks.unlink).toHaveBeenCalledWith(path.join(config.trackPath, 'batch-100-1.log'));
+      expect(fsMocks.unlink).toHaveBeenCalledWith(path.join(config.trackPath, 'batch-100-2.log'));
+      expect(fsMocks.unlink).not.toHaveBeenCalledWith(path.join(config.trackPath, 'batch-100-10.log'));
+    });
+
+    it('does not evict when the pending count is within the cap', async () => {
+      fsMocks.readdir.mockResolvedValue(['batch-0000.log', 'batch-0001.log']);
+      fsMocks.unlink.mockResolvedValue(undefined);
+
+      const producer = await StandardBatchProducer.create(config);
+
+      producer.post({ data: { event: 'test' } });
+      await producer.flush();
+
+      expect(fsMocks.unlink).not.toHaveBeenCalled();
+    });
+
+    it('does not throw or evict when the directory cannot be read', async () => {
+      const producer = await StandardBatchProducer.create(config);
+      // Make the eviction's readdir fail; it must be swallowed, leaving the write queue healthy.
+      fsMocks.readdir.mockRejectedValue(new Error('EACCES'));
+      fsMocks.unlink.mockResolvedValue(undefined);
+
+      producer.post({ data: { event: 'test' } });
+      await expect(producer.flush()).resolves.toBeUndefined();
+
+      expect(fsMocks.unlink).not.toHaveBeenCalled();
+    });
+  });
 });

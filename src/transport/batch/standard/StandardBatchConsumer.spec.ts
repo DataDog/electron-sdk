@@ -114,5 +114,17 @@ describe('StandardBatchConsumer — request construction', () => {
       expect(fsMocks.readFile).toHaveBeenNthCalledWith(1, path.join(config.trackPath, 'a.log'), 'utf8');
       expect(fsMocks.readFile).toHaveBeenNthCalledWith(3, path.join(config.trackPath, 'c.log'), 'utf8');
     });
+
+    it('processes files by sequence numerically, not lexically, when timestamps tie', async () => {
+      // Same ms, unpadded sequence: a lexical sort would upload seq 10 before seq 9.
+      fsMocks.readdir.mockResolvedValue(['batch-100-10.log', 'batch-100-9.log', 'batch-100-1.log']);
+      fsMocks.readFile.mockResolvedValue('{"event":"data"}');
+
+      await consumer.upload();
+
+      expect(fsMocks.readFile).toHaveBeenNthCalledWith(1, path.join(config.trackPath, 'batch-100-1.log'), 'utf8');
+      expect(fsMocks.readFile).toHaveBeenNthCalledWith(2, path.join(config.trackPath, 'batch-100-9.log'), 'utf8');
+      expect(fsMocks.readFile).toHaveBeenNthCalledWith(3, path.join(config.trackPath, 'batch-100-10.log'), 'utf8');
+    });
   });
 });

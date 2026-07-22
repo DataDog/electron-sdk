@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { getUserAgent } from '../userAgent';
+import { compareBatchFileNames } from './batchFileName';
 
 /** Configuration for a {@link BatchConsumer} instance. */
 export interface BatchConsumerConfig {
@@ -42,7 +43,11 @@ export abstract class BatchConsumer {
     }
   }
 
-  /** Returns sorted paths of all `.log` files in the track directory. */
+  /**
+   * Returns paths of all `.log` files in the track directory, oldest first.
+   * File names embed a timestamp and an unpadded sequence (`batch-<ms>-<seq>`), so they are ordered
+   * with a numeric-aware compare (a plain lexical sort would rank `-10` before `-9`).
+   */
   protected async getLogFiles() {
     try {
       await fs.access(this.trackPath);
@@ -50,7 +55,7 @@ export abstract class BatchConsumer {
       return files
         .filter((file) => file.endsWith('.log'))
         .map((file) => path.join(this.trackPath, file))
-        .sort();
+        .sort(compareBatchFileNames);
     } catch {
       return [];
     }
