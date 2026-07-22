@@ -32,7 +32,7 @@ interface ViewState {
  * - keep session alive by regularly send view updates
  * - on SESSION_EXPIRED, emit a final inactive view update
  * - on SESSION_RENEW, create a new view
- * - on RUM server event (action, error, resource), increment view counters (throttled)
+ * - on RUM server event (action, error, resource), increment `document_version` and schedule a throttled view update
  */
 export class ViewCollection {
   private currentView!: ViewState;

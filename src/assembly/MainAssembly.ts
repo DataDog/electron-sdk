@@ -79,17 +79,23 @@ function assembleData<T>(rawData: unknown, hookResult: RecursivePartial<T> | und
   return (hookResult ? combine(hookResult, rawData) : rawData) as T;
 }
 
-const RUM_EVENT_TYPES = new Set<string>([
-  'error',
-  'view',
-  'action',
-  'long_task',
-  'resource',
-  'vital',
-  'transition',
-  'view_update',
-]);
+// The `satisfies` constraint has two roles:
+// - `Record<RumEventType, 1>` key exhaustiveness: every RumEventType variant must be present (compile error if one is missing)
+// - values typed as `RumEventType[]`: no string outside the union can be added
+// Together they keep the type guard sound when RumEvent schema changes.
+const RUM_EVENT_TYPES = new Set<RumEventType>(
+  Object.keys({
+    action: 1,
+    error: 1,
+    long_task: 1,
+    resource: 1,
+    transition: 1,
+    view: 1,
+    view_update: 1,
+    vital: 1,
+  } satisfies Record<RumEventType, 1>) as RumEventType[]
+);
 
 function isRumEventType(type: string): type is RumEventType {
-  return RUM_EVENT_TYPES.has(type);
+  return RUM_EVENT_TYPES.has(type as RumEventType);
 }
