@@ -70,9 +70,6 @@ describe('ViewCollection', () => {
       expect(data.date).toBe(0);
       expect(data._dd.document_version).toBe(1);
       expect(data.view.is_active).toBe(true);
-      expect(data.view.action.count).toBe(0);
-      expect(data.view.error.count).toBe(0);
-      expect(data.view.resource.count).toBe(0);
     });
 
     it('sets date to the view start time, not the update time', () => {
@@ -143,9 +140,6 @@ describe('ViewCollection', () => {
       expect(data.view.id).not.toBe(originalViewId);
       expect(data.view.is_active).toBe(true);
       expect(data._dd.document_version).toBe(1);
-      expect(data.view.action.count).toBe(0);
-      expect(data.view.error.count).toBe(0);
-      expect(data.view.resource.count).toBe(0);
     });
 
     it('updates view.id in hooks', () => {
@@ -190,9 +184,9 @@ describe('ViewCollection', () => {
     });
   });
 
-  describe('event counters', () => {
+  describe('server event handling', () => {
     it.each(['action', 'error', 'resource'] as const)(
-      'increments %s counter on corresponding ServerRumEvent',
+      'emits a view update with incremented document_version on %s ServerRumEvent',
       (type) => {
         eventManager.notify({
           kind: EventKind.SERVER,
@@ -203,12 +197,11 @@ describe('ViewCollection', () => {
 
         expect(rawRumEvents).toHaveLength(2);
         const data = rawRumEvents[1].data as RawRumView;
-        expect(data.view[type].count).toBe(1);
         expect(data._dd.document_version).toBe(2);
       }
     );
 
-    it('does not count view type ServerEvents', () => {
+    it('does not emit a view update for view type ServerEvents', () => {
       eventManager.notify({
         kind: EventKind.SERVER,
         track: EventTrack.RUM,
@@ -220,7 +213,7 @@ describe('ViewCollection', () => {
       expect(rawRumEvents).toHaveLength(1);
     });
 
-    it('does not count renderer events', () => {
+    it('does not emit a view update for renderer events', () => {
       eventManager.notify({
         kind: EventKind.SERVER,
         track: EventTrack.RUM,
@@ -269,7 +262,7 @@ describe('ViewCollection', () => {
       expect(rawRumEvents).toHaveLength(3);
     });
 
-    it('trailing update contains final accumulated counters and document_version', () => {
+    it('trailing update contains final accumulated document_version', () => {
       notifyServerRumEvent('resource');
       notifyServerRumEvent('error');
       notifyServerRumEvent('action');
@@ -277,9 +270,6 @@ describe('ViewCollection', () => {
       vi.advanceTimersByTime(VIEW_UPDATE_THROTTLE_DELAY);
 
       const trailing = rawRumEvents[rawRumEvents.length - 1].data as RawRumView;
-      expect(trailing.view.resource.count).toBe(1);
-      expect(trailing.view.error.count).toBe(1);
-      expect(trailing.view.action.count).toBe(1);
       // initial=1, leading=2 (first resource), trailing=4 (after error+action increments)
       expect(trailing._dd.document_version).toBe(4);
     });

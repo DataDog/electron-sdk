@@ -11,7 +11,7 @@ import {
   type RawProfileEvent,
   type ServerEvent,
 } from '../event';
-import type { FormatHooks } from './hooks';
+import type { FormatHooks, RumEventType } from './hooks';
 import { RumEvent } from '../domain/rum';
 import { TelemetryEvent } from '../domain/telemetry';
 
@@ -43,7 +43,7 @@ export class MainAssembly {
     const startTime = event.startTime ?? timeStampNow();
     const source = EventSource.MAIN;
 
-    if (event.format === EventFormat.RUM) {
+    if (event.format === EventFormat.RUM && isRumEventType(event.data.type)) {
       const hookResult = this.hooks.triggerRum({
         eventType: event.data.type,
         startTime,
@@ -77,4 +77,19 @@ export class MainAssembly {
 
 function assembleData<T>(rawData: unknown, hookResult: RecursivePartial<T> | undefined): T {
   return (hookResult ? combine(hookResult, rawData) : rawData) as T;
+}
+
+const RUM_EVENT_TYPES = new Set<string>([
+  'error',
+  'view',
+  'action',
+  'long_task',
+  'resource',
+  'vital',
+  'transition',
+  'view_update',
+]);
+
+function isRumEventType(type: string): type is RumEventType {
+  return RUM_EVENT_TYPES.has(type);
 }

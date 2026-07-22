@@ -50,8 +50,6 @@ export function createRawRumView(overrides?: RecursivePartial<RawRumView>): RawR
       type: 'view' as const,
       view: {
         id: '1',
-        name: 'name',
-        url: 'url',
         time_spent: 0 as ServerDuration,
         is_active: true,
         action: { count: 0 },

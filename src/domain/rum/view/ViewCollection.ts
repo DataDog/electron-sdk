@@ -24,7 +24,6 @@ interface ViewState {
   startTime: TimeStamp;
   documentVersion: number;
   isActive: boolean;
-  counters: { action: { count: number }; error: { count: number }; resource: { count: number } };
 }
 
 /**
@@ -94,7 +93,6 @@ export class ViewCollection {
       startTime: timeStampNow(),
       documentVersion: 1,
       isActive: true,
-      counters: { action: { count: 0 }, error: { count: 0 }, resource: { count: 0 } },
     };
 
     this.viewContext.close(); // close previous view if any (ensures non-overlapping history entries)
@@ -111,7 +109,9 @@ export class ViewCollection {
         id: this.currentView.id,
         time_spent: toServerDuration(elapsed(this.currentView.startTime, timeStampNow())),
         is_active: this.currentView.isActive,
-        ...this.currentView.counters,
+        action: { count: 0 },
+        error: { count: 0 },
+        resource: { count: 0 },
       },
       _dd: { document_version: this.currentView.documentVersion },
     };
@@ -145,7 +145,6 @@ export class ViewCollection {
 
     const type = event.data.type;
     if (type === 'action' || type === 'error' || type === 'resource') {
-      this.currentView.counters[type].count++;
       this.currentView.documentVersion++;
       this.scheduleViewUpdate();
     }

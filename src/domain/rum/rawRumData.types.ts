@@ -8,7 +8,13 @@ import {
   RumVitalOperationStepEvent,
 } from './rumEvent.types';
 
-export type RawRumData = RawRumView | RawRumError | RawRumOperationStepVital | RawRumDurationVital | RawRumResource;
+export type RawRumData =
+  | RawRumView
+  | RawRumError
+  | RawRumOperationStepVital
+  | RawRumDurationVital
+  | RawRumResource
+  | RawRumProcess;
 
 export interface RawRumView extends RecursivePartial<RumViewEvent> {
   type: 'view';
@@ -16,9 +22,10 @@ export interface RawRumView extends RecursivePartial<RumViewEvent> {
     id: string;
     time_spent: ServerDuration;
     is_active: boolean;
-    action: { count: number };
-    error: { count: number };
-    resource: { count: number };
+    // Required by the view schema; aggregation is owned by the backend reducer
+    action: { count: 0 };
+    error: { count: 0 };
+    resource: { count: 0 };
   };
   _dd: { document_version: number };
 }
@@ -107,4 +114,19 @@ export interface RawRumResource extends RecursivePartial<RumResourceEvent> {
     span_id: string;
     format_version: 2;
   };
+}
+
+export interface RawRumProcess {
+  type: 'process';
+  date: TimeStamp;
+  process: {
+    id: string;
+    role: 'main' | 'renderer' | 'utility';
+    pid: number;
+    ppid?: number;
+    name?: string;
+    duration?: ServerDuration;
+    exit_reason?: string;
+  };
+  _dd: { document_version: number };
 }
