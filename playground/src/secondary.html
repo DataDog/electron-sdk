@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self' https://httpbin.org"
+    />
+    <title>Secondary Renderer Process</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        margin: 0;
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        color: white;
+      }
+
+      .container {
+        background: rgba(255, 255, 255, 0.1);
+        padding: 32px 40px;
+        border-radius: 12px;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        text-align: center;
+        min-width: 340px;
+      }
+
+      h1 {
+        margin: 0 0 4px;
+        font-size: 1.6em;
+        font-weight: 300;
+      }
+
+      .subtitle {
+        opacity: 0.7;
+        font-size: 13px;
+        margin-bottom: 24px;
+      }
+
+      .section-label {
+        font-size: 0.85em;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        opacity: 0.7;
+        margin: 16px 0 8px;
+      }
+
+      .button-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: center;
+        margin: 8px 0;
+      }
+
+      button {
+        background: white;
+        color: #11998e;
+        border: none;
+        padding: 10px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      button:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      }
+
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      #status {
+        margin-top: 16px;
+        font-size: 12px;
+        opacity: 0.7;
+        min-height: 18px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Secondary Renderer</h1>
+      <p class="subtitle">Events from this window carry a distinct process.id</p>
+
+      <div class="section-label">Generate Events</div>
+      <div class="button-group">
+        <button id="fetch-btn">Fetch (resource)</button>
+        <button id="error-btn">Throw Error</button>
+      </div>
+
+      <div id="status"></div>
+    </div>
+
+    <script type="module" src="secondary-renderer.js"></script>
+  </body>
+</html>

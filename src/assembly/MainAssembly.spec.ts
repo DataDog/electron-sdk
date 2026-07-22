@@ -14,8 +14,19 @@ import {
   type ServerRumEvent,
   type ServerTelemetryEvent,
 } from '../event';
-import type { RumEvent, RawRumData } from '../domain/rum';
+import type { RumEvent, RawRumData, RawRumProcess } from '../domain/rum';
 import type { RawTelemetryData } from '../domain/telemetry';
+
+const RAW_PROCESS_DATA: RawRumProcess = {
+  type: 'process',
+  date: 0 as TimeStamp,
+  process: {
+    id: 'proc-1',
+    role: 'main',
+    pid: 1234,
+  },
+  _dd: { document_version: 1 },
+};
 
 const RAW_ERROR_DATA: RawRumData = {
   type: 'error',
@@ -109,6 +120,48 @@ describe('MainAssembly', () => {
     notifyRawRumEvent();
 
     expect((serverEvents[0] as ServerRumEvent).source).toBe(EventSource.MAIN);
+  });
+
+  describe('PROCESS events', () => {
+    it('emits a ServerRumEvent for a process event', () => {
+      hooks.registerRum(() => ({ session: { id: 'session-1' } }));
+
+      eventManager.notify({
+        kind: EventKind.RAW,
+        format: EventFormat.RUM,
+        data: RAW_PROCESS_DATA,
+      });
+
+      expect(serverEvents).toHaveLength(1);
+      expect((serverEvents[0] as ServerRumEvent).source).toBe(EventSource.MAIN);
+      expect((serverEvents[0].data as RawRumProcess).type).toBe('process');
+      expect((serverEvents[0].data as RawRumProcess).process.role).toBe('main');
+    });
+
+    it('discards process events when the rum hook returns DISCARDED', () => {
+      hooks.registerRum(() => DISCARDED);
+
+      eventManager.notify({
+        kind: EventKind.RAW,
+        format: EventFormat.RUM,
+        data: RAW_PROCESS_DATA,
+      });
+
+      expect(serverEvents).toHaveLength(0);
+    });
+
+    it('enriches process events with hook attributes', () => {
+      hooks.registerRum(() => ({ session: { id: 'hook-session' } }));
+
+      eventManager.notify({
+        kind: EventKind.RAW,
+        format: EventFormat.RUM,
+        data: RAW_PROCESS_DATA,
+      });
+
+      expect(serverEvents).toHaveLength(1);
+      expect((serverEvents[0].data as { session?: { id: string } }).session?.id).toBe('hook-session');
+    });
   });
 
   describe('TELEMETRY events', () => {

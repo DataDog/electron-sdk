@@ -12,18 +12,10 @@ vi.mock('../../../tools/display', () => ({
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { TimeStamp } from '@datadog/js-core/time';
-import { ViewCollection, SESSION_KEEP_ALIVE_INTERVAL, VIEW_UPDATE_THROTTLE_DELAY } from './ViewCollection';
-import {
-  EventManager,
-  EventKind,
-  EventFormat,
-  EventSource,
-  EventTrack,
-  LifecycleKind,
-  type RawRumEvent,
-} from '../../../event';
+import { ViewCollection, SESSION_KEEP_ALIVE_INTERVAL } from './ViewCollection';
+import { EventManager, EventKind, EventFormat, EventSource, LifecycleKind, type RawRumEvent } from '../../../event';
 import { createFormatHooks, type FormatHooks } from '../../../assembly';
-import { createServerRumEvent, createServerRumView } from '../../../mocks.specUtil';
+import { SessionManager } from '../../session';
 import { RawRumView } from '../rawRumData.types';
 
 vi.mock('node:fs/promises');
@@ -37,6 +29,7 @@ describe('ViewCollection', () => {
   let hooks: FormatHooks;
   let viewCollection: ViewCollection;
   let rawRumEvents: RawRumEvent[];
+  let mockSessionManager: { getSession: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -52,7 +45,8 @@ describe('ViewCollection', () => {
       handle: (event) => rawRumEvents.push(event),
     });
 
-    viewCollection = await ViewCollection.start(eventManager, hooks);
+    mockSessionManager = { getSession: vi.fn().mockReturnValue({ id: 'session-id-1', status: 'active' }) };
+    viewCollection = await ViewCollection.start(eventManager, hooks, mockSessionManager as unknown as SessionManager);
   });
 
   afterEach(() => {
@@ -70,9 +64,11 @@ describe('ViewCollection', () => {
       expect(data.date).toBe(0);
       expect(data._dd.document_version).toBe(1);
       expect(data.view.is_active).toBe(true);
-      expect(data.view.action.count).toBe(0);
-      expect(data.view.error.count).toBe(0);
-      expect(data.view.resource.count).toBe(0);
+    });
+
+    it('uses session.id as view.id', () => {
+      const data = rawRumEvents[0].data as RawRumView;
+      expect(data.view.id).toBe('session-id-1');
     });
 
     it('sets date to the view start time, not the update time', () => {
@@ -85,19 +81,17 @@ describe('ViewCollection', () => {
 
   describe('hook registration', () => {
     it('injects view attributes into RUM hooks', () => {
-      const initialViewAttributes = (rawRumEvents[0].data as RawRumView).view;
       const result = hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN });
 
       expect(result).toMatchObject({
-        view: { id: initialViewAttributes.id },
+        view: { id: 'session-id-1' },
       });
     });
 
     it('injects view attributes into telemetry hooks', () => {
-      const initialView = (rawRumEvents[0].data as RawRumView).view;
       const result = hooks.triggerTelemetry({ startTime: T0, source: EventSource.MAIN });
 
-      expect(result).toEqual({ view: { id: initialView.id } });
+      expect(result).toEqual({ view: { id: 'session-id-1' } });
     });
   });
 
@@ -133,103 +127,50 @@ describe('ViewCollection', () => {
   });
 
   describe('session renew', () => {
-    it('creates a new view with reset state', () => {
-      const originalViewId = (rawRumEvents[0].data as RawRumView).view.id;
-
+    it('creates a new view with reset state using new session.id', () => {
+      mockSessionManager.getSession.mockReturnValue({ id: 'session-id-2', status: 'active' });
       eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
 
       expect(rawRumEvents).toHaveLength(2);
       const data = rawRumEvents[1].data as RawRumView;
-      expect(data.view.id).not.toBe(originalViewId);
+      expect(data.view.id).toBe('session-id-2');
       expect(data.view.is_active).toBe(true);
       expect(data._dd.document_version).toBe(1);
-      expect(data.view.action.count).toBe(0);
-      expect(data.view.error.count).toBe(0);
-      expect(data.view.resource.count).toBe(0);
     });
 
-    it('updates view.id in hooks', () => {
-      const originalViewId = (rawRumEvents[0].data as RawRumView).view.id;
-
+    it('updates view.id in hooks to new session.id', () => {
+      mockSessionManager.getSession.mockReturnValue({ id: 'session-id-2', status: 'active' });
       eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
 
       const result = hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN });
-      const newViewId = (rawRumEvents[1].data as RawRumView).view.id;
-      expect(result).toMatchObject({ view: { id: newViewId } });
-      expect(newViewId).not.toBe(originalViewId);
+      expect(result).toMatchObject({ view: { id: 'session-id-2' } });
     });
 
     it('attributes events with old startTime to the previous view', () => {
-      const originalViewId = (rawRumEvents[0].data as RawRumView).view.id;
-
       vi.advanceTimersByTime(10); // move to T10
       eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+      mockSessionManager.getSession.mockReturnValue({ id: 'session-id-2', status: 'active' });
       eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
-
-      const newViewId = (rawRumEvents[rawRumEvents.length - 1].data as RawRumView).view.id;
-      expect(newViewId).not.toBe(originalViewId);
 
       // event started at T0 (before renewal at T10) → attributed to original view
       expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toMatchObject({
-        view: { id: originalViewId },
+        view: { id: 'session-id-1' },
       });
       // event started at T10 → attributed to new view
       expect(hooks.triggerRum({ eventType: 'view', startTime: T10, source: EventSource.MAIN })).toMatchObject({
-        view: { id: newViewId },
+        view: { id: 'session-id-2' },
       });
     });
 
     it('restarts periodic updates', () => {
       eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+      mockSessionManager.getSession.mockReturnValue({ id: 'session-id-2', status: 'active' });
       eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
       vi.advanceTimersByTime(SESSION_KEEP_ALIVE_INTERVAL);
 
       // initial + expired final + renew initial + periodic update
       expect(rawRumEvents).toHaveLength(4);
       expect((rawRumEvents[3].data as RawRumView)._dd.document_version).toBe(2);
-    });
-  });
-
-  describe('event counters', () => {
-    it.each(['action', 'error', 'resource'] as const)(
-      'increments %s counter on corresponding ServerRumEvent',
-      (type) => {
-        eventManager.notify({
-          kind: EventKind.SERVER,
-          track: EventTrack.RUM,
-          source: EventSource.MAIN,
-          data: createServerRumEvent(type),
-        });
-
-        expect(rawRumEvents).toHaveLength(2);
-        const data = rawRumEvents[1].data as RawRumView;
-        expect(data.view[type].count).toBe(1);
-        expect(data._dd.document_version).toBe(2);
-      }
-    );
-
-    it('does not count view type ServerEvents', () => {
-      eventManager.notify({
-        kind: EventKind.SERVER,
-        track: EventTrack.RUM,
-        source: EventSource.MAIN,
-        data: createServerRumView(),
-      });
-
-      // Only the initial event, no update
-      expect(rawRumEvents).toHaveLength(1);
-    });
-
-    it('does not count renderer events', () => {
-      eventManager.notify({
-        kind: EventKind.SERVER,
-        track: EventTrack.RUM,
-        source: EventSource.RENDERER,
-        data: createServerRumEvent('error'),
-      });
-
-      // Only the initial event, no update
-      expect(rawRumEvents).toHaveLength(1);
     });
   });
 
@@ -242,89 +183,6 @@ describe('ViewCollection', () => {
 
       // Only the initial event, nothing else
       expect(rawRumEvents).toHaveLength(1);
-    });
-  });
-
-  describe('throttled view updates', () => {
-    function notifyServerRumEvent(type: 'action' | 'error' | 'resource') {
-      eventManager.notify({
-        kind: EventKind.SERVER,
-        track: EventTrack.RUM,
-        source: EventSource.MAIN,
-        data: createServerRumEvent(type),
-      });
-    }
-
-    it('collapses a burst into a leading and a trailing update', () => {
-      notifyServerRumEvent('resource');
-      notifyServerRumEvent('resource');
-      notifyServerRumEvent('resource');
-
-      // initial + leading only, no intermediate updates
-      expect(rawRumEvents).toHaveLength(2);
-
-      vi.advanceTimersByTime(VIEW_UPDATE_THROTTLE_DELAY);
-
-      // trailing fires with final accumulated state
-      expect(rawRumEvents).toHaveLength(3);
-    });
-
-    it('trailing update contains final accumulated counters and document_version', () => {
-      notifyServerRumEvent('resource');
-      notifyServerRumEvent('error');
-      notifyServerRumEvent('action');
-
-      vi.advanceTimersByTime(VIEW_UPDATE_THROTTLE_DELAY);
-
-      const trailing = rawRumEvents[rawRumEvents.length - 1].data as RawRumView;
-      expect(trailing.view.resource.count).toBe(1);
-      expect(trailing.view.error.count).toBe(1);
-      expect(trailing.view.action.count).toBe(1);
-      // initial=1, leading=2 (first resource), trailing=4 (after error+action increments)
-      expect(trailing._dd.document_version).toBe(4);
-    });
-
-    it('session expired cancels pending trailing update', () => {
-      notifyServerRumEvent('resource');
-      notifyServerRumEvent('resource');
-
-      // initial + leading
-      expect(rawRumEvents).toHaveLength(2);
-
-      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
-
-      vi.advanceTimersByTime(VIEW_UPDATE_THROTTLE_DELAY);
-
-      // initial + leading + expired final — no stale trailing
-      expect(rawRumEvents).toHaveLength(3);
-      expect((rawRumEvents[2].data as RawRumView).view.is_active).toBe(false);
-    });
-
-    it('session renew cancels pending trailing update', () => {
-      const originalViewId = (rawRumEvents[0].data as RawRumView).view.id;
-
-      notifyServerRumEvent('resource');
-      notifyServerRumEvent('resource');
-
-      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
-
-      vi.advanceTimersByTime(VIEW_UPDATE_THROTTLE_DELAY);
-
-      // initial + leading + renew initial — no old-view trailing
-      expect(rawRumEvents).toHaveLength(3);
-      expect((rawRumEvents[2].data as RawRumView).view.id).not.toBe(originalViewId);
-    });
-
-    it('stop cancels pending trailing update', () => {
-      notifyServerRumEvent('resource');
-      notifyServerRumEvent('resource');
-
-      viewCollection.stop();
-
-      vi.advanceTimersByTime(VIEW_UPDATE_THROTTLE_DELAY);
-
-      // initial + leading — no trailing after stop
-      expect(rawRumEvents).toHaveLength(2);
     });
   });
 });

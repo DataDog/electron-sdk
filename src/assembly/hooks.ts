@@ -9,9 +9,10 @@ import { EventSource } from '../event';
 export type RumEventType = RumEvent['type'];
 
 export interface RumAssembleParams {
-  eventType: RumEventType;
+  eventType: string;
   startTime: TimeStamp;
   source: EventSource;
+  webContentsId?: number;
 }
 
 export interface TelemetryAssembleParams {
