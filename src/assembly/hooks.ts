@@ -12,6 +12,7 @@ export interface RumAssembleParams {
   eventType: RumEventType;
   startTime: TimeStamp;
   source: EventSource;
+  webContentsId?: number;
 }
 
 export interface TelemetryAssembleParams {
