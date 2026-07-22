@@ -1,10 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { TimeStamp } from '@datadog/js-core/time';
-import { registerCommonContext } from './commonContext';
+import { registerCommonContext, registerProcessContext } from './commonContext';
 import { createFormatHooks } from './hooks';
 import { EventSource } from '../event';
 import type { Configuration } from '../config';
 import { display } from '../tools/display';
+import { ProcessContext } from '../domain/rum/process';
 
 const T0 = 0 as TimeStamp;
 
@@ -166,5 +167,46 @@ describe('registerCommonContext', () => {
 
       expect(result.container).toEqual({ source: 'electron' });
     });
+  });
+});
+
+describe('registerProcessContext', () => {
+  it('enriches main-process events with main process context', () => {
+    const hooks = createFormatHooks();
+    const processContext = new ProcessContext({ id: 'main-uuid', name: undefined });
+    registerProcessContext(processContext, hooks);
+
+    const result = hooks.triggerRum({ eventType: 'view', startTime: 0 as TimeStamp, source: EventSource.MAIN });
+    expect(result).toMatchObject({ process: { id: 'main-uuid', role: 'main' } });
+  });
+
+  it('enriches renderer events with renderer process context when webContentsId is known', () => {
+    const hooks = createFormatHooks();
+    const processContext = new ProcessContext({ id: 'main-uuid', name: undefined });
+    processContext.setRendererProcess(42, { id: 'renderer-uuid', name: undefined });
+    registerProcessContext(processContext, hooks);
+
+    const result = hooks.triggerRum({
+      eventType: 'error',
+      startTime: 0 as TimeStamp,
+      source: EventSource.RENDERER,
+      webContentsId: 42,
+    });
+    expect(result).toMatchObject({ process: { id: 'renderer-uuid', role: 'renderer' } });
+  });
+
+  it('skips renderer events when webContentsId is unknown', () => {
+    const hooks = createFormatHooks();
+    const processContext = new ProcessContext({ id: 'main-uuid', name: undefined });
+    registerProcessContext(processContext, hooks);
+
+    const result = hooks.triggerRum({
+      eventType: 'error',
+      startTime: 0 as TimeStamp,
+      source: EventSource.RENDERER,
+      webContentsId: 99,
+    });
+    // SKIPPED means result has no process field
+    expect((result as Record<string, unknown> | null)?.process).toBeUndefined();
   });
 });
