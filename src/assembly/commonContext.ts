@@ -2,6 +2,8 @@ import type { Configuration } from '../config';
 import { EventSource } from '../event';
 import type { FormatHooks } from './hooks';
 import { display } from '../tools/display';
+import { SKIPPED } from '@datadog/js-core/assembly';
+import { ProcessContext } from '../domain/rum/process';
 
 /**
  * Define the common attributes for the events of each format
@@ -84,4 +86,19 @@ function hasForbiddenTagCharacters(tag: string): boolean {
   // p{Lo} matches a letter that is neither uppercase nor lowercase (ex: Japanese characters).
   // See https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Regular_expressions/Unicode_character_class_escape#unicode_property_escapes_vs._character_classes
   return /[^\p{Ll}\p{Lo}0-9_:./-]/u.test(tag);
+}
+
+export function registerProcessContext(processContext: ProcessContext, hooks: FormatHooks) {
+  hooks.registerRum(({ source, webContentsId }) => {
+    if (source === EventSource.MAIN) {
+      const ctx = processContext.getMainProcessContext();
+      return { process: { id: ctx.id, role: ctx.role, name: ctx.name } };
+    }
+    if (source === EventSource.RENDERER && webContentsId !== undefined) {
+      const ctx = processContext.getRendererProcessContext(webContentsId);
+      if (ctx === undefined) return SKIPPED;
+      return { process: { id: ctx.id, role: ctx.role, name: ctx.name } };
+    }
+    return SKIPPED;
+  });
 }
