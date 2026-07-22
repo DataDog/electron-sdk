@@ -68,7 +68,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   }
 
   transport = await Transport.create(config, eventManager);
-  const rum = await RumCollection.start(eventManager, hooks);
+  const rum = await RumCollection.start(eventManager, hooks, sessionManager);
   rumApi = rum.getApi();
   setDurationVitalApi(rumApi);
 
