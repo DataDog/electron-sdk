@@ -69,6 +69,7 @@ export class ProcessCollection {
       canHandle: (event): event is LifecycleEvent => event.kind === EventKind.LIFECYCLE,
       handle: (event) => {
         if (event.lifecycle === LifecycleKind.SESSION_EXPIRED) {
+          clearInterval(this.mainState.timerId);
           this.mainState.documentVersion++;
           this.emitProcessEvent({
             id: this.mainState.id,
