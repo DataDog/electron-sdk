@@ -149,6 +149,10 @@ export interface BrowserProfilerTrace {
    */
   readonly resources: string[];
   /**
+   * Mapping of profiler resources to their debug IDs for source map deobfuscation.
+   */
+  readonly debugIds?: ResourceDebugId[];
+  /**
    * An array of profiler frames.
    */
   readonly frames: ProfilerFrame[];
@@ -183,6 +187,20 @@ export interface BrowserProfilerTrace {
    * List of detected navigation entries.
    */
   readonly views: RumViewEntry[];
+  [k: string]: unknown;
+}
+/**
+ * Association between a profiler resource and its debug ID.
+ */
+export interface ResourceDebugId {
+  /**
+   * Index in the trace.resources array.
+   */
+  readonly resourceId: number;
+  /**
+   * Debug ID (UUID) for the resource, used for source map deobfuscation.
+   */
+  readonly debugId: string;
   [k: string]: unknown;
 }
 /**

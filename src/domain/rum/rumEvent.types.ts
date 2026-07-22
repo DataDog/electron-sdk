@@ -1156,6 +1156,10 @@ export interface CommonProperties {
      * User defined name of the view
      */
     name?: string;
+    /**
+     * Whether this view was synthetically created to carry view-less events
+     */
+    readonly is_fake?: boolean;
     [k: string]: unknown;
   };
   /**
@@ -1453,6 +1457,24 @@ export interface CommonProperties {
      * UUID of the stream
      */
     readonly id: string;
+    [k: string]: unknown;
+  };
+  /**
+   * Process properties
+   */
+  readonly process?: {
+    /**
+     * UUID of the process
+     */
+    readonly id?: string;
+    /**
+     * Role of the process
+     */
+    readonly role?: 'main' | 'renderer' | 'utility';
+    /**
+     * Process name
+     */
+    readonly name?: string;
     [k: string]: unknown;
   };
   [k: string]: unknown;
