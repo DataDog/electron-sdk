@@ -157,42 +157,39 @@ function validateAllowedRendererHosts(value: unknown): string[] | undefined {
     );
     return undefined;
   }
-  // Lowercase each entry: DNS hostnames are case-insensitive but URL.hostname is always lowercase,
-  // so a config like ['EXAMPLE.COM'] would never match 'example.com' without normalization.
-  return value.flatMap((h) => {
-    const lower = h.toLowerCase();
-    if (lower === '*') return ['*', ''];
-    if (lower === 'file://') return [''];
-    if (lower === '') {
+  return value.flatMap((host) => {
+    if (host === '*') return ['*', ''];
+    if (host === 'file://') return [''];
+    if (host === '') {
       display.error(
-        `Configuration error: 'allowedRendererHosts' entry '${h}' is invalid and will be ignored (empty string)`
+        `Configuration error: 'allowedRendererHosts' entry '${host}' is invalid and will be ignored (empty string)`
       );
       return [];
     }
     // Reject entries that contain URL-syntax characters that would cause the URL constructor
     // to silently extract a different host (e.g. 'foo@evil.com' → 'evil.com', 'host:8443' → 'host').
-    if (/[@/:?#\s]/.test(lower)) {
+    if (/[@/:?#\s]/.test(host)) {
       display.error(
-        `Configuration error: 'allowedRendererHosts' entry '${h}' is not a valid hostname and will be ignored`
+        `Configuration error: 'allowedRendererHosts' entry '${host}' is not a valid hostname and will be ignored`
       );
       return [];
     }
     // Only ASCII hostnames are supported. For internationalized domain names, provide the
     // ASCII-compatible encoding (punycode) directly (e.g. 'bücher.example' → 'xn--bcher-kva.example').
-    if (/[-￿]/.test(lower)) {
+    if (/[-￿]/.test(host)) {
       display.error(
-        `Configuration error: 'allowedRendererHosts' entry '${h}' is not a valid hostname and will be ignored (non-ASCII hostnames are not supported; use the ASCII-compatible encoding)`
+        `Configuration error: 'allowedRendererHosts' entry '${host}' is not a valid hostname and will be ignored (non-ASCII hostnames are not supported; use the ASCII-compatible encoding)`
       );
       return [];
     }
-    const wildcardCount = (lower.match(/\*/g) ?? []).length;
+    const wildcardCount = (host.match(/\*/g) ?? []).length;
     if (wildcardCount > 1) {
       display.error(
-        `Configuration error: 'allowedRendererHosts' entry '${h}' is invalid and will be ignored (multiple wildcards)`
+        `Configuration error: 'allowedRendererHosts' entry '${host}' is invalid and will be ignored (multiple wildcards)`
       );
       return [];
     }
-    return [lower];
+    return [host];
   });
 }
 

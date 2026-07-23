@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { ipcMain, type IpcMainEvent } from 'electron';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { combine, isIndexableObject, type RecursivePartial } from '@datadog/js-core/util';
 import { DISCARDED } from '@datadog/js-core/assembly';
@@ -10,6 +10,7 @@ import { BRIDGE_CHANNEL, setBridgeConfig, type BridgeOptions } from '../common';
 import type { FormatHooks } from './hooks';
 import type { RumEvent } from '../domain/rum';
 import { Configuration } from '../config';
+import { RendererIpcGate } from './RendererIpcGate';
 
 type BridgeEventType = 'rum' | 'log' | 'internal_telemetry' | 'profile';
 
@@ -31,6 +32,7 @@ interface BridgeEvent {
  */
 export class RendererPipeline {
   private readonly bridgeOptions: BridgeOptions;
+
   constructor(
     private readonly eventManager: EventManager,
     private readonly hooks: FormatHooks,
@@ -45,9 +47,12 @@ export class RendererPipeline {
       capabilities: config.profilingSampleRate > 0 ? ['profiles'] : [],
     };
 
+    const gate = new RendererIpcGate(this.bridgeOptions.allowedRendererHosts);
+
     ipcMain.on(
       BRIDGE_CHANNEL,
-      monitor((_ipcEvent: unknown, msg: string) => {
+      monitor((ipcEvent: IpcMainEvent, msg: string) => {
+        if (!gate.isAllowed(ipcEvent)) return;
         this.onBridgeMessage(msg);
       })
     );

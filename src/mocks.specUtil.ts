@@ -1,6 +1,49 @@
 import { type MockInstance } from 'vitest';
 import * as fs from 'node:fs/promises';
 import type { Configuration } from './config';
+
+export interface MockSender {
+  once: (event: string, handler: (...args: unknown[]) => void) => void;
+  on: (event: string, handler: (...args: unknown[]) => void) => void;
+  off: (event: string, handler: (...args: unknown[]) => void) => void;
+  listenerCount: (event: string) => number;
+  triggerDestroyed: () => void;
+  triggerFrameNavigate: (frameProcessId: number, frameRoutingId: number) => void;
+}
+
+export function createMockSender(): MockSender {
+  const persistentHandlers = new Map<string, ((...args: unknown[]) => void)[]>();
+  return {
+    once: (event: string, handler: (...args: unknown[]) => void) => {
+      const handlers = persistentHandlers.get(event) ?? [];
+      handlers.push(handler);
+      persistentHandlers.set(event, handlers);
+    },
+    on: (event: string, handler: (...args: unknown[]) => void) => {
+      const handlers = persistentHandlers.get(event) ?? [];
+      handlers.push(handler);
+      persistentHandlers.set(event, handlers);
+    },
+    off: (event: string, handler: (...args: unknown[]) => void) => {
+      const handlers = persistentHandlers.get(event) ?? [];
+      persistentHandlers.set(
+        event,
+        handlers.filter((h) => h !== handler)
+      );
+    },
+    listenerCount: (event: string) => (persistentHandlers.get(event) ?? []).length,
+    triggerDestroyed: () => {
+      // Snapshot and clear before invoking (simulates .once auto-removal).
+      const handlers = [...(persistentHandlers.get('destroyed') ?? [])];
+      persistentHandlers.set('destroyed', []);
+      handlers.forEach((h) => h());
+    },
+    triggerFrameNavigate: (frameProcessId: number, frameRoutingId: number) => {
+      const handlers = [...(persistentHandlers.get('did-frame-navigate') ?? [])];
+      handlers.forEach((h) => h(undefined, 'https://evil.com', 0, '', false, frameProcessId, frameRoutingId));
+    },
+  };
+}
 import { RawRumView, RumActionEvent, RumErrorEvent, RumEvent, RumResourceEvent, RumViewEvent } from './domain/rum';
 import { type ServerDuration } from '@datadog/js-core/time';
 import { combine, mergeInto, type RecursivePartial } from '@datadog/js-core/util';
@@ -40,7 +83,7 @@ export function createTestConfiguration(overrides: Partial<Configuration> = {}):
     profilingSampleRate: 100,
     telemetrySampleRate: 100,
     defaultPrivacyLevel: 'mask',
-    allowedRendererHosts: [],
+    allowedRendererHosts: ['*', ''],
     ...overrides,
   };
 }
