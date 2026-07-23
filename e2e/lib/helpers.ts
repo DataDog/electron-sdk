@@ -123,7 +123,7 @@ async function launchApp(
     profilingSampleRate: 100,
     telemetrySampleRate: 100,
     defaultPrivacyLevel: 'mask',
-    allowedRendererHosts: [],
+    allowedRendererHosts: ['*'],
     ...(sdkConfigOverrides ?? {}),
   };
   env.DD_ELECTRON_SDK_CONFIG = JSON.stringify(electronSdkConfig);
