@@ -113,14 +113,14 @@ describe('RendererPipeline', () => {
   it('publishes bridgeOptions derived from config via setBridgeConfig', () => {
     const config = createTestConfiguration({
       defaultPrivacyLevel: 'allow',
-      allowedWebViewHosts: ['example.com'],
+      allowedRendererHosts: ['example.com'],
       profilingSampleRate: 0,
     });
     mockSetBridgeConfig.mockClear();
     new RendererPipeline(eventManager, hooks, config);
     expect(mockSetBridgeConfig).toHaveBeenCalledWith({
       defaultPrivacyLevel: 'allow',
-      allowedWebViewHosts: ['example.com'],
+      allowedRendererHosts: ['example.com'],
       capabilities: [],
     });
   });

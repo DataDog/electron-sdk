@@ -13,14 +13,14 @@ if (!window[DD_BRIDGE_INIT]) {
 
   interface BridgeConfig {
     defaultPrivacyLevel?: string;
-    allowedWebViewHosts?: string[];
+    allowedRendererHosts?: string[];
     capabilities?: string[];
   }
 
   const config = ipcRenderer.sendSync(CONFIG_CHANNEL) as BridgeConfig | null;
 
   const defaultPrivacyLevel = config?.defaultPrivacyLevel ?? 'mask';
-  const configuredHosts = config?.allowedWebViewHosts ?? [];
+  const configuredHosts = config?.allowedRendererHosts ?? [];
   const allowedHosts = [...new Set([location.hostname, ...configuredHosts])];
 
   const bridge = {

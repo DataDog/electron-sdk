@@ -113,7 +113,7 @@ function buildSdkConfig(intake: Intake): InitConfiguration {
     version: '1.0.0',
     telemetrySampleRate: 100,
     defaultPrivacyLevel: 'mask',
-    allowedWebViewHosts: [],
+    allowedRendererHosts: ['*'],
   };
 }
 

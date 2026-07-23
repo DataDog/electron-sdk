@@ -42,7 +42,7 @@ export interface InitConfiguration {
   batchSize?: BatchSize;
   uploadFrequency?: UploadFrequency;
   defaultPrivacyLevel?: DefaultPrivacyLevel;
-  allowedWebViewHosts?: string[];
+  allowedRendererHosts: string[];
 }
 
 export interface Configuration {
@@ -59,7 +59,7 @@ export interface Configuration {
   batchSize?: BatchSize;
   uploadFrequency?: UploadFrequency;
   defaultPrivacyLevel: DefaultPrivacyLevel;
-  allowedWebViewHosts: string[];
+  allowedRendererHosts: string[];
 }
 
 function validateRequiredString(value: unknown, fieldName: string): string | undefined {
@@ -140,12 +140,14 @@ function validateDefaultPrivacyLevel(value: unknown): DefaultPrivacyLevel {
   return value as DefaultPrivacyLevel;
 }
 
-function validateAllowedWebViewHosts(value: unknown): string[] {
+function validateAllowedRendererHosts(value: unknown): string[] {
   if (value === undefined || value === null) {
     return [];
   }
   if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
-    display.error("Configuration error: 'allowedWebViewHosts' must be an array of strings");
+    display.error(
+      "Configuration error: 'allowedRendererHosts' must be an array of hostnames (e.g. ['example.com', 'myapp']), ['file://'] for file:// renderers, or ['*'] to allow all renderers including file://"
+    );
     return [];
   }
   return value;
@@ -182,6 +184,6 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     profilingSampleRate,
     telemetrySampleRate,
     defaultPrivacyLevel: validateDefaultPrivacyLevel(initConfig.defaultPrivacyLevel),
-    allowedWebViewHosts: validateAllowedWebViewHosts(initConfig.allowedWebViewHosts),
+    allowedRendererHosts: validateAllowedRendererHosts(initConfig.allowedRendererHosts),
   };
 }
