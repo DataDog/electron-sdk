@@ -48,6 +48,6 @@ The playground uses different module systems due to Electron constraints:
 Two watchers handle different reload scenarios:
 
 1. **electron-reloader** (3s startup delay) — watches playground files, reloads windows
-2. **chokidar** (5s grace period, 200ms debounce) — watches parent SDK's dist/, clears require cache, relaunches app
+2. **chokidar** (5s grace period, 200ms debounce) — watches parent SDK's dist/, relaunches app
 
 Grace periods prevent reload loops during initial TypeScript compilation.

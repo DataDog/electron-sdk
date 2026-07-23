@@ -137,12 +137,12 @@ ipcMain.handle('main:fetch-api', async () => {
 
 ipcMain.handle('main:fetch-api-fetch', async () => {
   const res = await fetch('https://httpbin.org/json');
-  return (await res.json()) as unknown;
+  return await res.json();
 });
 
 ipcMain.handle('main:fetch-api-net', async () => {
   const res = await net.fetch('https://httpbin.org/json');
-  return (await res.json()) as unknown;
+  return await res.json();
 });
 
 // IPC handler to crash the main process
