@@ -1,20 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-<<<<<<< HEAD:src/transport/batch/BatchConsumer.spec.ts
 import { BatchConsumer } from './BatchConsumer';
 import type { BatchConsumerConfig } from './BatchConsumer';
 import { getUserAgent } from '../userAgent';
 import { mockFs } from '../../mocks.specUtil';
-=======
-import { GenericBatchConsumer } from './GenericBatchConsumer';
-import type { BatchConsumerConfig as ConsumerConfig } from '../types';
-import type { BatchConsumer } from '../BatchConsumer';
-import path from 'node:path';
-import { getUserAgent } from '../../userAgent';
-import { mockFs } from '../../../mocks.specUtil';
->>>>>>> fb1f12c (Refactor transport to make BatchProducer/Consumer extensible for new transport strategies):src/transport/batch/generic/GenericBatchConsumer.spec.ts
 
 vi.mock('node:fs/promises');
-vi.mock('../../userAgent');
+vi.mock('../userAgent');
 const fsMocks = mockFs();
 
 const TEST_USER_AGENT = 'TestApp/1.0.0';
@@ -24,20 +15,11 @@ const TEST_REQUEST = new Request('https://intake.datadoghq.com/api/v2/rum', {
   body: '[]',
 });
 
-<<<<<<< HEAD:src/transport/batch/BatchConsumer.spec.ts
 const config: BatchConsumerConfig = {
   trackPath: '/mock/track',
   intakeUrl: 'https://intake.datadoghq.com/api/v2/rum',
   clientToken: 'test-token',
 };
-=======
-describe('GenericBatchConsumer', () => {
-  const config: ConsumerConfig = {
-    trackPath: 'rum',
-    intakeUrl: 'https://intake.datadoghq.com/api/v2/rum',
-    clientToken: 'test-client-token',
-  };
->>>>>>> fb1f12c (Refactor transport to make BatchProducer/Consumer extensible for new transport strategies):src/transport/batch/generic/GenericBatchConsumer.spec.ts
 
 /** Minimal concrete subclass for testing the base-class upload logic. */
 class TestConsumer extends BatchConsumer {
@@ -57,13 +39,7 @@ describe('BatchConsumer — upload/send/delete behaviour', () => {
   beforeEach(() => {
     fsMocks.reset();
     vi.mocked(getUserAgent).mockReset().mockReturnValue(TEST_USER_AGENT);
-<<<<<<< HEAD:src/transport/batch/BatchConsumer.spec.ts
     global.fetch = vi.fn().mockResolvedValue({ ok: true });
-=======
-    consumer = new GenericBatchConsumer(config);
-
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
->>>>>>> fb1f12c (Refactor transport to make BatchProducer/Consumer extensible for new transport strategies):src/transport/batch/generic/GenericBatchConsumer.spec.ts
     fsMocks.access.mockResolvedValue(undefined);
     fsMocks.unlink.mockResolvedValue(undefined);
   });

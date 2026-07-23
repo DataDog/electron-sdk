@@ -155,6 +155,29 @@ describe('BatchManager', () => {
       expect(mockProducerFlush).toHaveBeenCalledTimes(1);
       expect(mockConsumerUpload).toHaveBeenCalledTimes(1);
     });
+
+    it('runs a fresh cycle after an in-flight scheduled cycle instead of dropping the flush', async () => {
+      let resolveScheduled!: () => void;
+      mockProducerFlush.mockReturnValueOnce(new Promise<void>((resolve) => (resolveScheduled = resolve)));
+
+      const manager = await BatchManager.create(config, batchConfig);
+
+      // Fire the periodic cycle; its producer.flush() stays pending, simulating an in-flight upload.
+      await vi.advanceTimersByTimeAsync(batchConfig.uploadFrequency);
+      expect(mockProducerFlush).toHaveBeenCalledTimes(1);
+      expect(mockConsumerUpload).not.toHaveBeenCalled();
+
+      // A flush() arriving now (e.g. on quit, after a final segment was rotated) must not be dropped:
+      // it queues a full cycle behind the active one so the newly rotated files are uploaded.
+      const flushPromise = manager.flush();
+      resolveScheduled();
+      await flushPromise;
+
+      expect(mockProducerFlush).toHaveBeenCalledTimes(2);
+      expect(mockConsumerUpload).toHaveBeenCalledTimes(2);
+
+      manager.stop();
+    });
   });
 
   describe('stop', () => {

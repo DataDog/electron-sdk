@@ -785,47 +785,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"dd-trace@patch:dd-trace@npm%3A5.103.0#~/.yarn/patches/dd-trace-npm-5.103.0-bcd76a72f0.patch":
-  version: 5.103.0
-  resolution: "dd-trace@patch:dd-trace@npm%3A5.103.0#~/.yarn/patches/dd-trace-npm-5.103.0-bcd76a72f0.patch::version=5.103.0&hash=41c989"
-  dependencies:
-    "@datadog/libdatadog": "npm:0.9.3"
-    "@datadog/native-appsec": "npm:11.0.1"
-    "@datadog/native-iast-taint-tracking": "npm:4.1.0"
-    "@datadog/native-metrics": "npm:3.1.2"
-    "@datadog/openfeature-node-server": "npm:1.1.2"
-    "@datadog/pprof": "npm:5.14.1"
-    "@datadog/wasm-js-rewriter": "npm:5.0.1"
-    "@opentelemetry/api": "npm:>=1.0.0 <1.10.0"
-    "@opentelemetry/api-logs": "npm:<1.0.0"
-    dc-polyfill: "npm:^0.1.11"
-    import-in-the-middle: "npm:^3.0.1"
-    oxc-parser: "npm:^0.129.0"
-  dependenciesMeta:
-    "@datadog/libdatadog":
-      optional: true
-    "@datadog/native-appsec":
-      optional: true
-    "@datadog/native-iast-taint-tracking":
-      optional: true
-    "@datadog/native-metrics":
-      optional: true
-    "@datadog/openfeature-node-server":
-      optional: true
-    "@datadog/pprof":
-      optional: true
-    "@datadog/wasm-js-rewriter":
-      optional: true
-    "@opentelemetry/api":
-      optional: true
-    "@opentelemetry/api-logs":
-      optional: true
-    oxc-parser:
-      optional: true
-  checksum: 10c0/876c62ee31fbc046f6d0fd41bfbc05172748e56c66df25f08826e3899fcb91d976e8b7f2bbbc01314e034d43f987f16006282ce255b88d7f2dd4cdf582bcd08d
-  languageName: node
-  linkType: hard
-
 "debug@npm:^4.1.0, debug@npm:^4.1.1":
   version: 4.4.3
   resolution: "debug@npm:4.4.3"
