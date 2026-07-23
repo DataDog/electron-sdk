@@ -19,10 +19,19 @@ function getHolder(): BridgeConfigHolder {
   const store = globalThis as unknown as Record<symbol, BridgeConfigHolder | undefined>;
   let holder = store[BRIDGE_CONFIG];
   if (!holder) {
-    // Advertise the SDK's supported capabilities by default to signal support. init() replaces this with
-    // the config-derived value; that narrowing is only an optimization to save renderer work, since the
-    // Electron SDK config (not the advertised capability) governs what is actually sent to Datadog.
-    holder = { value: { defaultPrivacyLevel: 'mask', allowedWebViewHosts: [], capabilities: ['profiles'] } };
+    // Advertise supported capabilities by default to signal support for windows loaded before init().
+    // init() replaces this with the config-derived value; that narrowing is only an optimization to
+    // save renderer work, since the Electron SDK config (not the advertised capability) governs what
+    // is actually sent to Datadog.
+    //
+    // 'records' is deliberately excluded from this fallback: unlike profiling, replay recording
+    // captures DOM data and depends on the real defaultPrivacyLevel and sampling decision, neither of
+    // which is known before init(). Advertising it here would start the renderer recording (and
+    // streaming records over IPC) for a session that may not even have replay enabled. It is added
+    // once setBridgeConfig() publishes the real options.
+    holder = {
+      value: { defaultPrivacyLevel: 'mask', allowedWebViewHosts: [], capabilities: ['profiles'] },
+    };
     store[BRIDGE_CONFIG] = holder;
   }
   return holder;

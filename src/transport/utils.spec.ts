@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeIntakeHostname, computeIntakeUrlForTrack } from './utils';
+import { appendIntakeParams, computeIntakeHostname, computeIntakeUrlForTrack } from './utils';
 
 describe('computeIntakeHostname', () => {
   it('returns the intake hostname for a simple site', () => {
@@ -55,5 +55,34 @@ describe('computeIntakeUrlForTrack', () => {
     ).toBe(
       'http://proxy:8080?ddforward=%2Fapi%2Fv2%2Fprofiling%2Fquota%3Fsession_id%3Dabc%26ddsource%3Delectron&ddforwardSubdomain=quota'
     );
+  });
+});
+
+describe('appendIntakeParams', () => {
+  it('merges params into a direct intake URL, overwriting the default ddsource', () => {
+    const result = appendIntakeParams('https://browser-intake-datadoghq.com/api/v2/replay?ddsource=electron', {
+      ddsource: 'browser',
+      'dd-api-key': 'token',
+    });
+
+    const url = new URL(result);
+    expect(url.searchParams.getAll('ddsource')).toEqual(['browser']);
+    expect(url.searchParams.get('dd-api-key')).toBe('token');
+    // No second '?' introduced.
+    expect(result.match(/\?/g)).toHaveLength(1);
+  });
+
+  it('folds params into the forwarded path for a proxy URL, not the proxy query itself', () => {
+    const proxyUrl = computeIntakeUrlForTrack('datadoghq.com', 'replay', { proxy: 'http://proxy:8080' });
+
+    const result = appendIntakeParams(proxyUrl, { ddsource: 'browser', 'dd-api-key': 'token' });
+
+    const url = new URL(result);
+    // Auth params must not leak onto the proxy URL.
+    expect(url.searchParams.get('dd-api-key')).toBeNull();
+    const forwarded = new URL(url.searchParams.get('ddforward')!, 'https://placeholder.invalid');
+    expect(forwarded.pathname).toBe('/api/v2/replay');
+    expect(forwarded.searchParams.getAll('ddsource')).toEqual(['browser']);
+    expect(forwarded.searchParams.get('dd-api-key')).toBe('token');
   });
 });

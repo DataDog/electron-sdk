@@ -4,7 +4,7 @@ import { RawRumData, RumEvent } from '../domain/rum';
 import type { TimeStamp } from '@datadog/js-core/time';
 import { RawTraceData } from '../domain/tracing/rawTracingData.types';
 import type { BrowserProfileEvent, BrowserProfilerTrace } from '../domain/profiling';
-import type { ReplaySegmentPayload } from '../domain/replay';
+import type { ReplaySegmentPayload, BrowserRecord } from '../domain/replay';
 
 export type { BrowserProfileEvent, BrowserProfilerTrace };
 
@@ -27,10 +27,9 @@ export interface RawTelemetryEvent {
 export interface RawReplayEvent {
   kind: typeof EventKind.RAW;
   source: typeof EventSource.RENDERER;
-  track: typeof EventTrack.REPLAY;
   format: typeof EventFormat.REPLAY;
-  data: unknown;
-  view?: { id: string };
+  data: BrowserRecord;
+  view: { id: string };
   startTime?: TimeStamp;
 }
 

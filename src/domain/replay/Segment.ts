@@ -12,15 +12,24 @@ export interface SegmentContext {
   view: { id: string };
 }
 
-export type CreationReason =
-  | 'init'
-  | 'segment_duration_limit'
-  | 'segment_bytes_limit'
-  | 'view_change'
-  | 'session_renew';
+export const CreationReason = {
+  INIT: 'init',
+  SEGMENT_DURATION_LIMIT: 'segment_duration_limit',
+  SEGMENT_BYTES_LIMIT: 'segment_bytes_limit',
+  VIEW_CHANGE: 'view_change',
+  BEFORE_UNLOAD: 'before_unload',
+  VISIBILITY_HIDDEN: 'visibility_hidden',
+  PAGE_FROZEN: 'page_frozen',
+} as const;
 
-/** Record type constants from the browser SDK's rrweb-based recording. */
+export type CreationReason = (typeof CreationReason)[keyof typeof CreationReason];
+
+/** Record type constants from the browser SDK's rrweb-based recording (RecordType). */
 const FULL_SNAPSHOT_TYPE = 2;
+// Browser SDK 7.x change-format: the initial snapshot of a view arrives as a Change record
+// (type 12) rather than a legacy full-snapshot record. It only counts as the full snapshot on
+// the first segment of the view (index_in_view === 0).
+const CHANGE_TYPE = 12;
 
 export interface SegmentMetadata {
   application: { id: string };
@@ -60,9 +69,15 @@ export interface BrowserRecord {
   [key: string]: unknown;
 }
 
+/** UTF-8 byte size a record contributes to a segment (matches Segment's own accounting). */
+export function byteSizeOf(record: BrowserRecord): number {
+  return Buffer.byteLength(JSON.stringify(record), 'utf8');
+}
+
 export class Segment {
   private records: BrowserRecord[] = [];
   private metadata: SegmentMetadata;
+  private _estimatedSize = 0;
 
   constructor(context: SegmentContext, creationReason: CreationReason, indexInView: number) {
     this.metadata = {
@@ -85,23 +100,23 @@ export class Segment {
     return this.records.length === 0;
   }
 
-  /** Estimated byte size of the serialized records (pre-compression). */
   get estimatedSize(): number {
-    // Rough estimate: stringify each record. This avoids re-serializing on every add.
-    // We sum individual record sizes + overhead for the wrapping segment structure.
-    let size = 0;
-    for (const record of this.records) {
-      size += JSON.stringify(record).length;
-    }
-    return size;
+    return this._estimatedSize;
   }
 
-  addRecord(record: BrowserRecord): void {
+  addRecord(record: BrowserRecord, recordByteSize: number = byteSizeOf(record)): void {
+    // Measure UTF-8 byte length, not UTF-16 code-unit count: SEGMENT_BYTES_LIMIT is a byte
+    // cap and flush() reports rawBytesCount via Buffer.byteLength. Using String#length would
+    // undercount non-ASCII DOM text (CJK/emoji), letting a segment exceed the intended cap.
+    // The caller may pass a precomputed size (from byteSizeOf) to avoid stringifying twice.
+    this._estimatedSize += recordByteSize;
     this.records.push(record);
     this.metadata.start = Math.min(this.metadata.start, record.timestamp);
     this.metadata.end = Math.max(this.metadata.end, record.timestamp);
     this.metadata.records_count += 1;
-    if (record.type === FULL_SNAPSHOT_TYPE) {
+    // Mirror the browser SDK's segment.js: a full snapshot is a legacy type-2 record, or — in the
+    // 7.x change format — a Change record (type 12) on the view's first segment (index_in_view 0).
+    if (record.type === FULL_SNAPSHOT_TYPE || (record.type === CHANGE_TYPE && this.metadata.index_in_view === 0)) {
       this.metadata.has_full_snapshot = true;
     }
   }

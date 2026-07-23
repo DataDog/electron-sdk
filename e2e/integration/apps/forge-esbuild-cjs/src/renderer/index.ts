@@ -5,6 +5,7 @@ datadogRum.init({
   applicationId: 'integration-test-app-id',
   service: 'integration-test-renderer',
   site: 'datadoghq.com',
+  sessionReplaySampleRate: 100,
   trackUserInteractions: false,
   trackResources: false,
   trackLongTasks: false,

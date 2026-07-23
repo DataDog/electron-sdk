@@ -111,6 +111,7 @@ function buildSdkConfig(intake: Intake): InitConfiguration {
     applicationId: 'integration-test-app-id',
     env: 'test',
     version: '1.0.0',
+    sessionReplaySampleRate: 100,
     telemetrySampleRate: 100,
     defaultPrivacyLevel: 'mask',
     allowedWebViewHosts: [],

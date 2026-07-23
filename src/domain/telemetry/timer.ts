@@ -10,6 +10,12 @@ export function setTimeout(callback: () => void, delay?: number): ReturnType<typ
   return global.setTimeout(monitor(callback), delay);
 }
 
+// Paired with setTimeout so timer usage goes through this module rather than reaching for the
+// globals directly. There is no callback to wrap here, so it simply delegates to global.clearTimeout.
+export function clearTimeout(timeoutId: ReturnType<typeof global.setTimeout> | undefined): void {
+  global.clearTimeout(timeoutId);
+}
+
 export function setInterval(callback: () => void, delay?: number): ReturnType<typeof global.setInterval> {
   return global.setInterval(monitor(callback), delay);
 }

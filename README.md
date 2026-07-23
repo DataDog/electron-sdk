@@ -130,6 +130,7 @@ await esbuild.build({
 - **Renderer Events** — Capture RUM events from renderer processes via the browser SDK
 - **Custom Duration Vitals** — Measure user-defined durations in the main process
 - **Renderer Profiling** — Collect JS Self-Profiling data from renderer pages and correlate it with RUM
+- **Session Replay** — Record renderer UI sessions in the main process and correlate them with RUM views
 - **User & Account Info** — Attach user and account identity to all RUM events and traces
 - **Operation Monitoring** _(experimental)_ — Track start / succeed / fail steps of critical user-facing workflows
 
@@ -244,6 +245,41 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
 ```
+
+### Session Replay
+
+The Browser SDK records renderer UI ([Session Replay](https://docs.datadoghq.com/real_user_monitoring/session_replay/browser/)) and streams the records to the main process, which buffers, compresses, and uploads them — correlated with your RUM views.
+
+**1. Enable session replay from the main process.** Set `sessionReplaySampleRate` on the Electron SDK `init()`:
+
+```ts
+await init({
+  clientToken: '<CLIENT_TOKEN>',
+  applicationId: '<APPLICATION_ID>',
+  site: 'datadoghq.com',
+  service: 'my-electron-app',
+  sessionReplaySampleRate: 100, // percentage of sampled sessions that record replay (0–100)
+  defaultPrivacyLevel: 'mask', // 'mask' | 'allow' | 'mask-user-input'
+});
+```
+
+The Electron SDK owns the replay sampling decision and performs the upload. `sessionReplaySampleRate` is applied as a child of `sessionSampleRate`, so with `sessionSampleRate: 0` no session records replay. The `defaultPrivacyLevel` set here is propagated to the renderer recorder through the bridge, so masking is enforced end-to-end.
+
+**2. Enable session replay in the renderer's Browser SDK.** In the pages loaded by the renderer, initialize `@datadog/browser-rum` with session replay turned on:
+
+```ts
+import { datadogRum } from '@datadog/browser-rum';
+
+datadogRum.init({
+  clientToken: '<CLIENT_TOKEN>',
+  applicationId: '<APPLICATION_ID>',
+  site: 'datadoghq.com',
+  service: 'my-electron-app',
+  sessionReplaySampleRate: 100,
+});
+```
+
+The Electron SDK advertises a `records` capability over the bridge, so the Browser SDK streams replay records to the main process instead of uploading them itself — no `startSessionReplayRecording()` call is required. See [Renderer process setup](#renderer-process-setup) for general Browser SDK configuration.
 
 ## API
 
@@ -375,18 +411,19 @@ interface FeatureOperationOptions {
 
 ### Configuration Options
 
-| Option                | Type                                     | Required | Default  | Description                                                                                                                               |
-| --------------------- | ---------------------------------------- | -------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `clientToken`         | `string`                                 | Yes      | —        | Datadog client token                                                                                                                      |
-| `applicationId`       | `string`                                 | Yes      | —        | RUM application ID                                                                                                                        |
-| `site`                | `string`                                 | Yes      | —        | Datadog site (e.g. `datadoghq.com`, `datadoghq.eu`, `us3.datadoghq.com`, `us5.datadoghq.com`, `ap1.datadoghq.com`, `ddog-gov.com`)        |
-| `service`             | `string`                                 | Yes      | —        | Service name                                                                                                                              |
-| `env`                 | `string`                                 | No       | —        | Application environment                                                                                                                   |
-| `version`             | `string`                                 | No       | —        | Application version                                                                                                                       |
-| `sessionSampleRate`   | `number`                                 | No       | `100`    | Percentage of sessions to collect (0–100). `0` collects no sessions; `100` collects all sessions.                                         |
-| `profilingSampleRate` | `number`                                 | No       | `0`      | Percentage of sampled sessions that are profiled (0–100). `0` disables renderer profiling. See [Renderer Profiling](#renderer-profiling). |
-| `telemetrySampleRate` | `number`                                 | No       | `20`     | Telemetry sample rate (0–100)                                                                                                             |
-| `batchSize`           | `'SMALL' \| 'MEDIUM' \| 'LARGE'`         | No       | —        | Batch size for event uploads                                                                                                              |
-| `uploadFrequency`     | `'RARE' \| 'NORMAL' \| 'FREQUENT'`       | No       | —        | Upload frequency for event batches                                                                                                        |
-| `defaultPrivacyLevel` | `'mask' \| 'allow' \| 'mask-user-input'` | No       | `'mask'` | Default privacy level for renderer session replay                                                                                         |
-| `allowedWebViewHosts` | `string[]`                               | No       | `[]`     | Hostnames allowed for the renderer bridge                                                                                                 |
+| Option                    | Type                                     | Required | Default  | Description                                                                                                                                         |
+| ------------------------- | ---------------------------------------- | -------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `clientToken`             | `string`                                 | Yes      | —        | Datadog client token                                                                                                                                |
+| `applicationId`           | `string`                                 | Yes      | —        | RUM application ID                                                                                                                                  |
+| `site`                    | `string`                                 | Yes      | —        | Datadog site (e.g. `datadoghq.com`, `datadoghq.eu`, `us3.datadoghq.com`, `us5.datadoghq.com`, `ap1.datadoghq.com`, `ddog-gov.com`)                  |
+| `service`                 | `string`                                 | Yes      | —        | Service name                                                                                                                                        |
+| `env`                     | `string`                                 | No       | —        | Application environment                                                                                                                             |
+| `version`                 | `string`                                 | No       | —        | Application version                                                                                                                                 |
+| `sessionSampleRate`       | `number`                                 | No       | `100`    | Percentage of sessions to collect (0–100). `0` collects no sessions; `100` collects all sessions.                                                   |
+| `sessionReplaySampleRate` | `number`                                 | No       | `0`      | Percentage of sampled sessions that record session replay (0–100). `0` disables renderer session replay. Applied as a child of `sessionSampleRate`. |
+| `profilingSampleRate`     | `number`                                 | No       | `0`      | Percentage of sampled sessions that are profiled (0–100). `0` disables renderer profiling. See [Renderer Profiling](#renderer-profiling).           |
+| `telemetrySampleRate`     | `number`                                 | No       | `20`     | Telemetry sample rate (0–100)                                                                                                                       |
+| `batchSize`               | `'SMALL' \| 'MEDIUM' \| 'LARGE'`         | No       | —        | Batch size for event uploads                                                                                                                        |
+| `uploadFrequency`         | `'RARE' \| 'NORMAL' \| 'FREQUENT'`       | No       | —        | Upload frequency for event batches                                                                                                                  |
+| `defaultPrivacyLevel`     | `'mask' \| 'allow' \| 'mask-user-input'` | No       | `'mask'` | Default privacy level for renderer session replay                                                                                                   |
+| `allowedWebViewHosts`     | `string[]`                               | No       | `[]`     | Hostnames allowed for the renderer bridge                                                                                                           |

@@ -5,12 +5,11 @@ datadogRum.init({
   clientToken: 'pub-renderer-token',
   site: 'datadoghq.com',
   service: 'e2e-renderer',
-  sessionSampleRate: 100,
-  profilingSampleRate: 100,
-  sessionReplaySampleRate: 100,
   trackResources: true,
   trackLongTasks: true,
   trackUserInteractions: true,
+  profilingSampleRate: 100,
+  sessionReplaySampleRate: 100,
 });
 
 document.getElementById('status')!.textContent = 'bridge-ready';
