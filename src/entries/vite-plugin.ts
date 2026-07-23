@@ -77,13 +77,13 @@ export function datadogVitePlugin(): VitePlugin {
       const destModules = join(outDir, 'node_modules');
       const visited = new Set<string>();
 
-      function copyPackageTree(pkg: string): void {
+      function copyPackageTree(pkg: string, resolveFrom = _require): void {
         if (visited.has(pkg)) return;
         visited.add(pkg);
 
         try {
           // Resolve the package's main entry, then walk up to find the root
-          const entryPath = _require.resolve(pkg);
+          const entryPath = resolveFrom.resolve(pkg);
           let pkgDir = dirname(entryPath);
           while (pkgDir !== dirname(pkgDir) && !existsSync(join(pkgDir, 'package.json'))) {
             pkgDir = dirname(pkgDir);
@@ -99,8 +99,9 @@ export function datadogVitePlugin(): VitePlugin {
           const pkgJson = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) as {
             dependencies?: Record<string, string>;
           };
+          const packageRequire = createRequire(join(pkgDir, 'package.json'));
           for (const dep of Object.keys(pkgJson.dependencies ?? {})) {
-            copyPackageTree(dep);
+            copyPackageTree(dep, packageRequire);
           }
         } catch {
           console.warn(`[datadog] Failed to copy package '${pkg}' to build output`);
