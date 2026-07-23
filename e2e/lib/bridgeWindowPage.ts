@@ -44,6 +44,18 @@ export class BridgeWindowPage {
     );
   }
 
+  async getBridgeCapabilities(): Promise<string[]> {
+    return this.page.evaluate(() => {
+      const bridge = (
+        globalThis as unknown as {
+          DatadogEventBridge: { getCapabilities(): string };
+        }
+      ).DatadogEventBridge;
+
+      return JSON.parse(bridge.getCapabilities()) as string[];
+    });
+  }
+
   async triggerProfilingFlush(): Promise<void> {
     await this.page.close({ runBeforeUnload: true });
     // Wait for IPC propagation: beforeunload → bridge send → main process → write queue

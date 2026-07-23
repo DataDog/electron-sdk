@@ -11,6 +11,7 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
   // so it is authoritative for the rates reported on every RUM event.
   const ddConfiguration = {
     session_sample_rate: configuration.sessionSampleRate,
+    session_replay_sample_rate: configuration.sessionReplaySampleRate,
     profiling_sample_rate: configuration.profilingSampleRate,
   };
 

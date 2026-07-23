@@ -39,6 +39,10 @@ export class Transport {
     if (this.config.profilingSampleRate > 0) {
       tracks.push(EventTrack.PROFILE);
     }
+
+    if (this.config.sessionReplaySampleRate > 0) {
+      tracks.push(EventTrack.REPLAY);
+    }
     return tracks;
   }
 

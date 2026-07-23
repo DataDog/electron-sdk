@@ -66,7 +66,15 @@ describe('Transport', () => {
 
       const tracks = mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType);
       expect(tracks).not.toContain(EventTrack.PROFILE);
-      expect(tracks).toEqual([EventTrack.RUM, EventTrack.SPANS]);
+      expect(tracks).toEqual([EventTrack.RUM, EventTrack.SPANS, EventTrack.REPLAY]);
+    });
+
+    it('should skip the REPLAY track when replay is disabled', async () => {
+      const configWithoutReplay = createTestConfiguration({ sessionReplaySampleRate: 0 });
+      await Transport.create(configWithoutReplay, eventManager);
+
+      const tracks = mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType);
+      expect(tracks).not.toContain(EventTrack.REPLAY);
     });
   });
 
@@ -136,7 +144,8 @@ describe('Transport', () => {
       const transport = await Transport.create(config, eventManager);
       await transport.flush();
 
-      expect(mockBatchFlush).toHaveBeenCalledTimes(3);
+      // RUM + SPANS + PROFILE + REPLAY
+      expect(mockBatchFlush).toHaveBeenCalledTimes(4);
     });
   });
 

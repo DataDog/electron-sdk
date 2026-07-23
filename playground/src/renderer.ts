@@ -22,6 +22,7 @@ datadogRum.init({
   service: 'electron-playground',
   env: 'dev',
   sessionSampleRate: 100,
+  sessionReplaySampleRate: 100,
   trackResources: true,
   trackLongTasks: true,
   trackUserInteractions: true,

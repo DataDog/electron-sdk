@@ -15,6 +15,7 @@ import {
   type BrowserProfilerTrace,
   type EndUserActivityEvent,
   type RawProfileEvent,
+  type RawReplayEvent,
   type ServerRumEvent,
 } from '../event';
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
@@ -115,6 +116,7 @@ describe('RendererPipeline', () => {
       defaultPrivacyLevel: 'allow',
       allowedWebViewHosts: ['example.com'],
       profilingSampleRate: 0,
+      sessionReplaySampleRate: 0,
     });
     mockSetBridgeConfig.mockClear();
     new RendererPipeline(eventManager, hooks, config);
@@ -127,14 +129,21 @@ describe('RendererPipeline', () => {
 
   describe('capabilities', () => {
     it('advertises the profiles capability when profilingSampleRate > 0', () => {
-      const config = createTestConfiguration({ profilingSampleRate: 100 });
+      const config = createTestConfiguration({ profilingSampleRate: 100, sessionReplaySampleRate: 0 });
       mockSetBridgeConfig.mockClear();
       new RendererPipeline(new EventManager(), createFormatHooks(), config);
       expect((mockSetBridgeConfig.mock.calls[0]?.[0] as BridgeOptions).capabilities).toEqual(['profiles']);
     });
 
-    it('advertises no capabilities when profilingSampleRate is 0', () => {
-      const config = createTestConfiguration({ profilingSampleRate: 0 });
+    it('advertises replay and profiling capabilities when both are enabled', () => {
+      const config = createTestConfiguration({ profilingSampleRate: 100, sessionReplaySampleRate: 100 });
+      mockSetBridgeConfig.mockClear();
+      new RendererPipeline(new EventManager(), createFormatHooks(), config);
+      expect((mockSetBridgeConfig.mock.calls[0]?.[0] as BridgeOptions).capabilities).toEqual(['profiles', 'records']);
+    });
+
+    it('advertises no capabilities when profiling and replay are disabled', () => {
+      const config = createTestConfiguration({ profilingSampleRate: 0, sessionReplaySampleRate: 0 });
       mockSetBridgeConfig.mockClear();
       new RendererPipeline(new EventManager(), createFormatHooks(), config);
       expect((mockSetBridgeConfig.mock.calls[0]?.[0] as BridgeOptions).capabilities).toEqual([]);
@@ -374,6 +383,74 @@ describe('RendererPipeline', () => {
       expect(spy).not.toHaveBeenCalled();
       expect(mockAddError).toHaveBeenCalledOnce();
       expect((mockAddError.mock.calls[0][0] as Error).message).toContain('malformed profile');
+    });
+  });
+
+  describe('record bridge events', () => {
+    it('dispatches RawReplayEvent when bridge sends a record message', () => {
+      const record = { type: 2, timestamp: 123 };
+      const received: RawReplayEvent[] = [];
+      eventManager.registerHandler<RawReplayEvent>({
+        canHandle: (e): e is RawReplayEvent => e.kind === EventKind.RAW && e.format === EventFormat.REPLAY,
+        handle: (e) => received.push(e),
+      });
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'record', event: record, view: { id: 'view-1' } }));
+
+      expect(received).toHaveLength(1);
+      expect(received[0].format).toBe(EventFormat.REPLAY);
+      expect(received[0].data).toEqual(record);
+      expect(received[0].view).toEqual({ id: 'view-1' });
+      expect(received[0].source).toBe(EventSource.RENDERER);
+    });
+
+    it('reports telemetry error and drops records missing view', () => {
+      const spy = vi.spyOn(eventManager, 'notify');
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'record', event: { type: 2, timestamp: 123 } }));
+
+      expect(spy).not.toHaveBeenCalled();
+      expect(mockAddError).toHaveBeenCalledOnce();
+      expect((mockAddError.mock.calls[0][0] as Error).message).toContain('missing view');
+    });
+
+    it('reports telemetry error and drops malformed record payloads', () => {
+      const spy = vi.spyOn(eventManager, 'notify');
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'record', event: 'not-an-object', view: { id: 'view-1' } }));
+
+      expect(spy).not.toHaveBeenCalled();
+      expect(mockAddError).toHaveBeenCalledOnce();
+      expect((mockAddError.mock.calls[0][0] as Error).message).toContain('malformed replay record');
+    });
+
+    it.each([
+      ['empty view id', { id: '' }],
+      ['missing view id', {}],
+      ['non-string view id', { id: 123 }],
+    ])('reports telemetry error and drops records with an %s', (_label, view) => {
+      const spy = vi.spyOn(eventManager, 'notify');
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'record', event: { type: 2, timestamp: 123 }, view }));
+
+      expect(spy).not.toHaveBeenCalled();
+      expect(mockAddError).toHaveBeenCalledOnce();
+      expect((mockAddError.mock.calls[0][0] as Error).message).toContain('missing view');
+    });
+
+    it.each([
+      ['missing timestamp', { type: 2 }],
+      ['non-numeric timestamp', { type: 2, timestamp: 'now' }],
+      ['null timestamp', { type: 2, timestamp: null }],
+      ['missing type', { timestamp: 123 }],
+    ])('reports telemetry error and drops records with %s', (_label, event) => {
+      const spy = vi.spyOn(eventManager, 'notify');
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'record', event, view: { id: 'view-1' } }));
+
+      expect(spy).not.toHaveBeenCalled();
+      expect(mockAddError).toHaveBeenCalledOnce();
+      expect((mockAddError.mock.calls[0][0] as Error).message).toContain('invalid timestamp or type');
     });
   });
 
