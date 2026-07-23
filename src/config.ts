@@ -1,6 +1,7 @@
 import { ONE_SECOND } from '@datadog/js-core/time';
 import { ONE_KIBI_BYTE, ONE_MEBI_BYTE, DefaultPrivacyLevel } from '@datadog/browser-core';
 import { display } from './tools/display';
+import type { MainRumEvent } from './domain/rum';
 
 const VALID_DATADOG_SITES = [
   'datadoghq.com',
@@ -28,6 +29,24 @@ export const BatchUploadFrequencies = {
 export type BatchSize = 'SMALL' | 'MEDIUM' | 'LARGE';
 export type UploadFrequency = 'RARE' | 'NORMAL' | 'FREQUENT';
 
+/**
+ * Synchronous function called before a fully assembled main-process RUM event is sent to Datadog.
+ * Keep this callback fast. Only supported field changes are applied; mutations to unsupported fields are ignored.
+ * Only an explicit false discards the event; any other return value keeps it. View and crash events cannot be
+ * discarded.
+ *
+ * @example
+ * ```ts
+ * beforeSend: (event) => {
+ *   if (event.type === 'error') {
+ *     event.error.message = '[REDACTED]';
+ *   }
+ *   return true;
+ * }
+ * ```
+ */
+export type RumBeforeSend = (event: MainRumEvent) => boolean;
+
 export interface InitConfiguration {
   site: string;
   proxy?: string;
@@ -43,6 +62,16 @@ export interface InitConfiguration {
   uploadFrequency?: UploadFrequency;
   defaultPrivacyLevel?: DefaultPrivacyLevel;
   allowedWebViewHosts?: string[];
+  /**
+   * Synchronously modify supported fields on fully assembled main-process RUM events. Only an explicit false
+   * discards an event; mutations to unsupported fields are ignored. View and crash events cannot be discarded.
+   *
+   * @example
+   * ```ts
+   * beforeSend: (event) => event.context?.internal !== true
+   * ```
+   */
+  beforeSend?: RumBeforeSend;
 }
 
 export interface Configuration {
@@ -60,6 +89,7 @@ export interface Configuration {
   uploadFrequency?: UploadFrequency;
   defaultPrivacyLevel: DefaultPrivacyLevel;
   allowedWebViewHosts: string[];
+  beforeSend?: RumBeforeSend;
 }
 
 function validateRequiredString(value: unknown, fieldName: string): string | undefined {
@@ -151,6 +181,17 @@ function validateAllowedWebViewHosts(value: unknown): string[] {
   return value;
 }
 
+function validateBeforeSend(value: unknown): RumBeforeSend | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== 'function') {
+    display.error("Configuration error: 'beforeSend' must be a function");
+    return undefined;
+  }
+  return value as RumBeforeSend;
+}
+
 export function buildConfiguration(initConfig: InitConfiguration): Configuration | undefined {
   const service = validateRequiredString(initConfig.service, 'service');
   const clientToken = validateRequiredString(initConfig.clientToken, 'clientToken');
@@ -183,5 +224,6 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     telemetrySampleRate,
     defaultPrivacyLevel: validateDefaultPrivacyLevel(initConfig.defaultPrivacyLevel),
     allowedWebViewHosts: validateAllowedWebViewHosts(initConfig.allowedWebViewHosts),
+    beforeSend: validateBeforeSend(initConfig.beforeSend),
   };
 }

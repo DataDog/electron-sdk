@@ -319,6 +319,28 @@ describe('buildConfiguration', () => {
     });
   });
 
+  describe('beforeSend validation', () => {
+    it('preserves a valid callback', () => {
+      const beforeSend = vi.fn(() => true);
+
+      expect(buildConfiguration({ ...DEFAULT_CONFIG, beforeSend })?.beforeSend).toBe(beforeSend);
+    });
+
+    it.each([undefined, null])('disables beforeSend without an error when set to %s', (beforeSend) => {
+      const config = { ...DEFAULT_CONFIG, beforeSend } as unknown as InitConfiguration;
+
+      expect(buildConfiguration(config)?.beforeSend).toBeUndefined();
+      expect(display.error).not.toHaveBeenCalled();
+    });
+
+    it.each(['not-a-function', 42, {}])('logs an error and disables beforeSend when set to %o', (beforeSend) => {
+      const config = { ...DEFAULT_CONFIG, beforeSend } as unknown as InitConfiguration;
+
+      expect(buildConfiguration(config)?.beforeSend).toBeUndefined();
+      expect(display.error).toHaveBeenCalledWith("Configuration error: 'beforeSend' must be a function");
+    });
+  });
+
   describe('sessionSampleRate validation', () => {
     it('defaults to 100 when not provided', () => {
       const result = buildConfiguration({ ...DEFAULT_CONFIG });
