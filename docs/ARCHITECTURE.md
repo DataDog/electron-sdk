@@ -120,7 +120,9 @@ Two handlers transform events into `ServerEvent`s:
 - **`MainAssembly`**: handles main-process `RawEvent`s (excluding profile events), enriches them via `triggerRum` / `triggerTelemetry` hooks, and emits `ServerEvent`s with `source: MAIN`.
 - **`RendererPipeline`**: owns the renderer IPC channel, receives pre-assembled RUM events from the Browser SDK, enriches them via `triggerRum` with `source: EventSource.RENDERER`, and emits `ServerRumEvent`s with `source: RENDERER` directly, bypassing the `RawEvent` pipeline entirely.
 
-Both paths apply the shared `RumEventMapper` after enrichment and before emitting the final `ServerRumEvent`. This lets `beforeSend` inspect the complete event and ensures filtered events never reach transport or main-view counters. Telemetry, profiles, and spans are not mapped.
+`MainAssembly` applies `RumEventMapper` after enrichment and before emitting the final `ServerRumEvent`. Renderer
+events use the Browser SDK's `beforeSend` before crossing the bridge and are not mapped again by the Electron SDK.
+Telemetry, profiles, and spans are not mapped.
 
 #### Format Hooks
 

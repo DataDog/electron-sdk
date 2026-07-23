@@ -1,72 +1,55 @@
 import { isEmptyObject, objectEntries, sanitize } from '@datadog/browser-core';
 import { deepClone, getType, isIndexableObject } from '@datadog/js-core/util';
 import type { RumBeforeSend } from '../config';
-import type { RumEvent } from '../domain/rum';
+import type { MainRumEvent } from '../domain/rum';
 import { display } from '../tools/display';
 
 type ModifiableFieldPaths = Record<string, 'string' | 'object' | 'array'>;
 
-const COMMON_MODIFIABLE_FIELD_PATHS: ModifiableFieldPaths = {
+const COMMON_MAIN_MODIFIABLE_FIELD_PATHS: ModifiableFieldPaths = {
   'view.name': 'string',
   'view.url': 'string',
-  'view.referrer': 'string',
-  context: 'object',
   service: 'string',
   version: 'string',
 };
 
-const MODIFIABLE_FIELD_PATHS_BY_EVENT: Partial<Record<RumEvent['type'], ModifiableFieldPaths>> = {
-  view: {
-    ...COMMON_MODIFIABLE_FIELD_PATHS,
-    'view.performance.lcp.resource_url': 'string',
-  },
+const MODIFIABLE_FIELD_PATHS_BY_EVENT: Record<MainRumEvent['type'], ModifiableFieldPaths> = {
+  view: COMMON_MAIN_MODIFIABLE_FIELD_PATHS,
   error: {
-    ...COMMON_MODIFIABLE_FIELD_PATHS,
+    ...COMMON_MAIN_MODIFIABLE_FIELD_PATHS,
+    context: 'object',
     'error.message': 'string',
     'error.stack': 'string',
-    'error.handling_stack': 'string',
-    'error.resource.url': 'string',
-    'error.fingerprint': 'string',
-    '_dd.debug_ids': 'array',
   },
   resource: {
-    ...COMMON_MODIFIABLE_FIELD_PATHS,
+    ...COMMON_MAIN_MODIFIABLE_FIELD_PATHS,
     'resource.url': 'string',
-    'resource.graphql.variables': 'string',
-    'resource.request.headers': 'object',
-    'resource.response.headers': 'object',
-    'resource.websocket.close_reason': 'string',
   },
-  action: {
-    ...COMMON_MODIFIABLE_FIELD_PATHS,
-    'action.target.name': 'string',
+  vital: {
+    ...COMMON_MAIN_MODIFIABLE_FIELD_PATHS,
+    context: 'object',
   },
-  long_task: {
-    ...COMMON_MODIFIABLE_FIELD_PATHS,
-    'long_task.scripts[].source_url': 'string',
-    'long_task.scripts[].invoker': 'string',
-    '_dd.debug_ids': 'array',
-  },
-  vital: COMMON_MODIFIABLE_FIELD_PATHS,
 };
 
 /**
- * Applies beforeSend after RUM events have been fully assembled. Customer changes are isolated in a clone,
- * then only supported fields are sanitized and copied back. Filtering fails open for callback errors,
- * and view or crash events remain protected.
+ * Applies beforeSend after main-process RUM events have been fully assembled. Customer changes are isolated in a
+ * clone, then only fields produced by main-process event sources are sanitized and copied back. Filtering fails open
+ * for callback errors, and view or crash events remain protected.
  */
 export class RumEventMapper {
   constructor(private readonly beforeSend?: RumBeforeSend) {}
 
-  map(event: RumEvent): RumEvent | undefined {
+  map(event: MainRumEvent): MainRumEvent | undefined {
     const beforeSend = this.beforeSend;
     if (!beforeSend) {
       return event;
     }
 
-    const modifiableFieldPaths = MODIFIABLE_FIELD_PATHS_BY_EVENT[event.type] ?? COMMON_MODIFIABLE_FIELD_PATHS;
+    const modifiableFieldPaths = MODIFIABLE_FIELD_PATHS_BY_EVENT[event.type];
     const result = limitModification(event, modifiableFieldPaths, (modifiableEvent) => {
-      modifiableEvent.context ??= {};
+      if (modifiableFieldPaths.context !== undefined) {
+        modifiableEvent.context ??= {};
+      }
       try {
         return beforeSend(modifiableEvent);
       } catch (error) {

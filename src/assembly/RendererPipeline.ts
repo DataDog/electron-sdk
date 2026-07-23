@@ -10,7 +10,6 @@ import { BRIDGE_CHANNEL, setBridgeConfig, type BridgeOptions } from '../common';
 import type { FormatHooks } from './hooks';
 import type { RumEvent } from '../domain/rum';
 import { Configuration } from '../config';
-import { RumEventMapper } from './RumEventMapper';
 
 type BridgeEventType = 'rum' | 'log' | 'internal_telemetry' | 'profile';
 
@@ -24,7 +23,7 @@ interface BridgeEvent {
  *
  * Receives pre-assembled events from the browser RUM SDK via the DatadogEventBridge,
  * injects main-process context (session.id, application.id, container.view.id) via
- * triggerRum with source RENDERER, applies beforeSend, and emits ServerEvents directly.
+ * triggerRum with source RENDERER and emits ServerEvents directly.
  *
  * Also emits END_USER_ACTIVITY for click actions before the session check, so a click
  * after session inactivity expiry can create a new session even though the event itself
@@ -35,8 +34,7 @@ export class RendererPipeline {
   constructor(
     private readonly eventManager: EventManager,
     private readonly hooks: FormatHooks,
-    config: Configuration,
-    private readonly rumEventMapper: RumEventMapper
+    config: Configuration
   ) {
     this.bridgeOptions = {
       defaultPrivacyLevel: config.defaultPrivacyLevel,
@@ -122,16 +120,12 @@ export class RendererPipeline {
     }
 
     const overrides = resolveCustomerContextOverrides(data, hookResult);
-    const mappedData = this.rumEventMapper.map(combine(data, overrides));
-    if (!mappedData) {
-      return;
-    }
 
     const serverEvent: ServerRumEvent = {
       kind: EventKind.SERVER,
       track: EventTrack.RUM,
       source: EventSource.RENDERER,
-      data: mappedData,
+      data: combine(data, overrides),
     };
 
     this.eventManager.notify(serverEvent);

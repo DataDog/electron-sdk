@@ -1,11 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { RumEvent, RumLongTaskEvent } from '../domain/rum';
-import {
-  createServerRumAction,
-  createServerRumError,
-  createServerRumResource,
-  createServerRumView,
-} from '../mocks.specUtil';
+import type { MainRumEvent, RumVitalDurationEvent } from '../domain/rum';
+import { createServerRumError, createServerRumResource, createServerRumView } from '../mocks.specUtil';
 import { display } from '../tools/display';
 import { RumEventMapper } from './RumEventMapper';
 
@@ -93,107 +88,81 @@ describe('RumEventMapper', () => {
 
   it('supports event-specific modifiable fields', () => {
     const mapper = new RumEventMapper((event) => {
-      if (event.type === 'view' && event.view.performance?.lcp) {
-        event.view.performance.lcp.resource_url = 'redacted.png';
-      } else if (event.type === 'error') {
+      if (event.type === 'error') {
         event.error.message = 'redacted message';
         event.error.stack = 'redacted stack';
-        event.error.handling_stack = 'redacted handling stack';
-        if (event.error.resource) {
-          event.error.resource.url = 'https://redacted.example/error';
-        }
-        event.error.fingerprint = 'redacted fingerprint';
-        if (event._dd?.debug_ids) {
-          event._dd.debug_ids[0].url = 'redacted-error.js';
-        }
       } else if (event.type === 'resource') {
         event.resource.url = 'https://redacted.example';
+      }
+      return true;
+    });
+
+    expect(
+      mapper.map(createServerRumError({ error: { message: 'secret message', stack: 'secret stack' } }))
+    ).toMatchObject({
+      error: { message: 'redacted message', stack: 'redacted stack' },
+    });
+    expect(mapper.map(createServerRumResource({ resource: { url: 'https://secret.example' } }))).toMatchObject({
+      resource: { url: 'https://redacted.example' },
+    });
+  });
+
+  it('ignores modifications to fields that are only produced by renderer events', () => {
+    const view = createServerRumView({ view: { referrer: 'secret referrer' } });
+    const error = createServerRumError({
+      error: { handling_stack: 'secret handling stack', fingerprint: 'secret fingerprint' },
+    });
+    const resource = createServerRumResource({
+      resource: {
+        graphql: { variables: '{"secret":true}' },
+        request: { headers: { authorization: 'secret' } },
+      },
+    });
+    const mapper = new RumEventMapper((event) => {
+      event.view.referrer = 'redacted referrer';
+      event.context = { scrubbed: true };
+      if (event.type === 'error') {
+        event.error.handling_stack = 'redacted handling stack';
+        event.error.fingerprint = 'redacted fingerprint';
+      } else if (event.type === 'resource') {
         if (event.resource.graphql) {
           event.resource.graphql.variables = '{"redacted":true}';
         }
         if (event.resource.request?.headers) {
           event.resource.request.headers.authorization = '[REDACTED]';
         }
-        if (event.resource.response?.headers) {
-          event.resource.response.headers['set-cookie'] = '[REDACTED]';
-        }
-        const websocket = event.resource.websocket as { close_reason?: string } | undefined;
-        if (websocket) {
-          websocket.close_reason = 'redacted reason';
-        }
-      } else if (event.type === 'action' && event.action.target) {
-        event.action.target.name = 'redacted target';
-      } else if (event.type === 'long_task' && event.long_task.scripts) {
-        event.long_task.scripts[0].source_url = 'redacted.js';
-        event.long_task.scripts[0].invoker = 'redacted invoker';
-        if (event._dd?.debug_ids) {
-          event._dd.debug_ids[0].url = 'redacted-long-task.js';
-        }
       }
       return true;
     });
-    const view = createServerRumView({
-      view: { performance: { lcp: { resource_url: 'secret.png' } } },
+
+    expect(mapper.map(view)?.view.referrer).toBe('secret referrer');
+    expect(mapper.map(view)?.context).toBeUndefined();
+    expect(mapper.map(error)?.error).toMatchObject({
+      handling_stack: 'secret handling stack',
+      fingerprint: 'secret fingerprint',
     });
-    const error = createServerRumError({
-      error: {
-        message: 'secret message',
-        stack: 'secret stack',
-        handling_stack: 'secret handling stack',
-        resource: { url: 'https://secret.example/error' },
-        fingerprint: 'secret fingerprint',
-      },
-      _dd: { debug_ids: [{ url: 'secret-error.js', id: 'error-debug-id' }] },
+    expect(mapper.map(resource)?.resource).toMatchObject({
+      graphql: { variables: '{"secret":true}' },
+      request: { headers: { authorization: 'secret' } },
     });
-    const resource = createServerRumResource({
-      resource: {
-        graphql: { variables: '{"secret":true}' },
-        request: { headers: { authorization: 'secret' } },
-        response: { headers: { 'set-cookie': 'secret' } },
-      },
-    });
-    Object.assign(resource.resource, { websocket: { close_reason: 'secret reason' } });
-    const action = createServerRumAction({ action: { target: { name: 'secret target' } } });
-    const longTask: RumLongTaskEvent = {
-      type: 'long_task',
+    expect(mapper.map(resource)?.context).toBeUndefined();
+  });
+
+  it('lets beforeSend modify context on main-process vital events', () => {
+    const vital = {
+      type: 'vital',
       date: 1,
       application: { id: 'app-id' },
       session: { id: 'session-id', type: 'user' },
-      view: { id: 'view-id', url: 'app://index' },
-      _dd: { format_version: 2, debug_ids: [{ url: 'secret-long-task.js', id: 'long-task-debug-id' }] },
-      long_task: {
-        duration: 1,
-        scripts: [{ source_url: 'secret.js', invoker: 'secret invoker' }],
-      },
-    };
+      view: { id: 'view-id', name: 'main process', url: 'electron://main-process' },
+      vital: { id: 'vital-id', name: 'startup', type: 'duration', duration: 1 },
+    } as RumVitalDurationEvent;
+    const mapper = new RumEventMapper((event) => {
+      event.context = { scrubbed: true };
+      return true;
+    });
 
-    expect(mapper.map(view)).toMatchObject({
-      view: { performance: { lcp: { resource_url: 'redacted.png' } } },
-    });
-    expect(mapper.map(error)).toMatchObject({
-      error: {
-        message: 'redacted message',
-        stack: 'redacted stack',
-        handling_stack: 'redacted handling stack',
-        resource: { url: 'https://redacted.example/error' },
-        fingerprint: 'redacted fingerprint',
-      },
-      _dd: { debug_ids: [{ url: 'redacted-error.js', id: 'error-debug-id' }] },
-    });
-    expect(mapper.map(resource)).toMatchObject({
-      resource: {
-        url: 'https://redacted.example',
-        graphql: { variables: '{"redacted":true}' },
-        request: { headers: { authorization: '[REDACTED]' } },
-        response: { headers: { 'set-cookie': '[REDACTED]' } },
-        websocket: { close_reason: 'redacted reason' },
-      },
-    });
-    expect(mapper.map(action)).toMatchObject({ action: { target: { name: 'redacted target' } } });
-    expect(mapper.map(longTask)).toMatchObject({
-      long_task: { scripts: [{ source_url: 'redacted.js', invoker: 'redacted invoker' }] },
-      _dd: { debug_ids: [{ url: 'redacted-long-task.js', id: 'long-task-debug-id' }] },
-    });
+    expect(mapper.map(vital)?.context).toEqual({ scrubbed: true });
   });
 
   it('sanitizes context changes', () => {
@@ -263,7 +232,7 @@ describe('RumEventMapper', () => {
   });
 
   it('invokes beforeSend without binding a this value', () => {
-    const beforeSend = vi.fn(function (_event: RumEvent) {
+    const beforeSend = vi.fn(function (_event: MainRumEvent) {
       return true;
     });
 

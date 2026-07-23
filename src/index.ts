@@ -58,9 +58,8 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   startTelemetry(eventManager, config);
   sessionManager = await SessionManager.start(eventManager, hooks, config);
 
-  const rumEventMapper = new RumEventMapper(config.beforeSend);
-  new MainAssembly(eventManager, hooks, rumEventMapper);
-  new RendererPipeline(eventManager, hooks, config, rumEventMapper);
+  new MainAssembly(eventManager, hooks, new RumEventMapper(config.beforeSend));
+  new RendererPipeline(eventManager, hooks, config);
 
   new ProfilingCollection(eventManager, sessionManager, config, hooks);
 
@@ -300,6 +299,7 @@ export type {
   DurationVitalOptions,
   FailureReason,
   FeatureOperationOptions,
+  MainRumEvent,
   RumErrorEvent,
   RumEvent,
   RumResourceEvent,

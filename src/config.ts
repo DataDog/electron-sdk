@@ -1,7 +1,7 @@
 import { ONE_SECOND } from '@datadog/js-core/time';
 import { ONE_KIBI_BYTE, ONE_MEBI_BYTE, DefaultPrivacyLevel } from '@datadog/browser-core';
 import { display } from './tools/display';
-import type { RumEvent } from './domain/rum';
+import type { MainRumEvent } from './domain/rum';
 
 const VALID_DATADOG_SITES = [
   'datadoghq.com',
@@ -30,7 +30,7 @@ export type BatchSize = 'SMALL' | 'MEDIUM' | 'LARGE';
 export type UploadFrequency = 'RARE' | 'NORMAL' | 'FREQUENT';
 
 /**
- * Synchronous function called before a fully assembled RUM event is sent to Datadog.
+ * Synchronous function called before a fully assembled main-process RUM event is sent to Datadog.
  * Keep this callback fast. Only supported field changes are applied; other mutations are ignored.
  * Only an explicit false discards the event; any other return value keeps it. View and crash events cannot be
  * discarded.
@@ -45,7 +45,7 @@ export type UploadFrequency = 'RARE' | 'NORMAL' | 'FREQUENT';
  * }
  * ```
  */
-export type RumBeforeSend = (event: RumEvent) => boolean;
+export type RumBeforeSend = (event: MainRumEvent) => boolean;
 
 export interface InitConfiguration {
   site: string;
@@ -63,8 +63,8 @@ export interface InitConfiguration {
   defaultPrivacyLevel?: DefaultPrivacyLevel;
   allowedWebViewHosts?: string[];
   /**
-   * Synchronously modify supported fields on fully assembled RUM events. Only an explicit false discards an event;
-   * other mutations are ignored. View and crash events cannot be discarded.
+   * Synchronously modify supported fields on fully assembled main-process RUM events. Only an explicit false
+   * discards an event; other mutations are ignored. View and crash events cannot be discarded.
    *
    * @example
    * ```ts

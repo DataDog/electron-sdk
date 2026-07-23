@@ -12,7 +12,7 @@ import {
   type ServerEvent,
 } from '../event';
 import type { FormatHooks } from './hooks';
-import { RumEvent } from '../domain/rum';
+import { MainRumEvent } from '../domain/rum';
 import { TelemetryEvent } from '../domain/telemetry';
 import { RumEventMapper } from './RumEventMapper';
 
@@ -53,7 +53,9 @@ export class MainAssembly {
         source,
       });
       if (hookResult !== DISCARDED) {
-        const data = this.rumEventMapper.map(assembleData<RumEvent>(event.data, hookResult));
+        const data = this.rumEventMapper.map(
+          assembleData<MainRumEvent>(event.data, hookResult as RecursivePartial<MainRumEvent> | undefined)
+        );
         if (!data) {
           return DISCARDED;
         }

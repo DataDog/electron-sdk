@@ -354,16 +354,12 @@ function getConfiguration(): InitConfiguration {
         if (event.type !== 'error') {
           return true;
         }
-        if (event.context?.beforeSend === 'drop' || event.error.message === 'beforeSend renderer drop') {
-          return false;
-        }
         if (event.context?.beforeSend === 'scrub') {
           event.error.message = 'redacted main error';
           event.context = { ...event.context, beforeSend: undefined, secret: '[REDACTED]' };
-        } else if (event.error.message === 'beforeSend renderer secret') {
-          event.error.message = 'redacted renderer error';
+          return true;
         }
-        return true;
+        return false;
       };
     }
     return config;

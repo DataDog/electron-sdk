@@ -132,11 +132,11 @@ await esbuild.build({
 - **Renderer Profiling** — Collect JS Self-Profiling data from renderer pages and correlate it with RUM
 - **User & Account Info** — Attach user and account identity to all RUM events and traces
 - **Operation Monitoring** _(experimental)_ — Track start / succeed / fail steps of critical user-facing workflows
-- **Event Filtering and Scrubbing** — Modify or discard RUM events with `beforeSend`
+- **Event Filtering and Scrubbing** — Modify or discard main-process RUM events with `beforeSend`
 
 ### Event Filtering and Scrubbing
 
-Use `beforeSend` to inspect fully assembled RUM events from both the main and renderer processes before they are sent to Datadog:
+Use `beforeSend` to inspect fully assembled main-process RUM events before they are sent to Datadog:
 
 ```ts
 await init({
@@ -153,15 +153,19 @@ await init({
 });
 ```
 
-Only returning `false` discards the event. View and native crash events cannot be discarded. Editable fields follow the [Browser SDK `beforeSend` allowlist](https://docs.datadoghq.com/real_user_monitoring/guide/enrich-and-control-rum-data/); event identity, session, application, and other protected fields remain unchanged. Callback errors are logged and the event is still sent.
+Only returning `false` discards the event. View and native crash events cannot be discarded. The editable fields
+produced by current main-process sources are:
 
-The callback is synchronous and should remain fast. It does not automatically detect PII. Unlike Browser SDK `beforeSend`, it receives no raw DOM, XHR, or original error context because those renderer objects cannot cross the process boundary.
+- All events: `service`, `version`, `view.name`, and `view.url`
+- Errors: `context`, `error.message`, and `error.stack`
+- Resources: `resource.url`
+- Vitals: `context`
 
-Renderer events have already passed through any `beforeSend` configured in the renderer's Browser SDK. The Electron callback runs afterward, once main-process context is added. It can run multiple times for the same view as its metrics change.
+Event identity, session, application, and other fields remain unchanged. Callback errors are logged and the event is
+still sent. The callback is synchronous and should remain fast. It does not automatically detect PII.
 
-Renderer view counters are computed by the Browser SDK before events reach the main process, so filtering a renderer event here does not retroactively adjust those counters.
-
-Filtering a renderer click action does not suppress its session activity, so it can still keep or renew the session.
+Renderer events are not passed to this callback. Configure the Browser SDK's `beforeSend` in each renderer that needs
+event filtering or scrubbing.
 
 ### Custom Duration Vitals
 
@@ -420,4 +424,4 @@ interface FeatureOperationOptions {
 | `uploadFrequency`     | `'RARE' \| 'NORMAL' \| 'FREQUENT'`       | No       | —        | Upload frequency for event batches                                                                                                        |
 | `defaultPrivacyLevel` | `'mask' \| 'allow' \| 'mask-user-input'` | No       | `'mask'` | Default privacy level for renderer session replay                                                                                         |
 | `allowedWebViewHosts` | `string[]`                               | No       | `[]`     | Hostnames allowed for the renderer bridge                                                                                                 |
-| `beforeSend`          | `(event: RumEvent) => boolean`           | No       | —        | Modify or discard fully assembled RUM events before they are sent                                                                         |
+| `beforeSend`          | `(event: MainRumEvent) => boolean`       | No       | —        | Modify or discard fully assembled main-process RUM events before they are sent                                                            |
