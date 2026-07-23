@@ -2,7 +2,7 @@
   "name": "forge-vite",
   "version": "1.0.0",
   "private": true,
-  "packageManager": "yarn@4.17.0",
+  "packageManager": "yarn@4.17.1",
   "main": ".vite/build/main.js",
   "integration": {
     "devMain": ".vite/build/main.js",
@@ -17,15 +17,15 @@
     "package": "electron-forge package"
   },
   "dependencies": {
-    "@datadog/browser-rum": "7.4.0",
+    "@datadog/browser-rum": "7.5.0",
     "@datadog/electron-sdk": "file:../../integration-sdk.tgz"
   },
   "devDependencies": {
     "@electron-forge/cli": "7.11.2",
     "@electron-forge/plugin-vite": "7.11.2",
-    "@types/node": "24.13.2",
+    "@types/node": "24.13.3",
     "electron": "41.1.0",
     "typescript": "5.9.3",
-    "vite": "8.0.16"
+    "vite": "8.1.5"
   }
 }
