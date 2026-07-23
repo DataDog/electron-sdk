@@ -140,17 +140,19 @@ function validateDefaultPrivacyLevel(value: unknown): DefaultPrivacyLevel {
   return value as DefaultPrivacyLevel;
 }
 
-function validateAllowedRendererHosts(value: unknown): string[] {
-  if (value === undefined || value === null) {
-    return [];
-  }
-  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
+function validateAllowedRendererHosts(value: unknown): string[] | undefined {
+  if (
+    value === undefined ||
+    value === null ||
+    !Array.isArray(value) ||
+    !value.every((item) => typeof item === 'string')
+  ) {
     display.error(
       "Configuration error: 'allowedRendererHosts' must be an array of hostnames (e.g. ['example.com', 'myapp']), ['file://'] for file:// renderers, or ['*'] to allow all renderers including file://"
     );
-    return [];
+    return undefined;
   }
-  return value;
+  return value.flatMap((h) => (h === '*' ? ['*', ''] : h === 'file://' ? [''] : [h]));
 }
 
 export function buildConfiguration(initConfig: InitConfiguration): Configuration | undefined {
@@ -172,6 +174,11 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     return undefined;
   }
 
+  const allowedRendererHosts = validateAllowedRendererHosts(initConfig.allowedRendererHosts);
+  if (allowedRendererHosts === undefined) {
+    return undefined;
+  }
+
   return {
     site,
     service,
@@ -184,6 +191,6 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     profilingSampleRate,
     telemetrySampleRate,
     defaultPrivacyLevel: validateDefaultPrivacyLevel(initConfig.defaultPrivacyLevel),
-    allowedRendererHosts: validateAllowedRendererHosts(initConfig.allowedRendererHosts),
+    allowedRendererHosts,
   };
 }

@@ -275,33 +275,14 @@ describe('buildConfiguration', () => {
   });
 
   describe('allowedRendererHosts validation', () => {
-    it('defaults to empty array when not provided', () => {
-      const config = { ...DEFAULT_CONFIG };
+    it('aborts init when not provided', () => {
+      const raw: Record<string, unknown> = { ...DEFAULT_CONFIG };
+      delete raw.allowedRendererHosts;
+      const config = raw as unknown as InitConfiguration;
 
       const result = buildConfiguration(config);
 
-      expect(result?.allowedRendererHosts).toEqual([]);
-    });
-
-    it('accepts valid array of strings', () => {
-      const config = { ...DEFAULT_CONFIG, allowedRendererHosts: ['example.com', 'other.com'] };
-
-      const result = buildConfiguration(config);
-
-      expect(result?.allowedRendererHosts).toEqual(['example.com', 'other.com']);
-    });
-
-    it.each([
-      { value: 'not-an-array', description: 'string' },
-      { value: 123, description: 'number' },
-      { value: [123, 456], description: 'array of non-strings' },
-      { value: ['valid', 123], description: 'mixed array' },
-    ])('logs error and uses default when $description', ({ value }) => {
-      const config = { ...DEFAULT_CONFIG, allowedRendererHosts: value } as unknown as InitConfiguration;
-
-      const result = buildConfiguration(config);
-
-      expect(result?.allowedRendererHosts).toEqual([]);
+      expect(result).toBeUndefined();
       expect(display.error).toHaveBeenCalledWith(
         "Configuration error: 'allowedRendererHosts' must be an array of hostnames (e.g. ['example.com', 'myapp']), ['file://'] for file:// renderers, or ['*'] to allow all renderers including file://"
       );
@@ -310,13 +291,65 @@ describe('buildConfiguration', () => {
     it.each([
       { value: null, description: 'null' },
       { value: undefined, description: 'undefined' },
-    ])('defaults to empty array when $description (no error)', ({ value }) => {
+    ])('aborts init when $description', ({ value }) => {
       const config = { ...DEFAULT_CONFIG, allowedRendererHosts: value } as unknown as InitConfiguration;
 
       const result = buildConfiguration(config);
 
+      expect(result).toBeUndefined();
+      expect(display.error).toHaveBeenCalledWith(
+        "Configuration error: 'allowedRendererHosts' must be an array of hostnames (e.g. ['example.com', 'myapp']), ['file://'] for file:// renderers, or ['*'] to allow all renderers including file://"
+      );
+    });
+
+    it.each([
+      { value: 'not-an-array', description: 'string' },
+      { value: 123, description: 'number' },
+      { value: [123, 456], description: 'array of non-strings' },
+      { value: ['valid', 123], description: 'mixed array' },
+    ])('aborts init when $description', ({ value }) => {
+      const config = { ...DEFAULT_CONFIG, allowedRendererHosts: value } as unknown as InitConfiguration;
+
+      const result = buildConfiguration(config);
+
+      expect(result).toBeUndefined();
+      expect(display.error).toHaveBeenCalledWith(
+        "Configuration error: 'allowedRendererHosts' must be an array of hostnames (e.g. ['example.com', 'myapp']), ['file://'] for file:// renderers, or ['*'] to allow all renderers including file://"
+      );
+    });
+
+    it('accepts empty array', () => {
+      const result = buildConfiguration({ ...DEFAULT_CONFIG, allowedRendererHosts: [] });
+
       expect(result?.allowedRendererHosts).toEqual([]);
       expect(display.error).not.toHaveBeenCalled();
+    });
+
+    it('passes through regular hostnames unchanged', () => {
+      const result = buildConfiguration({ ...DEFAULT_CONFIG, allowedRendererHosts: ['example.com', 'other.com'] });
+
+      expect(result?.allowedRendererHosts).toEqual(['example.com', 'other.com']);
+    });
+
+    it("normalizes '*' to ['*', '']", () => {
+      const result = buildConfiguration({ ...DEFAULT_CONFIG, allowedRendererHosts: ['*'] });
+
+      expect(result?.allowedRendererHosts).toEqual(['*', '']);
+    });
+
+    it("normalizes 'file://' to ['']", () => {
+      const result = buildConfiguration({ ...DEFAULT_CONFIG, allowedRendererHosts: ['file://'] });
+
+      expect(result?.allowedRendererHosts).toEqual(['']);
+    });
+
+    it("normalizes mixed list: ['example.com', '*', 'file://'] → ['example.com', '*', '', '']", () => {
+      const result = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        allowedRendererHosts: ['example.com', '*', 'file://'],
+      });
+
+      expect(result?.allowedRendererHosts).toEqual(['example.com', '*', '', '']);
     });
   });
 

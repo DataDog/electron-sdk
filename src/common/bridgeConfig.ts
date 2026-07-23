@@ -22,7 +22,20 @@ function getHolder(): BridgeConfigHolder {
     // Advertise the SDK's supported capabilities by default to signal support. init() replaces this with
     // the config-derived value; that narrowing is only an optimization to save renderer work, since the
     // Electron SDK config (not the advertised capability) governs what is actually sent to Datadog.
-    holder = { value: { defaultPrivacyLevel: 'mask', allowedRendererHosts: [], capabilities: ['profiles'] } };
+    holder = {
+      value: {
+        defaultPrivacyLevel: 'mask',
+        // Pre-normalized equivalent of allowedRendererHosts: ['*']: '*' covers all non-empty hostnames
+        // but the Browser SDK's matchesHostEntry requires host.length > 0, so file:// pages
+        // (location.hostname === '') would not match. The '' entry covers that gap.
+        // TODO: Change to [] once a track-consent API exists. Currently ['*', ''] because customers
+        // must open a window to collect user consent before calling init(), which means windows
+        // can open before init() runs. A consent API will allow init() to be called immediately
+        // with trackingConsent: 'not-granted', eliminating the pre-init window scenario.
+        allowedRendererHosts: ['*', ''],
+        capabilities: ['profiles'],
+      },
+    };
     store[BRIDGE_CONFIG] = holder;
   }
   return holder;

@@ -30,7 +30,7 @@ describe('registerBridgeConfigResponder', () => {
     ipcMain.listeners[CONFIG_CHANNEL](event);
     expect(event.returnValue).toEqual({
       defaultPrivacyLevel: 'mask',
-      allowedRendererHosts: [],
+      allowedRendererHosts: ['*', ''],
       capabilities: ['profiles'],
     });
   });
