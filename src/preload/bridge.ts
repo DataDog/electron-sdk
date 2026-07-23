@@ -1,7 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
 
-declare const location: { hostname: string };
 declare const window: Record<string, unknown>;
 
 // Guard against double-execution when the preload is registered more than once on the same session.
@@ -20,8 +19,9 @@ if (!window[DD_BRIDGE_INIT]) {
   const config = ipcRenderer.sendSync(CONFIG_CHANNEL) as BridgeConfig | null;
 
   const defaultPrivacyLevel = config?.defaultPrivacyLevel ?? 'mask';
-  const configuredHosts = config?.allowedRendererHosts ?? [];
-  const allowedHosts = [...new Set([location.hostname, ...configuredHosts])];
+  // config is always non-null in production (responder registered at instrument time),
+  // but defensive ?? [] keeps unit tests that pass null config working correctly.
+  const allowedRendererHosts = config?.allowedRendererHosts ?? [];
 
   const bridge = {
     getCapabilities(): string {
@@ -31,7 +31,7 @@ if (!window[DD_BRIDGE_INIT]) {
       return defaultPrivacyLevel;
     },
     getAllowedWebViewHosts(): string {
-      return JSON.stringify(allowedHosts);
+      return JSON.stringify(allowedRendererHosts);
     },
     send(msg: string): void {
       ipcRenderer.send(BRIDGE_CHANNEL, msg);

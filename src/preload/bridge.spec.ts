@@ -57,19 +57,35 @@ describe('bridge', () => {
     expect(bridge.getPrivacyLevel()).toBe('allow');
   });
 
-  it('getAllowedWebViewHosts includes location.hostname', async () => {
-    await load();
+  it('getAllowedWebViewHosts does NOT include location.hostname by default', async () => {
+    await load({ allowedRendererHosts: ['*', ''] });
     const bridge = (window as unknown as Record<string, { getAllowedWebViewHosts(): string }>).DatadogEventBridge;
     const hosts = JSON.parse(bridge.getAllowedWebViewHosts()) as string[];
-    expect(hosts).toContain('localhost'); // jsdom default
+    // The preload must NOT inject location.hostname — it returns the stored list as-is
+    expect(hosts).not.toContain('localhost');
+    expect(hosts).toEqual(['*', '']);
   });
 
-  it('getAllowedWebViewHosts includes configured hosts', async () => {
+  it('getAllowedWebViewHosts returns only configured hosts', async () => {
     await load({ allowedRendererHosts: ['example.com'] });
     const bridge = (window as unknown as Record<string, { getAllowedWebViewHosts(): string }>).DatadogEventBridge;
     const hosts = JSON.parse(bridge.getAllowedWebViewHosts()) as string[];
-    expect(hosts).toContain('example.com');
-    expect(hosts).toContain('localhost');
+    expect(hosts).toEqual(['example.com']);
+    expect(hosts).not.toContain('localhost');
+  });
+
+  it('getAllowedWebViewHosts returns empty array when allowedRendererHosts is []', async () => {
+    await load({ allowedRendererHosts: [] });
+    const bridge = (window as unknown as Record<string, { getAllowedWebViewHosts(): string }>).DatadogEventBridge;
+    const hosts = JSON.parse(bridge.getAllowedWebViewHosts()) as string[];
+    expect(hosts).toEqual([]);
+  });
+
+  it("getAllowedWebViewHosts returns [''] when allowedRendererHosts is [''] (normalized from 'file://')", async () => {
+    await load({ allowedRendererHosts: [''] });
+    const bridge = (window as unknown as Record<string, { getAllowedWebViewHosts(): string }>).DatadogEventBridge;
+    const hosts = JSON.parse(bridge.getAllowedWebViewHosts()) as string[];
+    expect(hosts).toEqual(['']);
   });
 
   it('send calls ipcRenderer.send with the bridge channel', async () => {
