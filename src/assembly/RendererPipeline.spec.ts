@@ -78,7 +78,7 @@ const RENDERER_CLICK_DATA = {
 describe('RendererPipeline', () => {
   let eventManager: EventManager;
   let hooks: FormatHooks;
-  let simulateIpcMessage: (msg: string) => void;
+  let simulateIpcMessage: (msg: string, origin?: string) => void;
   let serverEvents: ServerRumEvent[];
 
   beforeEach(() => {
@@ -87,11 +87,14 @@ describe('RendererPipeline', () => {
     hooks = createFormatHooks();
     serverEvents = [];
 
-    mockIpcMainOn.mockImplementation((channel: string, callback: (_event: unknown, msg: string) => void) => {
-      if (channel === BRIDGE_CHANNEL) {
-        simulateIpcMessage = (msg: string) => callback({}, msg);
+    mockIpcMainOn.mockImplementation(
+      (channel: string, callback: (event: { senderFrame?: { origin: string } }, msg: string) => void) => {
+        if (channel === BRIDGE_CHANNEL) {
+          simulateIpcMessage = (msg: string, origin = 'https://any.example.com') =>
+            callback({ senderFrame: { origin } }, msg);
+        }
       }
-    });
+    );
 
     eventManager.registerHandler<ServerRumEvent>({
       canHandle: (event): event is ServerRumEvent => event.kind === EventKind.SERVER && event.track === EventTrack.RUM,
@@ -402,6 +405,101 @@ describe('RendererPipeline', () => {
       simulateIpcMessage(JSON.stringify({ eventType: 'unknown', event: {} }));
       expect(mockAddError).toHaveBeenCalledOnce();
       expect((mockAddError.mock.calls[0][0] as Error).message).toContain('Unhandled bridge event type');
+    });
+  });
+
+  describe('origin enforcement', () => {
+    it('processes messages from an allowed origin', () => {
+      const config = createTestConfiguration({ allowedRendererHosts: ['example.com'], profilingSampleRate: 0 });
+      new RendererPipeline(eventManager, hooks, config);
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }), 'https://example.com');
+
+      expect(serverEvents).toHaveLength(1);
+    });
+
+    it('drops messages from a disallowed origin', () => {
+      const config = createTestConfiguration({ allowedRendererHosts: ['example.com'], profilingSampleRate: 0 });
+      new RendererPipeline(eventManager, hooks, config);
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }), 'https://other.com');
+
+      expect(serverEvents).toHaveLength(0);
+    });
+
+    it("allows any origin when allowedRendererHosts contains '*'", () => {
+      const config = createTestConfiguration({ allowedRendererHosts: ['*', ''], profilingSampleRate: 0 });
+      new RendererPipeline(eventManager, hooks, config);
+
+      simulateIpcMessage(
+        JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }),
+        'https://anything.example.com'
+      );
+
+      expect(serverEvents).toHaveLength(1);
+    });
+
+    it("allows file:// origin when allowedRendererHosts contains ''", () => {
+      const config = createTestConfiguration({ allowedRendererHosts: [''], profilingSampleRate: 0 });
+      new RendererPipeline(eventManager, hooks, config);
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }), 'file://');
+
+      expect(serverEvents).toHaveLength(1);
+    });
+
+    it('drops file:// origin when not in allowedRendererHosts', () => {
+      const config = createTestConfiguration({ allowedRendererHosts: ['example.com'], profilingSampleRate: 0 });
+      new RendererPipeline(eventManager, hooks, config);
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }), 'file://');
+
+      expect(serverEvents).toHaveLength(0);
+    });
+
+    it('allows a subdomain when the parent domain is in allowedRendererHosts', () => {
+      const config = createTestConfiguration({ allowedRendererHosts: ['example.com'], profilingSampleRate: 0 });
+      new RendererPipeline(eventManager, hooks, config);
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }), 'https://sub.example.com');
+
+      expect(serverEvents).toHaveLength(1);
+    });
+
+    it('allows a wildcard pattern match', () => {
+      const config = createTestConfiguration({
+        allowedRendererHosts: ['preview-*.example.com'],
+        profilingSampleRate: 0,
+      });
+      new RendererPipeline(eventManager, hooks, config);
+
+      simulateIpcMessage(
+        JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }),
+        'https://preview-abc123.example.com'
+      );
+
+      expect(serverEvents).toHaveLength(1);
+    });
+
+    it('does not allow apex domain when only a subdomain wildcard is listed', () => {
+      const config = createTestConfiguration({ allowedRendererHosts: ['*.example.com'], profilingSampleRate: 0 });
+      new RendererPipeline(eventManager, hooks, config);
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }), 'https://example.com');
+
+      expect(serverEvents).toHaveLength(0);
+    });
+
+    it('drops messages when senderFrame is missing', () => {
+      const config = createTestConfiguration({ allowedRendererHosts: ['*', ''], profilingSampleRate: 0 });
+      new RendererPipeline(eventManager, hooks, config);
+      // Simulate a message with no senderFrame (should be silently dropped)
+      const callback = mockIpcMainOn.mock.calls.find(([ch]) => ch === BRIDGE_CHANNEL)?.[1] as
+        | ((event: unknown, msg: string) => void)
+        | undefined;
+      callback?.({}, JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
+
+      expect(serverEvents).toHaveLength(0);
     });
   });
 });
