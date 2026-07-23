@@ -74,10 +74,11 @@ await init({
   applicationId: '<APPLICATION_ID>',
   service: 'my-electron-app',
   site: 'datadoghq.com',
+  allowedRendererHosts: ['*'], // required: restrict to specific hostnames in production
 });
 ```
 
-> **Deferred init caveat:** if `init()` is called after some windows are already open (e.g. behind a user-consent gate), those windows keep the fallback configuration (`defaultPrivacyLevel: 'mask'`, no extra `allowedWebViewHosts`, and the default advertised capabilities) until they are reloaded, because the renderer reads bridge config once at load time. Your `init()` configuration still governs what is actually sent to Datadog, so this only affects renderer-side behavior. Navigation is never blocked.
+> **Deferred init caveat:** if `init()` is called after some windows are already open (e.g. behind a user-consent gate), those windows keep the fallback configuration (`defaultPrivacyLevel: 'mask'`, `allowedRendererHosts: ['*']`, and the default advertised capabilities) until they are reloaded, because the renderer reads bridge config once at load time. Once `init()` runs, the main process enforces the configured `allowedRendererHosts` on all bridge messages — so if your configured list is more restrictive than `['*']`, windows that opened before `init()` may have their bridge messages blocked until they reload. Navigation is never blocked.
 
 #### Renderer process setup
 
@@ -375,18 +376,33 @@ interface FeatureOperationOptions {
 
 ### Configuration Options
 
-| Option                | Type                                     | Required | Default  | Description                                                                                                                               |
-| --------------------- | ---------------------------------------- | -------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `clientToken`         | `string`                                 | Yes      | —        | Datadog client token                                                                                                                      |
-| `applicationId`       | `string`                                 | Yes      | —        | RUM application ID                                                                                                                        |
-| `site`                | `string`                                 | Yes      | —        | Datadog site (e.g. `datadoghq.com`, `datadoghq.eu`, `us3.datadoghq.com`, `us5.datadoghq.com`, `ap1.datadoghq.com`, `ddog-gov.com`)        |
-| `service`             | `string`                                 | Yes      | —        | Service name                                                                                                                              |
-| `env`                 | `string`                                 | No       | —        | Application environment                                                                                                                   |
-| `version`             | `string`                                 | No       | —        | Application version                                                                                                                       |
-| `sessionSampleRate`   | `number`                                 | No       | `100`    | Percentage of sessions to collect (0–100). `0` collects no sessions; `100` collects all sessions.                                         |
-| `profilingSampleRate` | `number`                                 | No       | `0`      | Percentage of sampled sessions that are profiled (0–100). `0` disables renderer profiling. See [Renderer Profiling](#renderer-profiling). |
-| `telemetrySampleRate` | `number`                                 | No       | `20`     | Telemetry sample rate (0–100)                                                                                                             |
-| `batchSize`           | `'SMALL' \| 'MEDIUM' \| 'LARGE'`         | No       | —        | Batch size for event uploads                                                                                                              |
-| `uploadFrequency`     | `'RARE' \| 'NORMAL' \| 'FREQUENT'`       | No       | —        | Upload frequency for event batches                                                                                                        |
-| `defaultPrivacyLevel` | `'mask' \| 'allow' \| 'mask-user-input'` | No       | `'mask'` | Default privacy level for renderer session replay                                                                                         |
-| `allowedWebViewHosts` | `string[]`                               | No       | `[]`     | Hostnames allowed for the renderer bridge                                                                                                 |
+| Option                 | Type                                     | Required | Default  | Description                                                                                                                               |
+| ---------------------- | ---------------------------------------- | -------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `clientToken`          | `string`                                 | Yes      | —        | Datadog client token                                                                                                                      |
+| `applicationId`        | `string`                                 | Yes      | —        | RUM application ID                                                                                                                        |
+| `site`                 | `string`                                 | Yes      | —        | Datadog site (e.g. `datadoghq.com`, `datadoghq.eu`, `us3.datadoghq.com`, `us5.datadoghq.com`, `ap1.datadoghq.com`, `ddog-gov.com`)        |
+| `service`              | `string`                                 | Yes      | —        | Service name                                                                                                                              |
+| `env`                  | `string`                                 | No       | —        | Application environment                                                                                                                   |
+| `version`              | `string`                                 | No       | —        | Application version                                                                                                                       |
+| `sessionSampleRate`    | `number`                                 | No       | `100`    | Percentage of sessions to collect (0–100). `0` collects no sessions; `100` collects all sessions.                                         |
+| `profilingSampleRate`  | `number`                                 | No       | `0`      | Percentage of sampled sessions that are profiled (0–100). `0` disables renderer profiling. See [Renderer Profiling](#renderer-profiling). |
+| `telemetrySampleRate`  | `number`                                 | No       | `20`     | Telemetry sample rate (0–100)                                                                                                             |
+| `batchSize`            | `'SMALL' \| 'MEDIUM' \| 'LARGE'`         | No       | —        | Batch size for event uploads                                                                                                              |
+| `uploadFrequency`      | `'RARE' \| 'NORMAL' \| 'FREQUENT'`       | No       | —        | Upload frequency for event batches                                                                                                        |
+| `defaultPrivacyLevel`  | `'mask' \| 'allow' \| 'mask-user-input'` | No       | `'mask'` | Default privacy level for renderer session replay                                                                                         |
+| `allowedRendererHosts` | `string[]`                               | Yes      | —        | Hostnames allowed for the renderer bridge (required; see table below)                                                                     |
+
+#### `allowedRendererHosts` Values
+
+Required list of renderer origins that may use the DatadogEventBridge. Controls which renderer processes can instrument themselves and send events to the main process.
+
+| Value               | Allows                                                                          |
+| ------------------- | ------------------------------------------------------------------------------- |
+| `['example.com']`   | Renderers on `example.com` and any subdomain                                    |
+| `['*.example.com']` | Only subdomains of `example.com`                                                |
+| `['myapp']`         | Custom-protocol renderers with hostname `myapp` (e.g. `app://myapp/index.html`) |
+| `['file://']`       | All `file://` renderers (path-level filtering is not possible for `file://`)    |
+| `['*']`             | All renderers including `file://`                                               |
+| `[]`                | No renderer can bridge                                                          |
+
+> **Custom protocols:** For custom protocols like `app://` or `your-scheme://`, use the hostname component (the part between `://` and the first `/`). For example, `app://myapp/index.html` matches the host `myapp`.

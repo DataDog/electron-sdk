@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { ipcMain, type IpcMainEvent } from 'electron';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { combine, isIndexableObject, type RecursivePartial } from '@datadog/js-core/util';
 import { DISCARDED } from '@datadog/js-core/assembly';
@@ -38,7 +38,7 @@ export class RendererPipeline {
   ) {
     this.bridgeOptions = {
       defaultPrivacyLevel: config.defaultPrivacyLevel,
-      allowedWebViewHosts: config.allowedWebViewHosts,
+      allowedRendererHosts: config.allowedRendererHosts,
       // Capabilities are resolved once here and advertised globally, not per session. Bridge mode has no
       // channel to notify the renderer on session renew/expire or capability changes, so the browser SDK
       // cannot adjust its per-session behavior (e.g. stop profiling a sampled-out session). Out of scope for now.
@@ -47,7 +47,10 @@ export class RendererPipeline {
 
     ipcMain.on(
       BRIDGE_CHANNEL,
-      monitor((_ipcEvent: unknown, msg: string) => {
+      monitor((ipcEvent: IpcMainEvent, msg: string) => {
+        if (!isAllowedOrigin(ipcEvent.senderFrame?.origin, this.bridgeOptions.allowedRendererHosts)) {
+          return;
+        }
         this.onBridgeMessage(msg);
       })
     );
@@ -163,4 +166,30 @@ function isAnonymousOnlyUserContext(context: RumEvent['usr']): boolean {
   if (context === undefined) return false;
   const keys = Object.keys(context);
   return keys.length > 0 && keys.every((key) => key === 'anonymous_id');
+}
+
+/**
+ * Mirrors the Browser SDK's matchesHostEntry logic so both layers enforce the same rules.
+ * Supports exact match, subdomain suffix (e.g. 'example.com' matches 'sub.example.com'),
+ * and single-wildcard glob patterns (e.g. 'preview-*.example.com').
+ */
+function matchesRendererHostEntry(host: string, entry: string): boolean {
+  if (!entry.includes('*')) return host === entry || host.endsWith(`.${entry}`);
+  const parts = entry.split('*');
+  if (parts.length !== 2) return false;
+  const [prefix, suffix] = parts;
+  return host.length > prefix.length + suffix.length && host.startsWith(prefix) && host.endsWith(suffix);
+}
+
+function isAllowedOrigin(origin: string | undefined, allowedRendererHosts: string[]): boolean {
+  if (!origin) return false;
+  if (allowedRendererHosts.includes('*')) return true;
+  // file:// origin has no hostname; normalize to '' to match the stored value
+  if (origin === 'file://') return allowedRendererHosts.includes('');
+  try {
+    const hostname = new URL(origin).hostname;
+    return allowedRendererHosts.some((entry) => matchesRendererHostEntry(hostname, entry));
+  } catch {
+    return false;
+  }
 }
