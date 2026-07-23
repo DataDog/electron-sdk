@@ -34,6 +34,7 @@ interface ElectronAPI {
   generateTelemetryError: () => Promise<void>;
   generateUncaughtException: () => Promise<void>;
   generateUnhandledRejection: () => Promise<void>;
+  generateBeforeSendError: (behavior: 'scrub' | 'filter') => Promise<void>;
   crash: () => Promise<void>;
   mainFetchApi: () => Promise<unknown>;
   addDurationVital: (name: string, options: AddDurationVitalOptions) => Promise<void>;
@@ -283,6 +284,11 @@ setupDemoButton('vital-stop', 'main:stop-duration-vital(document.open)', () =>
     context: { result: 'success' },
   })
 );
+
+// --- beforeSend demo buttons ---
+
+setupDemoButton('before-send-scrub', 'beforeSend(scrub)', () => window.electronAPI.generateBeforeSendError('scrub'));
+setupDemoButton('before-send-filter', 'beforeSend(filter)', () => window.electronAPI.generateBeforeSendError('filter'));
 
 // --- Operation Monitoring demo buttons ---
 
