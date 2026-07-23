@@ -65,7 +65,7 @@ describe('bridge', () => {
   });
 
   it('getAllowedWebViewHosts includes configured hosts', async () => {
-    await load({ allowedWebViewHosts: ['example.com'] });
+    await load({ allowedRendererHosts: ['example.com'] });
     const bridge = (window as unknown as Record<string, { getAllowedWebViewHosts(): string }>).DatadogEventBridge;
     const hosts = JSON.parse(bridge.getAllowedWebViewHosts()) as string[];
     expect(hosts).toContain('example.com');

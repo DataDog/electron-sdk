@@ -40,7 +40,7 @@ export function createTestConfiguration(overrides: Partial<Configuration> = {}):
     profilingSampleRate: 100,
     telemetrySampleRate: 100,
     defaultPrivacyLevel: 'mask',
-    allowedWebViewHosts: [],
+    allowedRendererHosts: [],
     ...overrides,
   };
 }

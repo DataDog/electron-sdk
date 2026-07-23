@@ -15,7 +15,7 @@ function makeConfig(overrides: Partial<Configuration> = {}): Configuration {
     clientToken: 'test-token',
     applicationId: 'test-app-id',
     defaultPrivacyLevel: 'mask',
-    allowedWebViewHosts: [],
+    allowedRendererHosts: [],
     sessionSampleRate: 100,
     profilingSampleRate: 0,
     telemetrySampleRate: 20,

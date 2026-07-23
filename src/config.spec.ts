@@ -14,6 +14,7 @@ describe('buildConfiguration', () => {
     service: 'test-service',
     clientToken: 'test-token',
     applicationId: 'test-app-id',
+    allowedRendererHosts: [],
   };
 
   afterEach(() => {
@@ -273,21 +274,21 @@ describe('buildConfiguration', () => {
     });
   });
 
-  describe('allowedWebViewHosts validation', () => {
+  describe('allowedRendererHosts validation', () => {
     it('defaults to empty array when not provided', () => {
       const config = { ...DEFAULT_CONFIG };
 
       const result = buildConfiguration(config);
 
-      expect(result?.allowedWebViewHosts).toEqual([]);
+      expect(result?.allowedRendererHosts).toEqual([]);
     });
 
     it('accepts valid array of strings', () => {
-      const config = { ...DEFAULT_CONFIG, allowedWebViewHosts: ['example.com', 'other.com'] };
+      const config = { ...DEFAULT_CONFIG, allowedRendererHosts: ['example.com', 'other.com'] };
 
       const result = buildConfiguration(config);
 
-      expect(result?.allowedWebViewHosts).toEqual(['example.com', 'other.com']);
+      expect(result?.allowedRendererHosts).toEqual(['example.com', 'other.com']);
     });
 
     it.each([
@@ -296,13 +297,13 @@ describe('buildConfiguration', () => {
       { value: [123, 456], description: 'array of non-strings' },
       { value: ['valid', 123], description: 'mixed array' },
     ])('logs error and uses default when $description', ({ value }) => {
-      const config = { ...DEFAULT_CONFIG, allowedWebViewHosts: value } as unknown as InitConfiguration;
+      const config = { ...DEFAULT_CONFIG, allowedRendererHosts: value } as unknown as InitConfiguration;
 
       const result = buildConfiguration(config);
 
-      expect(result?.allowedWebViewHosts).toEqual([]);
+      expect(result?.allowedRendererHosts).toEqual([]);
       expect(display.error).toHaveBeenCalledWith(
-        "Configuration error: 'allowedWebViewHosts' must be an array of strings"
+        "Configuration error: 'allowedRendererHosts' must be an array of hostnames (e.g. ['example.com', 'myapp']), ['file://'] for file:// renderers, or ['*'] to allow all renderers including file://"
       );
     });
 
@@ -310,11 +311,11 @@ describe('buildConfiguration', () => {
       { value: null, description: 'null' },
       { value: undefined, description: 'undefined' },
     ])('defaults to empty array when $description (no error)', ({ value }) => {
-      const config = { ...DEFAULT_CONFIG, allowedWebViewHosts: value } as unknown as InitConfiguration;
+      const config = { ...DEFAULT_CONFIG, allowedRendererHosts: value } as unknown as InitConfiguration;
 
       const result = buildConfiguration(config);
 
-      expect(result?.allowedWebViewHosts).toEqual([]);
+      expect(result?.allowedRendererHosts).toEqual([]);
       expect(display.error).not.toHaveBeenCalled();
     });
   });

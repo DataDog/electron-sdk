@@ -30,7 +30,7 @@ describe('registerBridgeConfigResponder', () => {
     ipcMain.listeners[CONFIG_CHANNEL](event);
     expect(event.returnValue).toEqual({
       defaultPrivacyLevel: 'mask',
-      allowedWebViewHosts: [],
+      allowedRendererHosts: [],
       capabilities: ['profiles'],
     });
   });
@@ -38,12 +38,12 @@ describe('registerBridgeConfigResponder', () => {
   it('returns the real config after init updates the holder', () => {
     const ipcMain = makeIpcMain();
     registerBridgeConfigResponder(ipcMain as unknown as Electron.IpcMain);
-    setBridgeConfig({ defaultPrivacyLevel: 'allow', allowedWebViewHosts: ['x.com'], capabilities: [] });
+    setBridgeConfig({ defaultPrivacyLevel: 'allow', allowedRendererHosts: ['x.com'], capabilities: [] });
     const event = { returnValue: undefined as unknown };
     ipcMain.listeners[CONFIG_CHANNEL](event);
     expect(event.returnValue).toEqual({
       defaultPrivacyLevel: 'allow',
-      allowedWebViewHosts: ['x.com'],
+      allowedRendererHosts: ['x.com'],
       capabilities: [],
     });
   });

@@ -2,7 +2,7 @@ import type { DefaultPrivacyLevel } from '@datadog/browser-core';
 
 export interface BridgeOptions {
   defaultPrivacyLevel: DefaultPrivacyLevel;
-  allowedWebViewHosts: string[];
+  allowedRendererHosts: string[];
   capabilities: string[];
 }
 
@@ -22,7 +22,7 @@ function getHolder(): BridgeConfigHolder {
     // Advertise the SDK's supported capabilities by default to signal support. init() replaces this with
     // the config-derived value; that narrowing is only an optimization to save renderer work, since the
     // Electron SDK config (not the advertised capability) governs what is actually sent to Datadog.
-    holder = { value: { defaultPrivacyLevel: 'mask', allowedWebViewHosts: [], capabilities: ['profiles'] } };
+    holder = { value: { defaultPrivacyLevel: 'mask', allowedRendererHosts: [], capabilities: ['profiles'] } };
     store[BRIDGE_CONFIG] = holder;
   }
   return holder;
@@ -33,7 +33,7 @@ export function getBridgeConfig(): BridgeOptions {
   // Return a copy (including a fresh array) so callers cannot mutate the shared holder and corrupt
   // subsequent responses.
   const { value } = getHolder();
-  return { ...value, allowedWebViewHosts: [...value.allowedWebViewHosts], capabilities: [...value.capabilities] };
+  return { ...value, allowedRendererHosts: [...value.allowedRendererHosts], capabilities: [...value.capabilities] };
 }
 
 /** Replaces the bridge config the responder returns. Called by init() once the real config is known. */
