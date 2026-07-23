@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { RumEvent, RumLongTaskEvent, RumViewUpdateEvent } from '../domain/rum';
+import type { RumEvent, RumLongTaskEvent } from '../domain/rum';
 import {
   createServerRumAction,
   createServerRumError,
@@ -270,13 +270,5 @@ describe('RumEventMapper', () => {
     new RumEventMapper(beforeSend).map(createServerRumError());
 
     expect(beforeSend.mock.contexts[0]).toBeUndefined();
-  });
-
-  it('does not expose internal view updates to beforeSend', () => {
-    const beforeSend = vi.fn(() => false);
-    const event = { ...createServerRumView(), type: 'view_update' } as RumViewUpdateEvent;
-
-    expect(new RumEventMapper(beforeSend).map(event as RumEvent)).toBe(event);
-    expect(beforeSend).not.toHaveBeenCalled();
   });
 });

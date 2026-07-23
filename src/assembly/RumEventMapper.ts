@@ -15,7 +15,7 @@ const COMMON_MODIFIABLE_FIELD_PATHS: ModifiableFieldPaths = {
   version: 'string',
 };
 
-const MODIFIABLE_FIELD_PATHS_BY_EVENT: Record<RumEvent['type'], ModifiableFieldPaths> = {
+const MODIFIABLE_FIELD_PATHS_BY_EVENT: Partial<Record<RumEvent['type'], ModifiableFieldPaths>> = {
   view: {
     ...COMMON_MODIFIABLE_FIELD_PATHS,
     'view.performance.lcp.resource_url': 'string',
@@ -48,8 +48,6 @@ const MODIFIABLE_FIELD_PATHS_BY_EVENT: Record<RumEvent['type'], ModifiableFieldP
     '_dd.debug_ids': 'array',
   },
   vital: COMMON_MODIFIABLE_FIELD_PATHS,
-  transition: COMMON_MODIFIABLE_FIELD_PATHS,
-  view_update: COMMON_MODIFIABLE_FIELD_PATHS,
 };
 
 /**
@@ -62,12 +60,10 @@ export class RumEventMapper {
 
   map(event: RumEvent): RumEvent | undefined {
     const beforeSend = this.beforeSend;
-    // Internal view updates bypass beforeSend.
-    if (!beforeSend || event.type === 'view_update') {
+    if (!beforeSend) {
       return event;
     }
 
-    // Unknown event types only expose common modifiable fields.
     const modifiableFieldPaths = MODIFIABLE_FIELD_PATHS_BY_EVENT[event.type] ?? COMMON_MODIFIABLE_FIELD_PATHS;
     const result = limitModification(event, modifiableFieldPaths, (modifiableEvent) => {
       modifiableEvent.context ??= {};
