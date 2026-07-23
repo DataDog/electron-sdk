@@ -132,6 +132,39 @@ await esbuild.build({
 - **Renderer Profiling** — Collect JS Self-Profiling data from renderer pages and correlate it with RUM
 - **User & Account Info** — Attach user and account identity to all RUM events and traces
 - **Operation Monitoring** _(experimental)_ — Track start / succeed / fail steps of critical user-facing workflows
+- **Event Filtering and Scrubbing** — Modify or discard main-process RUM events with `beforeSend`
+
+### Event Filtering and Scrubbing
+
+Use `beforeSend` to inspect fully assembled main-process RUM events before they are sent to Datadog:
+
+```ts
+await init({
+  // ...
+  beforeSend: (event) => {
+    if (event.type === 'error') {
+      event.error.message = event.error.message.replace(/token=[^&\s]+/g, 'token=[REDACTED]');
+    }
+    if (event.context?.internal === true) {
+      return false;
+    }
+    return true;
+  },
+});
+```
+
+Only returning `false` discards the event. View and native crash events cannot be discarded. The editable fields are:
+
+- All events: `service`, `version`, `view.name`, and `view.url`
+- Errors: `context`, `error.message`, and `error.stack`
+- Resources: `resource.url`
+- Vitals: `context`
+
+Event identity, session, application, and other fields remain unchanged. Callback errors are logged and the event is
+still sent. The callback is synchronous and should remain fast. It does not automatically detect PII.
+
+Renderer events are not passed to this callback. Configure the Browser SDK's `beforeSend` in each renderer that needs
+event filtering or scrubbing.
 
 ### Custom Duration Vitals
 
@@ -390,3 +423,4 @@ interface FeatureOperationOptions {
 | `uploadFrequency`     | `'RARE' \| 'NORMAL' \| 'FREQUENT'`       | No       | —        | Upload frequency for event batches                                                                                                        |
 | `defaultPrivacyLevel` | `'mask' \| 'allow' \| 'mask-user-input'` | No       | `'mask'` | Default privacy level for renderer session replay                                                                                         |
 | `allowedWebViewHosts` | `string[]`                               | No       | `[]`     | Hostnames allowed for the renderer bridge                                                                                                 |
+| `beforeSend`          | `(event: MainRumEvent) => boolean`       | No       | —        | Modify or discard fully assembled main-process RUM events before they are sent                                                            |
