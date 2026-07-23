@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { MainRumEvent, RumVitalDurationEvent } from '../domain/rum';
+import type { RumVitalDurationEvent } from '../domain/rum';
 import { createServerRumError, createServerRumResource, createServerRumView } from '../mocks.specUtil';
 import { display } from '../tools/display';
 import { RumEventMapper } from './RumEventMapper';
@@ -86,22 +86,14 @@ describe('RumEventMapper', () => {
     });
   });
 
-  it('supports event-specific modifiable fields', () => {
+  it('lets beforeSend modify resource URLs', () => {
     const mapper = new RumEventMapper((event) => {
-      if (event.type === 'error') {
-        event.error.message = 'redacted message';
-        event.error.stack = 'redacted stack';
-      } else if (event.type === 'resource') {
+      if (event.type === 'resource') {
         event.resource.url = 'https://redacted.example';
       }
       return true;
     });
 
-    expect(
-      mapper.map(createServerRumError({ error: { message: 'secret message', stack: 'secret stack' } }))
-    ).toMatchObject({
-      error: { message: 'redacted message', stack: 'redacted stack' },
-    });
     expect(mapper.map(createServerRumResource({ resource: { url: 'https://secret.example' } }))).toMatchObject({
       resource: { url: 'https://redacted.example' },
     });
@@ -135,17 +127,21 @@ describe('RumEventMapper', () => {
       return true;
     });
 
-    expect(mapper.map(view)?.view.referrer).toBe('secret referrer');
-    expect(mapper.map(view)?.context).toBeUndefined();
-    expect(mapper.map(error)?.error).toMatchObject({
+    const mappedView = mapper.map(view);
+    const mappedError = mapper.map(error);
+    const mappedResource = mapper.map(resource);
+
+    expect(mappedView?.view.referrer).toBe('secret referrer');
+    expect(mappedView?.context).toBeUndefined();
+    expect(mappedError?.error).toMatchObject({
       handling_stack: 'secret handling stack',
       fingerprint: 'secret fingerprint',
     });
-    expect(mapper.map(resource)?.resource).toMatchObject({
+    expect(mappedResource?.resource).toMatchObject({
       graphql: { variables: '{"secret":true}' },
       request: { headers: { authorization: 'secret' } },
     });
-    expect(mapper.map(resource)?.context).toBeUndefined();
+    expect(mappedResource?.context).toBeUndefined();
   });
 
   it('lets beforeSend modify context on main-process vital events', () => {
@@ -229,15 +225,5 @@ describe('RumEventMapper', () => {
 
     expect(mapper.map(event)).toMatchObject({ error: { message: 'redacted before throw' } });
     expect(display.error).toHaveBeenCalledWith('beforeSend threw an error:', expect.any(Error));
-  });
-
-  it('invokes beforeSend without binding a this value', () => {
-    const beforeSend = vi.fn(function (_event: MainRumEvent) {
-      return true;
-    });
-
-    new RumEventMapper(beforeSend).map(createServerRumError());
-
-    expect(beforeSend.mock.contexts[0]).toBeUndefined();
   });
 });

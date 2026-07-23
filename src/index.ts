@@ -301,7 +301,6 @@ export type {
   FeatureOperationOptions,
   MainRumEvent,
   RumErrorEvent,
-  RumEvent,
   RumResourceEvent,
   RumViewEvent,
   RumVitalEvent,

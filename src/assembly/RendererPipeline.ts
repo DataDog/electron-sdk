@@ -23,7 +23,7 @@ interface BridgeEvent {
  *
  * Receives pre-assembled events from the browser RUM SDK via the DatadogEventBridge,
  * injects main-process context (session.id, application.id, container.view.id) via
- * triggerRum with source RENDERER and emits ServerEvents directly.
+ * triggerRum with source RENDERER, and emits ServerEvents directly.
  *
  * Also emits END_USER_ACTIVITY for click actions before the session check, so a click
  * after session inactivity expiry can create a new session even though the event itself

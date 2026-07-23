@@ -4,7 +4,8 @@ import type { RumBeforeSend } from '../config';
 import type { MainRumEvent } from '../domain/rum';
 import { display } from '../tools/display';
 
-type ModifiableFieldPaths = Record<string, 'string' | 'object' | 'array'>;
+type ModifiableFieldType = 'string' | 'object';
+type ModifiableFieldPaths = Record<string, ModifiableFieldType>;
 
 const COMMON_MAIN_MODIFIABLE_FIELD_PATHS: ModifiableFieldPaths = {
   'view.name': 'string',
@@ -31,11 +32,7 @@ const MODIFIABLE_FIELD_PATHS_BY_EVENT: Record<MainRumEvent['type'], ModifiableFi
   },
 };
 
-/**
- * Applies beforeSend after main-process RUM events have been fully assembled. Customer changes are isolated in a
- * clone, then only fields produced by main-process event sources are sanitized and copied back. Filtering fails open
- * for callback errors, and view or crash events remain protected.
- */
+/** Applies beforeSend filtering and supported field changes to fully assembled main-process RUM events. */
 export class RumEventMapper {
   constructor(private readonly beforeSend?: RumBeforeSend) {}
 
@@ -86,26 +83,14 @@ function limitModification<T extends Record<string, unknown>, Result>(
   const result = modifier(clone);
 
   objectEntries(modifiableFieldPaths).forEach(([fieldPath, fieldType]) =>
-    setValueAtPath(object, clone, fieldPath.split(/\.|(?=\[\])/), fieldType)
+    setValueAtPath(object, clone, fieldPath.split('.'), fieldType)
   );
 
   return result;
 }
 
-function setValueAtPath(
-  object: unknown,
-  clone: unknown,
-  pathSegments: string[],
-  fieldType: 'string' | 'object' | 'array'
-): void {
+function setValueAtPath(object: unknown, clone: unknown, pathSegments: string[], fieldType: ModifiableFieldType): void {
   const [field, ...restPathSegments] = pathSegments;
-
-  if (field === '[]') {
-    if (Array.isArray(object) && Array.isArray(clone)) {
-      object.forEach((item, index) => setValueAtPath(item, clone[index], restPathSegments, fieldType));
-    }
-    return;
-  }
 
   if (!isIndexableObject(object) || !isIndexableObject(clone)) {
     return;
@@ -122,7 +107,7 @@ function setNestedValue(
   object: Record<string, unknown>,
   field: string,
   value: unknown,
-  fieldType: 'string' | 'object' | 'array'
+  fieldType: ModifiableFieldType
 ): void {
   if (object[field] === value) {
     return;
@@ -133,7 +118,5 @@ function setNestedValue(
     object[field] = sanitize(value);
   } else if (fieldType === 'object' && (newType === 'undefined' || newType === 'null')) {
     object[field] = {};
-  } else if (fieldType === 'array' && (newType === 'undefined' || newType === 'null')) {
-    object[field] = [];
   }
 }

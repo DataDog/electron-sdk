@@ -18,6 +18,7 @@ test('beforeSend only scrubs and filters main-process RUM events', async ({ elec
   const errorEvents = await intake.waitForEventCount('error', 3);
   const errors = errorEvents.map(({ body }) => body as RumErrorEvent);
 
+  expect(errors).toHaveLength(3);
   expect(errors.map(({ error }) => error.message)).toEqual(
     expect.arrayContaining(['redacted main error', 'beforeSend renderer secret', 'beforeSend renderer drop'])
   );

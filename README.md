@@ -153,8 +153,7 @@ await init({
 });
 ```
 
-Only returning `false` discards the event. View and native crash events cannot be discarded. The editable fields
-produced by current main-process sources are:
+Only returning `false` discards the event. View and native crash events cannot be discarded. The editable fields are:
 
 - All events: `service`, `version`, `view.name`, and `view.url`
 - Errors: `context`, `error.message`, and `error.stack`
