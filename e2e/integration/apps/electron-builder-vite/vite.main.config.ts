@@ -3,7 +3,8 @@ import { defineConfig } from 'vite';
 import { datadogVitePlugin } from '@datadog/electron-sdk/vite-plugin';
 
 export default defineConfig({
-  plugins: [datadogVitePlugin()],
+  // electron-builder stages package.json runtime dependencies.
+  plugins: [datadogVitePlugin({ copyRuntimeDependencies: false })],
   build: {
     outDir: 'dist',
     emptyOutDir: false,

@@ -31,6 +31,10 @@ import { join, dirname } from 'node:path';
 import { mkdirSync, existsSync, readFileSync, cpSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
+import type { DatadogBundlerPluginOptions } from './bundler-plugin-options';
+
+export type { DatadogBundlerPluginOptions } from './bundler-plugin-options';
+
 interface Rule {
   test?: RegExp;
   exclude?: RegExp;
@@ -108,7 +112,15 @@ function copyPackageTree(pkg: string, destModules: string, visited: Set<string>)
   }
 }
 
+/**
+ * Configures Datadog instrumentation for webpack.
+ *
+ * @example
+ * plugins: [new DatadogWebpackPlugin({ copyRuntimeDependencies: false })]
+ */
 export class DatadogWebpackPlugin {
+  constructor(private readonly options: DatadogBundlerPluginOptions = {}) {}
+
   apply(compiler: Compiler): void {
     // Externalize dd-trace and @datadog/electron-sdk so webpack doesn't bundle them
     const ddTraceExternals = [/^dd-trace(\/.*)?$/, /^@datadog\/electron-sdk(\/.*)?$/];
@@ -139,6 +151,8 @@ export class DatadogWebpackPlugin {
         addExcludeToRule(rule as Rule);
       }
     }
+
+    if (this.options.copyRuntimeDependencies === false) return;
 
     // Copy externalized packages and their transitive dependencies into the output
     compiler.hooks.afterEmit.tap('DatadogWebpackPlugin', (compilation) => {
