@@ -125,6 +125,10 @@ export class ViewCollection {
   }
 
   private onSessionExpired(): void {
+    if (!this.currentView.isActive) {
+      return;
+    }
+
     this.cancelScheduledViewUpdate();
     this.stopSessionKeepAlive();
     this.currentView.isActive = false;
