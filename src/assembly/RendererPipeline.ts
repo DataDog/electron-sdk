@@ -47,8 +47,8 @@ export class RendererPipeline {
 
     ipcMain.on(
       BRIDGE_CHANNEL,
-      monitor((_ipcEvent: unknown, msg: string) => {
-        this.onBridgeMessage(msg);
+      monitor((ipcEvent: Electron.IpcMainEvent, msg: string) => {
+        this.onBridgeMessage(ipcEvent.sender.id, msg);
       })
     );
 
@@ -57,7 +57,7 @@ export class RendererPipeline {
     setBridgeConfig(this.bridgeOptions);
   }
 
-  private onBridgeMessage(msg: string): void {
+  private onBridgeMessage(webContentsId: number, msg: string): void {
     let bridgeEvent: BridgeEvent;
     try {
       bridgeEvent = JSON.parse(msg) as BridgeEvent;
@@ -68,7 +68,7 @@ export class RendererPipeline {
 
     switch (bridgeEvent.eventType) {
       case 'rum':
-        this.handleRumEvent(bridgeEvent.event);
+        this.handleRumEvent(webContentsId, bridgeEvent.event);
         break;
       case 'log':
         // TODO(RUM-15047): when Logs are implemented, enrich them with user/account context
@@ -99,7 +99,7 @@ export class RendererPipeline {
     }
   }
 
-  private handleRumEvent(eventData: unknown): void {
+  private handleRumEvent(webContentsId: number, eventData: unknown): void {
     const data = eventData as RumEvent;
 
     // Emit activity before the session check: a click after session expiry must still
@@ -113,6 +113,7 @@ export class RendererPipeline {
       eventType: data.type,
       startTime: data.date as TimeStamp,
       source: EventSource.RENDERER,
+      webContentsId,
     });
 
     if (hookResult === DISCARDED) {

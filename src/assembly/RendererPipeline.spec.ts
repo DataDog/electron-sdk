@@ -89,7 +89,7 @@ describe('RendererPipeline', () => {
 
     mockIpcMainOn.mockImplementation((channel: string, callback: (_event: unknown, msg: string) => void) => {
       if (channel === BRIDGE_CHANNEL) {
-        simulateIpcMessage = (msg: string) => callback({}, msg);
+        simulateIpcMessage = (msg: string) => callback({ sender: { id: 7 } }, msg);
       }
     });
 
@@ -201,6 +201,18 @@ describe('RendererPipeline', () => {
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
 
       expect(capturedStartTime).toBe(12345);
+    });
+
+    it('passes the sender webContentsId to triggerRum', () => {
+      let capturedWebContentsId: number | undefined;
+      hooks.registerRum(({ webContentsId }) => {
+        capturedWebContentsId = webContentsId;
+        return {};
+      });
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
+
+      expect(capturedWebContentsId).toBe(7);
     });
 
     it('discards the event when triggerRum returns DISCARDED', () => {

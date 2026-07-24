@@ -11,7 +11,7 @@ import {
   type RawProfileEvent,
   type ServerEvent,
 } from '../event';
-import type { FormatHooks } from './hooks';
+import type { FormatHooks, RumEventType } from './hooks';
 import { RumEvent } from '../domain/rum';
 import { TelemetryEvent } from '../domain/telemetry';
 
@@ -43,7 +43,7 @@ export class MainAssembly {
     const startTime = event.startTime ?? timeStampNow();
     const source = EventSource.MAIN;
 
-    if (event.format === EventFormat.RUM) {
+    if (event.format === EventFormat.RUM && (isRumEventType(event.data.type) || event.data.type === 'process')) {
       const hookResult = this.hooks.triggerRum({
         eventType: event.data.type,
         startTime,
@@ -77,4 +77,25 @@ export class MainAssembly {
 
 function assembleData<T>(rawData: unknown, hookResult: RecursivePartial<T> | undefined): T {
   return (hookResult ? combine(hookResult, rawData) : rawData) as T;
+}
+
+// The `satisfies` constraint has two roles:
+// - `Record<RumEventType, 1>` key exhaustiveness: every RumEventType variant must be present (compile error if one is missing)
+// - values typed as `RumEventType[]`: no string outside the union can be added
+// Together they keep the type guard sound when RumEvent schema changes.
+const RUM_EVENT_TYPES = new Set<RumEventType>(
+  Object.keys({
+    action: 1,
+    error: 1,
+    long_task: 1,
+    resource: 1,
+    transition: 1,
+    view: 1,
+    view_update: 1,
+    vital: 1,
+  } satisfies Record<RumEventType, 1>) as RumEventType[]
+);
+
+function isRumEventType(type: string): type is RumEventType {
+  return RUM_EVENT_TYPES.has(type as RumEventType);
 }

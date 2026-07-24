@@ -22,7 +22,7 @@ export class ViewContext {
         case EventSource.RENDERER:
           return { container: { view: { id } } };
         case EventSource.MAIN:
-          return { view: { id, name: 'main process', url: 'electron://main-process' } }; // TODO(RUM-14657) improve name / url
+          return { view: { id, url: 'electron://fake', is_fake: true } };
       }
     });
 

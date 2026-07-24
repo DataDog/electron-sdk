@@ -61,15 +61,15 @@ describe('ViewContext', () => {
   });
 
   describe('after add()', () => {
-    it('RUM hook returns id, name, url for main source', async () => {
+    it('RUM hook returns id, url, is_fake for main source', async () => {
       const hooks = createFormatHooks();
       const context = await ViewContext.init(hooks, EXPIRE_DELAY);
 
       context.add(VIEW_ID);
 
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toMatchObject({
-        view: { id: VIEW_ID, name: 'main process', url: 'electron://main-process' },
-      });
+      const result = hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN });
+      expect(result).toMatchObject({ view: { id: VIEW_ID, url: 'electron://fake', is_fake: true } });
+      expect(result).not.toHaveProperty('view.name');
     });
 
     it('RUM hook returns container.view.id for renderer source', async () => {

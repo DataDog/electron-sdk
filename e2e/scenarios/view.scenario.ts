@@ -1,8 +1,7 @@
 import { test, expect } from '../lib/helpers';
 import type { RumViewEvent } from '@datadog/electron-sdk';
 
-const isMainProcessView = (event: { body: unknown }) =>
-  (event.body as RumViewEvent).view.url === 'electron://main-process';
+const isMainProcessView = (event: { body: unknown }) => (event.body as RumViewEvent).view.url === 'electron://fake';
 
 test('emits an initial active view event on SDK init', async ({ mainPage, intake }) => {
   await mainPage.flushTransport();
@@ -30,12 +29,10 @@ test('emits an initial active view event on SDK init', async ({ mainPage, intake
   expect(headers['dd-evp-origin']).toBe('electron');
   expect(headers['dd-evp-origin-version']).toMatch(/^\d+\.\d+\.\d+$/);
   expect(headers['dd-request-id']).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
-  expect(view.view.name).toBe('main process');
-  expect(view.view.url).toBe('electron://main-process');
+  expect(view.view.url).toBe('electron://fake');
+  expect((view.view as unknown as { is_fake?: boolean }).is_fake).toBe(true);
+  expect((view.view as unknown as { name?: string }).name).toBeUndefined();
   expect(view.view.is_active).toBe(true);
-  expect(view.view.action.count).toBe(0);
-  expect(view.view.error.count).toBe(0);
-  expect(view.view.resource.count).toBe(0);
   expect(view._dd.document_version).toBe(1);
   expect(view.view.id).toBeDefined();
   expect(view.view.time_spent).toBeGreaterThanOrEqual(0);
@@ -72,16 +69,4 @@ test.describe('session renewal via user activity', () => {
     expect(newView.view.is_active).toBe(true);
     expect(newView._dd.document_version).toBe(1);
   });
-});
-
-test('increments view error count after an uncaught exception', async ({ mainPage, intake }) => {
-  await mainPage.generateUncaughtException();
-  await mainPage.flushTransport();
-
-  await intake.getEventsByType('error');
-  const viewEvents = await intake.waitForEventCount('view', 2);
-  const updatedView = viewEvents[1].body as RumViewEvent;
-
-  expect(updatedView.view.error.count).toBe(1);
-  expect(updatedView._dd.document_version).toBeGreaterThan(1);
 });

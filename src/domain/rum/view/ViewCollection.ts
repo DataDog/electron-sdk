@@ -1,65 +1,54 @@
-import { elapsed, ONE_MINUTE, ONE_SECOND, timeStampNow, toServerDuration, TimeStamp } from '@datadog/js-core/time';
-import { generateUUID, Subscription } from '@datadog/browser-core';
-import {
-  EventFormat,
-  EventKind,
-  EventManager,
-  EventSource,
-  EventTrack,
-  type LifecycleEvent,
-  LifecycleKind,
-  ServerRumEvent,
-} from '../../../event';
+import { elapsed, ONE_MINUTE, timeStampNow, toServerDuration, TimeStamp } from '@datadog/js-core/time';
+import { Subscription } from '@datadog/browser-core';
+import { EventFormat, EventKind, EventManager, type LifecycleEvent, LifecycleKind } from '../../../event';
 import type { FormatHooks } from '../../../assembly';
-import { setInterval, throttle } from '../../telemetry';
+import { setInterval } from '../../telemetry';
 import type { RawRumView } from '../rawRumData.types';
 import { ViewContext } from './ViewContext';
+import { SessionManager } from '../../session';
 
 export const SESSION_KEEP_ALIVE_INTERVAL = 5 * ONE_MINUTE;
-// throttle view updates to avoid bursts
-export const VIEW_UPDATE_THROTTLE_DELAY = 3 * ONE_SECOND;
 
 interface ViewState {
   id: string;
   startTime: TimeStamp;
   documentVersion: number;
   isActive: boolean;
-  counters: { action: { count: number }; error: { count: number }; resource: { count: number } };
 }
 
 /**
- * Track the main view lifecycle
+ * Track the fake main-process view lifecycle.
+ * - view.id == session.id (fake view, not a real renderer view)
  * - on creation, emit an initial view event
- * - keep session alive by regularly send view updates
+ * - keep session alive by regularly sending view updates
+ *   // TODO: challenge whether keep-alive is still needed once the backend
+ *   // uses process heartbeats for session liveness
  * - on SESSION_EXPIRED, emit a final inactive view update
- * - on SESSION_RENEW, create a new view
- * - on RUM server event (action, error, resource), increment view counters (throttled)
+ * - on SESSION_RENEW, create a new view with the new session.id
  */
 export class ViewCollection {
   private currentView!: ViewState;
   private viewContext!: ViewContext;
   private keepAliveIntervalId: ReturnType<typeof setInterval> | undefined;
-  private scheduleViewUpdate!: () => void;
-  private cancelScheduledViewUpdate!: () => void;
   private lifecycleSubscription!: Subscription;
-  private serverEventSubscription!: Subscription;
 
   constructor(
     private readonly eventManager: EventManager,
-    private readonly hooks: FormatHooks
+    private readonly hooks: FormatHooks,
+    private readonly sessionManager: SessionManager
   ) {}
 
-  static async start(eventManager: EventManager, hooks: FormatHooks): Promise<ViewCollection> {
-    const collection = new ViewCollection(eventManager, hooks);
+  static async start(
+    eventManager: EventManager,
+    hooks: FormatHooks,
+    sessionManager: SessionManager
+  ): Promise<ViewCollection> {
+    const collection = new ViewCollection(eventManager, hooks, sessionManager);
     await collection.init();
     return collection;
   }
 
   private async init(): Promise<void> {
-    const { throttled, cancel } = throttle(() => this.emitViewUpdate(), VIEW_UPDATE_THROTTLE_DELAY);
-    this.scheduleViewUpdate = throttled;
-    this.cancelScheduledViewUpdate = cancel;
-
     this.viewContext = await ViewContext.init(this.hooks);
     this.createNewView();
 
@@ -73,28 +62,20 @@ export class ViewCollection {
         }
       },
     });
-
-    this.serverEventSubscription = this.eventManager.registerHandler<ServerRumEvent>({
-      canHandle: (event): event is ServerRumEvent => event.kind === EventKind.SERVER && event.track === EventTrack.RUM,
-      handle: (event) => this.onServerRumEvent(event),
-    });
   }
 
   stop(): void {
-    this.cancelScheduledViewUpdate();
     this.stopSessionKeepAlive();
     this.lifecycleSubscription.unsubscribe();
-    this.serverEventSubscription.unsubscribe();
   }
 
   private createNewView(): void {
-    const viewId = generateUUID();
+    const viewId = this.sessionManager.getSession().id;
     this.currentView = {
       id: viewId,
       startTime: timeStampNow(),
       documentVersion: 1,
       isActive: true,
-      counters: { action: { count: 0 }, error: { count: 0 }, resource: { count: 0 } },
     };
 
     this.viewContext.close(); // close previous view if any (ensures non-overlapping history entries)
@@ -111,7 +92,9 @@ export class ViewCollection {
         id: this.currentView.id,
         time_spent: toServerDuration(elapsed(this.currentView.startTime, timeStampNow())),
         is_active: this.currentView.isActive,
-        ...this.currentView.counters,
+        action: { count: 0 },
+        error: { count: 0 },
+        resource: { count: 0 },
       },
       _dd: { document_version: this.currentView.documentVersion },
     };
@@ -125,7 +108,6 @@ export class ViewCollection {
   }
 
   private onSessionExpired(): void {
-    this.cancelScheduledViewUpdate();
     this.stopSessionKeepAlive();
     this.currentView.isActive = false;
     this.currentView.documentVersion++;
@@ -134,21 +116,7 @@ export class ViewCollection {
   }
 
   private onSessionRenew(): void {
-    this.cancelScheduledViewUpdate();
     this.createNewView();
-  }
-
-  private onServerRumEvent(event: ServerRumEvent): void {
-    if (event.source === EventSource.RENDERER) {
-      return;
-    }
-
-    const type = event.data.type;
-    if (type === 'action' || type === 'error' || type === 'resource') {
-      this.currentView.counters[type].count++;
-      this.currentView.documentVersion++;
-      this.scheduleViewUpdate();
-    }
   }
 
   private keepSessionAlive(): void {
