@@ -120,6 +120,11 @@ await esbuild.build({
 });
 ```
 
+Bundler plugins copy the SDK, dd-trace, and their runtime dependencies into the build output by
+default. If your application packager stages external dependencies, pass
+`{ copyRuntimeDependencies: false }` to any plugin and ensure the packager includes both packages
+and their runtime dependencies.
+
 ## Available Features
 
 - **Sessions** — Session-based event grouping
