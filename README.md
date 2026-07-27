@@ -18,7 +18,7 @@ npm install @datadog/electron-sdk
 
 ### Setup
 
-The Electron SDK uses dd-trace under the hood to monitor the main process and relies on the browser SDK to monitor renderer processes.
+The Electron SDK uses dd-trace-electron under the hood to monitor the main process and relies on the browser SDK to monitor renderer processes.
 
 ```mermaid
 graph TB
@@ -28,7 +28,7 @@ graph TB
         end
 
         subgraph Main Process
-            DDT[dd-trace]
+            DDT[dd-trace-electron]
             SDK[Electron SDK]
         end
     end
@@ -60,7 +60,7 @@ import '@datadog/electron-sdk/instrument';
 import { app, BrowserWindow } from 'electron';
 ```
 
-This instruments the needed Electron APIs. `dd-trace` is initialized with the resolved configuration when `init()`
+This instruments the needed Electron APIs. `dd-trace-electron` is initialized with the resolved configuration when `init()`
 is called.
 
 Then initialize the Electron SDK, awaiting `init` before creating any browser windows:
