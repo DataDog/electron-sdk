@@ -62,7 +62,7 @@ export class RendererPipeline {
     try {
       bridgeEvent = JSON.parse(msg) as BridgeEvent;
     } catch {
-      addTelemetryError(new Error(`Failed to parse bridge message: ${msg}`));
+      addTelemetryError(new Error('Failed to parse bridge message'));
       return;
     }
 
