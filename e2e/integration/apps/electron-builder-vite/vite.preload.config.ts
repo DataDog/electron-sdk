@@ -1,9 +1,9 @@
 import { builtinModules } from 'node:module';
 import { defineConfig } from 'vite';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   build: {
-    outDir: 'dist',
+    outDir: `dist/${getWorkflow(mode)}`,
     emptyOutDir: false,
     lib: {
       entry: 'src/preload.ts',
@@ -14,4 +14,9 @@ export default defineConfig({
       external: ['electron', ...builtinModules, ...builtinModules.map((m) => `node:${m}`)],
     },
   },
-});
+}));
+
+function getWorkflow(mode: string): 'default-copy' | 'packager-copy' {
+  if (mode === 'default-copy' || mode === 'packager-copy') return mode;
+  throw new Error(`Expected Vite mode "default-copy" or "packager-copy", received "${mode}"`);
+}

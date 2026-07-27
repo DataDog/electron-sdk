@@ -1517,6 +1517,7 @@ __metadata:
   dependencies:
     "@datadog/browser-rum": "npm:7.4.0"
     "@datadog/electron-sdk": "file:../../integration-sdk.tgz"
+    "@electron/asar": "npm:3.4.1"
     "@types/node": "npm:24.13.2"
     electron: "npm:41.1.0"
     electron-builder: "npm:26.15.3"
