@@ -59,7 +59,7 @@ const config = [
         sourcemap: true,
       },
     ],
-    external: ['electron', 'dd-trace'],
+    external: ['electron', 'dd-trace-electron'],
     plugins: sharedPlugins,
   },
   // Vite plugin: ensures Electron instrumentation runs before hoisted requires
@@ -108,7 +108,7 @@ const config = [
     },
     plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
   },
-  // Webpack plugin: copies dd-trace preload into webpack output
+  // Webpack plugin: copies dd-trace-electron preload into webpack output
   {
     input: 'src/entries/webpack-plugin.ts',
     output: [
