@@ -6,12 +6,12 @@
  * because `require('electron')` runs before `@datadog/electron-sdk/instrument`.
  *
  * This plugin:
- * 1. Externalizes dd-trace and the electron-sdk so they remain as runtime
+ * 1. Externalizes dd-trace-electron and the electron-sdk so they remain as runtime
  *    requires (not bundled), preserving runtime instrumentation.
  * 2. Prepends SDK instrumentation (via @datadog/electron-sdk/instrument)
  *    to the very top of the main process entry chunk, before any hoisted
  *    requires. No manual import needed.
- * 3. Copies dd-trace, @datadog/electron-sdk, and their runtime dependencies
+ * 3. Copies dd-trace-electron, @datadog/electron-sdk, and their runtime dependencies
  *    into the build output's node_modules only when `copyRuntimeDependencies: true`.
  *    Copying is disabled by default; the application packager must stage them.
  *
@@ -66,7 +66,7 @@ export function datadogVitePlugin(pluginOptions: DatadogBundlerPluginOptions = {
       return {
         build: {
           rollupOptions: {
-            external: [/^dd-trace/, /^@datadog\/electron-sdk/],
+            external: [/^dd-trace-electron/, /^@datadog\/electron-sdk/],
           },
         },
       };
@@ -121,7 +121,7 @@ export function datadogVitePlugin(pluginOptions: DatadogBundlerPluginOptions = {
       }
     }
 
-    copyPackageTree('dd-trace');
+    copyPackageTree('dd-trace-electron');
     copyPackageTree('@datadog/electron-sdk');
   };
 
