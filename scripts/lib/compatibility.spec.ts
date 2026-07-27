@@ -20,7 +20,7 @@ it.each(['electron', 'electron-nightly'])(
       await fs.mkdir(path.join(source, 'dist'));
       await fs.writeFile(path.join(source, 'package.json'), JSON.stringify(packageJsonContent));
       await fs.writeFile(path.join(source, 'main.ts'), 'local source');
-      await fs.writeFile(path.join(source, '.yarnrc.yml'), 'npmPreapprovedPackages:\n  - dd-trace@6.10.0\n');
+      await fs.writeFile(path.join(source, '.yarnrc.yml'), 'npmPreapprovedPackages:\n  - dd-trace-electron\n');
       await materializeApp(source, destination, { id: 'test', dependency, version: '42.0.0' }, 'file:../sdk.tgz');
       const result = JSON.parse(await fs.readFile(path.join(destination, 'package.json'), 'utf8'));
       expect(result.dependencies).toEqual({ '@datadog/electron-sdk': 'file:../sdk.tgz', other: '1.0.0' });
@@ -32,7 +32,7 @@ it.each(['electron', 'electron-nightly'])(
       expect(entries).not.toContain('dist');
       expect(entries).not.toContain('node_modules');
       expect(await fs.readFile(path.join(destination, '.yarnrc.yml'), 'utf8')).toContain(
-        `  - ${dependency}@42.0.0\n  - dd-trace@6.10.0`
+        `  - ${dependency}@42.0.0\n  - dd-trace-electron`
       );
       expect(JSON.parse(await fs.readFile(path.join(source, 'package.json'), 'utf8'))).toEqual(packageJsonContent);
     } finally {

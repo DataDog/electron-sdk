@@ -19,7 +19,7 @@ const electronPath = require(join(e2eAppDirectory, 'node_modules/electron')) as 
 // system essentials for the binary to launch, plus the few flags the test app
 // and Playwright themselves read. Anything else is intentionally dropped to avoid
 // leaking variables that change behavior (e.g. OTEL_TRACES_EXPORTER=otlp would
-// make dd-trace switch off the experimental electron exporter the SDK relies on).
+// make dd-trace-electron switch off the experimental electron exporter the SDK relies on).
 const HOST_ENV_ALLOWLIST = [
   'PATH',
   'HOME',

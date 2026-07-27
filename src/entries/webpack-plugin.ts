@@ -7,15 +7,15 @@
  *    as a banner to the main entry, so the user doesn't need to manually
  *    import '@datadog/electron-sdk/instrument'.
  *
- * 2. Externalizes dd-trace and @datadog/electron-sdk so they remain as runtime
- *    requires (not bundled), avoiding issues with dd-trace's dynamic requires,
+ * 2. Externalizes dd-trace-electron and @datadog/electron-sdk so they remain as runtime
+ *    requires (not bundled), avoiding issues with the tracer's dynamic requires,
  *    native modules, and optional peer dependencies.
  *
- * 3. Excludes dd-trace and @datadog/electron-sdk from @vercel/webpack-asset-
- *    relocator-loader, which would otherwise break dd-trace's internal module
+ * 3. Excludes dd-trace-electron and @datadog/electron-sdk from @vercel/webpack-asset-
+ *    relocator-loader, which would otherwise break the tracer's internal module
  *    resolution (createRequire, dynamic _require.resolve).
  *
- * 4. Copies dd-trace, @datadog/electron-sdk, and their transitive dependencies
+ * 4. Copies dd-trace-electron, @datadog/electron-sdk, and their transitive dependencies
  *    into the webpack output's node_modules so they are available at runtime
  *    in packaged apps where the project's node_modules is absent.
  *
@@ -65,7 +65,7 @@ interface Compiler {
 // Support both CJS (__filename) and ESM (import.meta.url) contexts
 const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
 
-const EXCLUDE_PATTERN = /[/\\]node_modules[/\\](dd-trace|@datadog[/\\]electron-sdk)[/\\]/;
+const EXCLUDE_PATTERN = /[/\\]node_modules[/\\](dd-trace-electron|@datadog[/\\]electron-sdk)[/\\]/;
 const ASSET_RELOCATOR = '@vercel/webpack-asset-relocator-loader';
 
 function usesAssetRelocator(rule: Rule): boolean {
@@ -122,8 +122,8 @@ export class DatadogWebpackPlugin {
   constructor(private readonly pluginOptions: DatadogBundlerPluginOptions = {}) {}
 
   apply(compiler: Compiler): void {
-    // Externalize dd-trace and @datadog/electron-sdk so webpack doesn't bundle them
-    const ddTraceExternals = [/^dd-trace(\/.*)?$/, /^@datadog\/electron-sdk(\/.*)?$/];
+    // Externalize dd-trace-electron and @datadog/electron-sdk so webpack doesn't bundle them
+    const ddTraceExternals = [/^dd-trace-electron(\/.*)?$/, /^@datadog\/electron-sdk(\/.*)?$/];
     const existing = compiler.options.externals;
     if (!existing) {
       compiler.options.externals = ddTraceExternals;
@@ -141,7 +141,7 @@ export class DatadogWebpackPlugin {
       entryOnly: true,
     }).apply(compiler);
 
-    // Exclude dd-trace and @datadog/electron-sdk from the asset-relocator-loader
+    // Exclude dd-trace-electron and @datadog/electron-sdk from the asset-relocator-loader
     for (const rule of compiler.options.module.rules) {
       if ('oneOf' in rule && rule.oneOf) {
         for (const oneOfRule of rule.oneOf) {
@@ -162,7 +162,7 @@ export class DatadogWebpackPlugin {
       // so they are available at runtime in packaged apps
       const destModules = join(outputPath, 'node_modules');
       const visited = new Set<string>();
-      copyPackageTree('dd-trace', destModules, visited);
+      copyPackageTree('dd-trace-electron', destModules, visited);
       copyPackageTree('@datadog/electron-sdk', destModules, visited);
     });
   }

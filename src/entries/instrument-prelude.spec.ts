@@ -2,14 +2,14 @@ import { describe, it, expect, vi } from 'vitest';
 import { loadTracer } from './instrument-prelude';
 
 describe('loadTracer', () => {
-  it('returns the dd-trace default export when require succeeds', () => {
+  it('returns the dd-trace-electron default export when require succeeds', () => {
     const tracer = { init: vi.fn() };
     const requireFn = (() => ({ default: tracer })) as unknown as NodeRequire;
 
     expect(loadTracer(requireFn)).toBe(tracer);
   });
 
-  it('falls back to a safe no-op tracer when dd-trace cannot be loaded (does not throw)', () => {
+  it('falls back to a safe no-op tracer when dd-trace-electron cannot be loaded', () => {
     // A load failure must not throw — otherwise `import '@datadog/electron-sdk/instrument'` would
     // crash the app instead of degrading to monitoring-disabled.
     const requireFn = (() => {

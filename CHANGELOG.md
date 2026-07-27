@@ -2,6 +2,12 @@
 
 All notable changes to `@datadog/electron-sdk` are documented here.
 
+## Unreleased
+
+### Internal
+
+- ♻️ switch the tracing runtime dependency from dd-trace to dd-trace-electron (#186)
+
 ## [0.10.0] - 2026-09-30
 
 ### ✨ Features

@@ -212,7 +212,10 @@ test.describe('RUM session sampling', () => {
     ).toHaveLength(0);
   });
 
-  test('does not propagate trace context through dd-trace HTTP integrations', async ({ mainPage, testServer }) => {
+  test('does not propagate trace context through dd-trace-electron HTTP integrations', async ({
+    mainPage,
+    testServer,
+  }) => {
     await mainPage.mainFetch(testServer.urlFor(205));
     await mainPage.mainHttpRequest(testServer.urlFor(206));
 

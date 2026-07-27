@@ -16,8 +16,8 @@ function createTracerRequire() {
     },
   };
   const requireFn = ((id: string) => {
-    if (id === 'dd-trace') return { default: tracer };
-    if (id === 'dd-trace/package.json') return { version: '6.10.0' };
+    if (id === 'dd-trace-electron') return { default: tracer };
+    if (id === 'dd-trace-electron/package.json') return { version: '6.11.0' };
     throw new Error(`Unexpected module: ${id}`);
   }) as NodeRequire;
   return { init, use, flush, requireFn };
@@ -26,7 +26,7 @@ function createTracerRequire() {
 describe('Tracing', () => {
   afterEach(() => setCurrentSessionSampled(true));
 
-  it('initializes dd-trace with normalized matching rules and a fallback sample rate', () => {
+  it('initializes dd-trace-electron with normalized rules and a fallback rate', () => {
     const { init, requireFn } = createTracerRequire();
 
     const tracing = new Tracing(
@@ -53,7 +53,7 @@ describe('Tracing', () => {
     });
     expect(tracing.enabled).toBe(true);
     expect(tracing.telemetryInitialized).toBe(true);
-    expect(tracing.version).toBe('6.10.0');
+    expect(tracing.version).toBe('6.11.0');
   });
 
   it('uses the trace sample rate without sampling rules', () => {
@@ -98,7 +98,7 @@ describe('Tracing', () => {
     });
   });
 
-  it('gates dd-trace HTTP propagation on the current RUM session', () => {
+  it('gates dd-trace-electron HTTP propagation on the current RUM session', () => {
     const { requireFn, use } = createTracerRequire();
 
     new Tracing(createTestConfiguration(), requireFn);
@@ -116,7 +116,7 @@ describe('Tracing', () => {
     expect(propagationBlocklist()).toBe(true);
   });
 
-  it('flushes the dd-trace exporter', async () => {
+  it('flushes the dd-trace-electron exporter', async () => {
     const { flush, requireFn } = createTracerRequire();
     const tracing = new Tracing(createTestConfiguration(), requireFn);
 

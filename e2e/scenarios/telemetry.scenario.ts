@@ -91,7 +91,7 @@ test('SDK sends a configuration telemetry event on init', async ({ mainPage, int
   // host machine's and is not asserted.
   expect(event.telemetry.configuration.number_of_displays).toBeGreaterThan(0);
 
-  // Whether dd-trace resolves is an environment fact, so only the pairing is asserted: a reported
+  // Whether dd-trace-electron resolves is an environment fact, so only the pairing is asserted: a reported
   // tracer api must carry the version that goes with it.
   const { tracer_api: tracerApi, tracer_api_version: tracerApiVersion } = event.telemetry.configuration;
   if (tracerApi !== undefined) {
