@@ -70,6 +70,18 @@ let rendererHttpServer: http.Server | null = null;
 
 const noop = () => undefined;
 
+type BeforeSend = NonNullable<InitConfiguration['beforeSend']>;
+
+const e2eControls: {
+  beforeSend: BeforeSend;
+  init?: () => Promise<void>;
+  openWindow?: () => void;
+} = {
+  beforeSend: () => true,
+};
+
+(globalThis as Record<string, unknown>).__ddE2E = e2eControls;
+
 function startRendererHttpServer(): Promise<number> {
   return new Promise((resolve) => {
     rendererHttpServer = http.createServer((_req, res) => {
@@ -115,12 +127,10 @@ void app.whenReady().then(async () => {
   let initialized = false;
   if (process.env.DD_E2E_DEFER_INIT === '1') {
     console.log('Deferring SDK init (DD_E2E_DEFER_INIT=1)');
-    (globalThis as Record<string, unknown>).__ddE2E = {
-      init: async () => {
-        initialized = await init(config);
-      },
-      openWindow: () => createWindow(),
+    e2eControls.init = async () => {
+      initialized = await init(config);
     };
+    e2eControls.openWindow = () => createWindow();
   } else {
     console.log('Initializing SDK with config:', config);
     initialized = await init(config);
@@ -349,18 +359,8 @@ function createWindow() {
 function getConfiguration(): InitConfiguration {
   if (process.env.DD_ELECTRON_SDK_CONFIG) {
     const config = JSON.parse(process.env.DD_ELECTRON_SDK_CONFIG) as InitConfiguration;
-    if (process.env.DD_E2E_BEFORE_SEND_MODE === 'scrub-and-filter') {
-      config.beforeSend = (event) => {
-        if (event.type !== 'error') {
-          return true;
-        }
-        if (event.context?.beforeSend === 'scrub') {
-          event.error.message = 'redacted main error';
-          event.context = { ...event.context, beforeSend: undefined, secret: '[REDACTED]' };
-          return true;
-        }
-        return false;
-      };
+    if (process.env.DD_E2E_BEFORE_SEND === '1') {
+      config.beforeSend = (event) => e2eControls.beforeSend(event);
     }
     return config;
   }

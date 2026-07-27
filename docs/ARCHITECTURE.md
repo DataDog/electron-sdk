@@ -66,7 +66,7 @@ flowchart LR
     subgraph Assembly
         HOOKS{Format Hooks}
         COMBINE[combine]
-        MAPPER[beforeSend mapper]
+        BEFORE_SEND[beforeSend]
     end
 
     subgraph "Hook Providers"
@@ -87,8 +87,8 @@ flowchart LR
     SC -. "session.id" .-> HOOKS
     VC -. "view.id, view.name, ..." .-> HOOKS
     HOOKS --> COMBINE
-    COMBINE -- RUM event --> MAPPER
-    MAPPER -- ServerEvent --> BM
+    COMBINE -- RUM event --> BEFORE_SEND
+    BEFORE_SEND -- ServerEvent --> BM
     COMBINE -- Other ServerEvent --> BM
     BM --> BP
     BM --> BC
@@ -120,9 +120,9 @@ Two handlers transform events into `ServerEvent`s:
 - **`MainAssembly`**: handles main-process `RawEvent`s (excluding profile events), enriches them via `triggerRum` / `triggerTelemetry` hooks, and emits `ServerEvent`s with `source: MAIN`.
 - **`RendererPipeline`**: owns the renderer IPC channel, receives pre-assembled RUM events from the Browser SDK, enriches them via `triggerRum` with `source: EventSource.RENDERER`, and emits `ServerRumEvent`s with `source: RENDERER` directly, bypassing the `RawEvent` pipeline entirely.
 
-`MainAssembly` applies `RumEventMapper` after enrichment and before emitting the final `ServerRumEvent`. Renderer
-events use the Browser SDK's `beforeSend` before crossing the bridge and are not mapped again by the Electron SDK.
-Telemetry, profiles, and spans are not mapped.
+`MainAssembly` applies the configured `beforeSend` callback after enrichment and before emitting the final
+`ServerRumEvent`. Renderer events use the Browser SDK's `beforeSend` before crossing the bridge and are not processed
+again by the Electron SDK. Telemetry, profiles, and spans are not passed to `beforeSend`.
 
 #### Format Hooks
 

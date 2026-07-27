@@ -1,28 +1,61 @@
-import type { RumErrorEvent } from '@datadog/electron-sdk';
+import type { MainRumEvent, RumErrorEvent } from '@datadog/electron-sdk';
 import { expect, test } from '../lib/helpers';
 
-test.use({ beforeSendMode: 'scrub-and-filter' });
+interface E2EControls {
+  beforeSend: (event: MainRumEvent) => boolean;
+}
 
-test('beforeSend only scrubs and filters main-process RUM events', async ({ electronApp, intake, mainPage }) => {
+test.use({ beforeSendEnabled: true });
+
+test('scrubs main-process RUM events', async ({ electronApp, intake, mainPage }) => {
+  await electronApp.evaluate(() => {
+    (globalThis as unknown as { __ddE2E: E2EControls }).__ddE2E.beforeSend = (event) => {
+      if (event.type === 'error') {
+        event.error.message = 'redacted main error';
+        event.context = { ...event.context, secret: '[REDACTED]' };
+      }
+      return true;
+    };
+  });
   await mainPage.flushTransport();
   intake.clear();
 
-  await mainPage.generateManualError(undefined, { beforeSend: 'scrub', secret: 'main secret' });
-  await mainPage.generateManualError(undefined, { beforeSend: 'drop' });
-
-  const bridgeWindow = await mainPage.openBridgeFileWindow(electronApp);
-  await bridgeWindow.generateError('beforeSend renderer secret');
-  await bridgeWindow.generateError('beforeSend renderer drop');
+  await mainPage.generateManualError(undefined, { secret: 'main secret' });
   await mainPage.flushTransport();
 
-  const errorEvents = await intake.waitForEventCount('error', 3);
-  const errors = errorEvents.map(({ body }) => body as RumErrorEvent);
-
-  expect(errors).toHaveLength(3);
-  expect(errors.map(({ error }) => error.message)).toEqual(
-    expect.arrayContaining(['redacted main error', 'beforeSend renderer secret', 'beforeSend renderer drop'])
-  );
-  expect(errors.find(({ error }) => error.message === 'redacted main error')?.context).toEqual({
-    secret: '[REDACTED]',
+  const errorEvents = await intake.waitForEventCount('error', 1);
+  expect(errorEvents).toHaveLength(1);
+  expect(errorEvents[0].body as RumErrorEvent).toMatchObject({
+    error: { message: 'redacted main error' },
+    context: { secret: '[REDACTED]' },
   });
+});
+
+test('filters main-process RUM events', async ({ electronApp, intake, mainPage }) => {
+  await electronApp.evaluate(() => {
+    (globalThis as unknown as { __ddE2E: E2EControls }).__ddE2E.beforeSend = (event) => event.type !== 'error';
+  });
+  await mainPage.flushTransport();
+  intake.clear();
+
+  await mainPage.generateManualError();
+  await mainPage.flushTransport();
+
+  await intake.assertNoNewEvents('error');
+});
+
+test('does not filter renderer RUM events', async ({ electronApp, intake, mainPage }) => {
+  await electronApp.evaluate(() => {
+    (globalThis as unknown as { __ddE2E: E2EControls }).__ddE2E.beforeSend = (event) => event.type !== 'error';
+  });
+  await mainPage.flushTransport();
+  intake.clear();
+
+  const bridgeWindow = await mainPage.openBridgeFileWindow(electronApp);
+  await bridgeWindow.generateError('beforeSend renderer error');
+  await mainPage.flushTransport();
+
+  const errorEvents = await intake.waitForEventCount('error', 1);
+  expect(errorEvents).toHaveLength(1);
+  expect((errorEvents[0].body as RumErrorEvent).error.message).toBe('beforeSend renderer error');
 });

@@ -12,13 +12,13 @@ const COMMON_MAIN_MODIFIABLE_FIELD_PATHS: ModifiableFieldPaths = {
   'view.url': 'string',
   service: 'string',
   version: 'string',
+  context: 'object',
 };
 
 const MODIFIABLE_FIELD_PATHS_BY_EVENT: Record<MainRumEvent['type'], ModifiableFieldPaths> = {
   view: COMMON_MAIN_MODIFIABLE_FIELD_PATHS,
   error: {
     ...COMMON_MAIN_MODIFIABLE_FIELD_PATHS,
-    context: 'object',
     'error.message': 'string',
     'error.stack': 'string',
   },
@@ -26,17 +26,14 @@ const MODIFIABLE_FIELD_PATHS_BY_EVENT: Record<MainRumEvent['type'], ModifiableFi
     ...COMMON_MAIN_MODIFIABLE_FIELD_PATHS,
     'resource.url': 'string',
   },
-  vital: {
-    ...COMMON_MAIN_MODIFIABLE_FIELD_PATHS,
-    context: 'object',
-  },
+  vital: COMMON_MAIN_MODIFIABLE_FIELD_PATHS,
 };
 
 /** Applies beforeSend filtering and supported field changes to fully assembled main-process RUM events. */
-export class RumEventMapper {
+export class BeforeSend {
   constructor(private readonly beforeSend?: RumBeforeSend) {}
 
-  map(event: MainRumEvent): MainRumEvent | undefined {
+  apply(event: MainRumEvent): MainRumEvent | undefined {
     const beforeSend = this.beforeSend;
     if (!beforeSend) {
       return event;
@@ -44,9 +41,7 @@ export class RumEventMapper {
 
     const modifiableFieldPaths = MODIFIABLE_FIELD_PATHS_BY_EVENT[event.type];
     const result = limitModification(event, modifiableFieldPaths, (modifiableEvent) => {
-      if (modifiableFieldPaths.context !== undefined) {
-        modifiableEvent.context ??= {};
-      }
+      modifiableEvent.context ??= {};
       try {
         return beforeSend(modifiableEvent);
       } catch (error) {
@@ -66,6 +61,7 @@ export class RumEventMapper {
       display.warn("Can't dismiss view events using beforeSend!");
       return event;
     }
+    // Match mobile SDKs: native crashes may be scrubbed, but are never discarded to preserve the fatal report.
     if (event.type === 'error' && event.error.is_crash) {
       display.warn("Can't dismiss crash events using beforeSend!");
       return event;

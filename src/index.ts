@@ -1,4 +1,4 @@
-import { MainAssembly, RendererPipeline, RumEventMapper, createFormatHooks, registerCommonContext } from './assembly';
+import { BeforeSend, MainAssembly, RendererPipeline, createFormatHooks, registerCommonContext } from './assembly';
 import { setDurationVitalApi } from './api';
 import type { AccountInfo, UserInfo } from './domain/customer-context';
 import { AccountContext, UserContext } from './domain/customer-context';
@@ -58,7 +58,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   startTelemetry(eventManager, config);
   sessionManager = await SessionManager.start(eventManager, hooks, config);
 
-  new MainAssembly(eventManager, hooks, new RumEventMapper(config.beforeSend));
+  new MainAssembly(eventManager, hooks, new BeforeSend(config.beforeSend));
   new RendererPipeline(eventManager, hooks, config);
 
   new ProfilingCollection(eventManager, sessionManager, config, hooks);

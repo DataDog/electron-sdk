@@ -1,6 +1,6 @@
 export { MainAssembly } from './MainAssembly';
 export { RendererPipeline } from './RendererPipeline';
-export { RumEventMapper } from './RumEventMapper';
+export { BeforeSend } from './BeforeSend';
 export type { BridgeOptions } from '../common';
 export { registerCommonContext } from './commonContext';
 export { createFormatHooks } from './hooks';

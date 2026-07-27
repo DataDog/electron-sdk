@@ -14,7 +14,7 @@ import {
 import type { FormatHooks } from './hooks';
 import { MainRumEvent } from '../domain/rum';
 import { TelemetryEvent } from '../domain/telemetry';
-import { RumEventMapper } from './RumEventMapper';
+import { BeforeSend } from './BeforeSend';
 
 // Raw events assembled through the standard main-process hook pipeline.
 type StandardRawEvent = Exclude<RawEvent, RawProfileEvent>;
@@ -28,7 +28,7 @@ export class MainAssembly {
   constructor(
     private eventManager: EventManager,
     private hooks: FormatHooks,
-    private rumEventMapper: RumEventMapper
+    private beforeSend: BeforeSend
   ) {
     this.eventManager.registerHandler<StandardRawEvent>({
       canHandle: (event): event is StandardRawEvent =>
@@ -53,7 +53,7 @@ export class MainAssembly {
         source,
       });
       if (hookResult !== DISCARDED) {
-        const data = this.rumEventMapper.map(
+        const data = this.beforeSend.apply(
           assembleData<MainRumEvent>(event.data, hookResult as RecursivePartial<MainRumEvent> | undefined)
         );
         if (!data) {

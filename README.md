@@ -155,10 +155,9 @@ await init({
 
 Only returning `false` discards the event. View and native crash events cannot be discarded. The editable fields are:
 
-- All events: `service`, `version`, `view.name`, and `view.url`
-- Errors: `context`, `error.message`, and `error.stack`
+- All events: `context`, `service`, `version`, `view.name`, and `view.url`
+- Errors: `error.message` and `error.stack`
 - Resources: `resource.url`
-- Vitals: `context`
 
 Event identity, session, application, and other fields remain unchanged. Callback errors are logged and the event is
 still sent. The callback is synchronous and should remain fast. It does not automatically detect PII.
