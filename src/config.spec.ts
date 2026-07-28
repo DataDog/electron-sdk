@@ -376,6 +376,27 @@ describe('buildConfiguration', () => {
       );
     });
 
+    it('skips overly-broad wildcard entries and logs error', () => {
+      const invalids = ['*.com', 'foo*', 'preview-*', '*example.com'];
+      for (const entry of invalids) {
+        vi.mocked(display.error).mockClear();
+        const result = buildConfiguration({ ...DEFAULT_CONFIG, allowedRendererHosts: [entry, 'valid.com'] });
+        expect(result?.allowedRendererHosts).toEqual(['valid.com']);
+        expect(display.error).toHaveBeenCalledWith(
+          `Configuration error: 'allowedRendererHosts' entry '${entry}' is invalid and will be ignored (wildcard must match subdomains of a full domain, e.g. '*.example.com')`
+        );
+      }
+    });
+
+    it('accepts valid subdomain wildcard entries', () => {
+      const result = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        allowedRendererHosts: ['*.example.com', 'preview-*.staging.example.com'],
+      });
+      expect(result?.allowedRendererHosts).toEqual(['*.example.com', 'preview-*.staging.example.com']);
+      expect(display.error).not.toHaveBeenCalled();
+    });
+
     it('skips truly invalid hostname entries and logs error', () => {
       const result = buildConfiguration({
         ...DEFAULT_CONFIG,

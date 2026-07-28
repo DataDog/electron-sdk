@@ -189,6 +189,19 @@ function validateAllowedRendererHosts(value: unknown): string[] | undefined {
       );
       return [];
     }
+    if (wildcardCount === 1) {
+      const suffix = host.slice(host.indexOf('*') + 1);
+      // Best-effort check: the wildcard must be immediately followed by '.' and the suffix must
+      // contain at least two domain labels (e.g. '.example.com') to reject obvious broad patterns
+      // like '*.com'. Country-code second-level domains such as '*.co.uk' pass this check by
+      // design — full public-suffix-list validation would require an additional dependency.
+      if (!suffix.startsWith('.') || suffix.split('.').length < 3) {
+        display.error(
+          `Configuration error: 'allowedRendererHosts' entry '${host}' is invalid and will be ignored (wildcard must match subdomains of a full domain, e.g. '*.example.com')`
+        );
+        return [];
+      }
+    }
     return [host];
   });
 }
