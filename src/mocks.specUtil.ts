@@ -1,6 +1,9 @@
 import { type MockInstance } from 'vitest';
 import * as fs from 'node:fs/promises';
 import type { Configuration } from './config';
+import { RawRumView, RumActionEvent, RumErrorEvent, RumEvent, RumResourceEvent, RumViewEvent } from './domain/rum';
+import { type ServerDuration } from '@datadog/js-core/time';
+import { combine, mergeInto, type RecursivePartial } from '@datadog/js-core/util';
 
 export interface MockSender {
   once: (event: string, handler: (...args: unknown[]) => void) => void;
@@ -44,9 +47,6 @@ export function createMockSender(): MockSender {
     },
   };
 }
-import { RawRumView, RumActionEvent, RumErrorEvent, RumEvent, RumResourceEvent, RumViewEvent } from './domain/rum';
-import { type ServerDuration } from '@datadog/js-core/time';
-import { combine, mergeInto, type RecursivePartial } from '@datadog/js-core/util';
 
 export function mockFs() {
   const mocks = {
