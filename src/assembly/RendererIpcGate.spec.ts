@@ -77,12 +77,10 @@ describe('RendererIpcGate', () => {
       ).toBe(true);
     });
 
-    it('allows a wildcard match with an empty captured segment (mirrors Browser SDK semantics)', () => {
-      // 'preview-*.example.com' should match 'preview-.example.com' (empty * capture),
-      // consistent with the Browser SDK's matchesHostEntry using >= not >.
+    it('rejects a wildcard match with an empty captured segment', () => {
       gate = new RendererIpcGate(['preview-*.example.com']);
       expect(gate.isAllowed(createMockIpcEvent({ senderFrame: { origin: 'https://preview-.example.com' } }))).toBe(
-        true
+        false
       );
     });
 

@@ -166,7 +166,7 @@ function matchesRendererHostEntry(host: string, entry: string): boolean {
   const parts = entry.split('*');
   if (parts.length !== 2) return false;
   const [prefix, suffix] = parts;
-  return host.length >= prefix.length + suffix.length && host.startsWith(prefix) && host.endsWith(suffix);
+  return host.length > prefix.length + suffix.length && host.startsWith(prefix) && host.endsWith(suffix);
 }
 
 function isAllowedOrigin(origin: string | undefined, url: string | undefined, allowedRendererHosts: string[]): boolean {
