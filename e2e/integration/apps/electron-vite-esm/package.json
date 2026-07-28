@@ -2,7 +2,7 @@
   "name": "electron-vite-esm",
   "version": "1.0.0",
   "private": true,
-  "packageManager": "yarn@4.17.0",
+  "packageManager": "yarn@4.17.1",
   "main": "out/main/index.mjs",
   "integration": {
     "devMain": "out/main/index.mjs",
@@ -17,15 +17,15 @@
     "package": "electron-vite build && electron-builder --dir --publish never"
   },
   "dependencies": {
-    "@datadog/browser-rum": "7.4.0",
+    "@datadog/browser-rum": "7.5.0",
     "@datadog/electron-sdk": "file:../../integration-sdk.tgz"
   },
   "devDependencies": {
-    "@types/node": "24.13.2",
+    "@types/node": "24.13.3",
     "electron": "41.1.0",
     "electron-builder": "26.15.3",
     "electron-vite": "5.0.0",
     "typescript": "5.9.3",
-    "vite": "7.3.5"
+    "vite": "7.3.6"
   }
 }

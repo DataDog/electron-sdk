@@ -72,7 +72,7 @@ When a class requires async initialization (e.g. loading from disk), use a **sta
 class MyTool<T> {
   private constructor(/* ... */) {}
 
-  static async init<T>(opts: { /* ... */ }): Promise<MyTool<T>> {
+  static async init<T>(opts: {/* ... */}): Promise<MyTool<T>> {
     // async setup
     return new MyTool(/* ... */);
   }

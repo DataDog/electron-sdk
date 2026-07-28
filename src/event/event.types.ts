@@ -24,11 +24,7 @@ export interface RawTelemetryEvent {
 }
 
 export type ServerEvent =
-  | ServerRumEvent
-  | ServerTelemetryEvent
-  | ServerLogsEvent
-  | ServerSpansEvent
-  | ServerProfileEvent;
+  ServerRumEvent | ServerTelemetryEvent | ServerLogsEvent | ServerSpansEvent | ServerProfileEvent;
 
 /**
  * Server events transported as newline-delimited JSON, i.e. every {@link ServerEvent} whose
