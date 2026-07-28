@@ -58,9 +58,7 @@ test.describe('electron-builder runtime dependency packaging @integration', () =
 
 test.describe('view event on startup @integration', () => {
   test('sends a view event with a session id on startup', async ({ window, intake }) => {
-    await flushTransport(window);
-
-    const viewEvents = await intake.getEventsByType('view');
+    const viewEvents = await flushUntilEventArrives(window, intake, 'view', 1, 15 * ONE_SECOND);
     expect(viewEvents).toHaveLength(1);
     const view = viewEvents[0].body as RumViewEvent;
 
@@ -99,8 +97,7 @@ test.describe('main-process fetch resource @integration', () => {
     intake,
     testServer,
   }) => {
-    await flushTransport(window);
-    const [viewEvent] = await intake.getEventsByType('view');
+    const [viewEvent] = await flushUntilEventArrives(window, intake, 'view', 1, 15 * ONE_SECOND);
     const view = viewEvent.body as RumViewEvent;
 
     const url = testServer.urlFor(200);
@@ -178,8 +175,7 @@ test.describe('crash reporting across restart @integration', () => {
       const firstWindow = await firstApp.firstWindow();
       await firstWindow.waitForLoadState('load');
       await firstWindow.waitForTimeout(500);
-      await flushTransport(firstWindow);
-      await intake.getEventsByType('view', { timeout: 10 * ONE_SECOND });
+      await flushUntilEventArrives(firstWindow, intake, 'view', 1, 15 * ONE_SECOND);
 
       const appClosed = firstApp.waitForEvent('close');
       void firstWindow
