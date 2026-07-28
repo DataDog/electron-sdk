@@ -16,17 +16,14 @@ export interface MockSender {
 
 export function createMockSender(): MockSender {
   const persistentHandlers = new Map<string, ((...args: unknown[]) => void)[]>();
+  const addHandler = (event: string, handler: (...args: unknown[]) => void) => {
+    const handlers = persistentHandlers.get(event) ?? [];
+    handlers.push(handler);
+    persistentHandlers.set(event, handlers);
+  };
   return {
-    once: (event: string, handler: (...args: unknown[]) => void) => {
-      const handlers = persistentHandlers.get(event) ?? [];
-      handlers.push(handler);
-      persistentHandlers.set(event, handlers);
-    },
-    on: (event: string, handler: (...args: unknown[]) => void) => {
-      const handlers = persistentHandlers.get(event) ?? [];
-      handlers.push(handler);
-      persistentHandlers.set(event, handlers);
-    },
+    once: addHandler,
+    on: addHandler,
     off: (event: string, handler: (...args: unknown[]) => void) => {
       const handlers = persistentHandlers.get(event) ?? [];
       persistentHandlers.set(
