@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import { getWorkflow } from './workflow';
 
 export default defineConfig(({ mode }) => ({
   root: 'src/renderer',
@@ -8,8 +9,3 @@ export default defineConfig(({ mode }) => ({
     emptyOutDir: true,
   },
 }));
-
-function getWorkflow(mode: string): 'default-copy' | 'packager-copy' {
-  if (mode === 'default-copy' || mode === 'packager-copy') return mode;
-  throw new Error(`Expected Vite mode "default-copy" or "packager-copy", received "${mode}"`);
-}

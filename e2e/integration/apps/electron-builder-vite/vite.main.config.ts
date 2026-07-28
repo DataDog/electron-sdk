@@ -1,6 +1,7 @@
 import { builtinModules } from 'node:module';
 import { defineConfig } from 'vite';
 import { datadogVitePlugin } from '@datadog/electron-sdk/vite-plugin';
+import { getWorkflow } from './workflow';
 
 export default defineConfig(({ mode }) => {
   const workflow = getWorkflow(mode);
@@ -23,8 +24,3 @@ export default defineConfig(({ mode }) => {
     },
   };
 });
-
-function getWorkflow(mode: string): 'default-copy' | 'packager-copy' {
-  if (mode === 'default-copy' || mode === 'packager-copy') return mode;
-  throw new Error(`Expected Vite mode "default-copy" or "packager-copy", received "${mode}"`);
-}
