@@ -120,6 +120,15 @@ describe('RendererIpcGate', () => {
       ).toBe(false);
     });
 
+    it('does not use single-label entries as suffix matchers for standard hostnames', () => {
+      // 'com' is intended as an exact custom-protocol hostname, not a suffix that allows all *.com.
+      gate = new RendererIpcGate(['com']);
+      expect(gate.isAllowed(createMockIpcEvent({ senderFrame: { origin: 'https://evil.com' } }))).toBe(false);
+      expect(
+        gate.isAllowed(createMockIpcEvent({ senderFrame: { origin: 'null', url: 'myscheme://com/index.html' } }))
+      ).toBe(true);
+    });
+
     it("allows a file:// renderer when origin is null but URL is file:// and '' is in allowedRendererHosts", () => {
       // Guard against a hypothetical future where Electron reports 'null' for file:// sub-frames.
       gate = new RendererIpcGate(['']);

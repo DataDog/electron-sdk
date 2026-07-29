@@ -162,7 +162,7 @@ export class RendererIpcGate {
  * and single-wildcard glob patterns (e.g. 'preview-*.example.com').
  */
 function matchesRendererHostEntry(host: string, entry: string): boolean {
-  if (!entry.includes('*')) return host === entry || host.endsWith(`.${entry}`);
+  if (!entry.includes('*')) return host === entry || (entry.includes('.') && host.endsWith(`.${entry}`));
   const parts = entry.split('*');
   if (parts.length !== 2) return false;
   const [prefix, suffix] = parts;
