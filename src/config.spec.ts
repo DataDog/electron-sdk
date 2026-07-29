@@ -397,6 +397,21 @@ describe('buildConfiguration', () => {
       expect(display.error).not.toHaveBeenCalled();
     });
 
+    it('rejects trailing-dot entries', () => {
+      const result = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        allowedRendererHosts: ['com.', 'example.com.', 'valid.com'],
+      });
+
+      expect(result?.allowedRendererHosts).toEqual(['valid.com']);
+      expect(display.error).toHaveBeenCalledWith(
+        "Configuration error: 'allowedRendererHosts' entry 'com.' is not a valid hostname and will be ignored"
+      );
+      expect(display.error).toHaveBeenCalledWith(
+        "Configuration error: 'allowedRendererHosts' entry 'example.com.' is not a valid hostname and will be ignored"
+      );
+    });
+
     it('skips truly invalid hostname entries and logs error', () => {
       const result = buildConfiguration({
         ...DEFAULT_CONFIG,

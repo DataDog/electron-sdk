@@ -168,7 +168,9 @@ function validateAllowedRendererHosts(value: unknown): string[] | undefined {
     }
     // Reject entries that contain URL-syntax characters that would cause the URL constructor
     // to silently extract a different host (e.g. 'foo@evil.com' → 'evil.com', 'host:8443' → 'host').
-    if (/[@/:?#\s]/.test(host)) {
+    // Also reject trailing dots: 'com.' has a dot, bypassing the single-label guard, and Node.js
+    // does not normalize trailing dots in URL.hostname, so 'attacker.com.' would match '.com.'.
+    if (/[@/:?#\s]/.test(host) || host.endsWith('.')) {
       display.error(
         `Configuration error: 'allowedRendererHosts' entry '${host}' is not a valid hostname and will be ignored`
       );
