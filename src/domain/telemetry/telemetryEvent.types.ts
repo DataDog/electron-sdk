@@ -13,10 +13,7 @@
  * Schema of all properties of a telemetry event
  */
 export type TelemetryEvent =
-  | TelemetryErrorEvent
-  | TelemetryDebugEvent
-  | TelemetryConfigurationEvent
-  | TelemetryUsageEvent;
+  TelemetryErrorEvent | TelemetryDebugEvent | TelemetryConfigurationEvent | TelemetryUsageEvent;
 /**
  * Schema of all properties of a telemetry error event
  */

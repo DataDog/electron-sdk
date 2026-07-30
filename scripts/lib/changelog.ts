@@ -1,11 +1,5 @@
 export type ChangelogCategory =
-  | 'breaking'
-  | 'features'
-  | 'bugfixes'
-  | 'documentation'
-  | 'performance'
-  | 'security'
-  | 'internal';
+  'breaking' | 'features' | 'bugfixes' | 'documentation' | 'performance' | 'security' | 'internal';
 
 const PUBLIC_CATEGORIES: Record<string, ChangelogCategory> = {
   '✨': 'features',
