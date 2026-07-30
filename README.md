@@ -275,7 +275,6 @@ datadogRum.init({
   applicationId: '<APPLICATION_ID>',
   site: 'datadoghq.com',
   service: 'my-electron-app',
-  sessionReplaySampleRate: 100,
 });
 ```
 
@@ -411,19 +410,19 @@ interface FeatureOperationOptions {
 
 ### Configuration Options
 
-| Option                    | Type                                     | Required | Default  | Description                                                                                                                                         |
-| ------------------------- | ---------------------------------------- | -------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `clientToken`             | `string`                                 | Yes      | —        | Datadog client token                                                                                                                                |
-| `applicationId`           | `string`                                 | Yes      | —        | RUM application ID                                                                                                                                  |
-| `site`                    | `string`                                 | Yes      | —        | Datadog site (e.g. `datadoghq.com`, `datadoghq.eu`, `us3.datadoghq.com`, `us5.datadoghq.com`, `ap1.datadoghq.com`, `ddog-gov.com`)                  |
-| `service`                 | `string`                                 | Yes      | —        | Service name                                                                                                                                        |
-| `env`                     | `string`                                 | No       | —        | Application environment                                                                                                                             |
-| `version`                 | `string`                                 | No       | —        | Application version                                                                                                                                 |
-| `sessionSampleRate`       | `number`                                 | No       | `100`    | Percentage of sessions to collect (0–100). `0` collects no sessions; `100` collects all sessions.                                                   |
-| `sessionReplaySampleRate` | `number`                                 | No       | `0`      | Percentage of sampled sessions that record session replay (0–100). `0` disables renderer session replay. Applied as a child of `sessionSampleRate`. |
-| `profilingSampleRate`     | `number`                                 | No       | `0`      | Percentage of sampled sessions that are profiled (0–100). `0` disables renderer profiling. See [Renderer Profiling](#renderer-profiling).           |
-| `telemetrySampleRate`     | `number`                                 | No       | `20`     | Telemetry sample rate (0–100)                                                                                                                       |
-| `batchSize`               | `'SMALL' \| 'MEDIUM' \| 'LARGE'`         | No       | —        | Batch size for event uploads                                                                                                                        |
-| `uploadFrequency`         | `'RARE' \| 'NORMAL' \| 'FREQUENT'`       | No       | —        | Upload frequency for event batches                                                                                                                  |
-| `defaultPrivacyLevel`     | `'mask' \| 'allow' \| 'mask-user-input'` | No       | `'mask'` | Default privacy level for renderer session replay                                                                                                   |
-| `allowedWebViewHosts`     | `string[]`                               | No       | `[]`     | Hostnames allowed for the renderer bridge                                                                                                           |
+| Option                    | Type                                     | Required | Default  | Description                                                                                                                                                                          |
+| ------------------------- | ---------------------------------------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `clientToken`             | `string`                                 | Yes      | —        | Datadog client token                                                                                                                                                                 |
+| `applicationId`           | `string`                                 | Yes      | —        | RUM application ID                                                                                                                                                                   |
+| `site`                    | `string`                                 | Yes      | —        | Datadog site (e.g. `datadoghq.com`, `datadoghq.eu`, `us3.datadoghq.com`, `us5.datadoghq.com`, `ap1.datadoghq.com`, `ddog-gov.com`)                                                   |
+| `service`                 | `string`                                 | Yes      | —        | Service name                                                                                                                                                                         |
+| `env`                     | `string`                                 | No       | —        | Application environment                                                                                                                                                              |
+| `version`                 | `string`                                 | No       | —        | Application version                                                                                                                                                                  |
+| `sessionSampleRate`       | `number`                                 | No       | `100`    | Percentage of sessions to collect (0–100). `0` collects no sessions; `100` collects all sessions.                                                                                    |
+| `sessionReplaySampleRate` | `number`                                 | No       | `0`      | Percentage of sampled sessions that record session replay (0–100). `0` disables renderer session replay. Applied as a child of `sessionSampleRate`.                                  |
+| `profilingSampleRate`     | `number`                                 | No       | `0`      | Percentage of sampled sessions that are profiled (0–100). `0` disables renderer profiling. Applied as a child of `sessionSampleRate`. See [Renderer Profiling](#renderer-profiling). |
+| `telemetrySampleRate`     | `number`                                 | No       | `20`     | Telemetry sample rate (0–100)                                                                                                                                                        |
+| `batchSize`               | `'SMALL' \| 'MEDIUM' \| 'LARGE'`         | No       | —        | Batch size for event uploads                                                                                                                                                         |
+| `uploadFrequency`         | `'RARE' \| 'NORMAL' \| 'FREQUENT'`       | No       | —        | Upload frequency for event batches                                                                                                                                                   |
+| `defaultPrivacyLevel`     | `'mask' \| 'allow' \| 'mask-user-input'` | No       | `'mask'` | Default privacy level for renderer session replay                                                                                                                                    |
+| `allowedWebViewHosts`     | `string[]`                               | No       | `[]`     | Hostnames allowed for the renderer bridge                                                                                                                                            |

@@ -9,6 +9,10 @@ import type { SessionManager } from '../session';
 import { CreationReason } from './Segment';
 import type { ReplaySegmentPayload } from './Segment';
 
+const { mockStreamingDeflateConstructor } = vi.hoisted(() => ({
+  mockStreamingDeflateConstructor: vi.fn(),
+}));
+
 vi.mock('../telemetry', () => ({
   // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
   monitor: (fn: Function) => fn,
@@ -19,6 +23,10 @@ vi.mock('../telemetry', () => ({
 
 vi.mock('../../tools/StreamingDeflate', () => ({
   StreamingDeflate: class {
+    constructor() {
+      mockStreamingDeflateConstructor();
+    }
+
     compressSegment = vi.fn().mockResolvedValue(Buffer.from('compressed'));
   },
 }));
@@ -193,6 +201,37 @@ describe('ReplayCollection', () => {
       await Promise.resolve();
 
       expect(captured).toHaveLength(1);
+    });
+
+    it('resets the compression context and per-view state on SESSION_RENEW', async () => {
+      const captured = captureReplayEvents(eventManager);
+      let session = { id: 'sess-1', status: 'active' as 'active' | 'expired' };
+      const sessionManager = {
+        getSession: () => ({ ...session }),
+        getTrackedSessionId: () => (session.status === 'active' ? session.id : undefined),
+      } as unknown as SessionManager;
+      const collection = new ReplayCollection(eventManager, makeConfig(), sessionManager, makeHooks());
+
+      sendRecord(eventManager, { type: 3, timestamp: 100 }, 'view-1');
+      session = { ...session, status: 'expired' };
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+      await Promise.resolve();
+
+      expect(collection.getViewReplayStats('view-1')).toBeDefined();
+
+      session = { id: 'sess-2', status: 'active' };
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+
+      expect(collection.getViewReplayStats('view-1')).toBeUndefined();
+
+      sendRecord(eventManager, { type: 3, timestamp: 200 }, 'view-1');
+      vi.advanceTimersByTime(5_000);
+      await Promise.resolve();
+
+      expect(mockStreamingDeflateConstructor).toHaveBeenCalledTimes(2);
+      expect(captured).toHaveLength(2);
+      expect(captured[1].metadata.session.id).toBe('sess-2');
+      expect(captured[1].metadata.index_in_view).toBe(0);
     });
   });
 

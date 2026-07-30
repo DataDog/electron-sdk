@@ -9,11 +9,12 @@ import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './dom
 import { RumCollection } from './domain/rum';
 import { ReplayCollection } from './domain/replay';
 import { SessionManager } from './domain/session';
-import { callMonitored, monitor, startTelemetry } from './domain/telemetry';
+import { callMonitored, startTelemetry } from './domain/telemetry';
 import { SpanProcessor } from './domain/tracing/SpanProcessor';
 import { Tracing } from './domain/tracing/Tracing';
 import { ProfilingCollection } from './domain/profiling';
 import { EventManager } from './event';
+import { BeforeQuitHandler } from './tools/BeforeQuitHandler';
 import { Transport } from './transport';
 
 let sessionManager: SessionManager | undefined;
@@ -24,13 +25,7 @@ let tracing: Tracing | undefined;
 let userContext: UserContext | undefined;
 let accountContext: AccountContext | undefined;
 let replayCollection: ReplayCollection | undefined;
-// Shared across before-quit invocations so a second quit signal can't spawn a parallel flush
-// (which would return early while the first upload is still in flight and quit prematurely).
-let isQuitting = false;
-// The currently registered before-quit listener. Tracked so repeated init() calls replace it
-// instead of stacking handlers — stacked handlers share isQuitting, and a second one would
-// preventDefault() then return early without ever quitting, deadlocking shutdown.
-let onBeforeQuit: ((event: Electron.Event) => void) | undefined;
+let beforeQuitHandler: BeforeQuitHandler | undefined;
 
 /**
  * Internal SDK context
@@ -76,48 +71,11 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   rumApi = rum.getApi();
   setDurationVitalApi(rumApi);
 
-  setupBeforeQuitHandler();
+  beforeQuitHandler?.stop();
+  beforeQuitHandler = new BeforeQuitHandler(app, _flushTransport);
+  beforeQuitHandler.start();
 
   return true;
-}
-
-/** Flushes pending SDK data before allowing Electron to quit. */
-function setupBeforeQuitHandler(): void {
-  // Replace any handler from a previous init() so only one is ever registered.
-  if (onBeforeQuit) {
-    app.removeListener('before-quit', onBeforeQuit);
-  }
-
-  // Local const so the closure below always removes *this* handler (the module-level `let` isn't
-  // narrowed inside the closure, and could be reassigned by a later init()).
-  const handler = monitor((event: Electron.Event) => {
-    event.preventDefault();
-
-    // A second quit (user hits Cmd+Q again, or the OS sends another quit signal) while the first
-    // flush is still running must not start a second flush: that flush would find the upload cycle
-    // already in progress, return immediately, and quit before the first upload settles.
-    if (isQuitting) {
-      return;
-    }
-    isQuitting = true;
-
-    // Guard against racing the fallback timer with the flush: whichever settles first quits,
-    // and the loser must not trigger a duplicate quit.
-    let done = false;
-    const doQuit = () => {
-      if (!done) {
-        done = true;
-        app.removeListener('before-quit', handler);
-        app.quit();
-      }
-    };
-
-    setTimeout(doQuit, 5000);
-    void _flushTransport().finally(doQuit);
-  });
-  onBeforeQuit = handler;
-
-  app.on('before-quit', handler);
 }
 
 /**
@@ -308,14 +266,9 @@ export function failFeatureOperation(
  * Internal API to flush all pending batches to the intake
  */
 export async function _flushTransport(): Promise<void> {
-  // Order matters because the dd-trace exporter flush can be slow or never call back, and the
-  // before-quit handler races a 5s fallback timer.
-  //
   // 1. Produce the final replay segment (compress + hand it to the batch producer).
-  // 2. Flush the transport NOW so that segment is actually written and uploaded before the risky
-  //    tracing flush — stop() alone only queues it in the producer; the write/upload happens in
-  //    transport.flush(). If tracing hung and this ran after it, the fallback could quit with the
-  //    last segment still queued, losing exactly what this path exists to preserve.
+  // 2. Flush the transport so that segment is written and uploaded. stop() alone only queues it in
+  //    the producer; the write/upload happens in transport.flush().
   // 3. Flush tracing: dd-trace turns its batched spans into RUM resource/SPANS events synchronously.
   // 4. Flush the transport again to upload those tracing-produced events.
   await replayCollection?.stop();

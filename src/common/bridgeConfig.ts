@@ -25,10 +25,11 @@ function getHolder(): BridgeConfigHolder {
     // is actually sent to Datadog.
     //
     // 'records' is deliberately excluded from this fallback: unlike profiling, replay recording
-    // captures DOM data and depends on the real defaultPrivacyLevel and sampling decision, neither of
-    // which is known before init(). Advertising it here would start the renderer recording (and
-    // streaming records over IPC) for a session that may not even have replay enabled. It is added
-    // once setBridgeConfig() publishes the real options.
+    // captures DOM data and requires the initial full DOM snapshot to render later incremental records.
+    // If advertised here, a window opened before init() could produce that snapshot before
+    // RendererPipeline registers its BRIDGE_CHANNEL listener, causing Electron to drop the IPC
+    // message. Collecting subsequent records without that snapshot would produce a replay that cannot
+    // be rendered.
     holder = {
       value: { defaultPrivacyLevel: 'mask', allowedWebViewHosts: [], capabilities: ['profiles'] },
     };

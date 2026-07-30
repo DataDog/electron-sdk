@@ -34,12 +34,7 @@ export interface RawReplayEvent {
 }
 
 export type ServerEvent =
-  | ServerRumEvent
-  | ServerTelemetryEvent
-  | ServerLogsEvent
-  | ServerSpansEvent
-  | ServerProfileEvent
-  | ServerReplayEvent;
+  ServerRumEvent | ServerTelemetryEvent | ServerLogsEvent | ServerSpansEvent | ServerProfileEvent | ServerReplayEvent;
 
 /**
  * Server events transported as newline-delimited JSON, i.e. every {@link ServerEvent} whose
