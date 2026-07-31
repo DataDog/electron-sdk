@@ -12,6 +12,8 @@ export interface RumAssembleParams {
   eventType: RumEventType;
   startTime: TimeStamp;
   source: EventSource;
+  /** For renderer events: the view ID reported by the renderer's browser RUM SDK. */
+  rendererViewId?: string;
 }
 
 export interface TelemetryAssembleParams {

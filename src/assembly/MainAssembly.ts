@@ -9,6 +9,7 @@ import {
   EventTrack,
   type RawEvent,
   type RawProfileEvent,
+  type RawReplayEvent,
   type ServerEvent,
 } from '../event';
 import type { FormatHooks } from './hooks';
@@ -16,7 +17,7 @@ import { RumEvent } from '../domain/rum';
 import { TelemetryEvent } from '../domain/telemetry';
 
 // Raw events assembled through the standard main-process hook pipeline.
-type StandardRawEvent = Exclude<RawEvent, RawProfileEvent>;
+type StandardRawEvent = Exclude<RawEvent, RawProfileEvent | RawReplayEvent>;
 
 /**
  * Transforms main-process RawEvents into ServerEvents by enriching them with
@@ -29,7 +30,7 @@ export class MainAssembly {
   ) {
     this.eventManager.registerHandler<StandardRawEvent>({
       canHandle: (event): event is StandardRawEvent =>
-        event.kind === EventKind.RAW && event.format !== EventFormat.PROFILE,
+        event.kind === EventKind.RAW && event.format !== EventFormat.PROFILE && event.format !== EventFormat.REPLAY,
       handle: (event, notify) => {
         const result = this.assembleMainProcessEvent(event);
         if (result !== DISCARDED) {

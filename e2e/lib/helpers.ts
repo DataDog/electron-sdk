@@ -120,6 +120,7 @@ async function launchApp(
     env: 'test',
     version: '1.0.0',
     sessionSampleRate: 100,
+    sessionReplaySampleRate: 100,
     profilingSampleRate: 100,
     telemetrySampleRate: 100,
     defaultPrivacyLevel: 'mask',
@@ -135,6 +136,7 @@ async function launchApp(
       site: 'datadoghq.com',
       service: 'e2e-main-window',
       sessionSampleRate: 100,
+      sessionReplaySampleRate: 100,
       trackUserInteractions: true,
       ...rumBrowserSdk,
     });

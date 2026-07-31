@@ -10,6 +10,7 @@ describe('bridgeConfig', () => {
     expect(getBridgeConfig()).toEqual({
       defaultPrivacyLevel: 'mask',
       allowedWebViewHosts: [],
+      // 'records' is intentionally omitted from the pre-init fallback (replay must wait for the real config).
       capabilities: ['profiles'],
     });
   });

@@ -1,4 +1,5 @@
 import * as http from 'node:http';
+import zlib from 'node:zlib';
 
 /**
  * Fake Datadog intake used to assert what the SDK sends.
@@ -12,6 +13,19 @@ export interface ReceivedEvent {
   body: unknown;
   headers: Record<string, string>;
   ddforward: string;
+}
+
+export interface ReplaySegment {
+  timestamp: number;
+  /** Parsed JSON from the multipart `event` field — segment metadata + size fields. */
+  metadata: Record<string, unknown>;
+  headers: Record<string, string>;
+  /**
+   * The rrweb records decoded from the compressed `segment` blob, when it was a
+   * standalone-inflatable ZLIB stream (the common single-segment case). Undefined
+   * if the `segment` part was absent or could not be inflated on its own.
+   */
+  records?: unknown[];
 }
 
 export interface Trace {
@@ -37,9 +51,27 @@ export interface ProfilingRequest {
 
 const byType = (type: string) => (event: ReceivedEvent) => (event.body as { type?: string }).type === type;
 
+/**
+ * Splits a Buffer on a byte delimiter, returning the chunks between delimiters.
+ * Operates on raw bytes (not utf8) so binary multipart parts survive intact.
+ */
+function splitBuffer(buf: Buffer, delimiter: Buffer): Buffer[] {
+  const parts: Buffer[] = [];
+  let start = 0;
+  let idx = buf.indexOf(delimiter, start);
+  while (idx !== -1) {
+    if (idx > start) parts.push(buf.subarray(start, idx));
+    start = idx + delimiter.length;
+    idx = buf.indexOf(delimiter, start);
+  }
+  if (start < buf.length) parts.push(buf.subarray(start));
+  return parts;
+}
+
 export class Intake {
   private server: http.Server | null = null;
   private rumEvents: ReceivedEvent[] = [];
+  private replaySegments: ReplaySegment[] = [];
   private traces: Trace[] = [];
   private profilingRequests: ProfilingRequest[] = [];
   private port = 0;
@@ -55,6 +87,61 @@ export class Intake {
         ddforward,
       });
     }
+  }
+
+  private storeReplaySegment(rawBody: Buffer, headers: Record<string, string>) {
+    const contentType = headers['content-type'] ?? '';
+    const boundaryMatch = /boundary=([^\s;]+)/.exec(contentType);
+    if (!boundaryMatch) return;
+
+    // Parse the multipart body on the raw Buffer (not a utf8 string): the `segment`
+    // part is deflate-compressed binary and would be corrupted by a utf8 round-trip.
+    const delimiter = Buffer.from(`--${boundaryMatch[1]}`);
+    let metadata: Record<string, unknown> | undefined;
+    let compressed: Buffer | undefined;
+
+    for (const part of splitBuffer(rawBody, delimiter)) {
+      // Each part is `\r\n<headers>\r\n\r\n<body>\r\n`. The preamble and the closing
+      // `--` marker have no header/body separator, so they're skipped here.
+      const headerEnd = part.indexOf('\r\n\r\n');
+      if (headerEnd === -1) continue;
+
+      const partHeaders = part.subarray(0, headerEnd).toString('utf8');
+      let body = part.subarray(headerEnd + 4);
+      // Strip the trailing CRLF that precedes the next delimiter.
+      if (body.length >= 2 && body[body.length - 2] === 0x0d && body[body.length - 1] === 0x0a) {
+        body = body.subarray(0, body.length - 2);
+      }
+
+      if (partHeaders.includes('name="event"')) {
+        try {
+          metadata = JSON.parse(body.toString('utf8')) as Record<string, unknown>;
+        } catch {
+          // malformed event part — ignore
+        }
+      } else if (partHeaders.includes('name="segment"')) {
+        compressed = body;
+      }
+    }
+
+    if (!metadata) return;
+
+    const segment: ReplaySegment = { timestamp: Date.now(), metadata, headers };
+
+    if (compressed) {
+      try {
+        // A single segment is a self-contained ZLIB stream (header + full-flush body +
+        // final block + Adler-32), so it inflates standalone. Continuation segments carry
+        // a cumulative Adler-32 that won't match a lone stream — those stay undecoded.
+        const inflated = zlib.inflateSync(compressed);
+        const parsed = JSON.parse(inflated.toString('utf8')) as { records?: unknown[] };
+        segment.records = parsed.records ?? [];
+      } catch {
+        // segment blob not standalone-inflatable — leave records undefined
+      }
+    }
+
+    this.replaySegments.push(segment);
   }
 
   private storeTraces(parsedBody: unknown) {
@@ -92,10 +179,10 @@ export class Intake {
           return;
         }
 
-        let body = '';
+        const chunks: Buffer[] = [];
 
         req.on('data', (chunk: Buffer) => {
-          body += chunk.toString();
+          chunks.push(chunk);
         });
 
         if (ddforward.startsWith('/api/v2/profile')) {
@@ -117,18 +204,28 @@ export class Intake {
         }
 
         req.on('end', () => {
-          try {
-            const parsedBody: unknown = JSON.parse(body);
-            const headers: Record<string, string> = {};
+          const rawBody = Buffer.concat(chunks);
+          const headers: Record<string, string> = {};
 
-            for (const [key, value] of Object.entries(req.headers)) {
-              if (typeof value === 'string') {
-                headers[key.toLowerCase()] = value;
-              } else if (Array.isArray(value)) {
-                headers[key.toLowerCase()] = value.join(', ');
-              }
+          for (const [key, value] of Object.entries(req.headers)) {
+            if (typeof value === 'string') {
+              headers[key.toLowerCase()] = value;
+            } else if (Array.isArray(value)) {
+              headers[key.toLowerCase()] = value.join(', ');
             }
+          }
 
+          const isMultipart = (headers['content-type'] ?? '').includes('multipart/form-data');
+
+          if (ddforward.startsWith('/api/v2/replay') || isMultipart) {
+            this.storeReplaySegment(rawBody, headers);
+            res.writeHead(202, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: 'accepted' }));
+            return;
+          }
+
+          try {
+            const parsedBody: unknown = JSON.parse(rawBody.toString());
             if (ddforward.startsWith('/api/v2/spans')) {
               this.storeTraces(parsedBody);
             } else {
@@ -278,8 +375,30 @@ export class Intake {
     }
   }
 
+  async waitForReplaySegment(options?: {
+    timeout?: number;
+    predicate?: (segment: ReplaySegment) => boolean;
+  }): Promise<ReplaySegment> {
+    const timeout = options?.timeout ?? 10000;
+    const predicate = options?.predicate ?? (() => true);
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeout) {
+      const match = this.replaySegments.find(predicate);
+      if (match) return match;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    throw new Error(`Timed out waiting for a replay segment after ${timeout}ms.`);
+  }
+
+  getReplaySegments(): ReplaySegment[] {
+    return [...this.replaySegments];
+  }
+
   clear(): void {
     this.rumEvents = [];
+    this.replaySegments = [];
     this.traces = [];
     this.profilingRequests = [];
     this.quotaDecision = 'quota_ok';
