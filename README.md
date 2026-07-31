@@ -260,6 +260,7 @@ await init({
   applicationId: '<APPLICATION_ID>',
   site: 'datadoghq.com',
   service: 'my-electron-app',
+  allowedRendererHosts: ['*'],
   sessionReplaySampleRate: 100, // percentage of sampled sessions that record replay (0–100)
   defaultPrivacyLevel: 'mask', // 'mask' | 'allow' | 'mask-user-input'
 });
