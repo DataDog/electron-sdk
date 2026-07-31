@@ -1,3 +1,4 @@
+import { app } from 'electron';
 import { MainAssembly, RendererPipeline, createFormatHooks, registerCommonContext } from './assembly';
 import { setDurationVitalApi } from './api';
 import type { AccountInfo, UserInfo } from './domain/customer-context';
@@ -6,12 +7,14 @@ import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
 import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './domain/rum';
 import { RumCollection } from './domain/rum';
+import { ReplayCollection } from './domain/replay';
 import { SessionManager } from './domain/session';
 import { callMonitored, startTelemetry } from './domain/telemetry';
 import { SpanProcessor } from './domain/tracing/SpanProcessor';
 import { Tracing } from './domain/tracing/Tracing';
 import { ProfilingCollection } from './domain/profiling';
 import { EventManager } from './event';
+import { BeforeQuitHandler } from './tools/BeforeQuitHandler';
 import { Transport } from './transport';
 
 let sessionManager: SessionManager | undefined;
@@ -21,17 +24,12 @@ let rumApi: ReturnType<RumCollection['getApi']> | undefined;
 let tracing: Tracing | undefined;
 let userContext: UserContext | undefined;
 let accountContext: AccountContext | undefined;
+let replayCollection: ReplayCollection | undefined;
+let beforeQuitHandler: BeforeQuitHandler | undefined;
 
 /**
  * Internal SDK context
  * Same format as Browser SDK
- */
-export interface InternalContext {
-  session_id: string;
-}
-
-/**
- * Internal SDK context
  */
 export interface InternalContext {
   session_id: string;
@@ -62,6 +60,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   new RendererPipeline(eventManager, hooks, config);
 
   new ProfilingCollection(eventManager, sessionManager, config, hooks);
+  replayCollection = new ReplayCollection(eventManager, config, sessionManager, hooks);
 
   if (tracing.enabled) {
     new SpanProcessor(eventManager, hooks, config);
@@ -71,6 +70,9 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   const rum = await RumCollection.start(eventManager, hooks);
   rumApi = rum.getApi();
   setDurationVitalApi(rumApi);
+
+  beforeQuitHandler?.stop();
+  beforeQuitHandler = new BeforeQuitHandler(app, _flushTransport);
 
   return true;
 }
@@ -263,6 +265,13 @@ export function failFeatureOperation(
  * Internal API to flush all pending batches to the intake
  */
 export async function _flushTransport(): Promise<void> {
+  // 1. Produce the final replay segment (compress + hand it to the batch producer).
+  // 2. Flush the transport so that segment is written and uploaded. stop() alone only queues it in
+  //    the producer; the write/upload happens in transport.flush().
+  // 3. Flush tracing: dd-trace turns its batched spans into RUM resource/SPANS events synchronously.
+  // 4. Flush the transport again to upload those tracing-produced events.
+  await replayCollection?.stop();
+  await transport?.flush();
   await tracing?.flush();
   await transport?.flush();
 }

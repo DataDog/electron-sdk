@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self' https://httpbin.org"
+      content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; connect-src 'self' https://httpbin.org"
     />
     <title>Electron SDK Playground</title>
     <style>
@@ -229,7 +229,7 @@
 
       <div class="session-section">
         <h2>IPC Activity Log:</h2>
-        <div id="ipc-log"></div>
+        <div id="ipc-log" data-dd-privacy="mask"></div>
       </div>
     </div>
 

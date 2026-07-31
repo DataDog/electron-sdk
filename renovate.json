@@ -26,6 +26,12 @@
       "enabled": false
     },
     {
+      "description": "Cargo.lock refreshes bypass the cargo freeze above, and no CI job builds the WASM (build:wasm is not in .gitlab-ci.yml), so keep Cargo.lock out of lock file maintenance too.",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["lockFileMaintenance"],
+      "enabled": false
+    },
+    {
       "description": "Ignore all packages from the internal Datadog registry",
       "matchDatasources": ["docker"],
       "matchPackageNames": ["registry.ddbuild.io/**"],
@@ -41,6 +47,12 @@
       "matchFileNames": ["e2e/integration/apps/**/package.json"],
       "skipArtifactsUpdate": true,
       "lockFileMaintenance": { "enabled": false }
+    },
+    {
+      "description": "electron-vite 5 declares a vite peer range of ^5 || ^6 || ^7, so this app cannot move to vite 8 yet. Revisit when electron-vite supports vite 8.",
+      "matchFileNames": ["e2e/integration/apps/electron-vite-esm/package.json"],
+      "matchPackageNames": ["vite"],
+      "allowedVersions": "<8"
     }
   ]
 }

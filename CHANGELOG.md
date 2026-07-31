@@ -2,6 +2,23 @@
 
 All notable changes to `@datadog/electron-sdk` are documented here.
 
+## [0.7.0] - 2026-07-30
+
+### ✨ Features
+
+- ✨ add custom duration vitals to the main process (#172)
+- ✨ [RUM-15788] Add User & Account info (#135)
+- ✨ cap pending batch files with drop-oldest eviction (#173)
+
+### 🐛 Bug Fixes
+
+- 🐛 stop including the bridge payload in telemetry errors (#185)
+- 🐛 make session expiration idempotent (#183)
+
+### Internal
+
+- 👷 consolidate safe Renovate updates (#187)
+
 ## [0.6.0] - 2026-07-16
 
 ### ✨ Features

@@ -22,6 +22,13 @@ function getHolder(): BridgeConfigHolder {
     // Advertise the SDK's supported capabilities by default to signal support. init() replaces this with
     // the config-derived value; that narrowing is only an optimization to save renderer work, since the
     // Electron SDK config (not the advertised capability) governs what is actually sent to Datadog.
+    //
+    // 'records' is deliberately excluded from this fallback: unlike profiling, replay recording
+    // captures DOM data and requires the initial full DOM snapshot to render later incremental records.
+    // If advertised here, a window opened before init() could produce that snapshot before
+    // RendererPipeline registers its BRIDGE_CHANNEL listener, causing Electron to drop the IPC
+    // message. Collecting subsequent records without that snapshot would produce a replay that cannot
+    // be rendered.
     holder = {
       value: {
         defaultPrivacyLevel: 'mask',

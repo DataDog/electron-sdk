@@ -239,8 +239,10 @@ void app.whenReady().then(async () => {
     ...CONF[ACTIVE_ENV],
     service: 'electron-playground',
     env: 'dev',
+    sessionReplaySampleRate: 100,
     profilingSampleRate: 100,
     allowedRendererHosts: ['*'],
+    defaultPrivacyLevel: 'allow',
     ...(process.env.DD_SDK_PROXY ? { proxy: process.env.DD_SDK_PROXY } : {}),
   });
   console.log('SDK init result:', result);
