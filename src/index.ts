@@ -73,7 +73,6 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   beforeQuitHandler?.stop();
   beforeQuitHandler = new BeforeQuitHandler(app, _flushTransport);
-  beforeQuitHandler.start();
 
   return true;
 }

@@ -32,10 +32,9 @@ describe('BeforeQuitHandler', () => {
 
   it('prevents shutdown until the flush completes', async () => {
     const flush = vi.fn().mockResolvedValue(undefined);
-    const handler = new BeforeQuitHandler(app, flush);
+    new BeforeQuitHandler(app, flush);
     const event = { preventDefault: vi.fn() } as unknown as Event;
 
-    handler.start();
     listener!(event);
     await Promise.resolve();
 
@@ -47,10 +46,9 @@ describe('BeforeQuitHandler', () => {
 
   it('does not start another flush when quit is requested again', () => {
     const flush = vi.fn(() => new Promise<void>(() => undefined));
-    const handler = new BeforeQuitHandler(app, flush);
+    new BeforeQuitHandler(app, flush);
     const event = { preventDefault: vi.fn() } as unknown as Event;
 
-    handler.start();
     listener!(event);
     listener!(event);
 
@@ -61,10 +59,9 @@ describe('BeforeQuitHandler', () => {
 
   it('quits after the fallback timeout when the flush does not complete', () => {
     const flush = vi.fn(() => new Promise<void>(() => undefined));
-    const handler = new BeforeQuitHandler(app, flush);
+    new BeforeQuitHandler(app, flush);
     const event = { preventDefault: vi.fn() } as unknown as Event;
 
-    handler.start();
     listener!(event);
     vi.advanceTimersByTime(5_000);
 

@@ -2,6 +2,7 @@ import { generateUUID, tryJsonParse } from '@datadog/browser-core';
 import { isIndexableObject } from '@datadog/js-core/util';
 import { CreationReason, type SegmentMetadata } from '../../../domain/replay';
 import { display } from '../../../tools/display';
+import { hasNonEmptyStringId, isFiniteNumber, isNonNegativeInteger } from '../../../tools/validation';
 import { BatchConsumer } from '../BatchConsumer';
 
 declare const __SDK_VERSION__: string;
@@ -37,7 +38,7 @@ export class ReplayBatchConsumer extends BatchConsumer {
       return null;
     }
 
-    if (!isReplayBatchMetadata(parsedMetadata)) {
+    if (!isValidReplayBatchMetadata(parsedMetadata)) {
       display.warn('Dropping malformed replay batch: metadata fields are missing or invalid');
       return null;
     }
@@ -75,7 +76,7 @@ export class ReplayBatchConsumer extends BatchConsumer {
   }
 }
 
-function isReplayBatchMetadata(value: unknown): value is ReplayBatchMetadata {
+function isValidReplayBatchMetadata(value: unknown): value is ReplayBatchMetadata {
   if (!isIndexableObject(value)) {
     return false;
   }
@@ -94,18 +95,6 @@ function isReplayBatchMetadata(value: unknown): value is ReplayBatchMetadata {
     isNonNegativeInteger(value.raw_segment_size) &&
     isNonNegativeInteger(value.compressed_segment_size)
   );
-}
-
-function hasNonEmptyStringId(value: unknown): value is { id: string } {
-  return isIndexableObject(value) && typeof value.id === 'string' && value.id.length > 0;
-}
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
-}
-
-function isNonNegativeInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
 function isCreationReason(value: unknown): value is CreationReason {

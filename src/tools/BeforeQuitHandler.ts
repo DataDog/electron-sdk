@@ -18,10 +18,6 @@ export class BeforeQuitHandler {
     this.handler = monitor((event: Event) => {
       this.onBeforeQuit(event);
     });
-  }
-
-  /** Starts intercepting Electron's `before-quit` event. */
-  start(): void {
     this.app.on('before-quit', this.handler);
   }
 
