@@ -1,7 +1,7 @@
 export { MainAssembly } from './MainAssembly';
 export { RendererPipeline } from './RendererPipeline';
 export type { BridgeOptions } from '../common';
-export { registerCommonContext, registerProcessContext } from './commonContext';
+export { registerCommonContext, registerExecutionContextAttributes } from './commonContext';
 export { createFormatHooks } from './hooks';
 export type {
   FormatHooks,

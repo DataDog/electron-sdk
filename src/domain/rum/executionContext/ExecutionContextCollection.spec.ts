@@ -7,14 +7,14 @@ vi.mock('electron', () => ({
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { app } from 'electron';
-import { ProcessCollection, PROCESS_UPDATE_INTERVAL } from './ProcessCollection';
+import { ExecutionContextCollection, PROCESS_UPDATE_INTERVAL } from './ExecutionContextCollection';
 import { EventManager, EventKind, EventFormat, LifecycleKind, type RawRumEvent } from '../../../event';
-import { RawRumProcess } from '../rawRumData.types';
+import { RawRumExecutionContext } from '../rawRumData.types';
 
-describe('ProcessCollection', () => {
+describe('ExecutionContextCollection', () => {
   let eventManager: EventManager;
   let rawRumEvents: RawRumEvent[];
-  let processCollection: ProcessCollection;
+  let executionContextCollection: ExecutionContextCollection;
   let webContentsCreatedHandler: (event: unknown, webContents: unknown) => void;
 
   beforeEach(() => {
@@ -27,7 +27,7 @@ describe('ProcessCollection', () => {
       handle: (e) => rawRumEvents.push(e),
     });
 
-    // Capture the web-contents-created handler registered by ProcessCollection
+    // Capture the web-contents-created handler registered by ExecutionContextCollection
     vi.mocked(app).on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
       if (event === 'web-contents-created') {
         webContentsCreatedHandler = handler;
@@ -35,7 +35,7 @@ describe('ProcessCollection', () => {
       return app;
     });
 
-    processCollection = ProcessCollection.start(eventManager);
+    executionContextCollection = ExecutionContextCollection.start(eventManager);
   });
 
   afterEach(() => {
@@ -46,26 +46,26 @@ describe('ProcessCollection', () => {
   describe('main process', () => {
     it('emits a start event on init', () => {
       expect(rawRumEvents).toHaveLength(1);
-      const data = rawRumEvents[0].data as RawRumProcess;
-      expect(data.type).toBe('process');
-      expect(data.process.role).toBe('main');
-      expect(data.process.pid).toBe(process.pid);
+      const data = rawRumEvents[0].data as RawRumExecutionContext;
+      expect(data.type).toBe('execution_context');
+      expect(data.execution_context.type).toBe('main-process');
+      expect(data.execution_context.pid).toBe(process.pid);
       expect(data._dd.document_version).toBe(1);
-      expect(data.process.duration).toBeUndefined();
+      expect(data.execution_context.duration).toBeUndefined();
     });
 
     it('emits a periodic update every minute with incremented document_version', () => {
       vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
       expect(rawRumEvents).toHaveLength(2);
-      const update = rawRumEvents[1].data as RawRumProcess;
+      const update = rawRumEvents[1].data as RawRumExecutionContext;
       expect(update._dd.document_version).toBe(2);
-      expect(update.process.duration).toBeGreaterThanOrEqual(0);
+      expect(update.execution_context.duration).toBeGreaterThanOrEqual(0);
     });
 
     it('emits a final update with is_active false on SESSION_EXPIRED', () => {
       eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
-      const last = rawRumEvents[rawRumEvents.length - 1].data as RawRumProcess;
-      expect(last.process.exit_reason).toBeUndefined();
+      const last = rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext;
+      expect(last.execution_context.exit_reason).toBeUndefined();
     });
 
     it('stops emitting updates after SESSION_EXPIRED', () => {
@@ -93,42 +93,42 @@ describe('ProcessCollection', () => {
       const wc = makeWebContents(1);
       webContentsCreatedHandler({}, wc);
       expect(rawRumEvents).toHaveLength(2); // main start + renderer start
-      const rendererStart = rawRumEvents[1].data as RawRumProcess;
-      expect(rendererStart.process.role).toBe('renderer');
-      expect(rendererStart.process.pid).toBe(1001);
+      const rendererStart = rawRumEvents[1].data as RawRumExecutionContext;
+      expect(rendererStart.execution_context.type).toBe('renderer-process');
+      expect(rendererStart.execution_context.pid).toBe(1001);
       expect(rendererStart._dd.document_version).toBe(1);
     });
 
-    it('registers the renderer in ProcessContext', () => {
+    it('registers the renderer in ExecutionContextAttributes', () => {
       const wc = makeWebContents(1);
       webContentsCreatedHandler({}, wc);
-      const ctx = processCollection.processContext.getRendererProcessContext(1);
+      const ctx = executionContextCollection.executionContextAttributes.getRendererExecutionContext(1);
       expect(ctx).toBeDefined();
-      expect(ctx?.role).toBe('renderer');
+      expect(ctx?.type).toBe('renderer-process');
     });
 
     it('emits an end event on webContents destroyed', () => {
       const wc = makeWebContents(2);
       webContentsCreatedHandler({}, wc);
       wc._emit('destroyed');
-      const last = rawRumEvents[rawRumEvents.length - 1].data as RawRumProcess;
-      expect(last.process.exit_reason).toBeUndefined();
-      expect(processCollection.processContext.getRendererProcessContext(2)).toBeUndefined();
+      const last = rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext;
+      expect(last.execution_context.exit_reason).toBeUndefined();
+      expect(executionContextCollection.executionContextAttributes.getRendererExecutionContext(2)).toBeUndefined();
     });
 
     it('emits an end event with exit_reason on render-process-gone', () => {
       const wc = makeWebContents(3);
       webContentsCreatedHandler({}, wc);
       wc._emit('render-process-gone', {}, { reason: 'crashed' });
-      const last = rawRumEvents[rawRumEvents.length - 1].data as RawRumProcess;
-      expect(last.process.exit_reason).toBe('crashed');
+      const last = rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext;
+      expect(last.execution_context.exit_reason).toBe('crashed');
     });
 
-    it('removes renderer from ProcessContext after end', () => {
+    it('removes renderer from ExecutionContextAttributes after end', () => {
       const wc = makeWebContents(4);
       webContentsCreatedHandler({}, wc);
       wc._emit('destroyed');
-      expect(processCollection.processContext.getRendererProcessContext(4)).toBeUndefined();
+      expect(executionContextCollection.executionContextAttributes.getRendererExecutionContext(4)).toBeUndefined();
     });
   });
 });

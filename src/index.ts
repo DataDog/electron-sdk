@@ -3,7 +3,7 @@ import {
   RendererPipeline,
   createFormatHooks,
   registerCommonContext,
-  registerProcessContext,
+  registerExecutionContextAttributes,
 } from './assembly';
 import { setDurationVitalApi } from './api';
 import type { AccountInfo, UserInfo } from './domain/customer-context';
@@ -12,7 +12,7 @@ import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
 import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './domain/rum';
 import { RumCollection } from './domain/rum';
-import { ProcessCollection } from './domain/rum/process';
+import { ExecutionContextCollection } from './domain/rum/executionContext';
 import { SessionManager } from './domain/session';
 import { callMonitored, startTelemetry } from './domain/telemetry';
 import { SpanProcessor } from './domain/tracing/SpanProcessor';
@@ -79,11 +79,11 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   rumApi = rum.getApi();
   setDurationVitalApi(rumApi);
 
-  // ProcessCollection must start after MainAssembly and RumCollection so all
+  // ExecutionContextCollection must start after MainAssembly and RumCollection so all
   // event handlers and format hooks (session, view) are registered before the
-  // first process event is emitted.
-  const processCollection = ProcessCollection.start(eventManager);
-  registerProcessContext(processCollection.processContext, hooks);
+  // first execution_context event is emitted.
+  const executionContextCollection = ExecutionContextCollection.start(eventManager);
+  registerExecutionContextAttributes(executionContextCollection.executionContextAttributes, hooks);
 
   return true;
 }

@@ -14,7 +14,7 @@ export type RawRumData =
   | RawRumOperationStepVital
   | RawRumDurationVital
   | RawRumResource
-  | RawRumProcess;
+  | RawRumExecutionContext;
 
 export interface RawRumView extends RecursivePartial<RumViewEvent> {
   type: 'view';
@@ -116,12 +116,12 @@ export interface RawRumResource extends RecursivePartial<RumResourceEvent> {
   };
 }
 
-export interface RawRumProcess {
-  type: 'process';
+export interface RawRumExecutionContext {
+  type: 'execution_context';
   date: TimeStamp;
-  process: {
+  execution_context: {
     id: string;
-    role: 'main' | 'renderer';
+    type: 'main-process' | 'renderer-process';
     pid: number;
     name?: string;
     duration?: ServerDuration;

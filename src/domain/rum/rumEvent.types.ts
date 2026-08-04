@@ -1460,19 +1460,19 @@ export interface CommonProperties {
     [k: string]: unknown;
   };
   /**
-   * Process properties
+   * Execution context properties
    */
-  readonly process?: {
+  readonly execution_context?: {
     /**
-     * UUID of the process
+     * UUID of the execution context
      */
     readonly id?: string;
     /**
-     * Role of the process
+     * Type of the execution context
      */
-    readonly role?: 'main' | 'renderer' | 'utility';
+    readonly type?: 'main-process' | 'renderer-process' | 'utility-process';
     /**
-     * Process name
+     * Execution context name
      */
     readonly name?: string;
     [k: string]: unknown;

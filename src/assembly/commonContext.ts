@@ -3,7 +3,7 @@ import { EventSource } from '../event';
 import type { FormatHooks } from './hooks';
 import { display } from '../tools/display';
 import { SKIPPED } from '@datadog/js-core/assembly';
-import { ProcessContext } from '../domain/rum/process';
+import { ExecutionContextAttributes } from '../domain/rum/executionContext';
 
 /**
  * Define the common attributes for the events of each format
@@ -88,16 +88,19 @@ function hasForbiddenTagCharacters(tag: string): boolean {
   return /[^\p{Ll}\p{Lo}0-9_:./-]/u.test(tag);
 }
 
-export function registerProcessContext(processContext: ProcessContext, hooks: FormatHooks) {
+export function registerExecutionContextAttributes(
+  executionContextAttributes: ExecutionContextAttributes,
+  hooks: FormatHooks
+) {
   hooks.registerRum(({ source, webContentsId }) => {
     if (source === EventSource.MAIN) {
-      const ctx = processContext.getMainProcessContext();
-      return { process: { id: ctx.id, role: ctx.role, name: ctx.name } };
+      const ctx = executionContextAttributes.getMainExecutionContext();
+      return { execution_context: { id: ctx.id, type: ctx.type, name: ctx.name } };
     }
     if (source === EventSource.RENDERER && webContentsId !== undefined) {
-      const ctx = processContext.getRendererProcessContext(webContentsId);
+      const ctx = executionContextAttributes.getRendererExecutionContext(webContentsId);
       if (ctx === undefined) return SKIPPED;
-      return { process: { id: ctx.id, role: ctx.role, name: ctx.name } };
+      return { execution_context: { id: ctx.id, type: ctx.type, name: ctx.name } };
     }
     return SKIPPED;
   });

@@ -1,11 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { TimeStamp } from '@datadog/js-core/time';
-import { registerCommonContext, registerProcessContext } from './commonContext';
+import { registerCommonContext, registerExecutionContextAttributes } from './commonContext';
 import { createFormatHooks } from './hooks';
 import { EventSource } from '../event';
 import type { Configuration } from '../config';
 import { display } from '../tools/display';
-import { ProcessContext } from '../domain/rum/process';
+import { ExecutionContextAttributes } from '../domain/rum/executionContext';
 
 const T0 = 0 as TimeStamp;
 
@@ -170,21 +170,21 @@ describe('registerCommonContext', () => {
   });
 });
 
-describe('registerProcessContext', () => {
-  it('enriches main-process events with main process context', () => {
+describe('registerExecutionContextAttributes', () => {
+  it('enriches main-process events with main execution context', () => {
     const hooks = createFormatHooks();
-    const processContext = new ProcessContext({ id: 'main-uuid', name: undefined });
-    registerProcessContext(processContext, hooks);
+    const executionContextAttributes = new ExecutionContextAttributes({ id: 'main-uuid', name: undefined });
+    registerExecutionContextAttributes(executionContextAttributes, hooks);
 
     const result = hooks.triggerRum({ eventType: 'view', startTime: 0 as TimeStamp, source: EventSource.MAIN });
-    expect(result).toMatchObject({ process: { id: 'main-uuid', role: 'main' } });
+    expect(result).toMatchObject({ execution_context: { id: 'main-uuid', type: 'main-process' } });
   });
 
-  it('enriches renderer events with renderer process context when webContentsId is known', () => {
+  it('enriches renderer events with renderer execution context when webContentsId is known', () => {
     const hooks = createFormatHooks();
-    const processContext = new ProcessContext({ id: 'main-uuid', name: undefined });
-    processContext.setRendererProcess(42, { id: 'renderer-uuid', name: undefined });
-    registerProcessContext(processContext, hooks);
+    const executionContextAttributes = new ExecutionContextAttributes({ id: 'main-uuid', name: undefined });
+    executionContextAttributes.setRendererExecutionContext(42, { id: 'renderer-uuid', name: undefined });
+    registerExecutionContextAttributes(executionContextAttributes, hooks);
 
     const result = hooks.triggerRum({
       eventType: 'error',
@@ -192,13 +192,13 @@ describe('registerProcessContext', () => {
       source: EventSource.RENDERER,
       webContentsId: 42,
     });
-    expect(result).toMatchObject({ process: { id: 'renderer-uuid', role: 'renderer' } });
+    expect(result).toMatchObject({ execution_context: { id: 'renderer-uuid', type: 'renderer-process' } });
   });
 
   it('skips renderer events when webContentsId is unknown', () => {
     const hooks = createFormatHooks();
-    const processContext = new ProcessContext({ id: 'main-uuid', name: undefined });
-    registerProcessContext(processContext, hooks);
+    const executionContextAttributes = new ExecutionContextAttributes({ id: 'main-uuid', name: undefined });
+    registerExecutionContextAttributes(executionContextAttributes, hooks);
 
     const result = hooks.triggerRum({
       eventType: 'error',
@@ -206,7 +206,7 @@ describe('registerProcessContext', () => {
       source: EventSource.RENDERER,
       webContentsId: 99,
     });
-    // SKIPPED means result has no process field
-    expect((result as Record<string, unknown> | null)?.process).toBeUndefined();
+    // SKIPPED means result has no execution_context field
+    expect((result as Record<string, unknown> | null)?.execution_context).toBeUndefined();
   });
 });

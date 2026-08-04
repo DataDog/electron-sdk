@@ -4,12 +4,12 @@ import { generateUUID } from '@datadog/browser-core';
 import { EventFormat, EventKind, type EventManager, type LifecycleEvent, LifecycleKind } from '../../../event';
 import { setInterval } from '../../telemetry';
 import { display } from '../../../tools/display';
-import { ProcessContext } from './ProcessContext';
-import type { RawRumProcess } from '../rawRumData.types';
+import { ExecutionContextAttributes } from './ExecutionContextAttributes';
+import type { RawRumExecutionContext } from '../rawRumData.types';
 
 export const PROCESS_UPDATE_INTERVAL = ONE_MINUTE;
 
-interface ProcessState {
+interface ExecutionContextState {
   id: string;
   startTime: TimeStamp;
   documentVersion: number;
@@ -18,31 +18,31 @@ interface ProcessState {
   timerId: ReturnType<typeof setInterval>;
 }
 
-export class ProcessCollection {
-  readonly processContext: ProcessContext;
-  private mainState!: ProcessState;
-  private readonly rendererStates = new Map<number, ProcessState>();
+export class ExecutionContextCollection {
+  readonly executionContextAttributes: ExecutionContextAttributes;
+  private mainState!: ExecutionContextState;
+  private readonly rendererStates = new Map<number, ExecutionContextState>();
 
   private constructor(private readonly eventManager: EventManager) {
     const mainId = generateUUID();
-    this.processContext = new ProcessContext({ id: mainId, name: undefined });
+    this.executionContextAttributes = new ExecutionContextAttributes({ id: mainId, name: undefined });
   }
 
-  static start(eventManager: EventManager): ProcessCollection {
-    const collection = new ProcessCollection(eventManager);
+  static start(eventManager: EventManager): ExecutionContextCollection {
+    const collection = new ExecutionContextCollection(eventManager);
     collection.initMain();
     collection.initRendererTracking();
     return collection;
   }
 
   private initMain(): void {
-    const mainId = this.processContext.getMainProcessContext().id;
+    const mainId = this.executionContextAttributes.getMainExecutionContext().id;
     const startTime = timeStampNow();
     const timerId = setInterval(() => {
       this.mainState.documentVersion++;
-      this.emitProcessEvent({
+      this.emitExecutionContextEvent({
         id: mainId,
-        role: 'main',
+        type: 'main-process',
         pid: process.pid,
         name: undefined,
         startTime: this.mainState.startTime,
@@ -52,9 +52,9 @@ export class ProcessCollection {
 
     this.mainState = { id: mainId, startTime, documentVersion: 1, pid: process.pid, name: undefined, timerId };
 
-    this.emitProcessEvent({
+    this.emitExecutionContextEvent({
       id: mainId,
-      role: 'main',
+      type: 'main-process',
       pid: process.pid,
       name: undefined,
       startTime,
@@ -67,9 +67,9 @@ export class ProcessCollection {
         if (event.lifecycle === LifecycleKind.SESSION_EXPIRED) {
           clearInterval(this.mainState.timerId);
           this.mainState.documentVersion++;
-          this.emitProcessEvent({
+          this.emitExecutionContextEvent({
             id: this.mainState.id,
-            role: 'main',
+            type: 'main-process',
             pid: this.mainState.pid,
             name: undefined,
             startTime: this.mainState.startTime,
@@ -87,15 +87,15 @@ export class ProcessCollection {
       const id = generateUUID();
       const startTime = timeStampNow();
 
-      this.processContext.setRendererProcess(webContentsId, { id, name: undefined });
+      this.executionContextAttributes.setRendererExecutionContext(webContentsId, { id, name: undefined });
 
       const timerId = setInterval(() => {
         const state = this.rendererStates.get(webContentsId);
         if (!state) return;
         state.documentVersion++;
-        this.emitProcessEvent({
+        this.emitExecutionContextEvent({
           id,
-          role: 'renderer',
+          type: 'renderer-process',
           pid,
           name: undefined,
           startTime: state.startTime,
@@ -103,19 +103,26 @@ export class ProcessCollection {
         });
       }, PROCESS_UPDATE_INTERVAL);
 
-      const state: ProcessState = { id, startTime, documentVersion: 1, pid, name: undefined, timerId };
+      const state: ExecutionContextState = { id, startTime, documentVersion: 1, pid, name: undefined, timerId };
       this.rendererStates.set(webContentsId, state);
 
-      this.emitProcessEvent({ id, role: 'renderer', pid, name: undefined, startTime, documentVersion: 1 });
+      this.emitExecutionContextEvent({
+        id,
+        type: 'renderer-process',
+        pid,
+        name: undefined,
+        startTime,
+        documentVersion: 1,
+      });
 
       const endRenderer = (exitReason?: string) => {
         const s = this.rendererStates.get(webContentsId);
         if (!s) return;
         clearInterval(s.timerId);
         s.documentVersion++;
-        this.emitProcessEvent({
+        this.emitExecutionContextEvent({
           id,
-          role: 'renderer',
+          type: 'renderer-process',
           pid,
           name: undefined,
           startTime: s.startTime,
@@ -123,7 +130,7 @@ export class ProcessCollection {
           exitReason,
         });
         this.rendererStates.delete(webContentsId);
-        this.processContext.deleteRendererProcess(webContentsId);
+        this.executionContextAttributes.deleteRendererExecutionContext(webContentsId);
       };
 
       webContents.on('destroyed', () => endRenderer(undefined));
@@ -131,9 +138,9 @@ export class ProcessCollection {
     });
   }
 
-  private emitProcessEvent(params: {
+  private emitExecutionContextEvent(params: {
     id: string;
-    role: 'main' | 'renderer';
+    type: 'main-process' | 'renderer-process';
     pid: number;
     name?: string;
     startTime: TimeStamp;
@@ -141,12 +148,12 @@ export class ProcessCollection {
     exitReason?: string;
   }): void {
     const isStart = params.documentVersion === 1;
-    const data: RawRumProcess = {
-      type: 'process',
+    const data: RawRumExecutionContext = {
+      type: 'execution_context',
       date: params.startTime,
-      process: {
+      execution_context: {
         id: params.id,
-        role: params.role,
+        type: params.type,
         pid: params.pid,
         name: params.name,
         ...(!isStart && { duration: toServerDuration(elapsed(params.startTime, timeStampNow())) }),
@@ -156,7 +163,7 @@ export class ProcessCollection {
     };
 
     const lifecycle = params.documentVersion === 1 ? 'start' : params.exitReason !== undefined ? 'end' : 'update';
-    display.log(`process event (${lifecycle}):`, JSON.stringify(data.process));
+    display.log(`execution_context event (${lifecycle}):`, JSON.stringify(data.execution_context));
 
     this.eventManager.notify({
       kind: EventKind.RAW,

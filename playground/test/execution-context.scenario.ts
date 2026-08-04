@@ -35,7 +35,7 @@ async function flushTransport(page: Page): Promise<void> {
   );
 }
 
-test('generate process events and send to staging', async ({ electronApp, window }) => {
+test('generate execution_context events and send to staging', async ({ electronApp, window }) => {
   // Open secondary window and capture its page handle
   const secondaryWindowPromise = electronApp.waitForEvent('window');
   await window.click('#open-secondary-window');
@@ -54,7 +54,7 @@ test('generate process events and send to staging', async ({ electronApp, window
     secondary?.close();
   });
 
-  // Let the end process event emit and flush everything to staging
+  // Let the end execution_context event emit and flush everything to staging
   await window.waitForTimeout(500);
   await flushTransport(window);
 });
