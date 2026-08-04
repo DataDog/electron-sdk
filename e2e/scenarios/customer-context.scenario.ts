@@ -129,3 +129,34 @@ test('enriches spans with account.* tags when account context is set', async ({ 
   expect(span.meta['account.id']).toBe('account-1');
   expect(span.meta['account.name']).toBe('Acme Corp');
 });
+
+test('attaches the global context to subsequent events', async ({ mainPage, intake }) => {
+  await mainPage.setGlobalContext({ team: 'checkout' });
+  await mainPage.setGlobalContextProperty('build', '1.2.3');
+
+  await mainPage.generateManualError();
+  await mainPage.flushTransport();
+
+  const error = (await intake.getEventsByType('error'))[0].body as RumErrorEvent;
+  expect(error.context).toMatchObject({ team: 'checkout', build: '1.2.3' });
+});
+
+test('merges the global context into renderer events, renderer keys winning', async ({
+  electronApp,
+  mainPage,
+  intake,
+}) => {
+  await mainPage.setGlobalContext({ team: 'checkout', build: '1.2.3' });
+
+  const bridgeWindow = await mainPage.openBridgeHttpWindow(electronApp);
+  await bridgeWindow.setRendererGlobalContext({ team: 'renderer-owned' });
+  await bridgeWindow.generateError('renderer error');
+  await mainPage.flushTransport();
+
+  const errors = await intake.getEventsByType('error', {
+    predicate: (event) => (event.body as RumErrorEvent).error.message === 'renderer error',
+  });
+  expect(errors[0].body as RumErrorEvent).toMatchObject({
+    context: { team: 'renderer-owned', build: '1.2.3' },
+  });
+});

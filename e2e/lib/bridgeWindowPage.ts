@@ -14,6 +14,16 @@ export class BridgeWindowPage {
     return new BridgeWindowPage(page);
   }
 
+  async setRendererGlobalContext(context: Record<string, unknown>) {
+    await this.page.evaluate(
+      (c) =>
+        (
+          globalThis as unknown as { setRendererGlobalContext: (v: Record<string, unknown>) => void }
+        ).setRendererGlobalContext(c),
+      context
+    );
+  }
+
   async generateError(message: string) {
     await this.page.evaluate((msg) => {
       setTimeout(() => {
