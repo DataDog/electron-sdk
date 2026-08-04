@@ -11,6 +11,7 @@ import { ReplayCollection } from './domain/replay';
 import { SessionManager } from './domain/session';
 import { callMonitored, startTelemetry } from './domain/telemetry';
 import { SpanProcessor } from './domain/tracing/SpanProcessor';
+import { TraceSampling } from './domain/tracing/TraceSampling';
 import { Tracing } from './domain/tracing/Tracing';
 import { ProfilingCollection } from './domain/profiling';
 import { EventManager } from './event';
@@ -55,6 +56,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   accountContext = await AccountContext.init(hooks);
   startTelemetry(eventManager, config);
   sessionManager = await SessionManager.start(eventManager, hooks, config);
+  new TraceSampling(eventManager, sessionManager, config, hooks);
 
   new MainAssembly(eventManager, hooks);
   new RendererPipeline(eventManager, hooks, config);

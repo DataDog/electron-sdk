@@ -29,13 +29,12 @@ export class Transport {
     return transport;
   }
 
-  /**
-   * Tracks to buffer and upload. The PROFILE track is only set up when profiling can produce data
-   * (matching the `profiles` capability gating in RendererPipeline), to avoid idle disk and scheduler
-   * work in apps that never enable profiling.
-   */
+  /** Tracks to buffer and upload, omitting feature tracks whose configured rate is zero. */
   private getTracks(): EventTrack[] {
-    const tracks: EventTrack[] = [EventTrack.RUM, EventTrack.SPANS];
+    const tracks: EventTrack[] = [EventTrack.RUM];
+    if (this.config.traceSampleRate > 0) {
+      tracks.push(EventTrack.SPANS);
+    }
     if (this.config.profilingSampleRate > 0) {
       tracks.push(EventTrack.PROFILE);
     }

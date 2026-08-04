@@ -79,15 +79,20 @@ export class SpanProcessor {
       }
       const span = toRawSpan(exportedSpan, this.service);
       const hookResult = this.hooks.triggerSpan({ startTime: toTimeStamp(span.start), source: EventSource.MAIN });
+
+      // HTTP spans are also the source for native RUM resources. Even when trace sampling discards
+      // the APM span, keep the RUM resource but omit trace/span IDs because no distributed trace was
+      // propagated. The normal RUM assembly hooks independently discard it when its RUM session was
+      // not sampled.
+      if (isHttpSpan(exportedSpan)) {
+        this.emitResource(spanToResource(exportedSpan, hookResult !== DISCARDED));
+      }
+
       if (hookResult === DISCARDED) {
         continue;
       }
 
       processedSpans.push(combine(span, hookResult));
-
-      if (isHttpSpan(exportedSpan)) {
-        this.emitResource(spanToResource(exportedSpan));
-      }
     }
 
     const processedTrace = { env: this.env, spans: processedSpans };
@@ -154,7 +159,7 @@ function toRawSpan(exportedSpan: ExportedSpan, service: string): RawSpanData {
   };
 }
 
-function spanToResource(exportedSpan: ExportedSpan): RawRumResource {
+function spanToResource(exportedSpan: ExportedSpan, includeTraceContext: boolean): RawRumResource {
   return {
     type: 'resource',
     date: toTimeStamp(exportedSpan.start),
@@ -166,11 +171,13 @@ function spanToResource(exportedSpan: ExportedSpan): RawRumResource {
       status_code: Number(exportedSpan.meta['http.status_code']) || 0,
       url: exportedSpan.meta['http.url'],
     },
-    _dd: {
-      trace_id: exportedSpan.trace_id.toString(10),
-      span_id: exportedSpan.span_id.toString(10),
-      format_version: 2,
-    },
+    _dd: includeTraceContext
+      ? {
+          trace_id: exportedSpan.trace_id.toString(10),
+          span_id: exportedSpan.span_id.toString(10),
+          format_version: 2,
+        }
+      : { format_version: 2 },
   };
 }
 

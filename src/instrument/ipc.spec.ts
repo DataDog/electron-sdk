@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { MockInstance } from 'vitest';
 import { EventEmitter } from 'node:events';
+import { setTraceSampled } from '../common';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyFn = (...args: any[]) => any;
@@ -27,6 +28,20 @@ describe('patchIpcMain', () => {
     mockSpan.setTag.mockReset();
     mockSpan.finish.mockReset();
     mockScope.activate.mockImplementation((_, fn: () => unknown) => fn());
+    setTraceSampled(true);
+  });
+
+  it('runs the app handler without a span when the current session is not trace-sampled', async () => {
+    const { patchIpcMain } = await import('./ipc');
+    const ipcMain = makeMockIpcMain();
+    const handler = vi.fn(() => 'app-result');
+    patchIpcMain(ipcMain as unknown as Electron.IpcMain);
+    (ipcMain.handle as unknown as AnyFn)('ping', handler);
+    setTraceSampled(false);
+
+    expect(ipcMain._wrapped['handle:ping']({}, 'payload')).toBe('app-result');
+    expect(handler).toHaveBeenCalledWith({}, 'payload');
+    expect(mockDdTrace.startSpan).not.toHaveBeenCalled();
   });
 
   // Each vi.fn() captures the wrapped listener the wrapper passes to it in _wrapped.

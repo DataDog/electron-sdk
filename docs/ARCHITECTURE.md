@@ -220,6 +220,13 @@ HTTP spans → Assembly → Transport → /api/v2/rum (as RUM resources)
 
 All spans are enriched with `_dd.application.id`, `_dd.session.id`, and `_dd.view.id`. Trace and span IDs are converted to **hexadecimal strings** for the spans intake.
 
+Trace sampling is deterministic per RUM session. `traceSampleRate` is applied as a child of
+`sessionSampleRate`: a sampled session traces all of its main-process HTTP and IPC operations. An unsampled
+session creates no IPC spans and injects no HTTP trace headers. HTTP instrumentation still creates a local
+span because it supplies timing and request data for the RUM resource; span assembly emits that resource
+without trace linkage and discards the APM span. The SPANS transport is omitted when `traceSampleRate` is
+zero as an idle-work optimization, not as the authoritative sampling boundary.
+
 ### Preload injection
 
 The SDK injects a preload script (`@datadog/electron-sdk/preload`) into every renderer process. The preload exposes `DatadogEventBridge` via `contextBridge`, enabling the Browser SDK to route RUM events through IPC to the Electron SDK instead of sending them directly to Datadog.

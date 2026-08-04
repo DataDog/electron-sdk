@@ -37,6 +37,11 @@ export interface InitConfiguration {
   env?: string;
   version?: string;
   sessionSampleRate?: number;
+  /**
+   * Percentage of sampled sessions whose main-process requests and IPC operations are traced.
+   * @example 20
+   */
+  traceSampleRate?: number;
   sessionReplaySampleRate?: number;
   profilingSampleRate?: number;
   telemetrySampleRate?: number;
@@ -60,6 +65,7 @@ export interface Configuration {
   version?: string;
   proxy?: string;
   sessionSampleRate: number;
+  traceSampleRate: number;
   sessionReplaySampleRate: number;
   profilingSampleRate: number;
   telemetrySampleRate: number;
@@ -103,6 +109,17 @@ function validateSessionSampleRate(value: unknown): number | undefined {
   }
   if (!Number.isFinite(value) || (value as number) < 0 || (value as number) > 100) {
     display.error("Configuration error: 'sessionSampleRate' must be a number between 0 and 100");
+    return undefined;
+  }
+  return value as number;
+}
+
+function validateTraceSampleRate(value: unknown): number | undefined {
+  if (value === undefined || value === null) {
+    return 100;
+  }
+  if (!Number.isFinite(value) || (value as number) < 0 || (value as number) > 100) {
+    display.error("Configuration error: 'traceSampleRate' must be a number between 0 and 100");
     return undefined;
   }
   return value as number;
@@ -233,12 +250,14 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
 
   const proxy = validateOptionalString(initConfig.proxy);
   const sessionSampleRate = validateSessionSampleRate(initConfig.sessionSampleRate);
+  const traceSampleRate = validateTraceSampleRate(initConfig.traceSampleRate);
   const sessionReplaySampleRate = validateSessionReplaySampleRate(initConfig.sessionReplaySampleRate);
   const profilingSampleRate = validateProfilingSampleRate(initConfig.profilingSampleRate);
   const telemetrySampleRate = validateTelemetrySampleRate(initConfig.telemetrySampleRate);
 
   if (
     sessionSampleRate === undefined ||
+    traceSampleRate === undefined ||
     sessionReplaySampleRate === undefined ||
     profilingSampleRate === undefined ||
     telemetrySampleRate === undefined
@@ -260,6 +279,7 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     version: validateOptionalString(initConfig.version),
     proxy,
     sessionSampleRate,
+    traceSampleRate,
     sessionReplaySampleRate,
     profilingSampleRate,
     telemetrySampleRate,

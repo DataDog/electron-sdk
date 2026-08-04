@@ -317,6 +317,15 @@ describe('SpanProcessor', () => {
       expect(serverEvent).toBeUndefined();
     });
 
+    it('should still emit an unlinked RUM resource when an HTTP span is discarded', () => {
+      hooks.registerSpan(() => DISCARDED);
+      publish([[createSpan()]]);
+
+      const rawEvent = collected.find((e) => e.kind === EventKind.RAW) as RawRumEvent;
+      const resource = rawEvent.data as { _dd: { format_version: number; trace_id?: string; span_id?: string } };
+      expect(resource._dd).toEqual({ format_version: 2 });
+    });
+
     it('should not enrich when hooks return SKIPPED', () => {
       hooks.registerSpan(() => SKIPPED);
       publish([[createSpan()]]);

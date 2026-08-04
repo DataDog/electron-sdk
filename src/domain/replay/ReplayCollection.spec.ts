@@ -38,6 +38,7 @@ function makeConfig(overrides?: Partial<Configuration>): Configuration {
     clientToken: 'pub-test',
     applicationId: 'app-1',
     sessionSampleRate: 100,
+    traceSampleRate: 100,
     sessionReplaySampleRate: 100,
     profilingSampleRate: 0,
     telemetrySampleRate: 0,

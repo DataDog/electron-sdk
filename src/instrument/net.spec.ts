@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { EventEmitter } from 'node:events';
+import { setTraceSampled } from '../common';
 
 const mockSpan = { setTag: vi.fn(), finish: vi.fn() };
 const mockActiveSpan = { id: 'active-span' };
@@ -58,6 +59,30 @@ describe('patchNet', () => {
     mockDdTrace.inject.mockImplementation((_, __, carrier: Record<string, string>) => {
       carrier['x-datadog-trace-id'] = '123';
     });
+    setTraceSampled(true);
+  });
+
+  it('creates the local resource span but does not inject headers when the session is not trace-sampled', async () => {
+    const options = { url: 'https://example.com', headers: { Authorization: 'secret' } };
+    const { patchedNet, originalRequest } = await setupNet();
+    setTraceSampled(false);
+
+    patchedNet.request(options);
+
+    expect(mockDdTrace.startSpan).toHaveBeenCalledTimes(1);
+    expect(mockDdTrace.inject).not.toHaveBeenCalled();
+    expect(originalRequest).toHaveBeenCalledWith(options);
+  });
+
+  it('creates the local fetch resource span but does not inject headers when the session is not trace-sampled', async () => {
+    const { patchedNet, originalFetch } = await setupNetWithFetch();
+    setTraceSampled(false);
+
+    await patchedNet.fetch('https://example.com');
+
+    expect(mockDdTrace.startSpan).toHaveBeenCalledTimes(1);
+    expect(mockDdTrace.inject).not.toHaveBeenCalled();
+    expect(originalFetch).toHaveBeenCalledWith('https://example.com', undefined);
   });
 
   async function setupNet(req = makeRequest()) {

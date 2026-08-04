@@ -17,6 +17,7 @@ function makeConfig(overrides: Partial<Configuration> = {}): Configuration {
     defaultPrivacyLevel: 'mask',
     allowedRendererHosts: [],
     sessionSampleRate: 100,
+    traceSampleRate: 100,
     sessionReplaySampleRate: 0,
     profilingSampleRate: 0,
     telemetrySampleRate: 20,
@@ -144,11 +145,17 @@ describe('registerCommonContext', () => {
     it.each([EventSource.MAIN, EventSource.RENDERER])(
       'injects the Electron SDK session, replay, and profiling sample rates for %s events',
       (source) => {
-        const config = makeConfig({ sessionSampleRate: 42, sessionReplaySampleRate: 25, profilingSampleRate: 100 });
+        const config = makeConfig({
+          sessionSampleRate: 42,
+          traceSampleRate: 75,
+          sessionReplaySampleRate: 25,
+          profilingSampleRate: 100,
+        });
         const result = source === EventSource.MAIN ? triggerMainRum(config) : triggerRendererRum(config);
 
         expect((result._dd as { configuration: unknown }).configuration).toEqual({
           session_sample_rate: 42,
+          trace_sample_rate: 75,
           session_replay_sample_rate: 25,
           profiling_sample_rate: 100,
         });

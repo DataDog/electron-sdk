@@ -513,6 +513,25 @@ describe('buildConfiguration', () => {
     });
   });
 
+  describe('traceSampleRate validation', () => {
+    it('defaults to 100 when not provided', () => {
+      expect(buildConfiguration({ ...DEFAULT_CONFIG })?.traceSampleRate).toBe(100);
+    });
+
+    it.each([0, 50, 100])('accepts valid value: %d', (value) => {
+      expect(buildConfiguration({ ...DEFAULT_CONFIG, traceSampleRate: value })?.traceSampleRate).toBe(value);
+    });
+
+    it.each([-1, 101, 'fifty', {}, NaN])('rejects invalid value: %s', (value) => {
+      const config = { ...DEFAULT_CONFIG, traceSampleRate: value } as unknown as InitConfiguration;
+
+      expect(buildConfiguration(config)).toBeUndefined();
+      expect(display.error).toHaveBeenCalledWith(
+        "Configuration error: 'traceSampleRate' must be a number between 0 and 100"
+      );
+    });
+  });
+
   describe('profilingSampleRate validation', () => {
     it('defaults to 0 when not provided', () => {
       const result = buildConfiguration({ ...DEFAULT_CONFIG });

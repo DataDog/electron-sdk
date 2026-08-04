@@ -1,5 +1,6 @@
 import ddTrace from '../entries/instrument-prelude';
 import { callMonitored, monitorInstrumentation } from '../domain/telemetry';
+import { isTraceSampled } from '../common';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyFn = (...args: any[]) => any;
@@ -93,6 +94,10 @@ function wrapAddListener(
           once.rawRemoveListener(ipcChannel, wrappedListener);
           const index = wrappers.indexOf(wrappedListener);
           if (index !== -1) wrappers.splice(index, 1);
+        }
+
+        if (!isTraceSampled()) {
+          return listener.call(this, event, ...args) as unknown;
         }
 
         // Start the span monitored. If it fails (or the SDK is not set up) the span is undefined and
@@ -226,6 +231,9 @@ function wrapSend(webContents: Electron.WebContents): void {
 // check arity or treat the last arg as options). Carrier injection must be re-added together
 // with the matching renderer extraction when ipcRenderer instrumentation lands.
 function startSendSpan(channel: string, invokeOriginal: () => unknown): unknown {
+  if (!isTraceSampled()) {
+    return invokeOriginal();
+  }
   let span: ReturnType<typeof ddTrace.startSpan> | undefined;
   return monitorInstrumentation<unknown>(({ onResult, onError }) => {
     span = ddTrace.startSpan('electron.main.send', {

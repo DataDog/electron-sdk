@@ -76,6 +76,14 @@ describe('Transport', () => {
       const tracks = mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType);
       expect(tracks).not.toContain(EventTrack.REPLAY);
     });
+
+    it('should skip the SPANS track when tracing is disabled', async () => {
+      const configWithoutTracing = createTestConfiguration({ traceSampleRate: 0 });
+      await Transport.create(configWithoutTracing, eventManager);
+
+      const tracks = mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType);
+      expect(tracks).not.toContain(EventTrack.SPANS);
+    });
   });
 
   describe('event handling', () => {
