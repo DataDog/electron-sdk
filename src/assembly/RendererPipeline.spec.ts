@@ -303,6 +303,25 @@ describe('RendererPipeline', () => {
     });
   });
 
+  describe('global context', () => {
+    it('injects the main-process context when the renderer has none', () => {
+      hooks.registerRum(() => ({ context: { team: 'checkout' } }));
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
+
+      expect(serverEvents[0].data.context).toEqual({ team: 'checkout' });
+    });
+
+    it('lets the renderer win per key rather than replacing the whole object', () => {
+      hooks.registerRum(() => ({ context: { team: 'checkout', build: '1.2.3' } }));
+      const event = { ...RENDERER_RUM_DATA, context: { team: 'payments' } };
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event }));
+
+      expect(serverEvents[0].data.context).toEqual({ team: 'payments', build: '1.2.3' });
+    });
+  });
+
   describe('user activity tracking', () => {
     it('emits END_USER_ACTIVITY for click actions', () => {
       const lifecycleEvents: unknown[] = [];
