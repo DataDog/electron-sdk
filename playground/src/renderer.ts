@@ -51,6 +51,10 @@ interface ElectronAPI {
   mainFetchApiNet: () => Promise<unknown>;
   openRumExplorer: () => Promise<void>;
   flushTransport: () => Promise<void>;
+  setGlobalContext: () => Promise<void>;
+  setGlobalContextProperty: () => Promise<void>;
+  removeGlobalContextProperty: () => Promise<void>;
+  clearGlobalContext: () => Promise<void>;
   setUserInfo: () => Promise<void>;
   addUserExtraInfo: () => Promise<void>;
   clearUserInfo: () => Promise<void>;
@@ -247,8 +251,16 @@ if (longTaskBtn) {
     runLongTask();
   });
 }
-// --- User & Account Context buttons ---
-
+// --- Global context buttons ---
+setupDemoButton('set-global-context', 'main:set-global-context', () => window.electronAPI.setGlobalContext());
+setupDemoButton('set-global-context-property', 'main:set-global-context-property', () =>
+  window.electronAPI.setGlobalContextProperty()
+);
+setupDemoButton('remove-global-context-property', 'main:remove-global-context-property', () =>
+  window.electronAPI.removeGlobalContextProperty()
+);
+setupDemoButton('clear-global-context', 'main:clear-global-context', () => window.electronAPI.clearGlobalContext());
+// --- User & Account context buttons ---
 setupDemoButton('set-user-info', 'main:set-user-info', () => window.electronAPI.setUserInfo());
 setupDemoButton('add-user-extra-info', 'main:add-user-extra-info', () => window.electronAPI.addUserExtraInfo());
 setupDemoButton('clear-user-info', 'main:clear-user-info', () => window.electronAPI.clearUserInfo());

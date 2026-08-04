@@ -17,6 +17,10 @@ import {
   startOperation,
   succeedOperation,
   failOperation,
+  setGlobalContext,
+  setGlobalContextProperty,
+  removeGlobalContextProperty,
+  clearGlobalContext,
   setUserInfo,
   clearUserInfo,
   addUserExtraInfo,
@@ -162,6 +166,24 @@ ipcMain.handle('main:start-duration-vital', (_event, name: string, options?: Dur
 
 ipcMain.handle('main:stop-duration-vital', (_event, name: string, options?: DurationVitalOptions) => {
   stopDurationVital(name, options);
+});
+
+// --- Global context handlers ---
+
+ipcMain.handle('main:set-global-context', () => {
+  setGlobalContext({ team: 'checkout', build: '1.2.3' });
+});
+
+ipcMain.handle('main:set-global-context-property', () => {
+  setGlobalContextProperty('feature_flag', 'new-cart');
+});
+
+ipcMain.handle('main:remove-global-context-property', () => {
+  removeGlobalContextProperty('feature_flag');
+});
+
+ipcMain.handle('main:clear-global-context', () => {
+  clearGlobalContext();
 });
 
 // --- User & Account context handlers ---
