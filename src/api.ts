@@ -1,5 +1,6 @@
 import { sanitize } from '@datadog/browser-core';
 import { isIndexableObject } from '@datadog/js-core/util';
+import type { Context, GlobalContext } from './domain/customer-context';
 import type { AddDurationVitalOptions, DurationVitalOptions, RumCollection } from './domain/rum';
 import { callMonitored } from './domain/telemetry';
 import { display } from './tools/display';
@@ -11,10 +12,109 @@ type DurationVitalApi = Pick<
   'addDurationVital' | 'startDurationVital' | 'stopDurationVital'
 >;
 
+type GlobalContextMethod =
+  'setGlobalContext' | 'setGlobalContextProperty' | 'removeGlobalContextProperty' | 'clearGlobalContext';
+type GlobalContextApi = Pick<
+  GlobalContext,
+  'getContext' | 'setContext' | 'setProperty' | 'removeProperty' | 'clearContext'
+>;
+
 let durationVitalApi: DurationVitalApi | undefined;
+let globalContextApi: GlobalContextApi | undefined;
 
 export function setDurationVitalApi(api: DurationVitalApi | undefined): void {
   durationVitalApi = api;
+}
+
+export function setGlobalContextApi(api: GlobalContextApi | undefined): void {
+  globalContextApi = api;
+}
+
+/**
+ * Replace the global context attached to all subsequent RUM events.
+ * Renderer processes keep their own global context, set through the Browser SDK; on a conflicting
+ * key the renderer's value wins.
+ *
+ * @example
+ * ```ts
+ * setGlobalContext({ team: 'checkout', build: '1.2.3' });
+ * ```
+ */
+export function setGlobalContext(context: Record<string, unknown>): void {
+  callMonitored(() => {
+    if (!isIndexableObject(context)) {
+      display.error('setGlobalContext: context must be an object. The context will not be updated.');
+      return;
+    }
+    globalContextApi?.setContext(sanitize(context) as Context);
+  });
+}
+
+/**
+ * Return a copy of the current global context, or `{}` when none is set.
+ *
+ * @example
+ * ```ts
+ * const context = getGlobalContext(); // { team: 'checkout' }
+ * ```
+ */
+export function getGlobalContext(): Record<string, unknown> {
+  return globalContextApi?.getContext() ?? {};
+}
+
+/**
+ * Set a single global context property, leaving the others untouched.
+ * Passing `null` or `undefined` removes the property, matching `addUserExtraInfo`.
+ *
+ * @example
+ * ```ts
+ * setGlobalContextProperty('build', '1.2.3');
+ * ```
+ */
+export function setGlobalContextProperty(key: string, value: unknown): void {
+  callMonitored(() => {
+    if (!validateContextKey('setGlobalContextProperty', key)) {
+      return;
+    }
+    globalContextApi?.setProperty(key, sanitize(value));
+  });
+}
+
+/**
+ * Remove a single global context property.
+ *
+ * @example
+ * ```ts
+ * removeGlobalContextProperty('build');
+ * ```
+ */
+export function removeGlobalContextProperty(key: string): void {
+  callMonitored(() => {
+    if (!validateContextKey('removeGlobalContextProperty', key)) {
+      return;
+    }
+    globalContextApi?.removeProperty(key);
+  });
+}
+
+/**
+ * Clear the global context from all subsequent events.
+ *
+ * @example
+ * ```ts
+ * clearGlobalContext();
+ * ```
+ */
+export function clearGlobalContext(): void {
+  callMonitored(() => globalContextApi?.clearContext());
+}
+
+function validateContextKey(method: GlobalContextMethod, key: unknown): key is string {
+  if (!isValidString(key)) {
+    display.error(`${method}: key cannot be empty or blank. The context will not be updated.`);
+    return false;
+  }
+  return true;
 }
 
 /**
