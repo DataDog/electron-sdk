@@ -11,12 +11,7 @@ import { command } from './lib/command.ts';
 import { printLog, runMain } from './lib/executionUtils.ts';
 
 const appsDir = path.join(import.meta.dirname, '../e2e/integration/apps');
-// Per-app stale output directories cleaned before each package run.
-// Add an entry here when an app's packager writes to a non-standard directory
-// that is not cleaned by the build tool itself (e.g. electron-builder's `out/`).
-const packageOutputDirectories: Partial<Record<string, string[]>> = {
-  'electron-builder-vite': ['dist', 'out'],
-};
+const packageOutputDirectories = ['dist', 'out', '.vite', '.webpack'];
 
 runMain(() => {
   const apps = fs
@@ -40,7 +35,7 @@ runMain(() => {
       command`yarn install --no-immutable`.withCurrentWorkingDirectory(appDir).withLogs().run();
 
       printLog(`\n=== Packaging ${app} ===`);
-      for (const outputDirectory of packageOutputDirectories[app] ?? []) {
+      for (const outputDirectory of packageOutputDirectories) {
         fs.rmSync(path.join(appDir, outputDirectory), { recursive: true, force: true });
       }
       command`yarn package`.withCurrentWorkingDirectory(appDir).withLogs().run();

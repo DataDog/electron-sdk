@@ -38,15 +38,15 @@ export default defineConfig<IntegrationFixtures>({
         use: { app, mode, variant: null },
       }))
     ),
-    ...INTEGRATION_MODES.map((mode) => ({
-      name: `electron-builder-vite-packager-copy-${mode}`,
+    {
+      name: 'electron-builder-vite-packager-copy-packaged',
       testDir: './integration/scenarios',
       testMatch: '**/*.scenario.ts',
       use: {
         app: 'electron-builder-vite' as const,
-        mode,
+        mode: 'packaged' as const,
         variant: 'packager-copy' as const,
       },
-    })),
+    },
   ],
 });

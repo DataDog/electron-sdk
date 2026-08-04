@@ -55,7 +55,7 @@ try { __ddCR(import.meta.url)("@datadog/electron-sdk/instrument"); } catch {}
  * @example
  * plugins: [datadogVitePlugin({ copyRuntimeDependencies: false })]
  */
-export function datadogVitePlugin(options: DatadogBundlerPluginOptions = {}): VitePlugin {
+export function datadogVitePlugin(pluginOptions: DatadogBundlerPluginOptions = {}): VitePlugin {
   // Support both CJS (__filename) and ESM (import.meta.url) contexts at build time
   const currentFile = typeof __filename !== 'undefined' ? __filename : fileURLToPath(import.meta.url);
   const _require = createRequire(currentFile);
@@ -78,7 +78,7 @@ export function datadogVitePlugin(options: DatadogBundlerPluginOptions = {}): Vi
     },
   };
 
-  if (options.copyRuntimeDependencies === false) return plugin;
+  if (pluginOptions.copyRuntimeDependencies === false) return plugin;
 
   plugin.writeBundle = (outputOptions) => {
     // Copy externalized packages and their transitive dependencies into

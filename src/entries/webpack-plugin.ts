@@ -119,7 +119,7 @@ function copyPackageTree(pkg: string, destModules: string, visited: Set<string>)
  * plugins: [new DatadogWebpackPlugin({ copyRuntimeDependencies: false })]
  */
 export class DatadogWebpackPlugin {
-  constructor(private readonly options: DatadogBundlerPluginOptions = {}) {}
+  constructor(private readonly pluginOptions: DatadogBundlerPluginOptions = {}) {}
 
   apply(compiler: Compiler): void {
     // Externalize dd-trace and @datadog/electron-sdk so webpack doesn't bundle them
@@ -152,7 +152,7 @@ export class DatadogWebpackPlugin {
       }
     }
 
-    if (this.options.copyRuntimeDependencies === false) return;
+    if (this.pluginOptions.copyRuntimeDependencies === false) return;
 
     // Copy externalized packages and their transitive dependencies into the output
     compiler.hooks.afterEmit.tap('DatadogWebpackPlugin', (compilation) => {

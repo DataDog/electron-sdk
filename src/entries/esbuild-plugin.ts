@@ -57,7 +57,7 @@ try { __ddCR(import.meta.url)("@datadog/electron-sdk/instrument"); } catch {}
  * @example
  * plugins: [datadogEsbuildPlugin({ copyRuntimeDependencies: false })]
  */
-export function datadogEsbuildPlugin(options: DatadogBundlerPluginOptions = {}): EsbuildPlugin {
+export function datadogEsbuildPlugin(pluginOptions: DatadogBundlerPluginOptions = {}): EsbuildPlugin {
   return {
     name: 'datadog-electron-sdk',
     setup(build) {
@@ -80,7 +80,7 @@ export function datadogEsbuildPlugin(options: DatadogBundlerPluginOptions = {}):
       }
       build.initialOptions.external = external;
 
-      if (options.copyRuntimeDependencies === false) return;
+      if (pluginOptions.copyRuntimeDependencies === false) return;
 
       const currentFile = typeof __filename !== 'undefined' ? __filename : fileURLToPath(import.meta.url);
       const _require = createRequire(currentFile);
