@@ -59,12 +59,16 @@ export class RendererIpcGate {
     //
     // Stale-key note: a silently-removed subframe (no navigation) leaves its key until the
     // WebContents is destroyed. Exploiting this would require a new disallowed frame in the
-    // same routing slot to send an IPC that arrives with senderFrame === null — which in turn
+    // same routing slot to send an IPC that arrives with senderFrame === null, which in turn
     // requires its destruction notification to precede its IPC on Chromium's ordered Mojo pipe.
-    // That ordering inversion is not possible; senderFrame is non-null for any IPC from a
-    // live frame and is re-validated in the senderFrame != null branch above.
-    // The sender ownership check below provides defense-in-depth against cross-WebContents
-    // slot collisions using stale keys from silently-removed frames.
+    // Electron made this IPC channel frame-associated specifically to prevent this class of
+    // race (electron/electron#32734, "Make ElectronBrowser mojo interface frame associated"),
+    // but there is no documented guarantee for the cross-slot case (old frame's teardown vs. a
+    // new frame reusing its routing ID): those travel through two distinct per-frame Mojo
+    // receivers, so ordering rests on UI-thread task serialization rather than a stated rule.
+    // The sender ownership check below is defense-in-depth against cross-WebContents slot
+    // collisions, though it does not cover the same-WebContents subframe-reuse variant, which
+    // still relies on the architectural argument above.
     if (!this.allowedFrames.has(frameKey)) return false;
     // Verify the message came from the WebContents that registered this key. A stale key from a
     // silently-removed frame could otherwise be claimed by any null-senderFrame IPC on that slot.
