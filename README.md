@@ -74,10 +74,11 @@ await init({
   applicationId: '<APPLICATION_ID>',
   service: 'my-electron-app',
   site: 'datadoghq.com',
+  allowedRendererHosts: ['*'], // required: restrict to specific hostnames in production
 });
 ```
 
-> **Deferred init caveat:** if `init()` is called after some windows are already open (e.g. behind a user-consent gate), those windows keep the fallback configuration (`defaultPrivacyLevel: 'mask'`, no extra `allowedWebViewHosts`, and the default advertised capabilities) until they are reloaded, because the renderer reads bridge config once at load time. Your `init()` configuration still governs what is actually sent to Datadog, so this only affects renderer-side behavior. Navigation is never blocked.
+> **Deferred init caveat:** if `init()` is called after some windows are already open (e.g. behind a user-consent gate), those windows keep the fallback bridge configuration (`defaultPrivacyLevel: 'mask'` and the default advertised capabilities) until they are reloaded. SDK telemetry is only processed and collected once `init()` runs — at that point the configured `allowedRendererHosts` is enforced on all messages uniformly, regardless of when each window loaded.
 
 #### Renderer process setup
 
@@ -223,6 +224,7 @@ await init({
   applicationId: '<APPLICATION_ID>',
   site: 'datadoghq.com',
   service: 'my-electron-app',
+  allowedRendererHosts: ['*'],
   profilingSampleRate: 100, // percentage of sampled sessions that are profiled (0–100)
 });
 ```
@@ -258,6 +260,7 @@ await init({
   applicationId: '<APPLICATION_ID>',
   site: 'datadoghq.com',
   service: 'my-electron-app',
+  allowedRendererHosts: ['*'],
   sessionReplaySampleRate: 100, // percentage of sampled sessions that record replay (0–100)
   defaultPrivacyLevel: 'mask', // 'mask' | 'allow' | 'mask-user-input'
 });
@@ -425,4 +428,19 @@ interface FeatureOperationOptions {
 | `batchSize`               | `'SMALL' \| 'MEDIUM' \| 'LARGE'`         | No       | —        | Batch size for event uploads                                                                                                                                                         |
 | `uploadFrequency`         | `'RARE' \| 'NORMAL' \| 'FREQUENT'`       | No       | —        | Upload frequency for event batches                                                                                                                                                   |
 | `defaultPrivacyLevel`     | `'mask' \| 'allow' \| 'mask-user-input'` | No       | `'mask'` | Default privacy level for renderer session replay                                                                                                                                    |
-| `allowedWebViewHosts`     | `string[]`                               | No       | `[]`     | Hostnames allowed for the renderer bridge                                                                                                                                            |
+| `allowedRendererHosts`    | `string[]`                               | Yes      | —        | Hostnames allowed for the renderer bridge (required; see table below)                                                                                                                |
+
+#### `allowedRendererHosts` Values
+
+Required list of renderer origins that may use the DatadogEventBridge. Controls which renderer processes can instrument themselves and send events to the main process.
+
+| Value               | Allows                                                                          |
+| ------------------- | ------------------------------------------------------------------------------- |
+| `['example.com']`   | Renderers on `example.com` and any subdomain                                    |
+| `['*.example.com']` | Only subdomains of `example.com`                                                |
+| `['myapp']`         | Custom-protocol renderers with hostname `myapp` (e.g. `app://myapp/index.html`) |
+| `['file://']`       | All `file://` renderers (path-level filtering is not possible for `file://`)    |
+| `['*']`             | All renderers including `file://`                                               |
+| `[]`                | No renderer can bridge                                                          |
+
+> **Custom protocols:** For custom protocols like `app://` or `your-scheme://`, use the hostname component (the part between `://` and the first `/`). For example, `app://myapp/index.html` matches the host `myapp`.

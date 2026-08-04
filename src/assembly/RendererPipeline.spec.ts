@@ -19,7 +19,7 @@ import {
   type ServerRumEvent,
 } from '../event';
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
-import { createTestConfiguration } from '../mocks.specUtil';
+import { createMockSender, createTestConfiguration, type MockSender } from '../mocks.specUtil';
 
 const { mockIpcMainOn, mockAddError, mockSetBridgeConfig } = vi.hoisted(() => {
   const mockIpcMainOn = vi.fn();
@@ -76,10 +76,18 @@ const RENDERER_CLICK_DATA = {
   ddtags: 'sdk_version:1.0.0',
 };
 
+interface IpcMessageExtra {
+  /** Pass `null` to simulate a destroyed/navigated frame (senderFrame === null). */
+  senderFrame?: null;
+  processId?: number;
+  frameId?: number;
+  sender?: MockSender;
+}
+
 describe('RendererPipeline', () => {
   let eventManager: EventManager;
   let hooks: FormatHooks;
-  let simulateIpcMessage: (msg: string) => void;
+  let simulateIpcMessage: (msg: string, origin?: string, url?: string, extra?: IpcMessageExtra) => void;
   let serverEvents: ServerRumEvent[];
 
   beforeEach(() => {
@@ -88,11 +96,42 @@ describe('RendererPipeline', () => {
     hooks = createFormatHooks();
     serverEvents = [];
 
-    mockIpcMainOn.mockImplementation((channel: string, callback: (_event: unknown, msg: string) => void) => {
-      if (channel === BRIDGE_CHANNEL) {
-        simulateIpcMessage = (msg: string) => callback({}, msg);
+    mockIpcMainOn.mockImplementation(
+      (
+        channel: string,
+        callback: (
+          event: {
+            senderFrame: { origin: string; url?: string } | null;
+            processId: number;
+            frameId: number;
+            sender: {
+              once: (event: string, cb: () => void) => void;
+              on: (event: string, cb: (...args: unknown[]) => void) => void;
+              off: (event: string, cb: (...args: unknown[]) => void) => void;
+            };
+          },
+          msg: string
+        ) => void
+      ) => {
+        if (channel === BRIDGE_CHANNEL) {
+          simulateIpcMessage = (
+            msg: string,
+            origin = 'https://any.example.com',
+            url?: string,
+            extra?: IpcMessageExtra
+          ) =>
+            callback(
+              {
+                senderFrame: extra?.senderFrame === null ? null : { origin, url },
+                processId: extra?.processId ?? 1,
+                frameId: extra?.frameId ?? 1,
+                sender: extra?.sender ?? createMockSender(),
+              },
+              msg
+            );
+        }
       }
-    });
+    );
 
     eventManager.registerHandler<ServerRumEvent>({
       canHandle: (event): event is ServerRumEvent => event.kind === EventKind.SERVER && event.track === EventTrack.RUM,
@@ -114,7 +153,7 @@ describe('RendererPipeline', () => {
   it('publishes bridgeOptions derived from config via setBridgeConfig', () => {
     const config = createTestConfiguration({
       defaultPrivacyLevel: 'allow',
-      allowedWebViewHosts: ['example.com'],
+      allowedRendererHosts: ['example.com'],
       profilingSampleRate: 0,
       sessionReplaySampleRate: 0,
     });
@@ -122,7 +161,7 @@ describe('RendererPipeline', () => {
     new RendererPipeline(eventManager, hooks, config);
     expect(mockSetBridgeConfig).toHaveBeenCalledWith({
       defaultPrivacyLevel: 'allow',
-      allowedWebViewHosts: ['example.com'],
+      allowedRendererHosts: ['example.com'],
       capabilities: [],
     });
   });
@@ -479,6 +518,26 @@ describe('RendererPipeline', () => {
       simulateIpcMessage(JSON.stringify({ eventType: 'unknown', event: {} }));
       expect(mockAddError).toHaveBeenCalledOnce();
       expect((mockAddError.mock.calls[0][0] as Error).message).toContain('Unhandled bridge event type');
+    });
+  });
+
+  describe('origin enforcement (integration)', () => {
+    it('processes messages from an allowed origin', () => {
+      const config = createTestConfiguration({ allowedRendererHosts: ['example.com'], profilingSampleRate: 0 });
+      new RendererPipeline(eventManager, hooks, config);
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }), 'https://example.com');
+
+      expect(serverEvents).toHaveLength(1);
+    });
+
+    it('drops messages from a disallowed origin', () => {
+      const config = createTestConfiguration({ allowedRendererHosts: ['example.com'], profilingSampleRate: 0 });
+      new RendererPipeline(eventManager, hooks, config);
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }), 'https://other.com');
+
+      expect(serverEvents).toHaveLength(0);
     });
   });
 });

@@ -42,7 +42,7 @@ function makeConfig(overrides?: Partial<Configuration>): Configuration {
     profilingSampleRate: 0,
     telemetrySampleRate: 0,
     defaultPrivacyLevel: 'mask',
-    allowedWebViewHosts: [],
+    allowedRendererHosts: [],
     ...overrides,
   };
 }

@@ -43,7 +43,12 @@ export interface InitConfiguration {
   batchSize?: BatchSize;
   uploadFrequency?: UploadFrequency;
   defaultPrivacyLevel?: DefaultPrivacyLevel;
-  allowedWebViewHosts?: string[];
+  /**
+   * Hostnames allowed to send bridge events to the main process. Supports exact hostnames,
+   * subdomain suffixes, single-wildcard globs, `'file://'` for local files, and `'*'` for all.
+   * @example ['app.example.com', '*.staging.example.com', 'file://', '*']
+   */
+  allowedRendererHosts: string[];
 }
 
 export interface Configuration {
@@ -61,7 +66,7 @@ export interface Configuration {
   batchSize?: BatchSize;
   uploadFrequency?: UploadFrequency;
   defaultPrivacyLevel: DefaultPrivacyLevel;
-  allowedWebViewHosts: string[];
+  allowedRendererHosts: string[];
 }
 
 function validateRequiredString(value: unknown, fieldName: string): string | undefined {
@@ -153,15 +158,67 @@ function validateDefaultPrivacyLevel(value: unknown): DefaultPrivacyLevel {
   return value as DefaultPrivacyLevel;
 }
 
-function validateAllowedWebViewHosts(value: unknown): string[] {
-  if (value === undefined || value === null) {
-    return [];
+function validateAllowedRendererHosts(value: unknown): string[] | undefined {
+  if (
+    value === undefined ||
+    value === null ||
+    !Array.isArray(value) ||
+    !value.every((item) => typeof item === 'string')
+  ) {
+    display.error(
+      "Configuration error: 'allowedRendererHosts' must be an array of hostnames (e.g. ['example.com', 'myapp']), ['file://'] for file:// renderers, or ['*'] to allow all renderers including file://"
+    );
+    return undefined;
   }
-  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
-    display.error("Configuration error: 'allowedWebViewHosts' must be an array of strings");
-    return [];
-  }
-  return value;
+  return value.flatMap((host) => {
+    if (host === '*') return ['*', ''];
+    if (host === 'file://') return [''];
+    if (host === '') {
+      display.error(
+        `Configuration error: 'allowedRendererHosts' entry '${host}' is invalid and will be ignored (empty string)`
+      );
+      return [];
+    }
+    // Reject entries that contain URL-syntax characters that would cause the URL constructor
+    // to silently extract a different host (e.g. 'foo@evil.com' → 'evil.com', 'host:8443' → 'host').
+    // Also reject trailing dots: 'com.' has a dot, bypassing the single-label guard, and Node.js
+    // does not normalize trailing dots in URL.hostname, so 'attacker.com.' would match '.com.'.
+    if (/[@/:?#\s]/.test(host) || host.endsWith('.')) {
+      display.error(
+        `Configuration error: 'allowedRendererHosts' entry '${host}' is not a valid hostname and will be ignored`
+      );
+      return [];
+    }
+    // Only ASCII hostnames are supported. For internationalized domain names, provide the
+    // ASCII-compatible encoding (punycode) directly (e.g. 'bücher.example' → 'xn--bcher-kva.example').
+    if (/[-￿]/.test(host)) {
+      display.error(
+        `Configuration error: 'allowedRendererHosts' entry '${host}' is not a valid hostname and will be ignored (non-ASCII hostnames are not supported; use the ASCII-compatible encoding)`
+      );
+      return [];
+    }
+    const wildcardCount = (host.match(/\*/g) ?? []).length;
+    if (wildcardCount > 1) {
+      display.error(
+        `Configuration error: 'allowedRendererHosts' entry '${host}' is invalid and will be ignored (multiple wildcards)`
+      );
+      return [];
+    }
+    if (wildcardCount === 1) {
+      const suffix = host.slice(host.indexOf('*') + 1);
+      // Best-effort check: the wildcard must be immediately followed by '.' and the suffix must
+      // contain at least two domain labels (e.g. '.example.com') to reject obvious broad patterns
+      // like '*.com'. Country-code second-level domains such as '*.co.uk' pass this check by
+      // design — full public-suffix-list validation would require an additional dependency.
+      if (!suffix.startsWith('.') || suffix.split('.').length < 3) {
+        display.error(
+          `Configuration error: 'allowedRendererHosts' entry '${host}' is invalid and will be ignored (wildcard must match subdomains of a full domain, e.g. '*.example.com')`
+        );
+        return [];
+      }
+    }
+    return [host];
+  });
 }
 
 export function buildConfiguration(initConfig: InitConfiguration): Configuration | undefined {
@@ -189,6 +246,11 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     return undefined;
   }
 
+  const allowedRendererHosts = validateAllowedRendererHosts(initConfig.allowedRendererHosts);
+  if (allowedRendererHosts === undefined) {
+    return undefined;
+  }
+
   return {
     site,
     service,
@@ -202,6 +264,6 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     profilingSampleRate,
     telemetrySampleRate,
     defaultPrivacyLevel: validateDefaultPrivacyLevel(initConfig.defaultPrivacyLevel),
-    allowedWebViewHosts: validateAllowedWebViewHosts(initConfig.allowedWebViewHosts),
+    allowedRendererHosts,
   };
 }
