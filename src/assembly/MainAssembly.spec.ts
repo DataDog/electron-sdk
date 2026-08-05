@@ -23,7 +23,7 @@ const RAW_EXECUTION_CONTEXT_DATA: RawRumExecutionContext = {
   execution_context: {
     id: 'proc-1',
     type: 'main-process',
-    pid: 1234,
+    instance_id: '1234',
   },
   _dd: { document_version: 1 },
 };

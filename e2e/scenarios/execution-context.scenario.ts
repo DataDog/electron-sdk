@@ -5,7 +5,7 @@ interface ExecutionContextEvent {
   execution_context: {
     id: string;
     type: 'main-process' | 'renderer-process';
-    pid: number;
+    instance_id: string;
     name?: string;
     duration?: number;
     exit_reason?: string;
@@ -23,7 +23,7 @@ test('emits a main execution context start event on SDK init', async ({ mainPage
 
   const body = mainEvent!.body as ExecutionContextEvent;
   expect(body.execution_context.type).toBe('main-process');
-  expect(body.execution_context.pid).toBeGreaterThan(0);
+  expect(body.execution_context.instance_id).toMatch(/^\d+$/);
   expect(body._dd.document_version).toBe(1);
   expect(body.execution_context.duration).toBeUndefined();
   expect(body.execution_context.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);

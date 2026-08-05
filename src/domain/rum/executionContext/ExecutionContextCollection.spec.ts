@@ -49,7 +49,7 @@ describe('ExecutionContextCollection', () => {
       const data = rawRumEvents[0].data as RawRumExecutionContext;
       expect(data.type).toBe('execution_context');
       expect(data.execution_context.type).toBe('main-process');
-      expect(data.execution_context.pid).toBe(process.pid);
+      expect(data.execution_context.instance_id).toBe(String(process.pid));
       expect(data._dd.document_version).toBe(1);
       expect(data.execution_context.duration).toBeUndefined();
     });
@@ -95,7 +95,7 @@ describe('ExecutionContextCollection', () => {
       expect(rawRumEvents).toHaveLength(2); // main start + renderer start
       const rendererStart = rawRumEvents[1].data as RawRumExecutionContext;
       expect(rendererStart.execution_context.type).toBe('renderer-process');
-      expect(rendererStart.execution_context.pid).toBe(1001);
+      expect(rendererStart.execution_context.instance_id).toBe('1001');
       expect(rendererStart._dd.document_version).toBe(1);
     });
 

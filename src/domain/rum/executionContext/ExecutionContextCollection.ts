@@ -13,7 +13,7 @@ interface ExecutionContextState {
   id: string;
   startTime: TimeStamp;
   documentVersion: number;
-  pid: number;
+  instanceId: string;
   name?: string;
   timerId: ReturnType<typeof setInterval>;
 }
@@ -38,24 +38,25 @@ export class ExecutionContextCollection {
   private initMain(): void {
     const mainId = this.executionContextAttributes.getMainExecutionContext().id;
     const startTime = timeStampNow();
+    const instanceId = String(process.pid);
     const timerId = setInterval(() => {
       this.mainState.documentVersion++;
       this.emitExecutionContextEvent({
         id: mainId,
         type: 'main-process',
-        pid: process.pid,
+        instanceId,
         name: undefined,
         startTime: this.mainState.startTime,
         documentVersion: this.mainState.documentVersion,
       });
     }, PROCESS_UPDATE_INTERVAL);
 
-    this.mainState = { id: mainId, startTime, documentVersion: 1, pid: process.pid, name: undefined, timerId };
+    this.mainState = { id: mainId, startTime, documentVersion: 1, instanceId, name: undefined, timerId };
 
     this.emitExecutionContextEvent({
       id: mainId,
       type: 'main-process',
-      pid: process.pid,
+      instanceId,
       name: undefined,
       startTime,
       documentVersion: 1,
@@ -70,7 +71,7 @@ export class ExecutionContextCollection {
           this.emitExecutionContextEvent({
             id: this.mainState.id,
             type: 'main-process',
-            pid: this.mainState.pid,
+            instanceId: this.mainState.instanceId,
             name: undefined,
             startTime: this.mainState.startTime,
             documentVersion: this.mainState.documentVersion,
@@ -83,7 +84,7 @@ export class ExecutionContextCollection {
   private initRendererTracking(): void {
     app.on('web-contents-created', (_event, webContents) => {
       const webContentsId = webContents.id;
-      const pid = webContents.getProcessId();
+      const instanceId = String(webContents.getProcessId());
       const id = generateUUID();
       const startTime = timeStampNow();
 
@@ -96,20 +97,20 @@ export class ExecutionContextCollection {
         this.emitExecutionContextEvent({
           id,
           type: 'renderer-process',
-          pid,
+          instanceId,
           name: undefined,
           startTime: state.startTime,
           documentVersion: state.documentVersion,
         });
       }, PROCESS_UPDATE_INTERVAL);
 
-      const state: ExecutionContextState = { id, startTime, documentVersion: 1, pid, name: undefined, timerId };
+      const state: ExecutionContextState = { id, startTime, documentVersion: 1, instanceId, name: undefined, timerId };
       this.rendererStates.set(webContentsId, state);
 
       this.emitExecutionContextEvent({
         id,
         type: 'renderer-process',
-        pid,
+        instanceId,
         name: undefined,
         startTime,
         documentVersion: 1,
@@ -123,7 +124,7 @@ export class ExecutionContextCollection {
         this.emitExecutionContextEvent({
           id,
           type: 'renderer-process',
-          pid,
+          instanceId,
           name: undefined,
           startTime: s.startTime,
           documentVersion: s.documentVersion,
@@ -141,7 +142,7 @@ export class ExecutionContextCollection {
   private emitExecutionContextEvent(params: {
     id: string;
     type: 'main-process' | 'renderer-process';
-    pid: number;
+    instanceId: string;
     name?: string;
     startTime: TimeStamp;
     documentVersion: number;
@@ -154,7 +155,7 @@ export class ExecutionContextCollection {
       execution_context: {
         id: params.id,
         type: params.type,
-        pid: params.pid,
+        instance_id: params.instanceId,
         name: params.name,
         ...(!isStart && { duration: toServerDuration(elapsed(params.startTime, timeStampNow())) }),
         ...(params.exitReason !== undefined && { exit_reason: params.exitReason }),

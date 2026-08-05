@@ -122,7 +122,7 @@ export interface RawRumExecutionContext {
   execution_context: {
     id: string;
     type: 'main-process' | 'renderer-process';
-    pid: number;
+    instance_id: string;
     name?: string;
     duration?: ServerDuration;
     exit_reason?: string;
