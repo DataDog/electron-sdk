@@ -204,7 +204,7 @@ __metadata:
     "@vitest/coverage-v8": "npm:4.1.10"
     "@vitest/ui": "npm:4.1.10"
     concurrently: "npm:10.0.3"
-    dd-trace: "npm:5.115.0"
+    dd-trace: "npm:6.8.0"
     electron: "npm:41.1.0"
     eslint: "npm:10.7.0"
     eslint-config-prettier: "npm:10.1.8"
@@ -227,12 +227,12 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@datadog/flagging-core@npm:1.2.1":
-  version: 1.2.1
-  resolution: "@datadog/flagging-core@npm:1.2.1"
+"@datadog/flagging-core@npm:2.0.2":
+  version: 2.0.2
+  resolution: "@datadog/flagging-core@npm:2.0.2"
   dependencies:
     spark-md5: "npm:^3.0.2"
-  checksum: 10c0/105dd13dcb8b241e5ed1a76c4d9b3a43bf4f6867af5893e3ae92bb98344907adca3a2b7c3d04511762012459b0803fb9e82feded5cf8eebfac7122de6a27eeff
+  checksum: 10c0/77539a5d0c501a5d8fa6a0017a0c58e84702825278358a740c7ff3043f88542fdb7e03a9ed64142e6443e2f8708985756d29c6fa06d31d003a69955534ae4719
   languageName: node
   linkType: hard
 
@@ -281,26 +281,26 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@datadog/openfeature-node-server@npm:2.0.0":
-  version: 2.0.0
-  resolution: "@datadog/openfeature-node-server@npm:2.0.0"
+"@datadog/openfeature-node-server@npm:2.0.2":
+  version: 2.0.2
+  resolution: "@datadog/openfeature-node-server@npm:2.0.2"
   dependencies:
-    "@datadog/flagging-core": "npm:1.2.1"
+    "@datadog/flagging-core": "npm:2.0.2"
   peerDependencies:
     "@openfeature/server-sdk": ">=1.15.1"
-  checksum: 10c0/5126bcf3e8907f5dc5d0839c88f4a9998984ce296f0766d39ee0cbee6fc01de2814c857d76de776df6600a3d58175d522566019675437340615011995e80a050
+  checksum: 10c0/2c7de3799f82410cb2ce620490c7ab0f1044ed93ef5050756accb8b7a5fbb91f3ea59c628563cf92d02ed530c0f50837ac4decb414dd1c9f51fc7bb8d6bde437
   languageName: node
   linkType: hard
 
-"@datadog/pprof@npm:5.15.1":
-  version: 5.15.1
-  resolution: "@datadog/pprof@npm:5.15.1"
+"@datadog/pprof@npm:5.17.0":
+  version: 5.17.0
+  resolution: "@datadog/pprof@npm:5.17.0"
   dependencies:
     node-gyp: "npm:latest"
     node-gyp-build: "npm:^4.8.4"
     pprof-format: "npm:^2.2.1"
-    source-map: "npm:^0.7.4"
-  checksum: 10c0/20d4a8f7873e0ff501bfa0bc712556216d6f5fb2dbb1286846ff17545b985391cb59318b0dfd85801d208a3314ef075dd84c2a6441b6fd8e9e1b6b65f0285ef2
+    source-map: "npm:^0.8.0"
+  checksum: 10c0/e3e405dbf387c748ed3c5f976d7a3c487233d6c9866f4125b9a008e32d174c7657c7c81925a1a1239684b4eb3bebcd2694d53bbe99b04514c93de61856e0aa02
   languageName: node
   linkType: hard
 
@@ -1289,21 +1289,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:24.13.3":
+"@types/node@npm:24.13.3, @types/node@npm:^24.9.0":
   version: 24.13.3
   resolution: "@types/node@npm:24.13.3"
   dependencies:
     undici-types: "npm:~7.18.0"
   checksum: 10c0/a5bc08f49b9581dcdca90e02cd77197a3c799840807664942e5cd5161a553d4d2ae8064f7e3294410d748d7d098b5c1848be7fa50c06f29c4193ab16be4e59eb
-  languageName: node
-  linkType: hard
-
-"@types/node@npm:^24.9.0":
-  version: 24.13.2
-  resolution: "@types/node@npm:24.13.2"
-  dependencies:
-    undici-types: "npm:~7.18.0"
-  checksum: 10c0/d7d48a88a4feb0a6aac3cbfaf9ef3b12752b4b09447f88dd0b4c77c03b281e3d4330fe6982a99aedcd63fc16c7540a0c248b91eb2abb0b3edd884d7fe684e9ea
   languageName: node
   linkType: hard
 
@@ -1949,21 +1940,21 @@ __metadata:
   languageName: node
   linkType: hard
 
-"dd-trace@npm:5.115.0":
-  version: 5.115.0
-  resolution: "dd-trace@npm:5.115.0"
+"dd-trace@npm:6.8.0":
+  version: 6.8.0
+  resolution: "dd-trace@npm:6.8.0"
   dependencies:
     "@datadog/libdatadog": "npm:0.9.4"
     "@datadog/native-appsec": "npm:11.0.1"
     "@datadog/native-iast-taint-tracking": "npm:4.2.0"
     "@datadog/native-metrics": "npm:3.1.2"
-    "@datadog/openfeature-node-server": "npm:2.0.0"
-    "@datadog/pprof": "npm:5.15.1"
+    "@datadog/openfeature-node-server": "npm:2.0.2"
+    "@datadog/pprof": "npm:5.17.0"
     "@datadog/wasm-js-rewriter": "npm:5.0.1"
     "@opentelemetry/api": "npm:>=1.0.0 <1.10.0"
     "@opentelemetry/api-logs": "npm:<1.0.0"
     dc-polyfill: "npm:^0.1.11"
-    import-in-the-middle: "npm:^3.3.1"
+    import-in-the-middle: "npm:^3.3.2"
     opentracing: "npm:>=0.14.7"
     oxc-parser: "npm:^0.132.0"
   dependenciesMeta:
@@ -1987,7 +1978,7 @@ __metadata:
       optional: true
     oxc-parser:
       optional: true
-  checksum: 10c0/fab3bfa5937f25aefd89255ec3ca36b71f4afc5a4928bb2c06c6335e4930186815320d6016216aef14f7ccc64022219b058d93cb01e7d07f9b42181faadefa32
+  checksum: 10c0/a724d9a8e2ba02c527d5b12683af791db1ad378661fe2b8e00fdca181960cd9d123bdd2dee7c3bdf05b3750353986860361bfe85a4760250b4a96cfda2bf48a1
   languageName: node
   linkType: hard
 
@@ -2163,14 +2154,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"es-module-lexer@npm:^2.0.0":
-  version: 2.1.0
-  resolution: "es-module-lexer@npm:2.1.0"
-  checksum: 10c0/93bcf2454fa72d67fe3ccd0abef8ce7933f5840a319513418a643dd8e9c6aa8f49709cecfae02ded722805dd327232d30723a807cc52e6809d6ac697c62c29fb
-  languageName: node
-  linkType: hard
-
-"es-module-lexer@npm:^2.2.0":
+"es-module-lexer@npm:^2.0.0, es-module-lexer@npm:^2.2.0":
   version: 2.3.1
   resolution: "es-module-lexer@npm:2.3.1"
   checksum: 10c0/ada8b222772b5b8ea92eb6054c383233207418621855a07b480fdd36979b658a41414be09e793fcdd8a67a182741475f47830a01ff2ebd4353d7f6965c7c45f9
@@ -2797,14 +2781,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"import-in-the-middle@npm:^3.3.1":
-  version: 3.3.2
-  resolution: "import-in-the-middle@npm:3.3.2"
+"import-in-the-middle@npm:^3.3.2":
+  version: 3.3.3
+  resolution: "import-in-the-middle@npm:3.3.3"
   dependencies:
     cjs-module-lexer: "npm:^2.2.0"
     es-module-lexer: "npm:^2.2.0"
     module-details-from-path: "npm:^1.0.4"
-  checksum: 10c0/b60a198b3739fb8d011ec435954793b187fa7764505b7bc4da45e7b080b311584c075f258a4a23abe8d25fe250251129a938a7ae4c79864c53766d60207bd62c
+  checksum: 10c0/8851038b0314fdf54368e036a79b2f8046bca938ea5cc66ff9dda774c76a1540b59acddc7d9999ba7fee5769a5bc562b98acc39e9a257f4953ee629238cb8de1
   languageName: node
   linkType: hard
 
@@ -3242,14 +3226,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lru-cache@npm:^11.0.0, lru-cache@npm:^11.1.0, lru-cache@npm:^11.2.1":
-  version: 11.2.6
-  resolution: "lru-cache@npm:11.2.6"
-  checksum: 10c0/73bbffb298760e71b2bfe8ebc16a311c6a60ceddbba919cfedfd8635c2d125fbfb5a39b71818200e67973b11f8d59c5a9e31d6f90722e340e90393663a66e5cd
-  languageName: node
-  linkType: hard
-
-"lru-cache@npm:^11.3.5":
+"lru-cache@npm:^11.0.0, lru-cache@npm:^11.1.0, lru-cache@npm:^11.2.1, lru-cache@npm:^11.3.5":
   version: 11.5.1
   resolution: "lru-cache@npm:11.5.1"
   checksum: 10c0/7b341cea79a8efe9c6a6f20c8757a77eca5b25d7ff983ccf4e11e547b81f6787824baa1c84705251dff84ab4ffac85717ac354b9d02e465f86a9f8b166409979
@@ -3760,14 +3737,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"picomatch@npm:^4.0.2, picomatch@npm:^4.0.3, picomatch@npm:^4.0.4":
-  version: 4.0.4
-  resolution: "picomatch@npm:4.0.4"
-  checksum: 10c0/e2c6023372cc7b5764719a5ffb9da0f8e781212fa7ca4bd0562db929df8e117460f00dff3cb7509dacfc06b86de924b247f504d0ce1806a37fac4633081466b0
-  languageName: node
-  linkType: hard
-
-"picomatch@npm:^4.0.5":
+"picomatch@npm:^4.0.2, picomatch@npm:^4.0.3, picomatch@npm:^4.0.4, picomatch@npm:^4.0.5":
   version: 4.0.5
   resolution: "picomatch@npm:4.0.5"
   checksum: 10c0/947bc6b6e1ff1e6c5aaf95b107a0839d12802f4f7b867663f67d47accba939ca1cb582cf99dfc30438efa1c4648ac5990967e783e8929c36b03e8440704ef1bd
@@ -3839,21 +3809,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"prettier@npm:3.9.5":
+"prettier@npm:3.9.5, prettier@npm:^3.2.5":
   version: 3.9.5
   resolution: "prettier@npm:3.9.5"
   bin:
     prettier: bin/prettier.cjs
   checksum: 10c0/0349dd9e6d8010965de6f69e6b6ee2484b8caf78c66675afced6c75ad60ff24c3a2a4f41153fb8adeaee4d8f539641b48cebc71d283cec4d146e9962126c5ceb
-  languageName: node
-  linkType: hard
-
-"prettier@npm:^3.2.5":
-  version: 3.8.4
-  resolution: "prettier@npm:3.8.4"
-  bin:
-    prettier: bin/prettier.cjs
-  checksum: 10c0/b90a0cbe75b88ac0af9c13fe0f359bd19926fabccd88483227b21f71f0c1cc42da056fc1ac3a361e665577c568371d5ccfb2c62c31c8a1186f8d1bd531a063e9
   languageName: node
   linkType: hard
 
@@ -4288,10 +4249,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"source-map@npm:^0.7.4":
-  version: 0.7.6
-  resolution: "source-map@npm:0.7.6"
-  checksum: 10c0/59f6f05538539b274ba771d2e9e32f6c65451982510564438e048bc1352f019c6efcdc6dd07909b1968144941c14015c2c7d4369fb7c4d7d53ae769716dcc16c
+"source-map@npm:^0.8.0":
+  version: 0.8.0
+  resolution: "source-map@npm:0.8.0"
+  checksum: 10c0/fd2a5b81a1bf40f6155592f19c44abb46fc75b0f0f9473dd40c665b6f3866516a26218dad3d76b58b8b3e44560f3ab2191a837e1ce6631987e51a2db2e1cac56
   languageName: node
   linkType: hard
 
