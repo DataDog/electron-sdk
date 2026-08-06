@@ -2,6 +2,21 @@
 
 All notable changes to `@datadog/electron-sdk` are documented here.
 
+## [0.8.0] - 2026-08-06
+
+### 💥 Breaking Changes
+
+- 💥 [RUM-17543] rename allowedWebViewHosts → allowedRendererHosts and enforce host filtering (#181)
+
+`allowedWebViewHosts` renamed to `allowedRendererHosts` and is now **required**. Configure which renderer hosts are allowed to send data to the electron-sdk, see [documentation](https://github.com/DataDog/electron-sdk/#allowedrendererhosts-values).
+
+Add `allowedRendererHosts: ['*']` to your init() call to preserve previous behavior.
+
+### ✨ Features
+
+- ✨ [RUM-15529] Integrate Session Replay (#131)
+- ✨ Add configurable runtime dependency copying (#182)
+
 ## [0.7.0] - 2026-07-30
 
 ### ✨ Features
