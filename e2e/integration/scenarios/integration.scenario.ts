@@ -1,12 +1,15 @@
 /**
  * Integration test scenarios run against each realistic Electron app setup.
  *
- * Each test runs once per Playwright project (app × mode combination).
+ * Each test runs once per Playwright project (app × mode, including configured variants).
  */
 import { join } from 'node:path';
+import { createRequire } from 'node:module';
+import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { test, expect, launchApp } from '../lib/integrationFixture';
+import { getElectronBuilderViteArchivePath } from '../lib/electronBuilderVite';
 import type { RumErrorEvent, RumResourceEvent, RumViewEvent } from '@datadog/electron-sdk';
 import { Intake, type ReceivedEvent, type Span } from '../../lib/intake';
 import type { Page } from '@playwright/test';
@@ -25,11 +28,37 @@ interface IntegrationTestWindow {
   };
 }
 
+test.describe('electron-builder runtime dependency packaging @integration', () => {
+  test('stages Datadog dependencies according to the plugin option', ({ app, mode, variant }) => {
+    test.skip(app !== 'electron-builder-vite' || mode !== 'packaged', 'electron-builder-vite packaged only');
+
+    const appDir = join(__dirname, '../apps', app);
+    const workflow = variant === 'packager-copy' ? 'packager-copy' : 'default-copy';
+    const expectsPluginCopy = workflow === 'default-copy';
+    expect(existsSync(join(appDir, 'dist', workflow, 'node_modules'))).toBe(expectsPluginCopy);
+
+    const archivePath = getElectronBuilderViteArchivePath(appDir, variant);
+    expect(existsSync(archivePath)).toBe(true);
+
+    const requireFromApp = createRequire(join(appDir, 'package.json'));
+    const { listPackage } = requireFromApp('@electron/asar') as {
+      listPackage: (archivePath: string, options: { isPack: boolean }) => string[];
+    };
+    const archiveEntries = listPackage(archivePath, { isPack: false });
+
+    expect(archiveEntries).toContain('/node_modules/@datadog/electron-sdk/package.json');
+    expect(archiveEntries).toContain('/node_modules/dd-trace/package.json');
+    expect(archiveEntries).toContain(`/dist/${workflow}/main.js`);
+    expect(archiveEntries.includes(`/dist/${workflow}/node_modules/@datadog/electron-sdk/package.json`)).toBe(
+      expectsPluginCopy
+    );
+    expect(archiveEntries.includes(`/dist/${workflow}/node_modules/dd-trace/package.json`)).toBe(expectsPluginCopy);
+  });
+});
+
 test.describe('view event on startup @integration', () => {
   test('sends a view event with a session id on startup', async ({ window, intake }) => {
-    await flushTransport(window);
-
-    const viewEvents = await intake.getEventsByType('view');
+    const viewEvents = await flushUntilEventArrives(window, intake, 'view', 1, 15 * ONE_SECOND);
     expect(viewEvents).toHaveLength(1);
     const view = viewEvents[0].body as RumViewEvent;
 
@@ -68,8 +97,7 @@ test.describe('main-process fetch resource @integration', () => {
     intake,
     testServer,
   }) => {
-    await flushTransport(window);
-    const [viewEvent] = await intake.getEventsByType('view');
+    const [viewEvent] = await flushUntilEventArrives(window, intake, 'view', 1, 15 * ONE_SECOND);
     const view = viewEvent.body as RumViewEvent;
 
     const url = testServer.urlFor(200);
@@ -132,7 +160,7 @@ test.describe('custom-session window instrumentation @integration', () => {
 });
 
 test.describe('crash reporting across restart @integration', () => {
-  test('processes a crash dump and sends an error event on restart', async ({ app, mode }) => {
+  test('processes a crash dump and sends an error event on restart', async ({ app, mode, variant }) => {
     const appDir = join(__dirname, '../apps', app);
     // The `intake` fixture is not used here because this test needs a single intake instance
     // across two separate app launches. The fixture ties teardown to the `electronApp` lifecycle,
@@ -143,12 +171,11 @@ test.describe('crash reporting across restart @integration', () => {
 
     try {
       // Phase 1: Launch, confirm SDK is running, then crash
-      const firstApp = await launchApp(appDir, mode, intake, userDataDir);
+      const firstApp = await launchApp(appDir, mode, intake, userDataDir, variant);
       const firstWindow = await firstApp.firstWindow();
       await firstWindow.waitForLoadState('load');
       await firstWindow.waitForTimeout(500);
-      await flushTransport(firstWindow);
-      await intake.getEventsByType('view', { timeout: 10 * ONE_SECOND });
+      await flushUntilEventArrives(firstWindow, intake, 'view', 1, 15 * ONE_SECOND);
 
       const appClosed = firstApp.waitForEvent('close');
       void firstWindow
@@ -162,7 +189,7 @@ test.describe('crash reporting across restart @integration', () => {
       intake.clear();
 
       // Phase 2: Relaunch — crash dump is processed on startup, error event sent to intake
-      const secondApp = await launchApp(appDir, mode, intake, userDataDir);
+      const secondApp = await launchApp(appDir, mode, intake, userDataDir, variant);
       try {
         const secondWindow = await secondApp.firstWindow();
         await secondWindow.waitForLoadState('load');

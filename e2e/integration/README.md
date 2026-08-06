@@ -8,7 +8,8 @@ Integration tests validate the SDK in **realistic customer Electron app setups**
 
 - **`e2e/integration/apps/`**: Realistic Electron apps, one per supported customer toolchain
 - **`e2e/integration/lib/integrationFixture.ts`**: Playwright fixture for building, launching, and tearing down each app
-- **`e2e/integration/scenarios/integration.scenario.ts`**: Scenarios run against every app × mode combination
+- **`e2e/integration/scenarios/integration.scenario.ts`**: Scenarios run against every app × mode combination,
+  including configured variants
 
 ## Usage
 
@@ -32,6 +33,8 @@ Run a specific combination locally:
 ```bash
 yarn test:integration --project=forge-webpack-dev
 yarn test:integration --project=forge-webpack-packaged
+yarn test:integration --project=electron-builder-vite-packaged
+yarn test:integration --project=electron-builder-vite-packager-copy-packaged
 ```
 
 ## Supported Toolchains
@@ -49,6 +52,8 @@ All apps use `import '@datadog/electron-sdk/instrument'` before importing `elect
 This loads the SDK's instrumentation, which initializes dd-trace and injects the SDK's preload script into every renderer process via `patchBrowserWindow`.
 Vite-based apps use `datadogVitePlugin`, webpack-based apps use `DatadogWebpackPlugin`, and esbuild-based apps use `datadogEsbuildPlugin` to ensure correct module loading order and preload availability in packaged builds.
 The `forge-esbuild-esm` app additionally exercises the plugin's ESM path, where the banner loads `instrument` via `createRequire` because ES modules have no global `require`.
+The `electron-builder-vite` app packages two isolated variants: the default plugin-owned runtime dependency copy
+and `copyRuntimeDependencies: false`, where electron-builder owns dependency staging.
 
 ## Key design points
 
@@ -58,6 +63,7 @@ Each app declares several integration properties to ease the instrumentation by 
 
 - `integration.devMain`: compiled main script path for dev-mode launch
 - `integration.packagedBinary`: per-platform packaged binary paths
+- `integration.variants`: optional alternate launch paths for independently built variants
 
 Each app declares a `package` script.
 

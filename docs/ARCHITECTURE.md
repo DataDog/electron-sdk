@@ -243,9 +243,9 @@ Advertised capabilities tell the Browser SDK which bridge features it may use, b
 
 The instrumentation entry point must run before `require('electron')`. Bundlers can break this ordering requirement in different ways:
 
-- **Vite** (`datadogVitePlugin` from `@datadog/electron-sdk/vite-plugin`): hoists all `require()` calls to the top of the bundle, breaking import order. The plugin externalizes dd-trace and the SDK, prepends the initialization banner before hoisted requires, and copies their runtime dependencies into the build output.
-- **Webpack** (`DatadogWebpackPlugin` from `@datadog/electron-sdk/webpack-plugin`): preserves module execution order (lazy evaluation via `__webpack_require__`), so import order is maintained. The plugin externalizes dd-trace and the SDK, prepends the initialization banner, excludes them from `@vercel/webpack-asset-relocator-loader`, and copies their runtime dependencies into the build output.
-- **esbuild** (`datadogEsbuildPlugin` from `@datadog/electron-sdk/esbuild-plugin`): also preserves module execution order. The plugin externalizes dd-trace and the SDK, prepends the initialization banner, and copies their runtime dependencies via an `onEnd` hook. In ESM output the banner loads `instrument` via `createRequire`, since ES modules have no global `require`.
+- **Vite** (`datadogVitePlugin` from `@datadog/electron-sdk/vite-plugin`): hoists all `require()` calls to the top of the bundle, breaking import order. The plugin externalizes dd-trace and the SDK, prepends the initialization banner before hoisted requires, and by default copies their runtime dependencies into the build output (set `copyRuntimeDependencies: false` to delegate copying to the packager instead).
+- **Webpack** (`DatadogWebpackPlugin` from `@datadog/electron-sdk/webpack-plugin`): preserves module execution order (lazy evaluation via `__webpack_require__`), so import order is maintained. The plugin externalizes dd-trace and the SDK, prepends the initialization banner, excludes them from `@vercel/webpack-asset-relocator-loader`, and by default copies their runtime dependencies into the build output (set `copyRuntimeDependencies: false` to delegate copying to the packager instead).
+- **esbuild** (`datadogEsbuildPlugin` from `@datadog/electron-sdk/esbuild-plugin`): also preserves module execution order. The plugin externalizes dd-trace and the SDK, prepends the initialization banner, and by default copies their runtime dependencies via an `onEnd` hook (set `copyRuntimeDependencies: false` to delegate copying to the packager instead). In ESM output the banner loads `instrument` via `createRequire`, since ES modules have no global `require`.
 
 See `src/entries/instrument.ts`, `src/entries/vite-plugin.ts`, `src/entries/webpack-plugin.ts`, and `src/entries/esbuild-plugin.ts`.
 
@@ -272,19 +272,19 @@ Making it a direct dependency ensures a single, tested version is always present
 #### Optional dependencies are stripped
 
 dd-trace declares optional dependencies (OpenTelemetry bindings, OpenFeature, ASM, IAST, etc.) that are irrelevant for Electron:
-These optional dependencies may or may not install in the customer's `node_modules` depending on platform and package manager behavior. Critically, the **bundler plugins only copy `dependencies`, not `optionalDependencies`**, when populating the build output's `node_modules`. This means they are always excluded from the packaged app.
+These optional dependencies may or may not install in the customer's `node_modules` depending on platform and package manager behavior. By default, the **bundler plugins only copy `dependencies`, not `optionalDependencies`**, when populating the build output's `node_modules`. This excludes them when plugins own dependency staging; applications using `copyRuntimeDependencies: false` depend on their packager's behavior.
 
 #### Dependency size
 
-| What                                                                     | Size      | Notes                                            |
-| ------------------------------------------------------------------------ | --------- | ------------------------------------------------ |
-| dd-trace (stripped, no optional deps)                                    | ~7 MB     | The core dd-trace package                        |
-| Runtime transitive deps (dc-polyfill, import-in-the-middle, acorn, etc.) | ~1 MB     | Required by dd-trace at runtime                  |
-| **Total copied to packaged app**                                         | **~8 MB** | What bundler plugins copy via `copyPackageTree`  |
-| electron-sdk own dist                                                    | ~4 MB     | SDK code + WASM chunks                           |
-| dd-trace optional deps (NOT copied)                                      | Unknown   | Native modules, etc; excluded from packaged apps |
+| What                                                                     | Size      | Notes                                           |
+| ------------------------------------------------------------------------ | --------- | ----------------------------------------------- |
+| dd-trace (stripped, no optional deps)                                    | ~7 MB     | The core dd-trace package                       |
+| Runtime transitive deps (dc-polyfill, import-in-the-middle, acorn, etc.) | ~1 MB     | Required by dd-trace at runtime                 |
+| **Total copied to packaged app**                                         | **~8 MB** | What bundler plugins copy via `copyPackageTree` |
+| electron-sdk own dist                                                    | ~4 MB     | SDK code + WASM chunks                          |
+| dd-trace optional deps (not copied by plugins)                           | Unknown   | Inclusion depends on managed packager behavior  |
 
-The `copyPackageTree` function in all three bundler plugins walks only the `dependencies` field of each package's `package.json`, so the ~84 MB of optional native modules never end up in the packaged app.
+The `copyPackageTree` function in all three bundler plugins walks only the `dependencies` field of each package's `package.json`, so default plugin staging excludes ~84 MB of optional native modules. Applications whose packager stages external dependencies can disable this copy with `copyRuntimeDependencies: false`.
 
 ## Two-Tier Configuration
 
