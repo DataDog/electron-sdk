@@ -129,7 +129,7 @@ void app.whenReady().then(async () => {
 
   ipcMain.handle('generateTelemetryErrors', (_event, count: number) => {
     for (let i = 0; i < count; i++) {
-      _generateTelemetryError();
+      _generateTelemetryError(i);
     }
   });
 

@@ -9,7 +9,7 @@ import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './dom
 import { RumCollection } from './domain/rum';
 import { ReplayCollection } from './domain/replay';
 import { SessionManager } from './domain/session';
-import { callMonitored, startTelemetry } from './domain/telemetry';
+import { addUsage, callMonitored, reportConfiguration, startTelemetry } from './domain/telemetry';
 import { SpanProcessor } from './domain/tracing/SpanProcessor';
 import { Tracing } from './domain/tracing/Tracing';
 import { ProfilingCollection } from './domain/profiling';
@@ -74,6 +74,12 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   beforeQuitHandler?.stop();
   beforeQuitHandler = new BeforeQuitHandler(app, _flushTransport);
 
+  // Reported last: the transport must be registered for the event to reach a batch, and every
+  // component whose state it describes must be constructed. Monitored so a failure anywhere in the
+  // telemetry pipeline degrades telemetry rather than rejecting `init()`.
+  const { enabled: useTracing, version: tracerVersion } = tracing;
+  callMonitored(() => reportConfiguration(config, { useTracing, tracerVersion }));
+
   return true;
 }
 
@@ -81,7 +87,10 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
  * Stop the current session
  */
 export function stopSession(): void {
-  callMonitored(() => sessionManager?.expire());
+  callMonitored(() => {
+    addUsage({ feature: 'stop-session' });
+    sessionManager?.expire();
+  });
 }
 
 /**
@@ -96,7 +105,10 @@ export function stopSession(): void {
  * clearUserInfo();
  */
 export function setUserInfo(user: UserInfo & { id: string }): void {
-  callMonitored(() => userContext?.setUserInfo(user));
+  callMonitored(() => {
+    addUsage({ feature: 'set-user' });
+    userContext?.setUserInfo(user);
+  });
 }
 
 /**
@@ -105,7 +117,10 @@ export function setUserInfo(user: UserInfo & { id: string }): void {
  * const user = getUserInfo(); // { id: 'user-123', name: 'Alice' }
  */
 export function getUserInfo(): UserInfo | undefined {
-  return userContext?.getInfo();
+  return callMonitored(() => {
+    addUsage({ feature: 'get-user' });
+    return userContext?.getInfo();
+  });
 }
 
 /**
@@ -114,7 +129,10 @@ export function getUserInfo(): UserInfo | undefined {
  * clearUserInfo();
  */
 export function clearUserInfo(): void {
-  callMonitored(() => userContext?.clearContext());
+  callMonitored(() => {
+    addUsage({ feature: 'clear-user' });
+    userContext?.clearContext();
+  });
 }
 
 /**
@@ -130,7 +148,10 @@ export function clearUserInfo(): void {
  * addUserExtraInfo({ role: null });
  */
 export function addUserExtraInfo(extraInfo: Record<string, unknown>): void {
-  callMonitored(() => userContext?.addExtraInfo(extraInfo));
+  callMonitored(() => {
+    addUsage({ feature: 'set-user-property' });
+    userContext?.addExtraInfo(extraInfo);
+  });
 }
 
 /**
@@ -144,7 +165,10 @@ export function addUserExtraInfo(extraInfo: Record<string, unknown>): void {
  * clearAccountInfo();
  */
 export function setAccountInfo(accountInfo: AccountInfo): void {
-  callMonitored(() => accountContext?.setContext(accountInfo));
+  callMonitored(() => {
+    addUsage({ feature: 'set-account' });
+    accountContext?.setContext(accountInfo);
+  });
 }
 
 /**
@@ -153,7 +177,10 @@ export function setAccountInfo(accountInfo: AccountInfo): void {
  * const account = getAccountInfo(); // { id: 'account-456', name: 'Acme Corp' }
  */
 export function getAccountInfo(): AccountInfo | undefined {
-  return accountContext?.getInfo();
+  return callMonitored(() => {
+    addUsage({ feature: 'get-account' });
+    return accountContext?.getInfo();
+  });
 }
 
 /**
@@ -162,7 +189,10 @@ export function getAccountInfo(): AccountInfo | undefined {
  * clearAccountInfo();
  */
 export function clearAccountInfo(): void {
-  callMonitored(() => accountContext?.clearContext());
+  callMonitored(() => {
+    addUsage({ feature: 'clear-account' });
+    accountContext?.clearContext();
+  });
 }
 
 /**
@@ -177,14 +207,20 @@ export function clearAccountInfo(): void {
  * addAccountExtraInfo({ region: null });
  */
 export function addAccountExtraInfo(extraInfo: Record<string, unknown>): void {
-  callMonitored(() => accountContext?.addExtraInfo(extraInfo));
+  callMonitored(() => {
+    addUsage({ feature: 'set-account-property' });
+    accountContext?.addExtraInfo(extraInfo);
+  });
 }
 
 /**
  * Report a manually handled error
  */
 export function addError(error: unknown, options?: ErrorOptions): void {
-  callMonitored(() => rumApi?.addError(error, options));
+  callMonitored(() => {
+    addUsage({ feature: 'add-error' });
+    rumApi?.addError(error, options);
+  });
 }
 
 /**
@@ -197,7 +233,10 @@ export function addError(error: unknown, options?: ErrorOptions): void {
  * @see README "Operation Monitoring" for usage details.
  */
 export function startOperation(name: string, options?: FeatureOperationOptions): void {
-  callMonitored(() => rumApi?.startOperation(name, options));
+  callMonitored(() => {
+    addUsage({ feature: 'add-operation-step-vital', action_type: 'start' });
+    rumApi?.startOperation(name, options);
+  });
 }
 
 /**
@@ -209,7 +248,10 @@ export function startOperation(name: string, options?: FeatureOperationOptions):
  * @see README "Operation Monitoring" for usage details.
  */
 export function succeedOperation(name: string, options?: FeatureOperationOptions): void {
-  callMonitored(() => rumApi?.succeedOperation(name, options));
+  callMonitored(() => {
+    addUsage({ feature: 'add-operation-step-vital', action_type: 'succeed' });
+    rumApi?.succeedOperation(name, options);
+  });
 }
 
 /**
@@ -221,7 +263,10 @@ export function succeedOperation(name: string, options?: FeatureOperationOptions
  * @see README "Operation Monitoring" for usage details.
  */
 export function failOperation(name: string, failureReason: FailureReason, options?: FeatureOperationOptions): void {
-  callMonitored(() => rumApi?.failOperation(name, failureReason, options));
+  callMonitored(() => {
+    addUsage({ feature: 'add-operation-step-vital', action_type: 'fail' });
+    rumApi?.failOperation(name, failureReason, options);
+  });
 }
 
 /**
@@ -232,7 +277,10 @@ export function failOperation(name: string, failureReason: FailureReason, option
  * @see README "Operation Monitoring" for usage details.
  */
 export function startFeatureOperation(name: string, options?: FeatureOperationOptions): void {
-  callMonitored(() => rumApi?.startFeatureOperation(name, options));
+  callMonitored(() => {
+    addUsage({ feature: 'add-operation-step-vital', action_type: 'start' });
+    rumApi?.startFeatureOperation(name, options);
+  });
 }
 
 /**
@@ -243,7 +291,10 @@ export function startFeatureOperation(name: string, options?: FeatureOperationOp
  * @see README "Operation Monitoring" for usage details.
  */
 export function succeedFeatureOperation(name: string, options?: FeatureOperationOptions): void {
-  callMonitored(() => rumApi?.succeedFeatureOperation(name, options));
+  callMonitored(() => {
+    addUsage({ feature: 'add-operation-step-vital', action_type: 'succeed' });
+    rumApi?.succeedFeatureOperation(name, options);
+  });
 }
 
 /**
@@ -258,7 +309,10 @@ export function failFeatureOperation(
   failureReason: FailureReason,
   options?: FeatureOperationOptions
 ): void {
-  callMonitored(() => rumApi?.failFeatureOperation(name, failureReason, options));
+  callMonitored(() => {
+    addUsage({ feature: 'add-operation-step-vital', action_type: 'fail' });
+    rumApi?.failFeatureOperation(name, failureReason, options);
+  });
 }
 
 /**
@@ -279,10 +333,13 @@ export async function _flushTransport(): Promise<void> {
 /*
  * Internal API to test monitoring
  * TODO replace with the usage of another API when available
+ *
+ * `discriminator` varies the message so repeated calls produce distinct events. Telemetry
+ * deduplicates identical events per session, so without it a burst collapses into a single event.
  */
-export function _generateTelemetryError() {
+export function _generateTelemetryError(discriminator?: number) {
   return callMonitored(() => {
-    throw new Error('expected error');
+    throw new Error(discriminator === undefined ? 'expected error' : `expected error ${discriminator}`);
   });
 }
 
@@ -315,6 +372,6 @@ export type {
   RumVitalDurationEvent,
   RumVitalOperationStepEvent,
 } from './domain/rum';
-export type { TelemetryErrorEvent } from './domain/telemetry';
+export type { TelemetryConfigurationEvent, TelemetryErrorEvent, TelemetryUsageEvent } from './domain/telemetry';
 
 export { SESSION_TIME_OUT_DELAY } from './domain/session';

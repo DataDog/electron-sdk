@@ -23,6 +23,9 @@ import {
   setAccountInfo,
   clearAccountInfo,
   addAccountExtraInfo,
+  getUserInfo,
+  getAccountInfo,
+  addError,
   type AddDurationVitalOptions,
   type DurationVitalOptions,
   type FailureReason,
@@ -102,8 +105,9 @@ ipcMain.handle('stop-session', () => {
   stopSession();
 });
 
+let telemetryErrorCount = 0;
 ipcMain.handle('generateTelemetryError', () => {
-  _generateTelemetryError();
+  _generateTelemetryError(telemetryErrorCount++);
 });
 
 // IPC handler to generate uncaught exception
@@ -190,6 +194,17 @@ ipcMain.handle('main:clear-account-info', () => {
   clearAccountInfo();
 });
 
+// --- Usage telemetry demo handlers ---
+// The getters report usage telemetry too, so they are worth a button of their own.
+
+ipcMain.handle('main:get-user-info', () => getUserInfo());
+
+ipcMain.handle('main:get-account-info', () => getAccountInfo());
+
+ipcMain.handle('main:add-error', () => {
+  addError(new Error('Playground error from addError()'));
+});
+
 // --- Operation Monitoring demo handlers ---
 
 ipcMain.handle('main:start-operation', (_event, name: string, options?: FeatureOperationOptions) => {
@@ -241,6 +256,9 @@ void app.whenReady().then(async () => {
     env: 'dev',
     sessionReplaySampleRate: 100,
     profilingSampleRate: 100,
+    telemetrySampleRate: 100,
+    telemetryConfigurationSampleRate: 100,
+    telemetryUsageSampleRate: 100,
     allowedRendererHosts: ['*'],
     defaultPrivacyLevel: 'allow',
     ...(process.env.DD_SDK_PROXY ? { proxy: process.env.DD_SDK_PROXY } : {}),

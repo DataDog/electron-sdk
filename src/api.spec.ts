@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { display, rumApi } = vi.hoisted(() => ({
+const { addUsage, display, rumApi } = vi.hoisted(() => ({
+  addUsage: vi.fn(),
   display: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
   rumApi: {
     addDurationVital: vi.fn(),
@@ -10,6 +11,7 @@ const { display, rumApi } = vi.hoisted(() => ({
 }));
 
 vi.mock('./domain/telemetry', () => ({
+  addUsage,
   callMonitored: (callback: () => unknown) => callback(),
 }));
 vi.mock('./tools/display', () => ({ display }));
@@ -111,6 +113,27 @@ describe.sequential('duration vital public API', () => {
 
       expect(rumApi.addDurationVital).toHaveBeenCalledOnce();
       expect(display.warn).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('usage telemetry', () => {
+    it('reports the feature used by each duration vital API', () => {
+      addDurationVital('database.migration', { startTime: 0, duration: 1 });
+      startDurationVital('document.open');
+      stopDurationVital('document.open');
+
+      expect(addUsage.mock.calls.flat()).toEqual([
+        { feature: 'add-duration-vital' },
+        { feature: 'start-duration-vital' },
+        { feature: 'stop-duration-vital' },
+      ]);
+    });
+
+    it('reports usage of a call rejected by validation', () => {
+      addDurationVital('', { startTime: 0, duration: 1 });
+
+      expect(rumApi.addDurationVital).not.toHaveBeenCalled();
+      expect(addUsage).toHaveBeenCalledWith({ feature: 'add-duration-vital' });
     });
   });
 });

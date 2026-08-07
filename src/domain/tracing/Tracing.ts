@@ -11,8 +11,23 @@ interface TracerInternals {
   _tracer?: { _exporter?: unknown };
 }
 
+/**
+ * dd-trace's own version, read from its manifest since the tracer does not expose one.
+ *
+ * Deliberately soft: the version is only telemetry, so a package that hides its manifest behind an
+ * `exports` map must not take tracing down with it.
+ */
+function readTracerVersion(): string | undefined {
+  try {
+    return (_require('dd-trace/package.json') as { version?: string }).version;
+  } catch {
+    return undefined;
+  }
+}
+
 export class Tracing {
   enabled = false;
+  version: string | undefined;
   private exporter: ExporterWithFlush | undefined;
 
   constructor() {
@@ -28,6 +43,7 @@ export class Tracing {
       }
 
       this.enabled = true;
+      this.version = readTracerVersion();
     } catch (error) {
       addError(error);
     }

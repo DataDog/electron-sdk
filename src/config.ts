@@ -1,6 +1,7 @@
 import { ONE_SECOND } from '@datadog/js-core/time';
 import { ONE_KIBI_BYTE, ONE_MEBI_BYTE, DefaultPrivacyLevel } from '@datadog/browser-core';
 import { display } from './tools/display';
+import { isFiniteNumber } from './tools/validation';
 
 const VALID_DATADOG_SITES = [
   'datadoghq.com',
@@ -40,6 +41,8 @@ export interface InitConfiguration {
   sessionReplaySampleRate?: number;
   profilingSampleRate?: number;
   telemetrySampleRate?: number;
+  telemetryConfigurationSampleRate?: number;
+  telemetryUsageSampleRate?: number;
   batchSize?: BatchSize;
   uploadFrequency?: UploadFrequency;
   defaultPrivacyLevel?: DefaultPrivacyLevel;
@@ -63,10 +66,37 @@ export interface Configuration {
   sessionReplaySampleRate: number;
   profilingSampleRate: number;
   telemetrySampleRate: number;
+  telemetryConfigurationSampleRate: number;
+  telemetryUsageSampleRate: number;
   batchSize?: BatchSize;
   uploadFrequency?: UploadFrequency;
   defaultPrivacyLevel: DefaultPrivacyLevel;
   allowedRendererHosts: string[];
+}
+
+/**
+ * Effective batch byte threshold, applying the default used when `batchSize` is unset.
+ *
+ * Caps how large a single batch file may grow before it is rotated early; the batch window itself is
+ * driven by {@link resolveUploadFrequency}. Configuration telemetry deliberately does not report this
+ * — the schema's `batch_size` is a window duration in milliseconds, not a byte count; see
+ * `buildConfigurationTelemetry`.
+ */
+export function resolveBatchSize(configuration: Configuration): number {
+  return configuration.batchSize ? BatchSizes[configuration.batchSize] : BatchSizes.MEDIUM;
+}
+
+/**
+ * Effective upload period in milliseconds, applying the default used when `uploadFrequency` is unset.
+ *
+ * Doubles as the batch window: each upload cycle seals the open batch and drains every pending one,
+ * so events accumulate for exactly this long. Shared by the transport and configuration telemetry so
+ * both report the same value.
+ */
+export function resolveUploadFrequency(configuration: Configuration): number {
+  return configuration.uploadFrequency
+    ? BatchUploadFrequencies[configuration.uploadFrequency]
+    : BatchUploadFrequencies.NORMAL;
 }
 
 function validateRequiredString(value: unknown, fieldName: string): string | undefined {
@@ -97,48 +127,19 @@ function validateOptionalString(value: unknown): string | undefined {
   return value.length > 0 ? value : undefined;
 }
 
-function validateSessionSampleRate(value: unknown): number | undefined {
+/**
+ * Validate a 0–100 percentage. Returns `defaultValue` when unset, or `undefined` on an invalid
+ * value to signal that initialization should abort.
+ */
+function validateSampleRate(value: unknown, fieldName: string, defaultValue: number): number | undefined {
   if (value === undefined || value === null) {
-    return 100;
+    return defaultValue;
   }
-  if (!Number.isFinite(value) || (value as number) < 0 || (value as number) > 100) {
-    display.error("Configuration error: 'sessionSampleRate' must be a number between 0 and 100");
+  if (!isFiniteNumber(value) || value < 0 || value > 100) {
+    display.error(`Configuration error: '${fieldName}' must be a number between 0 and 100`);
     return undefined;
   }
-  return value as number;
-}
-
-function validateSessionReplaySampleRate(value: unknown): number | undefined {
-  if (value === undefined || value === null) {
-    return 0;
-  }
-  if (!Number.isFinite(value) || (value as number) < 0 || (value as number) > 100) {
-    display.error("Configuration error: 'sessionReplaySampleRate' must be a number between 0 and 100");
-    return undefined;
-  }
-  return value as number;
-}
-
-function validateProfilingSampleRate(value: unknown): number | undefined {
-  if (value === undefined || value === null) {
-    return 0;
-  }
-  if (!Number.isFinite(value) || (value as number) < 0 || (value as number) > 100) {
-    display.error("Configuration error: 'profilingSampleRate' must be a number between 0 and 100");
-    return undefined;
-  }
-  return value as number;
-}
-
-function validateTelemetrySampleRate(value: unknown): number | undefined {
-  if (value === undefined || value === null) {
-    return 20;
-  }
-  if (!Number.isFinite(value) || (value as number) < 0 || (value as number) > 100) {
-    display.error("Configuration error: 'telemetrySampleRate' must be a number between 0 and 100");
-    return undefined;
-  }
-  return value as number;
+  return value;
 }
 
 const VALID_PRIVACY_LEVELS: readonly DefaultPrivacyLevel[] = [
@@ -232,16 +233,28 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
   }
 
   const proxy = validateOptionalString(initConfig.proxy);
-  const sessionSampleRate = validateSessionSampleRate(initConfig.sessionSampleRate);
-  const sessionReplaySampleRate = validateSessionReplaySampleRate(initConfig.sessionReplaySampleRate);
-  const profilingSampleRate = validateProfilingSampleRate(initConfig.profilingSampleRate);
-  const telemetrySampleRate = validateTelemetrySampleRate(initConfig.telemetrySampleRate);
+  const sessionSampleRate = validateSampleRate(initConfig.sessionSampleRate, 'sessionSampleRate', 100);
+  const sessionReplaySampleRate = validateSampleRate(initConfig.sessionReplaySampleRate, 'sessionReplaySampleRate', 0);
+  const profilingSampleRate = validateSampleRate(initConfig.profilingSampleRate, 'profilingSampleRate', 0);
+  const telemetrySampleRate = validateSampleRate(initConfig.telemetrySampleRate, 'telemetrySampleRate', 20);
+  const telemetryConfigurationSampleRate = validateSampleRate(
+    initConfig.telemetryConfigurationSampleRate,
+    'telemetryConfigurationSampleRate',
+    20
+  );
+  const telemetryUsageSampleRate = validateSampleRate(
+    initConfig.telemetryUsageSampleRate,
+    'telemetryUsageSampleRate',
+    20
+  );
 
   if (
     sessionSampleRate === undefined ||
     sessionReplaySampleRate === undefined ||
     profilingSampleRate === undefined ||
-    telemetrySampleRate === undefined
+    telemetrySampleRate === undefined ||
+    telemetryConfigurationSampleRate === undefined ||
+    telemetryUsageSampleRate === undefined
   ) {
     return undefined;
   }
@@ -263,6 +276,8 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     sessionReplaySampleRate,
     profilingSampleRate,
     telemetrySampleRate,
+    telemetryConfigurationSampleRate,
+    telemetryUsageSampleRate,
     defaultPrivacyLevel: validateDefaultPrivacyLevel(initConfig.defaultPrivacyLevel),
     allowedRendererHosts,
   };

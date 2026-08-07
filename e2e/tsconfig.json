@@ -9,7 +9,8 @@
       "@datadog/electron-sdk": ["../dist/index.d.ts"]
     },
     "composite": true,
-    "emitDeclarationOnly": true
+    "emitDeclarationOnly": true,
+    "outDir": "./dist"
   },
   "include": ["**/*.ts"],
   "exclude": ["node_modules", "app", "integration/apps"]

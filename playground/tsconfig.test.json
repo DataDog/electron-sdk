@@ -7,7 +7,9 @@
     // Include e2e/lib/intake.ts so playground tests can reuse the mock intake server.
     // The relative import (../../e2e/lib/intake) works at runtime without a path alias.
     "composite": true,
-    "emitDeclarationOnly": true
+    "emitDeclarationOnly": true,
+    "outDir": "./dist/types",
+    "rootDir": ".."
   },
   "include": ["test/**/*.ts", "../e2e/lib/intake.ts"],
   "exclude": ["node_modules"]

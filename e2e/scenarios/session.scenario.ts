@@ -1,4 +1,5 @@
 import { test, expect, launchAppManually, createUserDataDir, cleanupUserDataDir } from '../lib/helpers';
+import { byTelemetryType } from '../lib/intake';
 import type { TelemetryErrorEvent, RumViewEvent } from '@datadog/electron-sdk';
 
 test.use({ rumBrowserSdk: {} });
@@ -7,7 +8,7 @@ test('new session id is generated when renewing a session', async ({ mainPage, i
   await mainPage.generateTelemetryErrors(1);
   await mainPage.flushTransport();
 
-  const firstEvents = await intake.getEventsByType('telemetry');
+  const firstEvents = await intake.getEventsByType('telemetry', { predicate: byTelemetryType('log') });
   const firstSessionId = (firstEvents[0].body as TelemetryErrorEvent).session?.id;
   expect(firstSessionId).toMatch(/^[0-9a-f-]+$/);
 
@@ -15,7 +16,7 @@ test('new session id is generated when renewing a session', async ({ mainPage, i
   await mainPage.generateTelemetryErrors(1);
   await mainPage.flushTransport();
 
-  const allEvents = await intake.waitForEventCount('telemetry', 2);
+  const allEvents = await intake.waitForEventCount('telemetry', 2, { predicate: byTelemetryType('log') });
   const secondSessionId = (allEvents[1].body as TelemetryErrorEvent).session?.id;
   expect(secondSessionId).toMatch(/^[0-9a-f-]+$/);
 
