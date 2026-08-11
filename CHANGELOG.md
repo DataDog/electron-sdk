@@ -2,6 +2,12 @@
 
 All notable changes to `@datadog/electron-sdk` are documented here.
 
+## [0.8.1] - 2026-08-11
+
+### Internal
+
+- ⬆️ upgrade dd-trace to 6.10.0 (#196)
+
 ## [0.8.0] - 2026-08-06
 
 ### 💥 Breaking Changes
