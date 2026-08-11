@@ -11,19 +11,13 @@ import {
   RawTelemetryType,
   RawTelemetryUsageData,
 } from './rawTelemetryData.types';
+import { SessionBudget } from './sessionBudget';
 
 export { monitor, callMonitored };
 
-const MAX_TELEMETRY_EVENTS_PER_SESSION = 100;
 const noop = () => undefined;
 
 let telemetryInstance: Telemetry | undefined;
-
-/** Per-session budget: reset together on session renewal. */
-interface SessionBudget {
-  eventCount: number;
-  sentEventKeys: Set<string>;
-}
 
 class Telemetry {
   /**
@@ -33,7 +27,7 @@ class Telemetry {
   private readonly isEnabled: Record<RawTelemetryType, boolean>;
   /** Combined rate actually applied per type, reported so the data can be scaled back up. */
   private readonly effectiveSampleRate: Record<RawTelemetryType, number>;
-  private budget: SessionBudget = { eventCount: 0, sentEventKeys: new Set() };
+  private readonly budget = new SessionBudget();
   private sessionRenewSubscription: Subscription | undefined;
 
   constructor(
@@ -60,7 +54,7 @@ class Telemetry {
       canHandle: (event): event is SessionRenewEvent =>
         event.kind === EventKind.LIFECYCLE && event.lifecycle === LifecycleKind.SESSION_RENEW,
       handle: () => {
-        this.budget = { eventCount: 0, sentEventKeys: new Set() };
+        this.budget.reset();
       },
     });
   }
@@ -95,38 +89,12 @@ class Telemetry {
   }
 
   /**
-   * Sample, deduplicate and rate-limit, then emit for assembly.
-   *
-   * Identical events are dropped for the rest of the session: usage events would otherwise flood the
-   * budget when an instrumented API is called in a loop, and repeated errors add no information.
-   * Configuration events are exempt from the per-session cap because there is at most one per
-   * process and it must not be starved by a burst of errors (matches dd-sdk-android).
+   * Sample, apply the per-session budget (deduplication and rate limit), then emit for assembly.
    */
   private add(data: RawTelemetryData): void {
     const type = data.telemetry.type;
-    if (!this.isEnabled[type]) {
+    if (!this.isEnabled[type] || !this.budget.accept(data)) {
       return;
-    }
-
-    const countsTowardCap = type !== 'configuration';
-    if (countsTowardCap && this.budget.eventCount >= MAX_TELEMETRY_EVENTS_PER_SESSION) {
-      return;
-    }
-
-    // `jsonStringify` never throws: it returns a fixed sentinel string when the value cannot be
-    // serialized. Every telemetry payload the SDK builds is plain JSON, so that path is defensive —
-    // treat a non-object result as not comparable and let it through, rather than collapsing all
-    // such events onto the one sentinel key.
-    const serialized = jsonStringify(data);
-    const key = serialized?.startsWith('{') ? serialized : undefined;
-    if (key !== undefined) {
-      if (this.budget.sentEventKeys.has(key)) {
-        return;
-      }
-      this.budget.sentEventKeys.add(key);
-    }
-    if (countsTowardCap) {
-      this.budget.eventCount++;
     }
 
     this.eventManager.notify({

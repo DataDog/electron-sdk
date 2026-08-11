@@ -10,7 +10,6 @@ import {
   stopSession,
   _flushTransport,
   getInternalContext,
-  _generateTelemetryError,
   addDurationVital,
   startDurationVital,
   stopDurationVital,
@@ -107,7 +106,16 @@ ipcMain.handle('stop-session', () => {
 
 let telemetryErrorCount = 0;
 ipcMain.handle('generateTelemetryError', () => {
-  _generateTelemetryError(telemetryErrorCount++);
+  // Provoke an SDK-internal error through a public API: `setAccountInfo` deep-clones its argument, so a
+  // throwing getter surfaces as a monitored error and produces one error telemetry event. The counter
+  // varies the message, since telemetry deduplicates identical events per session.
+  const discriminator = telemetryErrorCount++;
+  setAccountInfo({
+    id: 'telemetry-error',
+    get name(): string {
+      throw new Error(`expected error ${discriminator}`);
+    },
+  });
 });
 
 // IPC handler to generate uncaught exception

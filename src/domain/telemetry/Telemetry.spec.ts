@@ -259,6 +259,19 @@ describe('telemetry', () => {
       expect(notifiedEvents).toHaveLength(2);
     });
 
+    it('sends events that cannot be serialized every time, rather than collapsing them onto one key', () => {
+      const config = createTestConfiguration();
+      startTelemetry(eventManager, config);
+
+      // A BigInt makes JSON.stringify throw, so the event has no comparable key. Defensive: every
+      // payload the SDK builds is plain JSON.
+      const unserializable = { session_sample_rate: BigInt(1) as unknown as number };
+      addConfiguration(unserializable);
+      addConfiguration(unserializable);
+
+      expect(notifiedEvents).toHaveLength(2);
+    });
+
     it('allows a repeated event again after session renewal', () => {
       const config = createTestConfiguration();
       startTelemetry(eventManager, config);

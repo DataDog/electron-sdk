@@ -9,6 +9,7 @@ interface ExporterWithFlush {
 
 interface TracerInternals {
   _tracer?: { _exporter?: unknown };
+  _tracingInitialized?: boolean;
 }
 
 /**
@@ -27,6 +28,13 @@ function readTracerVersion(): string | undefined {
 
 export class Tracing {
   enabled = false;
+  /**
+   * Whether dd-trace's own init() actually ran, per `_tracingInitialized` — a stronger signal than
+   * `enabled`, which only reflects that the package loaded. Reserved for telemetry reporting (e.g.
+   * `use_tracing`), so a future dd-trace internals rename degrades reporting accuracy rather than
+   * disabling `SpanProcessor` registration, which stays gated on `enabled`.
+   */
+  telemetryInitialized = false;
   version: string | undefined;
   private exporter: ExporterWithFlush | undefined;
 
@@ -37,12 +45,14 @@ export class Tracing {
       // tracer.init() is a no-op if already called by instrument.ts.
       // Service/env/version are set per-span by SpanProcessor.
       // TODO(RUM-16445) discuss a more reliable way to flush the exporter
-      const internalExporter = (tracer as unknown as TracerInternals)._tracer?._exporter;
+      const internals = tracer as unknown as TracerInternals;
+      const internalExporter = internals._tracer?._exporter;
       if (internalExporter && typeof (internalExporter as ExporterWithFlush).flush === 'function') {
         this.exporter = internalExporter as ExporterWithFlush;
       }
 
       this.enabled = true;
+      this.telemetryInitialized = internals._tracingInitialized === true;
       this.version = readTracerVersion();
     } catch (error) {
       addError(error);

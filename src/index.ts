@@ -77,7 +77,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   // Reported last: the transport must be registered for the event to reach a batch, and every
   // component whose state it describes must be constructed. Monitored so a failure anywhere in the
   // telemetry pipeline degrades telemetry rather than rejecting `init()`.
-  const { enabled: useTracing, version: tracerVersion } = tracing;
+  const { telemetryInitialized: useTracing, version: tracerVersion } = tracing;
   callMonitored(() => reportConfiguration(config, { useTracing, tracerVersion }));
 
   return true;
@@ -328,19 +328,6 @@ export async function _flushTransport(): Promise<void> {
   await transport?.flush();
   await tracing?.flush();
   await transport?.flush();
-}
-
-/*
- * Internal API to test monitoring
- * TODO replace with the usage of another API when available
- *
- * `discriminator` varies the message so repeated calls produce distinct events. Telemetry
- * deduplicates identical events per session, so without it a burst collapses into a single event.
- */
-export function _generateTelemetryError(discriminator?: number) {
-  return callMonitored(() => {
-    throw new Error(discriminator === undefined ? 'expected error' : `expected error ${discriminator}`);
-  });
 }
 
 /**

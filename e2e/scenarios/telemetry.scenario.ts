@@ -1,6 +1,9 @@
 import { test, expect } from '../lib/helpers';
-import { byTelemetryType } from '../lib/intake';
+import { byTelemetryType, type ReceivedEvent } from '../lib/intake';
 import type { TelemetryConfigurationEvent, TelemetryErrorEvent, TelemetryUsageEvent } from '@datadog/electron-sdk';
+
+/** Every telemetry event that counts toward the per-session cap, i.e. all but `configuration`. */
+const isCapped = (event: ReceivedEvent) => !byTelemetryType('configuration')(event);
 
 test('SDK sends telemetry error event to intake', async ({ mainPage, intake }) => {
   await mainPage.generateTelemetryError();
@@ -120,18 +123,22 @@ test.describe('telemetry rate-limit reset on session renewal', () => {
   test.use({ rumBrowserSdk: {} });
 
   test('telemetry events are limited per session and reset on session renewal', async ({ mainPage, intake }) => {
-    // only 100 should be sent (MAX_TELEMETRY_EVENTS_PER_SESSION)
+    // The cap (MAX_TELEMETRY_EVENTS_PER_SESSION) covers every telemetry type but `configuration`, so
+    // the count is taken over all of them: the app provokes its errors through a public API, which
+    // also reports one (deduplicated) usage event, and that one takes a slot too.
     await mainPage.generateTelemetryErrors(110);
     await mainPage.flushTransport();
 
-    const telemetryEvents = await intake.waitForEventCount('telemetry', 100, { predicate: byTelemetryType('log') });
-    expect(telemetryEvents).toHaveLength(100);
+    const cappedEvents = await intake.waitForEventCount('telemetry', 100, { predicate: isCapped });
+    expect(cappedEvents).toHaveLength(100);
 
     await mainPage.renewSession();
     await mainPage.generateTelemetryError();
     await mainPage.flushTransport();
 
-    const allTelemetryEvents = await intake.waitForEventCount('telemetry', 101, { predicate: byTelemetryType('log') });
-    expect(allTelemetryEvents).toHaveLength(101);
+    // The renewed session starts a fresh budget, and deduplication resets with it, so both the error
+    // and its usage event are sent again.
+    const allCappedEvents = await intake.waitForEventCount('telemetry', 102, { predicate: isCapped });
+    expect(allCappedEvents).toHaveLength(102);
   });
 });

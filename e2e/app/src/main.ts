@@ -40,7 +40,6 @@ function serveBridgeWindowOverAppProtocol(): void {
 import {
   init,
   addError,
-  _generateTelemetryError,
   _flushTransport,
   stopSession,
   addDurationVital,
@@ -129,7 +128,7 @@ void app.whenReady().then(async () => {
 
   ipcMain.handle('generateTelemetryErrors', (_event, count: number) => {
     for (let i = 0; i < count; i++) {
-      _generateTelemetryError(i);
+      generateTelemetryError(i);
     }
   });
 
@@ -344,6 +343,22 @@ function createWindow() {
   });
 
   void mainWindow.loadFile(join(__dirname, 'main-window.html'));
+}
+
+/**
+ * Provoke an SDK-internal error through a public API: `setAccountInfo` deep-clones its argument, so a
+ * throwing getter surfaces as a monitored error and produces one error telemetry event.
+ *
+ * `discriminator` varies the message: telemetry deduplicates identical events per session, so without
+ * it a burst collapses into a single event.
+ */
+function generateTelemetryError(discriminator: number) {
+  setAccountInfo({
+    id: 'telemetry-error',
+    get name(): string {
+      throw new Error(`expected error ${discriminator}`);
+    },
+  });
 }
 
 function getConfiguration(): InitConfiguration {

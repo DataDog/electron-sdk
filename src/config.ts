@@ -40,8 +40,28 @@ export interface InitConfiguration {
   sessionSampleRate?: number;
   sessionReplaySampleRate?: number;
   profilingSampleRate?: number;
+  /**
+   * Percentage of SDK instances that report telemetry (0–100), defaults to `20`. Drawn once at
+   * `init()` and kept for the lifetime of the process, so an instance either reports telemetry for
+   * its whole life or never does.
+   * @example telemetrySampleRate: 100
+   */
   telemetrySampleRate?: number;
+  /**
+   * Percentage of telemetry-enabled SDK instances that also report the resolved SDK configuration
+   * (0–100), defaults to `20`. Applied as a child of {@link InitConfiguration.telemetrySampleRate}:
+   * the effective rate is the product of the two, so the default pair reports from 4% of instances.
+   * Drawn once at `init()`.
+   * @example telemetryConfigurationSampleRate: 100
+   */
   telemetryConfigurationSampleRate?: number;
+  /**
+   * Percentage of telemetry-enabled SDK instances that also report which public APIs the app calls
+   * (0–100), defaults to `20`. Applied as a child of {@link InitConfiguration.telemetrySampleRate}:
+   * the effective rate is the product of the two, so the default pair reports from 4% of instances.
+   * Drawn once at `init()`.
+   * @example telemetryUsageSampleRate: 100
+   */
   telemetryUsageSampleRate?: number;
   batchSize?: BatchSize;
   uploadFrequency?: UploadFrequency;
