@@ -18,6 +18,8 @@ const test = base.extend<{ electronApp: ElectronApplication; window: Page }>({
         // No DD_SDK_PROXY — events reach real staging
       },
     });
+    app.process().stdout?.on('data', (data: Buffer) => process.stdout.write(data));
+    app.process().stderr?.on('data', (data: Buffer) => process.stderr.write(data));
     await use(app);
     await app.close();
   },

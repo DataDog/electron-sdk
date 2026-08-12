@@ -27,6 +27,12 @@ export class StandardBatchConsumer extends BatchConsumer {
       })
       .filter((item) => item !== null);
 
+    for (const event of events) {
+      if ((event as { type?: string }).type === 'execution_context') {
+        console.log('[execution_context]', JSON.stringify(event));
+      }
+    }
+
     return new Request(this.intakeUrl, {
       method: 'POST',
       headers: {
