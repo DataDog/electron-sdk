@@ -5,6 +5,7 @@ import { createFormatHooks } from '../../assembly';
 import { addError } from '../telemetry';
 import { ReplayCollection } from './ReplayCollection';
 import type { Configuration } from '../../config';
+import { createTestConfiguration } from '../../mocks.specUtil';
 import type { SessionManager } from '../session';
 import { CreationReason } from './Segment';
 import type { ReplaySegmentPayload } from './Segment';
@@ -32,19 +33,7 @@ vi.mock('../../tools/StreamingDeflate', () => ({
 }));
 
 function makeConfig(overrides?: Partial<Configuration>): Configuration {
-  return {
-    site: 'datadoghq.com',
-    service: 'test',
-    clientToken: 'pub-test',
-    applicationId: 'app-1',
-    sessionSampleRate: 100,
-    sessionReplaySampleRate: 100,
-    profilingSampleRate: 0,
-    telemetrySampleRate: 0,
-    defaultPrivacyLevel: 'mask',
-    allowedRendererHosts: [],
-    ...overrides,
-  };
+  return createTestConfiguration({ applicationId: 'app-1', ...overrides });
 }
 
 function makeSessionManager(id = 'sess-1', status: 'active' | 'expired' = 'active'): SessionManager {

@@ -68,6 +68,20 @@ function splitBuffer(buf: Buffer, delimiter: Buffer): Buffer[] {
   return parts;
 }
 
+/**
+ * Predicate for the `telemetry` event type, which carries several telemetry types on the RUM track.
+ * Pass it to `getEventsByType`/`waitForEventCount` to select one, rather than assuming the type under
+ * test is the only telemetry received.
+ *
+ * `'log'` selects message events, which the schema splits further by `status` into `debug` and
+ * `error`. The SDK only ever emits `error` (see `RawTelemetryError`), so this needs no second filter
+ * today — it would if debug telemetry is ever added.
+ */
+export const byTelemetryType =
+  (type: 'log' | 'configuration' | 'usage') =>
+  (event: ReceivedEvent): boolean =>
+    (event.body as { telemetry?: { type?: string } }).telemetry?.type === type;
+
 export class Intake {
   private server: http.Server | null = null;
   private rumEvents: ReceivedEvent[] = [];
@@ -281,6 +295,38 @@ export class Intake {
   ): Promise<ReceivedEvent[]> {
     // return as soon as we have one event
     return this.waitForEventCount(type, 1, options);
+  }
+
+  /**
+   * Waits for at least one matching event, then keeps polling until no new match has arrived for
+   * `settle` ms, and returns everything received.
+   *
+   * Use this for "exactly N" assertions: `getEventsByType` returns as soon as one event matches,
+   * so it cannot observe a duplicate that arrives in a later batch, and the assertion can never fail.
+   */
+  async getSettledEventsByType(
+    type: string,
+    options?: { timeout?: number; settle?: number; predicate?: (event: ReceivedEvent) => boolean }
+  ): Promise<ReceivedEvent[]> {
+    const settle = options?.settle ?? 1000;
+    const byPredicate = options?.predicate ?? (() => true);
+    const pollInterval = 100;
+
+    let events = await this.waitForEventCount(type, 1, options);
+
+    let quietFor = 0;
+    while (quietFor < settle) {
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+      const current = this.rumEvents.filter(byType(type)).filter(byPredicate);
+      if (current.length > events.length) {
+        events = current;
+        quietFor = 0;
+      } else {
+        quietFor += pollInterval;
+      }
+    }
+
+    return events;
   }
 
   async waitForEventCount(

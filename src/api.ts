@@ -1,7 +1,7 @@
 import { sanitize } from '@datadog/browser-core';
 import { isIndexableObject } from '@datadog/js-core/util';
 import type { AddDurationVitalOptions, DurationVitalOptions, RumCollection } from './domain/rum';
-import { callMonitored } from './domain/telemetry';
+import { addUsage, callMonitored } from './domain/telemetry';
 import { display } from './tools/display';
 import { isFiniteNumber, isValidString, VALID_VITAL_NAME_REGEX } from './tools/validation';
 
@@ -33,6 +33,7 @@ export function setDurationVitalApi(api: DurationVitalApi | undefined): void {
  */
 export function addDurationVital(name: string, options: AddDurationVitalOptions): void {
   callMonitored(() => {
+    addUsage({ feature: 'add-duration-vital' });
     if (!validateDurationVitalArgs('addDurationVital', name, options, true)) {
       return;
     }
@@ -60,6 +61,7 @@ export function addDurationVital(name: string, options: AddDurationVitalOptions)
  */
 export function startDurationVital(name: string, options?: DurationVitalOptions): void {
   callMonitored(() => {
+    addUsage({ feature: 'start-duration-vital' });
     if (!validateDurationVitalArgs('startDurationVital', name, options, false)) {
       return;
     }
@@ -82,6 +84,7 @@ export function startDurationVital(name: string, options?: DurationVitalOptions)
  */
 export function stopDurationVital(name: string, options?: DurationVitalOptions): void {
   callMonitored(() => {
+    addUsage({ feature: 'stop-duration-vital' });
     if (!validateDurationVitalArgs('stopDurationVital', name, options, false)) {
       return;
     }

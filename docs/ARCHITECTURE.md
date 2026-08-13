@@ -138,10 +138,47 @@ Failures are routed by _who can act on them_:
   code reached by a Node.js/Electron callback, listener, or promise settlement instead of letting them
   surface into the host app. Sampled (`telemetrySampleRate`) and rate-limited per session. See
   `src/domain/telemetry/`.
+  See [Telemetry types](#telemetry-types) for the other telemetry the SDK reports.
 - **The customer, via console logs** — for environment failures the SDK cannot fix but the integrating
   app can: disk full or unwritable, a corrupt batch file on disk, a missing peer dependency. Surfaced
   through `display` (`src/tools/display`) at `warn`/`error`, and deliberately kept out of telemetry
   since they are not SDK bugs.
+
+### Telemetry types
+
+`Telemetry` (`src/domain/telemetry/Telemetry.ts`) collects three event types, all emitted as
+`RawEvent`s with `format: TELEMETRY` and assembled onto the RUM track:
+
+| Type            | Entry point        | Reports                              |
+| --------------- | ------------------ | ------------------------------------ |
+| `log` (error)   | `addError`         | Failures in the SDK's own logic      |
+| `configuration` | `addConfiguration` | The resolved SDK configuration       |
+| `usage`         | `addUsage`         | Which public APIs the host app calls |
+
+Each type is gated by its own sampling, deduplication and rate-limiting policy:
+
+- **Sampling** is drawn once per process. `telemetrySampleRate` gates all telemetry; `configuration`
+  and `usage` are then gated by `telemetryConfigurationSampleRate` / `telemetryUsageSampleRate` on top
+  of it. The combined rate is reported as `effective_sample_rate` so the backend can scale the data
+  back up — it is not recoverable from the event otherwise.
+- **Deduplication** drops an identical event for the rest of the session. Usage events would otherwise
+  exhaust the budget when an instrumented API is called in a loop, and repeated errors add no
+  information.
+- **Rate limiting** caps a session at 100 events. `configuration` events are exempt: there is at most
+  one per process and it must not be starved by a burst of errors.
+
+The configuration event is reported at the end of `init()` — the transport must be registered for it
+to reach a batch, and every component whose state it describes must be constructed. It reports
+_effective_ values (`src/domain/telemetry/configurationTelemetry.ts`): an unset option still produces
+behaviour, so defaults are resolved rather than reported as absent.
+
+Usage events are reported by the public API functions themselves (`src/index.ts`, `src/api.ts`), as
+the first statement of each call so that a call rejected by argument validation still counts as
+adoption. Only the schema's `feature` discriminator is sent, never the caller's arguments. APIs the
+schema has no feature for are reported as the closest one, with a comment at the call site.
+
+Renderer-originated telemetry (`internal_telemetry` over the bridge) is not yet consumed — see
+`RendererPipeline`.
 
 ## Profiling
 

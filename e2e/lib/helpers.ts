@@ -123,6 +123,8 @@ async function launchApp(
     sessionReplaySampleRate: 100,
     profilingSampleRate: 100,
     telemetrySampleRate: 100,
+    telemetryConfigurationSampleRate: 100,
+    telemetryUsageSampleRate: 100,
     defaultPrivacyLevel: 'mask',
     allowedRendererHosts: ['*'],
     ...(sdkConfigOverrides ?? {}),

@@ -80,6 +80,8 @@ export function createTestConfiguration(overrides: Partial<Configuration> = {}):
     sessionReplaySampleRate: 100,
     profilingSampleRate: 100,
     telemetrySampleRate: 100,
+    telemetryConfigurationSampleRate: 100,
+    telemetryUsageSampleRate: 100,
     defaultPrivacyLevel: 'mask',
     allowedRendererHosts: ['*', ''],
     ...overrides,

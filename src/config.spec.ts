@@ -602,4 +602,54 @@ describe('buildConfiguration', () => {
       expect(display.error).not.toHaveBeenCalled();
     });
   });
+
+  describe.each([{ field: 'telemetryConfigurationSampleRate' }, { field: 'telemetryUsageSampleRate' }] as const)(
+    '$field validation',
+    ({ field }) => {
+      it('defaults to 20 when not provided', () => {
+        const config = { ...DEFAULT_CONFIG };
+
+        const result = buildConfiguration(config);
+
+        expect(result?.[field]).toBe(20);
+      });
+
+      it.each([0, 50, 100])('accepts valid value: %d', (value) => {
+        const config = { ...DEFAULT_CONFIG, [field]: value };
+
+        const result = buildConfiguration(config);
+
+        expect(result?.[field]).toBe(value);
+      });
+
+      it.each([
+        { value: -1, description: 'negative number' },
+        { value: 101, description: 'greater than 100' },
+        { value: 'fifty', description: 'non-number string' },
+        { value: {}, description: 'object' },
+        { value: NaN, description: 'NaN' },
+      ])('returns undefined and logs error when $description', ({ value }) => {
+        const config = { ...DEFAULT_CONFIG, [field]: value };
+
+        const result = buildConfiguration(config);
+
+        expect(result).toBeUndefined();
+        expect(display.error).toHaveBeenCalledWith(
+          `Configuration error: '${field}' must be a number between 0 and 100`
+        );
+      });
+
+      it.each([
+        { value: null, description: 'null' },
+        { value: undefined, description: 'undefined' },
+      ])('defaults to 20 when $description (no error)', ({ value }) => {
+        const config = { ...DEFAULT_CONFIG, [field]: value };
+
+        const result = buildConfiguration(config);
+
+        expect(result?.[field]).toBe(20);
+        expect(display.error).not.toHaveBeenCalled();
+      });
+    }
+  );
 });
