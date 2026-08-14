@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('main:fail-operation', name, failureReason, options),
   mainFetchApiFetch: () => ipcRenderer.invoke('main:fetch-api-fetch'),
   mainFetchApiNet: () => ipcRenderer.invoke('main:fetch-api-net'),
+  getProfile: () => ipcRenderer.invoke('ipc-demo:get-profile'),
   openRumExplorer: () => ipcRenderer.invoke('open-rum-explorer'),
   flushTransport: () => ipcRenderer.invoke('flush-transport'),
   setUserInfo: () => ipcRenderer.invoke('main:set-user-info'),

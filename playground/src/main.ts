@@ -145,6 +145,11 @@ ipcMain.handle('main:fetch-api-net', async () => {
   return (await res.json()) as unknown;
 });
 
+ipcMain.handle('ipc-demo:get-profile', async () => {
+  const res = await fetch('https://httpbin.org/json');
+  return (await res.json()) as unknown;
+});
+
 // IPC handler to crash the main process
 ipcMain.handle('crash', () => {
   process.crash();
