@@ -1,4 +1,5 @@
 import { ONE_SECOND } from '@datadog/js-core/time';
+import { isIndexableObject } from '@datadog/js-core/util';
 import { ONE_KIBI_BYTE, ONE_MEBI_BYTE, DefaultPrivacyLevel } from '@datadog/browser-core';
 import { display } from './tools/display';
 import { isFiniteNumber, isOneOf } from './tools/validation';
@@ -29,6 +30,19 @@ export const BatchUploadFrequencies = {
 export type BatchSize = keyof typeof BatchSizes;
 export type UploadFrequency = keyof typeof BatchUploadFrequencies;
 
+export interface TraceSamplingRule {
+  /** Percentage of matching traces to keep, between 0 and 100. */
+  sampleRate: number;
+  /** Case-insensitive glob matched against the configured service. */
+  service?: string;
+  /** Case-insensitive glob matched against the root span operation name. */
+  name?: string;
+  /** Case-insensitive glob matched against the root span resource name. */
+  resource?: string;
+  /** Case-insensitive glob patterns matched against root span tags. */
+  tags?: Record<string, string>;
+}
+
 const DEFAULT_BATCH_SIZE: BatchSize = 'MEDIUM';
 const DEFAULT_UPLOAD_FREQUENCY: UploadFrequency = 'NORMAL';
 
@@ -41,6 +55,12 @@ export interface InitConfiguration {
   env?: string;
   version?: string;
   sessionSampleRate?: number;
+  /**
+   * Ordered sampling rules for main-process traces. The first matching rule
+   * determines the percentage of traces to keep. Traces that do not match a rule are kept.
+   * @example [{ tags: { 'http.url': '*health' }, sampleRate: 0 }]
+   */
+  traceSamplingRules?: TraceSamplingRule[];
   sessionReplaySampleRate?: number;
   profilingSampleRate?: number;
   /**
@@ -86,6 +106,7 @@ export interface Configuration {
   version?: string;
   proxy?: string;
   sessionSampleRate: number;
+  traceSamplingRules: TraceSamplingRule[];
   sessionReplaySampleRate: number;
   profilingSampleRate: number;
   telemetrySampleRate: number;
@@ -161,6 +182,50 @@ function validateSampleRate(value: unknown, fieldName: string, defaultValue: num
     return undefined;
   }
   return value;
+}
+
+function validateTraceSamplingRules(value: unknown): TraceSamplingRule[] | undefined {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (!Array.isArray(value) || !value.every(isValidTraceSamplingRule)) {
+    display.error(
+      "Configuration error: 'traceSamplingRules' must be an array of rules with a sampleRate between 0 and 100"
+    );
+    return undefined;
+  }
+  return value;
+}
+
+function isValidTraceSamplingRule(value: unknown): value is TraceSamplingRule {
+  if (!isIndexableObject(value)) {
+    return false;
+  }
+  const allowedKeys = new Set(['sampleRate', 'service', 'name', 'resource', 'tags']);
+  if (Object.keys(value).some((key) => !allowedKeys.has(key))) {
+    return false;
+  }
+  if (!isFiniteNumber(value.sampleRate) || value.sampleRate < 0 || value.sampleRate > 100) {
+    return false;
+  }
+  if (!['service', 'name', 'resource'].every((key) => isOptionalNonEmptyString(value[key]))) {
+    return false;
+  }
+  if (value.tags === undefined) {
+    return true;
+  }
+  return (
+    isIndexableObject(value.tags) &&
+    Object.entries(value.tags).every(([key, pattern]) => key.length > 0 && isNonEmptyString(pattern))
+  );
+}
+
+function isOptionalNonEmptyString(value: unknown): boolean {
+  return value === undefined || isNonEmptyString(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
 }
 
 /**
@@ -269,6 +334,7 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
 
   const proxy = validateOptionalString(initConfig.proxy);
   const sessionSampleRate = validateSampleRate(initConfig.sessionSampleRate, 'sessionSampleRate', 100);
+  const traceSamplingRules = validateTraceSamplingRules(initConfig.traceSamplingRules);
   const sessionReplaySampleRate = validateSampleRate(initConfig.sessionReplaySampleRate, 'sessionReplaySampleRate', 0);
   const profilingSampleRate = validateSampleRate(initConfig.profilingSampleRate, 'profilingSampleRate', 0);
   const telemetrySampleRate = validateSampleRate(initConfig.telemetrySampleRate, 'telemetrySampleRate', 20);
@@ -285,6 +351,7 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
 
   if (
     sessionSampleRate === undefined ||
+    traceSamplingRules === undefined ||
     sessionReplaySampleRate === undefined ||
     profilingSampleRate === undefined ||
     telemetrySampleRate === undefined ||
@@ -308,6 +375,7 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     version: validateOptionalString(initConfig.version),
     proxy,
     sessionSampleRate,
+    traceSamplingRules,
     sessionReplaySampleRate,
     profilingSampleRate,
     telemetrySampleRate,

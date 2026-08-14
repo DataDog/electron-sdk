@@ -72,6 +72,7 @@ export class SpanProcessor {
 
   private processTrace(trace: ExportedSpan[]): void {
     const processedSpans: RawSpanData[] = [];
+    const traceSampled = isTraceSampled(trace);
 
     for (const exportedSpan of trace) {
       if (this.isIntakeRequest(exportedSpan)) {
@@ -83,11 +84,15 @@ export class SpanProcessor {
         continue;
       }
 
-      processedSpans.push(combine(span, hookResult));
-
       if (isHttpSpan(exportedSpan)) {
-        this.emitResource(spanToResource(exportedSpan));
+        this.emitResource(spanToResource(exportedSpan, traceSampled));
       }
+
+      if (!traceSampled) {
+        continue;
+      }
+
+      processedSpans.push(combine(span, hookResult));
     }
 
     const processedTrace = { env: this.env, spans: processedSpans };
@@ -142,6 +147,13 @@ function isHttpSpan(span: ExportedSpan): boolean {
   return span.type === 'http' && !!span.meta['http.url'];
 }
 
+function isTraceSampled(trace: ExportedSpan[]): boolean {
+  return !trace.some((span) => {
+    const priority = span.metrics['_sampling_priority_v1'];
+    return priority !== undefined && priority <= 0;
+  });
+}
+
 function toRawSpan(exportedSpan: ExportedSpan, service: string): RawSpanData {
   return {
     ...exportedSpan,
@@ -154,7 +166,7 @@ function toRawSpan(exportedSpan: ExportedSpan, service: string): RawSpanData {
   };
 }
 
-function spanToResource(exportedSpan: ExportedSpan): RawRumResource {
+function spanToResource(exportedSpan: ExportedSpan, traceSampled: boolean): RawRumResource {
   return {
     type: 'resource',
     date: toTimeStamp(exportedSpan.start),
@@ -166,11 +178,13 @@ function spanToResource(exportedSpan: ExportedSpan): RawRumResource {
       status_code: Number(exportedSpan.meta['http.status_code']) || 0,
       url: exportedSpan.meta['http.url'],
     },
-    _dd: {
-      trace_id: exportedSpan.trace_id.toString(10),
-      span_id: exportedSpan.span_id.toString(10),
-      format_version: 2,
-    },
+    _dd: traceSampled
+      ? {
+          trace_id: exportedSpan.trace_id.toString(10),
+          span_id: exportedSpan.span_id.toString(10),
+          format_version: 2,
+        }
+      : { format_version: 2 },
   };
 }
 

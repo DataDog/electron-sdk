@@ -45,7 +45,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
     return false;
   }
 
-  tracing = new Tracing();
+  tracing = new Tracing(config);
 
   eventManager = new EventManager();
   const hooks = createFormatHooks();
@@ -346,7 +346,7 @@ export function getInternalContext(): InternalContext | undefined {
 
 export { addDurationVital, startDurationVital, stopDurationVital } from './api';
 export type { AccountInfo, UserInfo } from './domain/customer-context';
-export type { InitConfiguration } from './config';
+export type { InitConfiguration, TraceSamplingRule } from './config';
 export type {
   AddDurationVitalOptions,
   DurationVitalOptions,
