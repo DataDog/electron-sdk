@@ -59,6 +59,8 @@ interface ElectronAPI {
   setAccountInfo: () => Promise<void>;
   addAccountExtraInfo: () => Promise<void>;
   clearAccountInfo: () => Promise<void>;
+  triggerPingRenderer: () => Promise<void>;
+  onPingFromMain: (callback: (data: unknown) => void) => void;
 }
 
 declare global {
@@ -268,6 +270,12 @@ setupDemoButton('ipc-ping-main', 'ipc-demo:ping-main', () => {
   window.electronAPI.pingMain();
   return Promise.resolve();
 });
+
+// Register two separate listeners for ping-renderer to demonstrate multiplicity
+window.electronAPI.onPingFromMain((data) => logIpcCall('ipc-demo:ping-renderer#1', 'done', 0, JSON.stringify(data)));
+window.electronAPI.onPingFromMain((data) => logIpcCall('ipc-demo:ping-renderer#2', 'done', 0, JSON.stringify(data)));
+
+setupDemoButton('ipc-ping-renderer', 'ipc-demo:trigger-ping-renderer', () => window.electronAPI.triggerPingRenderer());
 
 // --- Custom duration vital demo buttons ---
 

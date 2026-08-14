@@ -45,4 +45,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setAccountInfo: () => ipcRenderer.invoke('main:set-account-info'),
   addAccountExtraInfo: () => ipcRenderer.invoke('main:add-account-extra-info'),
   clearAccountInfo: () => ipcRenderer.invoke('main:clear-account-info'),
+  triggerPingRenderer: () => ipcRenderer.invoke('ipc-demo:trigger-ping-renderer'),
+  onPingFromMain: (callback: (data: unknown) => void) => {
+    ipcRenderer.on('ipc-demo:ping-renderer', (_event, data) => callback(data));
+  },
 });

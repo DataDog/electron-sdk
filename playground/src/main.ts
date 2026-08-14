@@ -157,6 +157,10 @@ ipcMain.on('ipc-demo:ping-main', () => {
   void fetch('https://httpbin.org/uuid').catch(() => undefined);
 });
 
+ipcMain.handle('ipc-demo:trigger-ping-renderer', () => {
+  mainWindow?.webContents.send('ipc-demo:ping-renderer', { from: 'main' });
+});
+
 // IPC handler to crash the main process
 ipcMain.handle('crash', () => {
   process.crash();
