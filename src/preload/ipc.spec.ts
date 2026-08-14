@@ -35,13 +35,16 @@ describe('patchIpcRenderer', () => {
     // The real ipcRenderer.invoke was called with the id appended as the last argument.
     expect(calls[0][0]).toBe('userId123');
     expect(calls[0][1]).toEqual({ __ddIpcId: expect.any(String) as unknown });
+    const wireId = (calls[0][1] as { __ddIpcId: string }).__ddIpcId;
 
     expect(handler).toHaveBeenCalledWith(expect.objectContaining({ action: 'start', url: 'get-profile' }));
     expect(handler).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'stop',
         url: 'get-profile',
-        options: expect.objectContaining({ context: { ipc: { role: 'source', method: 'invoke' } } }) as unknown,
+        options: expect.objectContaining({
+          context: { ipc: { role: 'source', id: wireId, method: 'invoke' } },
+        }) as unknown,
       })
     );
   });

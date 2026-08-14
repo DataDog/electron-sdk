@@ -48,7 +48,7 @@ export function patchIpcRenderer(ipcRendererLike: IpcRendererLike): {
         handler?.({
           action: 'stop',
           url: channel,
-          options: { context: { ipc: { role: 'source', method: 'invoke' } } },
+          options: { context: { ipc: { role: 'source', id, method: 'invoke' } } },
         });
         return value;
       },
@@ -56,7 +56,7 @@ export function patchIpcRenderer(ipcRendererLike: IpcRendererLike): {
         handler?.({
           action: 'stop',
           url: channel,
-          options: { context: { ipc: { role: 'source', method: 'invoke', error: true } } },
+          options: { context: { ipc: { role: 'source', id, method: 'invoke', error: true } } },
         });
         throw err;
       }
@@ -67,7 +67,11 @@ export function patchIpcRenderer(ipcRendererLike: IpcRendererLike): {
     const id = generateUUID();
     handler?.({ action: 'start', url: channel });
     rawSend(channel, ...args, { __ddIpcId: id });
-    handler?.({ action: 'stop', url: channel, options: { context: { ipc: { role: 'source', method: 'send' } } } });
+    handler?.({
+      action: 'stop',
+      url: channel,
+      options: { context: { ipc: { role: 'source', id, method: 'send' } } },
+    });
   };
 
   ipcRendererLike.on = (channel: string, listener: (event: unknown, ...args: unknown[]) => void) => {
@@ -80,7 +84,7 @@ export function patchIpcRenderer(ipcRendererLike: IpcRendererLike): {
           handler?.({
             action: 'stop',
             url: channel,
-            options: { context: { ipc: { role: 'destination', method: 'on' } } },
+            options: { context: { ipc: { role: 'destination', id, method: 'on' } } },
           });
         }
       } catch (err) {
@@ -88,7 +92,7 @@ export function patchIpcRenderer(ipcRendererLike: IpcRendererLike): {
           handler?.({
             action: 'stop',
             url: channel,
-            options: { context: { ipc: { role: 'destination', method: 'on', error: true } } },
+            options: { context: { ipc: { role: 'destination', id, method: 'on', error: true } } },
           });
         }
         throw err;
