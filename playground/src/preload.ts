@@ -36,6 +36,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   mainFetchApiFetch: () => ipcRenderer.invoke('main:fetch-api-fetch'),
   mainFetchApiNet: () => ipcRenderer.invoke('main:fetch-api-net'),
   getProfile: () => ipcRenderer.invoke('ipc-demo:get-profile'),
+  getProfileWithProgress: () => ipcRenderer.invoke('ipc-demo:get-profile-with-progress'),
+  onProfileProgress: (callback: (data: unknown) => void) => {
+    ipcRenderer.on('ipc-demo:profile-progress', (_event, data) => callback(data));
+  },
   pingMain: () => ipcRenderer.send('ipc-demo:ping-main'),
   openRumExplorer: () => ipcRenderer.invoke('open-rum-explorer'),
   flushTransport: () => ipcRenderer.invoke('flush-transport'),

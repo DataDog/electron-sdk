@@ -150,6 +150,12 @@ ipcMain.handle('ipc-demo:get-profile', async () => {
   return (await res.json()) as unknown;
 });
 
+ipcMain.handle('ipc-demo:get-profile-with-progress', async () => {
+  mainWindow?.webContents.send('ipc-demo:profile-progress', { status: 'fetching' });
+  const res = await fetch('https://httpbin.org/json');
+  return (await res.json()) as unknown;
+});
+
 ipcMain.on('ipc-demo:ping-main', () => {
   void fetch('https://httpbin.org/json').catch(() => undefined);
 });

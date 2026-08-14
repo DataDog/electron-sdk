@@ -50,6 +50,8 @@ interface ElectronAPI {
   mainFetchApiFetch: () => Promise<unknown>;
   mainFetchApiNet: () => Promise<unknown>;
   getProfile: () => Promise<unknown>;
+  getProfileWithProgress: () => Promise<unknown>;
+  onProfileProgress: (callback: (data: unknown) => void) => void;
   pingMain: () => void;
   openRumExplorer: () => Promise<void>;
   flushTransport: () => Promise<void>;
@@ -276,6 +278,13 @@ window.electronAPI.onPingFromMain((data) => logIpcCall('ipc-demo:ping-renderer#1
 window.electronAPI.onPingFromMain((data) => logIpcCall('ipc-demo:ping-renderer#2', 'done', 0, JSON.stringify(data)));
 
 setupDemoButton('ipc-ping-renderer', 'ipc-demo:trigger-ping-renderer', () => window.electronAPI.triggerPingRenderer());
+
+window.electronAPI.onProfileProgress((data) =>
+  logIpcCall('ipc-demo:profile-progress', 'done', 0, JSON.stringify(data))
+);
+setupDemoButton('ipc-nested-profile', 'ipc-demo:get-profile-with-progress', () =>
+  window.electronAPI.getProfileWithProgress()
+);
 
 // --- Custom duration vital demo buttons ---
 
