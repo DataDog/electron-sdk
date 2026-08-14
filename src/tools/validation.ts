@@ -7,6 +7,10 @@ export function isValidString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+export function isOneOf<T extends string>(value: unknown, allowedValues: readonly T[]): value is T {
+  return typeof value === 'string' && (allowedValues as readonly string[]).includes(value);
+}
+
 export function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }

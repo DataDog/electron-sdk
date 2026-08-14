@@ -229,48 +229,60 @@ describe('buildConfiguration', () => {
     });
   });
 
-  describe('defaultPrivacyLevel validation', () => {
-    it('defaults to mask when not provided', () => {
-      const config = { ...DEFAULT_CONFIG };
+  describe.each([
+    {
+      fieldName: 'batchSize' as const,
+      valid: ['SMALL', 'MEDIUM', 'LARGE'],
+      defaultValue: 'MEDIUM',
+      wrongCase: 'small',
+    },
+    {
+      fieldName: 'uploadFrequency' as const,
+      valid: ['RARE', 'NORMAL', 'FREQUENT'],
+      defaultValue: 'NORMAL',
+      wrongCase: 'rare',
+    },
+    {
+      fieldName: 'defaultPrivacyLevel' as const,
+      valid: ['mask', 'allow', 'mask-user-input'],
+      defaultValue: 'mask',
+      wrongCase: 'MASK',
+    },
+  ])('$fieldName validation', ({ fieldName, valid, defaultValue, wrongCase }) => {
+    it.each(valid)('carries the configured value through to the resolved configuration: %s', (value) => {
+      const config = { ...DEFAULT_CONFIG, [fieldName]: value };
 
       const result = buildConfiguration(config);
 
-      expect(result?.defaultPrivacyLevel).toBe('mask');
-    });
-
-    it.each(['mask', 'allow', 'mask-user-input'] as const)('accepts valid value: %s', (value) => {
-      const config = { ...DEFAULT_CONFIG, defaultPrivacyLevel: value };
-
-      const result = buildConfiguration(config);
-
-      expect(result?.defaultPrivacyLevel).toBe(value);
-    });
-
-    it.each([
-      { value: 'invalid', description: 'invalid string' },
-      { value: 123, description: 'number' },
-      { value: {}, description: 'object' },
-    ])('logs error and uses default when $description', ({ value }) => {
-      const config = { ...DEFAULT_CONFIG, defaultPrivacyLevel: value } as unknown as InitConfiguration;
-
-      const result = buildConfiguration(config);
-
-      expect(result?.defaultPrivacyLevel).toBe('mask');
-      expect(display.error).toHaveBeenCalledWith(
-        "Configuration error: 'defaultPrivacyLevel' must be one of: mask, allow, mask-user-input"
-      );
-    });
-
-    it.each([
-      { value: null, description: 'null' },
-      { value: undefined, description: 'undefined' },
-    ])('defaults to mask when $description (no error)', ({ value }) => {
-      const config = { ...DEFAULT_CONFIG, defaultPrivacyLevel: value } as unknown as InitConfiguration;
-
-      const result = buildConfiguration(config);
-
-      expect(result?.defaultPrivacyLevel).toBe('mask');
+      expect(result?.[fieldName]).toBe(value);
       expect(display.error).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { value: undefined, description: 'undefined' },
+      { value: null, description: 'null' },
+    ])(`resolves to the ${String(defaultValue)} default when $description`, ({ value }) => {
+      const config = { ...DEFAULT_CONFIG, [fieldName]: value };
+
+      const result = buildConfiguration(config);
+
+      expect(result?.[fieldName]).toBe(defaultValue);
+      expect(display.error).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { value: 'NOPE', description: 'unknown value' },
+      { value: wrongCase, description: 'wrong case' },
+      { value: 123, description: 'number' },
+    ])('logs an error and resolves to the default when $description', ({ value }) => {
+      const config = { ...DEFAULT_CONFIG, [fieldName]: value };
+
+      const result = buildConfiguration(config);
+
+      expect(result?.[fieldName]).toBe(defaultValue);
+      expect(display.error).toHaveBeenCalledWith(
+        `Configuration error: '${fieldName}' must be one of: ${valid.join(', ')}`
+      );
     });
   });
 

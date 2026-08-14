@@ -1,7 +1,7 @@
 import { ONE_SECOND } from '@datadog/js-core/time';
 import { ONE_KIBI_BYTE, ONE_MEBI_BYTE, DefaultPrivacyLevel } from '@datadog/browser-core';
 import { display } from './tools/display';
-import { isFiniteNumber } from './tools/validation';
+import { isFiniteNumber, isOneOf } from './tools/validation';
 
 const VALID_DATADOG_SITES = [
   'datadoghq.com',
@@ -26,8 +26,11 @@ export const BatchUploadFrequencies = {
   FREQUENT: 5 * ONE_SECOND,
 } as const;
 
-export type BatchSize = 'SMALL' | 'MEDIUM' | 'LARGE';
-export type UploadFrequency = 'RARE' | 'NORMAL' | 'FREQUENT';
+export type BatchSize = keyof typeof BatchSizes;
+export type UploadFrequency = keyof typeof BatchUploadFrequencies;
+
+const DEFAULT_BATCH_SIZE: BatchSize = 'MEDIUM';
+const DEFAULT_UPLOAD_FREQUENCY: UploadFrequency = 'NORMAL';
 
 export interface InitConfiguration {
   site: string;
@@ -88,14 +91,14 @@ export interface Configuration {
   telemetrySampleRate: number;
   telemetryConfigurationSampleRate: number;
   telemetryUsageSampleRate: number;
-  batchSize?: BatchSize;
-  uploadFrequency?: UploadFrequency;
+  batchSize: BatchSize;
+  uploadFrequency: UploadFrequency;
   defaultPrivacyLevel: DefaultPrivacyLevel;
   allowedRendererHosts: string[];
 }
 
 /**
- * Effective batch byte threshold, applying the default used when `batchSize` is unset.
+ * Batch byte threshold the resolved `batchSize` stands for.
  *
  * Caps how large a single batch file may grow before it is rotated early; the batch window itself is
  * driven by {@link resolveUploadFrequency}. Configuration telemetry deliberately does not report this
@@ -103,20 +106,18 @@ export interface Configuration {
  * `buildConfigurationTelemetry`.
  */
 export function resolveBatchSize(configuration: Configuration): number {
-  return configuration.batchSize ? BatchSizes[configuration.batchSize] : BatchSizes.MEDIUM;
+  return BatchSizes[configuration.batchSize];
 }
 
 /**
- * Effective upload period in milliseconds, applying the default used when `uploadFrequency` is unset.
+ * Upload period in milliseconds the resolved `uploadFrequency` stands for.
  *
  * Doubles as the batch window: each upload cycle seals the open batch and drains every pending one,
  * so events accumulate for exactly this long. Shared by the transport and configuration telemetry so
  * both report the same value.
  */
 export function resolveUploadFrequency(configuration: Configuration): number {
-  return configuration.uploadFrequency
-    ? BatchUploadFrequencies[configuration.uploadFrequency]
-    : BatchUploadFrequencies.NORMAL;
+  return BatchUploadFrequencies[configuration.uploadFrequency];
 }
 
 function validateRequiredString(value: unknown, fieldName: string): string | undefined {
@@ -128,7 +129,7 @@ function validateRequiredString(value: unknown, fieldName: string): string | und
 }
 
 function validateSite(value: unknown): string | undefined {
-  if (typeof value !== 'string' || value.length === 0 || !(VALID_DATADOG_SITES as readonly string[]).includes(value)) {
+  if (!isOneOf(value, VALID_DATADOG_SITES)) {
     display.error(`Configuration error: 'site' must be one of: ${VALID_DATADOG_SITES.join(', ')}`);
     return undefined;
   }
@@ -162,22 +163,36 @@ function validateSampleRate(value: unknown, fieldName: string, defaultValue: num
   return value;
 }
 
+/**
+ * Validate an option whose value must be one of a fixed set of strings, resolving it to
+ * `defaultValue` when unset.
+ *
+ * An invalid value is reported and falls back to the default rather than aborting `init()`.
+ */
+function validateEnumOption<T extends string>(
+  value: unknown,
+  fieldName: string,
+  allowedValues: readonly T[],
+  defaultValue: T
+): T {
+  if (value === undefined || value === null) {
+    return defaultValue;
+  }
+  if (!isOneOf(value, allowedValues)) {
+    display.error(`Configuration error: '${fieldName}' must be one of: ${allowedValues.join(', ')}`);
+    return defaultValue;
+  }
+  return value;
+}
+
+const VALID_BATCH_SIZES = Object.keys(BatchSizes) as BatchSize[];
+const VALID_UPLOAD_FREQUENCIES = Object.keys(BatchUploadFrequencies) as UploadFrequency[];
+
 const VALID_PRIVACY_LEVELS: readonly DefaultPrivacyLevel[] = [
   DefaultPrivacyLevel.MASK,
   DefaultPrivacyLevel.ALLOW,
   DefaultPrivacyLevel.MASK_USER_INPUT,
 ];
-
-function validateDefaultPrivacyLevel(value: unknown): DefaultPrivacyLevel {
-  if (value === undefined || value === null) {
-    return DefaultPrivacyLevel.MASK;
-  }
-  if (typeof value !== 'string' || !(VALID_PRIVACY_LEVELS as readonly string[]).includes(value)) {
-    display.error(`Configuration error: 'defaultPrivacyLevel' must be one of: ${VALID_PRIVACY_LEVELS.join(', ')}`);
-    return DefaultPrivacyLevel.MASK;
-  }
-  return value as DefaultPrivacyLevel;
-}
 
 function validateAllowedRendererHosts(value: unknown): string[] | undefined {
   if (
@@ -298,7 +313,19 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     telemetrySampleRate,
     telemetryConfigurationSampleRate,
     telemetryUsageSampleRate,
-    defaultPrivacyLevel: validateDefaultPrivacyLevel(initConfig.defaultPrivacyLevel),
+    batchSize: validateEnumOption(initConfig.batchSize, 'batchSize', VALID_BATCH_SIZES, DEFAULT_BATCH_SIZE),
+    uploadFrequency: validateEnumOption(
+      initConfig.uploadFrequency,
+      'uploadFrequency',
+      VALID_UPLOAD_FREQUENCIES,
+      DEFAULT_UPLOAD_FREQUENCY
+    ),
+    defaultPrivacyLevel: validateEnumOption(
+      initConfig.defaultPrivacyLevel,
+      'defaultPrivacyLevel',
+      VALID_PRIVACY_LEVELS,
+      DefaultPrivacyLevel.MASK
+    ),
     allowedRendererHosts,
   };
 }

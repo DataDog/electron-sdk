@@ -150,18 +150,7 @@ describe('Transport', () => {
   });
 
   describe('batch configuration', () => {
-    it('should use default batch size when not specified', async () => {
-      await Transport.create(config, eventManager);
-
-      expect(mockBatchCreate).toHaveBeenCalledWith(
-        config,
-        expect.objectContaining({
-          batchSize: BatchSizes.MEDIUM,
-        })
-      );
-    });
-
-    it('should use configured batch size', async () => {
+    it('should translate the resolved batch size to a byte threshold', async () => {
       const configWithBatchSize = createTestConfiguration({ batchSize: 'SMALL' });
       await Transport.create(configWithBatchSize, eventManager);
 
@@ -173,18 +162,7 @@ describe('Transport', () => {
       );
     });
 
-    it('should use default upload frequency when not specified', async () => {
-      await Transport.create(config, eventManager);
-
-      expect(mockBatchCreate).toHaveBeenCalledWith(
-        config,
-        expect.objectContaining({
-          uploadFrequency: BatchUploadFrequencies.NORMAL,
-        })
-      );
-    });
-
-    it('should use configured upload frequency', async () => {
+    it('should translate the resolved upload frequency to an interval', async () => {
       const configWithFrequency = createTestConfiguration({ uploadFrequency: 'FREQUENT' });
       await Transport.create(configWithFrequency, eventManager);
 

@@ -82,6 +82,8 @@ export function createTestConfiguration(overrides: Partial<Configuration> = {}):
     telemetrySampleRate: 100,
     telemetryConfigurationSampleRate: 100,
     telemetryUsageSampleRate: 100,
+    batchSize: 'MEDIUM',
+    uploadFrequency: 'NORMAL',
     defaultPrivacyLevel: 'mask',
     allowedRendererHosts: ['*', ''],
     ...overrides,

@@ -3,7 +3,7 @@ import { reportConfiguration, type ConfigurationTelemetryContext } from './confi
 import { addConfiguration } from './Telemetry';
 import type { RawTelemetryConfigurationData } from './rawTelemetryData.types';
 import type { Configuration } from '../../config';
-import { BatchSizes, BatchUploadFrequencies } from '../../config';
+import { BatchSizes, BatchUploadFrequencies, buildConfiguration } from '../../config';
 import { createTestConfiguration } from '../../mocks.specUtil';
 
 let appReady: boolean;
@@ -95,8 +95,14 @@ describe('reportConfiguration', () => {
       });
     });
 
-    it('reports the effective default when unset, not undefined', () => {
-      const configuration = createTestConfiguration({ uploadFrequency: undefined });
+    it('reports the effective default when the option is omitted at init, not undefined', () => {
+      const configuration = buildConfiguration({
+        clientToken: 'token',
+        applicationId: 'app',
+        site: 'datadoghq.com',
+        service: 'service',
+        allowedRendererHosts: [],
+      })!;
 
       expect(report(configuration)).toMatchObject({
         batch_size: BatchUploadFrequencies.NORMAL,
