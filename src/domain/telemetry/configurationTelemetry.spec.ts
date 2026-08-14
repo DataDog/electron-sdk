@@ -102,8 +102,7 @@ describe('reportConfiguration', () => {
         site: 'datadoghq.com',
         service: 'service',
         allowedRendererHosts: [],
-      });
-      if (!configuration) throw new Error('buildConfiguration rejected a valid configuration');
+      })!;
 
       expect(report(configuration)).toMatchObject({
         batch_size: BatchUploadFrequencies.NORMAL,

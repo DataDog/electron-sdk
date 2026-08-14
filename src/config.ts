@@ -1,7 +1,7 @@
 import { ONE_SECOND } from '@datadog/js-core/time';
 import { ONE_KIBI_BYTE, ONE_MEBI_BYTE, DefaultPrivacyLevel } from '@datadog/browser-core';
 import { display } from './tools/display';
-import { isFiniteNumber } from './tools/validation';
+import { isFiniteNumber, isOneOf } from './tools/validation';
 
 const VALID_DATADOG_SITES = [
   'datadoghq.com',
@@ -129,7 +129,7 @@ function validateRequiredString(value: unknown, fieldName: string): string | und
 }
 
 function validateSite(value: unknown): string | undefined {
-  if (typeof value !== 'string' || value.length === 0 || !(VALID_DATADOG_SITES as readonly string[]).includes(value)) {
+  if (!isOneOf(value, VALID_DATADOG_SITES)) {
     display.error(`Configuration error: 'site' must be one of: ${VALID_DATADOG_SITES.join(', ')}`);
     return undefined;
   }
@@ -178,11 +178,11 @@ function validateEnumOption<T extends string>(
   if (value === undefined || value === null) {
     return defaultValue;
   }
-  if (typeof value !== 'string' || !(allowedValues as readonly string[]).includes(value)) {
+  if (!isOneOf(value, allowedValues)) {
     display.error(`Configuration error: '${fieldName}' must be one of: ${allowedValues.join(', ')}`);
     return defaultValue;
   }
-  return value as T;
+  return value;
 }
 
 const VALID_BATCH_SIZES = Object.keys(BatchSizes) as BatchSize[];
