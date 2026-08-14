@@ -48,4 +48,34 @@ describe('patchIpcRenderer', () => {
       })
     );
   });
+
+  it('passes datadog: channels through untouched (no ipc.id, no resource events)', async () => {
+    const invokeCalls: unknown[][] = [];
+    const sendCalls: unknown[][] = [];
+    const onListener = vi.fn();
+    const fakeIpcRenderer = {
+      invoke: vi.fn((_channel: string, ...args: unknown[]) => {
+        invokeCalls.push(args);
+        return Promise.resolve('ok');
+      }),
+      send: vi.fn((_channel: string, ...args: unknown[]) => {
+        sendCalls.push(args);
+      }),
+      on: vi.fn((_channel: string, listener: (event: unknown, ...args: unknown[]) => void) => listener),
+    };
+
+    const handler = vi.fn();
+    const { registerResourceHandler } = patchIpcRenderer(fakeIpcRenderer);
+    registerResourceHandler(handler);
+
+    await fakeIpcRenderer.invoke('datadog:bridge-send', 'payload');
+    fakeIpcRenderer.send('datadog:bridge-send', 'payload');
+    const registeredListener = fakeIpcRenderer.on('datadog:bridge-send', onListener);
+    registeredListener('event', 'arg1');
+
+    expect(invokeCalls[0]).toEqual(['payload']);
+    expect(sendCalls[0]).toEqual(['payload']);
+    expect(onListener).toHaveBeenCalledWith('event', 'arg1');
+    expect(handler).not.toHaveBeenCalled();
+  });
 });

@@ -41,6 +41,10 @@ export function patchIpcRenderer(ipcRendererLike: IpcRendererLike): {
   const rawOn = ipcRendererLike.on.bind(ipcRendererLike);
 
   ipcRendererLike.invoke = (channel: string, ...args: unknown[]) => {
+    if (channel.startsWith('datadog:')) {
+      return rawInvoke(channel, ...args);
+    }
+
     const id = generateUUID();
     handler?.({ action: 'start', url: channel });
     return rawInvoke(channel, ...args, { __ddIpcId: id }).then(
@@ -64,6 +68,11 @@ export function patchIpcRenderer(ipcRendererLike: IpcRendererLike): {
   };
 
   ipcRendererLike.send = (channel: string, ...args: unknown[]) => {
+    if (channel.startsWith('datadog:')) {
+      rawSend(channel, ...args);
+      return;
+    }
+
     const id = generateUUID();
     handler?.({ action: 'start', url: channel });
     rawSend(channel, ...args, { __ddIpcId: id });
@@ -75,6 +84,10 @@ export function patchIpcRenderer(ipcRendererLike: IpcRendererLike): {
   };
 
   ipcRendererLike.on = (channel: string, listener: (event: unknown, ...args: unknown[]) => void) => {
+    if (channel.startsWith('datadog:')) {
+      return rawOn(channel, listener);
+    }
+
     return rawOn(channel, (event: unknown, ...args: unknown[]) => {
       const { id, strippedArgs } = extractIpcId(args);
       handler?.({ action: 'start', url: channel });
