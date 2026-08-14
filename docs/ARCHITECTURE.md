@@ -257,6 +257,13 @@ HTTP spans → Assembly → Transport → /api/v2/rum (as RUM resources)
 
 All spans are enriched with `_dd.application.id`, `_dd.session.id`, and `_dd.view.id`. Trace and span IDs are converted to **hexadecimal strings** for the spans intake.
 
+### Trace sampling rules
+
+`traceSamplingRules` are applied by dd-trace when a root trace is sampled. Rules are ordered, the first match wins,
+and child spans inherit the root decision. If no rule matches, the trace is kept. Rejected traces are not sent to the
+spans intake or propagated through Electron HTTP requests. Their HTTP spans still produce RUM resources without
+trace or span identifiers.
+
 ### Preload injection
 
 The SDK injects a preload script (`@datadog/electron-sdk/preload`) into every renderer process. The preload exposes `DatadogEventBridge` via `contextBridge`, enabling the Browser SDK to route RUM events through IPC to the Electron SDK instead of sending them directly to Datadog.

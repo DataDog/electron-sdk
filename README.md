@@ -427,12 +427,23 @@ interface FeatureOperationOptions {
 | `env`                     | `string`                                 | No       | —          | Application environment                                                                                                                                                              |
 | `version`                 | `string`                                 | No       | —          | Application version                                                                                                                                                                  |
 | `sessionSampleRate`       | `number`                                 | No       | `100`      | Percentage of sessions to collect (0–100). `0` collects no sessions; `100` collects all sessions.                                                                                    |
+| `traceSamplingRules`      | `TraceSamplingRule[]`                    | No       | `[]`       | Ordered sampling rules for main-process traces. The first matching rule determines the percentage of traces to keep; unmatched traces are kept.                                      |
 | `sessionReplaySampleRate` | `number`                                 | No       | `0`        | Percentage of sampled sessions that record session replay (0–100). `0` disables renderer session replay. Applied as a child of `sessionSampleRate`.                                  |
 | `profilingSampleRate`     | `number`                                 | No       | `0`        | Percentage of sampled sessions that are profiled (0–100). `0` disables renderer profiling. Applied as a child of `sessionSampleRate`. See [Renderer Profiling](#renderer-profiling). |
 | `batchSize`               | `'SMALL' \| 'MEDIUM' \| 'LARGE'`         | No       | `'MEDIUM'` | Byte threshold that rotates a batch file early: `SMALL` 16 KiB, `MEDIUM` 512 KiB, `LARGE` 4 MiB                                                                                      |
 | `uploadFrequency`         | `'RARE' \| 'NORMAL' \| 'FREQUENT'`       | No       | `'NORMAL'` | How often pending batches are uploaded, and the window over which events accumulate: `RARE` 30s, `NORMAL` 10s, `FREQUENT` 5s                                                         |
 | `defaultPrivacyLevel`     | `'mask' \| 'allow' \| 'mask-user-input'` | No       | `'mask'`   | Default privacy level for renderer session replay                                                                                                                                    |
 | `allowedRendererHosts`    | `string[]`                               | Yes      | —          | Hostnames allowed for the renderer bridge (required; see table below)                                                                                                                |
+
+`traceSamplingRules` can match the configured service, root span name, resource, or tags with case-insensitive glob
+patterns. Child spans inherit the root decision. A rejected HTTP trace still produces an unlinked RUM Resource.
+
+```ts
+await init({
+  // ...
+  traceSamplingRules: [{ tags: { 'http.url': '*/health' }, sampleRate: 0 }],
+});
+```
 
 #### `allowedRendererHosts` Values
 

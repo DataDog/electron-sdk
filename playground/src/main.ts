@@ -262,6 +262,7 @@ void app.whenReady().then(async () => {
     ...CONF[ACTIVE_ENV],
     service: 'electron-playground',
     env: 'dev',
+    traceSamplingRules: [{ name: 'electron.main.handle', resource: 'main:fetch-api-net', sampleRate: 0 }],
     sessionReplaySampleRate: 100,
     profilingSampleRate: 100,
     telemetrySampleRate: 100,
