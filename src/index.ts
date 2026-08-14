@@ -10,6 +10,7 @@ import { RumCollection } from './domain/rum';
 import { ReplayCollection } from './domain/replay';
 import { SessionManager } from './domain/session';
 import { callMonitored, startTelemetry } from './domain/telemetry';
+import { IpcResourceCollector } from './domain/tracing/IpcResourceCollector';
 import { SpanProcessor } from './domain/tracing/SpanProcessor';
 import { Tracing } from './domain/tracing/Tracing';
 import { ProfilingCollection } from './domain/profiling';
@@ -58,6 +59,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   new MainAssembly(eventManager, hooks);
   new RendererPipeline(eventManager, hooks, config);
+  new IpcResourceCollector(eventManager);
 
   new ProfilingCollection(eventManager, sessionManager, config, hooks);
   replayCollection = new ReplayCollection(eventManager, config, sessionManager, hooks);

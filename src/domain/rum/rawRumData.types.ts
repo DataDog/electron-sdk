@@ -99,12 +99,12 @@ export interface RawRumResource extends RecursivePartial<RumResourceEvent> {
     duration: ServerDuration;
     type: 'native';
     method?: RumResourceEvent['resource']['method'];
-    status_code: number;
+    status_code?: number;
     url: string;
   };
   _dd: {
-    trace_id: string;
-    span_id: string;
+    trace_id?: string;
+    span_id?: string;
     format_version: 2;
   };
 }
