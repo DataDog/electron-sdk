@@ -14,7 +14,7 @@
     "test": "yarn build && playwright test -c test/playwright.config.ts"
   },
   "dependencies": {
-    "@datadog/browser-rum": "7.5.0",
+    "@datadog/browser-rum": "portal:/Users/bastien.caudan/go/src/github.com/DataDog/browser-sdk/.worktrees/bcaudan/browser-ipc/packages/browser-rum",
     "@datadog/electron-sdk": "portal:.."
   },
   "devDependencies": {
