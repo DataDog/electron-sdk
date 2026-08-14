@@ -1,11 +1,57 @@
-import ddTrace from '../entries/instrument-prelude';
-import { callMonitored, monitorInstrumentation } from '../domain/telemetry';
+import { generateUUID } from '@datadog/browser-core';
+import { callMonitored } from '../domain/telemetry';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyFn = (...args: any[]) => any;
 type IpcEvent = Electron.IpcMainEvent | Electron.IpcMainInvokeEvent;
 
 const wrappedWebContents = new WeakSet<Electron.WebContents>();
+
+export interface IpcChannelMessage {
+  role: 'source' | 'destination';
+  id: string;
+  method: 'invoke' | 'handle' | 'send' | 'on';
+  channel: string;
+  startTime: number;
+  duration: number;
+  error: boolean;
+}
+
+let ipcEventHandler: ((message: IpcChannelMessage) => void) | undefined;
+
+// Set by IpcResourceCollector once it exists (during init()). ipc.ts's patches are applied at
+// `instrument` time, before init() runs, so there is a window where this is unset — publishIpcEvent
+// is a safe no-op during that window, the same way it would be if this were a diagnostics_channel
+// with zero subscribers.
+export function setIpcEventHandler(handler: (message: IpcChannelMessage) => void): void {
+  ipcEventHandler = handler;
+}
+
+function publishIpcEvent(params: IpcChannelMessage): void {
+  ipcEventHandler?.(params);
+}
+
+interface IpcIdCarrier {
+  __ddIpcId: string;
+}
+
+function isIpcIdCarrier(value: unknown): value is IpcIdCarrier {
+  return typeof value === 'object' && value !== null && typeof (value as IpcIdCarrier).__ddIpcId === 'string';
+}
+
+// Extracts an appended carrier from the end of an args array, if present, returning both the id and
+// the args with the carrier stripped so the app's real handler/listener sees its original arity.
+function extractIpcId(args: unknown[]): { id: string | undefined; strippedArgs: unknown[] } {
+  const last = args[args.length - 1];
+  if (isIpcIdCarrier(last)) {
+    return { id: last.__ddIpcId, strippedArgs: args.slice(0, -1) };
+  }
+  return { id: undefined, strippedArgs: args };
+}
+
+function appendIpcId(args: unknown[], id: string): unknown[] {
+  return [...args, { __ddIpcId: id } satisfies IpcIdCarrier];
+}
 
 export function patchIpcMain(ipcMain: Electron.IpcMain): void {
   // Null-prototype maps: IPC channel names are arbitrary user strings and may collide with
@@ -95,65 +141,55 @@ function wrapAddListener(
           if (index !== -1) wrappers.splice(index, 1);
         }
 
-        // Start the span monitored. If it fails (or the SDK is not set up) the span is undefined and
-        // we run the listener raw so app behavior is preserved. We do not extract a carrier from the
-        // payload: the SDK does not inject one into IPC messages, so any trace-header-shaped last
-        // argument belongs to the app and must be passed through untouched. Carrier extraction will
-        // return together with renderer-side injection when ipcRenderer instrumentation lands.
-        const span = callMonitored(() =>
-          ddTrace.startSpan(spanName, {
-            childOf: ddTrace.scope().active() ?? undefined,
-            tags: {
-              'span.kind': 'consumer',
-              component: 'electron',
-              'resource.name': ipcChannel,
-              'span.type': 'worker',
-            },
-          })
-        );
+        const { id, strippedArgs } = extractIpcId(args);
+        const startTime = Date.now();
+        const method = spanName === 'electron.main.handle' ? 'handle' : 'on';
 
-        if (!span) {
-          return listener.call(this, event, ...args) as unknown;
-        }
-
-        return ddTrace.scope().activate(span, () => {
-          let result: unknown;
-          try {
-            result = listener.call(this, event, ...args) as unknown;
-          } catch (err) {
-            // Tag the span monitored, then rethrow outside so invoke() rejections still propagate.
-            callMonitored(() => {
-              span.setTag('error', err);
-              span.finish();
-            });
-            throw err;
-          }
-
-          if (isPromise(result)) {
-            // Return the settled-through promise (mirrors dd-trace's tracePromise): finish the span on
-            // settle, then re-reject so the rejection keeps propagating. For fire-and-forget receive
-            // listeners EventEmitter ignores this return, so re-rejecting preserves the app's (and the
-            // SDK ErrorCollection's) process 'unhandledRejection'; for handle/handleOnce it flows on to
-            // Electron, which forwards the error to the renderer. Swallowing it here (e.g. via monitor)
-            // would drop that rejection entirely.
-            return result.then(
-              (value) => {
-                callMonitored(() => span.finish());
-                return value;
-              },
-              (err: unknown) => {
-                callMonitored(() => {
-                  span.setTag('error', err);
-                  span.finish();
-                });
-                throw err;
-              }
+        const finish = (error: boolean) => {
+          if (id) {
+            callMonitored(() =>
+              publishIpcEvent({
+                role: 'destination',
+                id,
+                method,
+                channel: ipcChannel,
+                startTime,
+                duration: Date.now() - startTime,
+                error,
+              })
             );
           }
+        };
 
-          callMonitored(() => span.finish());
-          return result;
-        });
+        let result: unknown;
+        try {
+          result = listener.call(this, event, ...strippedArgs) as unknown;
+        } catch (err) {
+          finish(true);
+          throw err;
+        }
+
+        if (isPromise(result)) {
+          // Return the settled-through promise (mirrors dd-trace's tracePromise): publish the event on
+          // settle, then re-reject so the rejection keeps propagating. For fire-and-forget receive
+          // listeners EventEmitter ignores this return, so re-rejecting preserves the app's (and the
+          // SDK ErrorCollection's) process 'unhandledRejection'; for handle/handleOnce it flows on to
+          // Electron, which forwards the error to the renderer. Swallowing it here (e.g. via monitor)
+          // would drop that rejection entirely.
+          return result.then(
+            (value) => {
+              finish(false);
+              return value;
+            },
+            (err: unknown) => {
+              finish(true);
+              throw err;
+            }
+          );
+        }
+
+        finish(false);
+        return result;
       };
 
       wrappers.push(wrappedListener);
@@ -209,43 +245,43 @@ function wrapSend(webContents: Electron.WebContents): void {
     if (channel.startsWith('datadog:')) {
       return original(channel, ...args) as unknown;
     }
-    return startSendSpan(channel, () => original(channel, ...args));
+    return startSendWithIpcId(channel, args, (argsWithId) => original(channel, ...argsWithId));
   });
 
   wrap(webContents, 'sendToFrame', (original) => (frameId: unknown, channel: string, ...args: unknown[]) => {
     if (channel.startsWith('datadog:')) {
       return original(frameId, channel, ...args) as unknown;
     }
-    return startSendSpan(channel, () => original(frameId, channel, ...args));
+    return startSendWithIpcId(channel, args, (argsWithId) => original(frameId, channel, ...argsWithId));
   });
 }
 
-// The producer span is created for main-side trace visibility, but the trace carrier is
-// intentionally NOT injected into the payload: renderer-side ipcRenderer is not yet instrumented
-// to consume/strip it, so injecting would mutate the app's IPC args (breaking channels that
-// check arity or treat the last arg as options). Carrier injection must be re-added together
-// with the matching renderer extraction when ipcRenderer instrumentation lands.
-function startSendSpan(channel: string, invokeOriginal: () => unknown): unknown {
-  let span: ReturnType<typeof ddTrace.startSpan> | undefined;
-  return monitorInstrumentation<unknown>(({ onResult, onError }) => {
-    span = ddTrace.startSpan('electron.main.send', {
-      // childOf must be passed explicitly: dd-trace's startSpan() does not inherit the active
-      // scope automatically. This parents the send to whatever is active (e.g. the
-      // electron.main.handle span) when send is called from inside an IPC handler.
-      childOf: ddTrace.scope().active() ?? undefined,
-      tags: {
-        'span.kind': 'producer',
-        'span.type': 'worker',
-        component: 'electron',
-        'resource.name': channel,
-      },
-    });
-    onError((err) => {
-      span?.setTag('error', err);
-      span?.finish();
-    });
-    onResult(() => span?.finish());
-  }, invokeOriginal);
+function startSendWithIpcId(channel: string, args: unknown[], invokeOriginal: (args: unknown[]) => unknown): unknown {
+  const id = generateUUID();
+  const startTime = Date.now();
+
+  const finish = (error: boolean) => {
+    callMonitored(() =>
+      publishIpcEvent({
+        role: 'source',
+        id,
+        method: 'send',
+        channel,
+        startTime,
+        duration: Date.now() - startTime,
+        error,
+      })
+    );
+  };
+
+  try {
+    const result = invokeOriginal(appendIpcId(args, id));
+    finish(false);
+    return result;
+  } catch (err) {
+    finish(true);
+    throw err;
+  }
 }
 
 function isPromise(value: unknown): value is Promise<unknown> {

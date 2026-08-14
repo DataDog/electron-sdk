@@ -1,32 +1,21 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { MockInstance } from 'vitest';
 import { EventEmitter } from 'node:events';
+import type { IpcChannelMessage } from './ipc';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyFn = (...args: any[]) => any;
 
-const mockSpan = { setTag: vi.fn(), finish: vi.fn() };
-const mockScope = {
-  activate: vi.fn((_, fn: () => unknown) => fn()),
-  active: vi.fn<() => object | null>(() => null),
-};
-const mockDdTrace = {
-  startSpan: vi.fn(() => mockSpan),
-  extract: vi.fn<() => object | null>(() => null),
-  scope: vi.fn(() => mockScope),
-};
-
-vi.mock('../entries/instrument-prelude', () => ({ default: mockDdTrace }));
-
 describe('patchIpcMain', () => {
   beforeEach(() => {
     vi.resetModules();
-    vi.clearAllMocks();
-    // clearAllMocks resets call history but not implementations; restore the span mock defaults so
-    // resilience tests that make setTag/finish throw do not leak into later tests.
-    mockSpan.setTag.mockReset();
-    mockSpan.finish.mockReset();
-    mockScope.activate.mockImplementation((_, fn: () => unknown) => fn());
+  });
+
+  afterEach(async () => {
+    // The event handler is module-level, global state (no diagnostics_channel to unsubscribe from),
+    // so it must not leak a registration into a later test.
+    const { setIpcEventHandler } = await import('./ipc');
+    setIpcEventHandler(() => undefined);
   });
 
   // Each vi.fn() captures the wrapped listener the wrapper passes to it in _wrapped.
@@ -76,49 +65,95 @@ describe('patchIpcMain', () => {
   }
 
   const listenerMethods = [
-    { method: 'on', spanName: 'electron.main.receive', storageKey: 'on' },
-    { method: 'addListener', spanName: 'electron.main.receive', storageKey: 'addListener' },
+    { method: 'on', expectedMethod: 'on', storageKey: 'on' },
+    { method: 'addListener', expectedMethod: 'on', storageKey: 'addListener' },
     // `once` registers its wrapper through the raw addListener (not Node's `once`) to avoid the
     // double-wrapping that would otherwise happen when Node's `once` delegates to the patched `on`.
-    { method: 'once', spanName: 'electron.main.receive', storageKey: 'addListener' },
-    { method: 'handle', spanName: 'electron.main.handle', storageKey: 'handle' },
+    { method: 'once', expectedMethod: 'on', storageKey: 'addListener' },
+    { method: 'handle', expectedMethod: 'handle', storageKey: 'handle' },
     // handleOnce is not patched (it delegates to the patched `handle`); covered by a dedicated
     // real-delegation test below, which the independent mock methods cannot model.
   ] as const;
 
   it.each(listenerMethods)(
-    'creates a $spanName consumer span for $method',
-    async ({ method, spanName, storageKey }) => {
-      const { patchIpcMain } = await import('./ipc');
+    'publishes a destination-role event for $method when the appended id carrier is present',
+    async ({ method, expectedMethod, storageKey }) => {
+      const { patchIpcMain, setIpcEventHandler } = await import('./ipc');
+      const received: IpcChannelMessage[] = [];
+      setIpcEventHandler((message) => received.push(message));
       const ipcMain = makeMockIpcMain();
       patchIpcMain(ipcMain as unknown as Electron.IpcMain);
       (ipcMain[method] as unknown as AnyFn)('ping', vi.fn());
 
-      ipcMain._wrapped[`${storageKey}:ping`]({});
-      expect(mockDdTrace.startSpan).toHaveBeenCalledWith(
-        spanName,
+      ipcMain._wrapped[`${storageKey}:ping`]({}, { __ddIpcId: 'call-1' });
+
+      expect(received).toEqual([
         expect.objectContaining({
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-          tags: expect.objectContaining({ 'span.kind': 'consumer', component: 'electron', 'span.type': 'worker' }),
-        })
-      );
-      expect(mockSpan.finish).toHaveBeenCalled();
+          role: 'destination',
+          id: 'call-1',
+          method: expectedMethod,
+          channel: 'ping',
+          error: false,
+        }),
+      ]);
     }
   );
 
-  it.each(listenerMethods)('does not create a span for datadog: prefixed channels on $method', async ({ method }) => {
-    const { patchIpcMain } = await import('./ipc');
+  it.each(listenerMethods)(
+    'does not publish an event for $method when no id carrier is appended',
+    async ({ method, storageKey }) => {
+      const { patchIpcMain, setIpcEventHandler } = await import('./ipc');
+      const received: IpcChannelMessage[] = [];
+      setIpcEventHandler((message) => received.push(message));
+      const ipcMain = makeMockIpcMain();
+      patchIpcMain(ipcMain as unknown as Electron.IpcMain);
+      const handler = vi.fn();
+      (ipcMain[method] as unknown as AnyFn)('ping', handler);
+
+      ipcMain._wrapped[`${storageKey}:ping`]({});
+
+      expect(received).toEqual([]);
+      expect(handler).toHaveBeenCalled();
+    }
+  );
+
+  it.each(listenerMethods)(
+    'does not publish an event for datadog: prefixed channels on $method',
+    async ({ method }) => {
+      const { patchIpcMain, setIpcEventHandler } = await import('./ipc');
+      const received: IpcChannelMessage[] = [];
+      setIpcEventHandler((message) => received.push(message));
+      const ipcMain = makeMockIpcMain();
+      patchIpcMain(ipcMain as unknown as Electron.IpcMain);
+      const handler = vi.fn();
+      (ipcMain[method] as unknown as AnyFn)('datadog:bridge-send', handler);
+      ipcMain._wrapped[`${method}:datadog:bridge-send`]?.({}, { __ddIpcId: 'call-x' });
+      expect(received).toEqual([]);
+      expect(handler).toHaveBeenCalled();
+    }
+  );
+
+  it('extracts the appended carrier and strips it before the real handler runs', async () => {
+    const handler = vi.fn().mockResolvedValue('ok');
+    const { patchIpcMain, setIpcEventHandler } = await import('./ipc');
+    const received: IpcChannelMessage[] = [];
+    setIpcEventHandler((message) => received.push(message));
     const ipcMain = makeMockIpcMain();
     patchIpcMain(ipcMain as unknown as Electron.IpcMain);
-    const handler = vi.fn();
-    (ipcMain[method] as unknown as AnyFn)('datadog:bridge-send', handler);
-    ipcMain._wrapped[`${method}:datadog:bridge-send`]?.({});
-    expect(mockDdTrace.startSpan).not.toHaveBeenCalled();
-    expect(handler).toHaveBeenCalled();
+    (ipcMain.handle as unknown as AnyFn)('get-profile', handler);
+
+    await ipcMain._wrapped['handle:get-profile']({} /* event */, 'userId123', { __ddIpcId: 'call-abc' });
+
+    expect(received).toEqual([
+      expect.objectContaining({ role: 'destination', id: 'call-abc', method: 'handle', channel: 'get-profile' }),
+    ]);
+    expect(handler).toHaveBeenCalledWith(expect.anything(), 'userId123');
   });
 
-  it('sets span error tag and finishes when handler throws synchronously', async () => {
-    const { patchIpcMain } = await import('./ipc');
+  it('publishes an event with error true when handler throws synchronously', async () => {
+    const { patchIpcMain, setIpcEventHandler } = await import('./ipc');
+    const received: IpcChannelMessage[] = [];
+    setIpcEventHandler((message) => received.push(message));
     const err = new Error('boom');
     const ipcMain = makeMockIpcMain();
     patchIpcMain(ipcMain as unknown as Electron.IpcMain);
@@ -128,21 +163,18 @@ describe('patchIpcMain', () => {
         throw err;
       })
     );
-    try {
-      ipcMain._wrapped['handle:ping']({});
-    } catch {
-      /* expected */
-    }
-    expect(mockSpan.setTag).toHaveBeenCalledWith('error', err);
-    expect(mockSpan.finish).toHaveBeenCalled();
+    expect(() => {
+      ipcMain._wrapped['handle:ping']({}, { __ddIpcId: 'call-2' });
+    }).toThrow(err);
+    expect(received).toEqual([expect.objectContaining({ id: 'call-2', error: true })]);
   });
 
-  it('preserves the app handler result when an SDK hook throws (finish throws)', async () => {
-    // A tracing failure must not affect the value the app returns from the handler.
-    mockSpan.finish.mockImplementation(() => {
-      throw new Error('finish boom');
+  it('preserves the app handler result when the event handler throws', async () => {
+    // A failure publishing the event must not affect the value the app returns from the handler.
+    const { patchIpcMain, setIpcEventHandler } = await import('./ipc');
+    setIpcEventHandler(() => {
+      throw new Error('handler boom');
     });
-    const { patchIpcMain } = await import('./ipc');
     const ipcMain = makeMockIpcMain();
     patchIpcMain(ipcMain as unknown as Electron.IpcMain);
     (ipcMain.handle as unknown as AnyFn)(
@@ -151,18 +183,17 @@ describe('patchIpcMain', () => {
     );
     let result: unknown;
     expect(() => {
-      result = ipcMain._wrapped['handle:ping']({});
+      result = ipcMain._wrapped['handle:ping']({}, { __ddIpcId: 'call-3' });
     }).not.toThrow();
     expect(result).toBe('app-result');
   });
 
-  it('still propagates the app error when an SDK hook throws on the throw path', async () => {
-    // The app handler error must still surface even if tagging the span fails.
-    mockSpan.setTag.mockImplementation(() => {
-      throw new Error('setTag boom');
+  it('still propagates the app error when the event handler also throws', async () => {
+    const { patchIpcMain, setIpcEventHandler } = await import('./ipc');
+    setIpcEventHandler(() => {
+      throw new Error('handler boom');
     });
-    const appErr = new Error('handler boom');
-    const { patchIpcMain } = await import('./ipc');
+    const appErr = new Error('handler err');
     const ipcMain = makeMockIpcMain();
     patchIpcMain(ipcMain as unknown as Electron.IpcMain);
     (ipcMain.handle as unknown as AnyFn)(
@@ -172,12 +203,14 @@ describe('patchIpcMain', () => {
       })
     );
     expect(() => {
-      ipcMain._wrapped['handle:ping']({});
+      ipcMain._wrapped['handle:ping']({}, { __ddIpcId: 'call-4' });
     }).toThrow(appErr);
   });
 
-  it('finishes span after promise resolves', async () => {
-    const { patchIpcMain } = await import('./ipc');
+  it('publishes the event after the promise resolves', async () => {
+    const { patchIpcMain, setIpcEventHandler } = await import('./ipc');
+    const received: IpcChannelMessage[] = [];
+    setIpcEventHandler((message) => received.push(message));
     const ipcMain = makeMockIpcMain();
     patchIpcMain(ipcMain as unknown as Electron.IpcMain);
     let resolve!: () => void;
@@ -185,16 +218,18 @@ describe('patchIpcMain', () => {
       'ping',
       vi.fn(() => new Promise<void>((r) => (resolve = r)))
     );
-    const result = ipcMain._wrapped['handle:ping']({}) as Promise<unknown>;
-    expect(mockSpan.finish).not.toHaveBeenCalled();
+    const result = ipcMain._wrapped['handle:ping']({}, { __ddIpcId: 'call-5' }) as Promise<unknown>;
+    expect(received).toEqual([]);
     resolve();
     await result;
     await Promise.resolve();
-    expect(mockSpan.finish).toHaveBeenCalled();
+    expect(received).toEqual([expect.objectContaining({ id: 'call-5', error: false })]);
   });
 
-  it('finishes span with error tag after promise rejects', async () => {
-    const { patchIpcMain } = await import('./ipc');
+  it('publishes the event with error true after the promise rejects', async () => {
+    const { patchIpcMain, setIpcEventHandler } = await import('./ipc');
+    const received: IpcChannelMessage[] = [];
+    setIpcEventHandler((message) => received.push(message));
     const err = new Error('async boom');
     const ipcMain = makeMockIpcMain();
     patchIpcMain(ipcMain as unknown as Electron.IpcMain);
@@ -202,15 +237,14 @@ describe('patchIpcMain', () => {
       'ping',
       vi.fn(() => Promise.reject(err))
     );
-    await (ipcMain._wrapped['handle:ping']({}) as Promise<unknown>).catch(() => null);
+    await (ipcMain._wrapped['handle:ping']({}, { __ddIpcId: 'call-6' }) as Promise<unknown>).catch(() => null);
     await Promise.resolve();
-    expect(mockSpan.setTag).toHaveBeenCalledWith('error', err);
-    expect(mockSpan.finish).toHaveBeenCalled();
+    expect(received).toEqual([expect.objectContaining({ id: 'call-6', error: true })]);
   });
 
-  it('does not extract a carrier from the payload and passes all arguments through untouched', async () => {
-    // A last argument that looks like a trace carrier belongs to the app: the SDK does not inject
-    // one into IPC, so it must not be extracted or stripped from the handler arguments.
+  it('does not extract or strip a last argument that is not an id carrier', async () => {
+    // A last argument that looks like a trace carrier belongs to the app: only an object shaped like
+    // { __ddIpcId: string } is treated as our own appended carrier.
     const handler = vi.fn();
     const { patchIpcMain } = await import('./ipc');
     const ipcMain = makeMockIpcMain();
@@ -218,20 +252,7 @@ describe('patchIpcMain', () => {
     (ipcMain.handle as unknown as AnyFn)('ping', handler);
     const carrierLike = { 'x-datadog-trace-id': '123' };
     ipcMain._wrapped['handle:ping']({}, 'payload', carrierLike);
-    expect(mockDdTrace.extract).not.toHaveBeenCalled();
     expect(handler).toHaveBeenCalledWith({}, 'payload', carrierLike);
-  });
-
-  it('parents the consumer span to the active scope', async () => {
-    const activeSpan = { id: 'active' };
-    mockScope.active.mockReturnValue(activeSpan);
-    const ipcMain = await setup();
-    ipcMain._wrapped['handle:ping']({});
-    expect(mockDdTrace.startSpan).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ childOf: activeSpan })
-    );
-    mockScope.active.mockReturnValue(null);
   });
 
   it('removeListener passes the wrapped listener (not the original) to the underlying method', async () => {
@@ -328,16 +349,10 @@ describe('patchIpcMain', () => {
   it('preserves process unhandledRejection for a rejecting async on() listener (real EventEmitter)', async () => {
     // A fire-and-forget receive listener that returns a rejecting promise must still surface via
     // process 'unhandledRejection' (which the SDK ErrorCollection listens on). Swallowing the
-    // rejection while finishing the span would silently drop the app's error reporting.
+    // rejection while publishing the event would silently drop the app's error reporting.
     const { patchIpcMain } = await import('./ipc');
     const ipcMain = makeRealIpcMain();
     patchIpcMain(ipcMain);
-
-    // vi.fn records the promises returned through it, which marks their rejection as handled. Swap in
-    // a plain scope.activate so the wrapper's returned promise is genuinely unhandled, matching real
-    // dd-trace behavior; restore the spy afterwards.
-    const originalActivate = mockScope.activate;
-    mockScope.activate = ((_: unknown, fn: () => unknown) => fn()) as unknown as typeof mockScope.activate;
 
     // Temporarily take over unhandledRejection so the real rejection is captured here instead of
     // failing the test runner, then restore the previous listeners.
@@ -361,7 +376,6 @@ describe('patchIpcMain', () => {
     } finally {
       process.removeListener('unhandledRejection', capture);
       previous.forEach((l) => process.on('unhandledRejection', l));
-      mockScope.activate = originalActivate;
     }
 
     expect(captured).toContain(rejection);
@@ -408,23 +422,25 @@ describe('patchIpcMain', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it('emits exactly one receive span for a once() listener (no double-wrap) (real EventEmitter)', async () => {
+  it('invokes the listener exactly once for a once() listener (no double-wrap) (real EventEmitter)', async () => {
     // Node's once() is implemented via this.on(); since `on` is patched, patching `once` to delegate
-    // through it would wrap the listener twice and emit nested duplicate spans. The SDK registers the
-    // once wrapper via the raw addListener instead, so exactly one span is produced.
-    const { patchIpcMain } = await import('./ipc');
+    // through it would wrap the listener twice and publish duplicate events. The SDK registers the
+    // once wrapper via the raw addListener instead, so exactly one event is published.
+    const { patchIpcMain, setIpcEventHandler } = await import('./ipc');
+    const received: IpcChannelMessage[] = [];
+    setIpcEventHandler((message) => received.push(message));
     const ipcMain = makeRealIpcMain();
     patchIpcMain(ipcMain);
 
     const cb = vi.fn();
     ipcMain.once('foo', cb);
-    ipcMain.emit('foo', {});
+    ipcMain.emit('foo', {}, { __ddIpcId: 'call-once' });
 
     expect(cb).toHaveBeenCalledTimes(1);
-    expect(mockDdTrace.startSpan).toHaveBeenCalledTimes(1);
+    expect(received).toHaveLength(1);
     // once fired: auto-removed, so nothing remains.
     expect(ipcMain.listenerCount('foo')).toBe(0);
-    ipcMain.emit('foo', {});
+    ipcMain.emit('foo', {}, { __ddIpcId: 'call-once-2' });
     expect(cb).toHaveBeenCalledTimes(1);
   });
 
@@ -449,10 +465,12 @@ describe('patchIpcMain', () => {
   it('does not double-wrap handleOnce, which delegates to the patched handle', async () => {
     // Electron implements handleOnce as this.handle(channel, bridge) where the bridge removes the
     // handler after the first call. Since `handle` is patched, patching handleOnce too would wrap the
-    // listener twice → nested duplicate electron.main.handle spans. handleOnce is left unpatched so it
-    // delegates to the patched handle, producing exactly one span. Mocks with independent methods
-    // cannot model this delegation, so this uses a fake that mirrors Electron's implementation.
-    const { patchIpcMain } = await import('./ipc');
+    // listener twice → duplicate published events. handleOnce is left unpatched so it delegates to the
+    // patched handle, producing exactly one published event. Mocks with independent methods cannot
+    // model this delegation, so this uses a fake that mirrors Electron's implementation.
+    const { patchIpcMain, setIpcEventHandler } = await import('./ipc');
+    const received: IpcChannelMessage[] = [];
+    setIpcEventHandler((message) => received.push(message));
     const handlers: Record<string, AnyFn> = {};
     const ipcMain = {
       handle: (ch: string, fn: AnyFn) => {
@@ -477,10 +495,9 @@ describe('patchIpcMain', () => {
     patchIpcMain(ipcMain as unknown as Electron.IpcMain);
 
     ipcMain.handleOnce('ping', vi.fn());
-    handlers['ping']({});
+    handlers['ping']({}, { __ddIpcId: 'call-handleonce' });
 
-    expect(mockDdTrace.startSpan).toHaveBeenCalledTimes(1);
-    expect(mockDdTrace.startSpan).toHaveBeenCalledWith('electron.main.handle', expect.anything());
+    expect(received).toEqual([expect.objectContaining({ id: 'call-handleonce', method: 'handle', channel: 'ping' })]);
   });
 
   it('tracks distinct wrappers per registration of the same listener', async () => {
@@ -515,12 +532,11 @@ describe('patchIpcMain', () => {
 describe('patchWebContents', () => {
   beforeEach(() => {
     vi.resetModules();
-    vi.clearAllMocks();
-    // clearAllMocks resets call history but not implementations; restore the span mock defaults so
-    // resilience tests that make setTag/finish throw do not leak into later tests.
-    mockSpan.setTag.mockReset();
-    mockSpan.finish.mockReset();
-    mockScope.active.mockReturnValue(null);
+  });
+
+  afterEach(async () => {
+    const { setIpcEventHandler } = await import('./ipc');
+    setIpcEventHandler(() => undefined);
   });
 
   function makeMockWebContents() {
@@ -540,7 +556,7 @@ describe('patchWebContents', () => {
   }
 
   async function setup() {
-    const { patchWebContents } = await import('./ipc');
+    const { patchWebContents, setIpcEventHandler } = await import('./ipc');
     const wc = makeMockWebContents();
     const sendSpy = wc.send;
     const sendToFrameSpy = wc.sendToFrame;
@@ -549,7 +565,7 @@ describe('patchWebContents', () => {
     const instance = Object.create(BrowserWindow.prototype) as {
       webContents: ReturnType<typeof makeMockWebContents>;
     };
-    return { wc, instance, BrowserWindow, sendSpy, sendToFrameSpy };
+    return { wc, instance, BrowserWindow, sendSpy, sendToFrameSpy, setIpcEventHandler };
   }
 
   type SetupResult = Awaited<ReturnType<typeof setup>>;
@@ -585,89 +601,86 @@ describe('patchWebContents', () => {
     },
   ];
 
-  it.each(sendMethods)('creates a producer span for webContents.$name', async ({ invoke }) => {
+  it.each(sendMethods)('publishes a source-role event for webContents.$name', async ({ invoke, getSpy }) => {
     const result = await setup();
+    const received: IpcChannelMessage[] = [];
+    result.setIpcEventHandler((message) => received.push(message));
     invoke(result);
-    expect(mockDdTrace.startSpan).toHaveBeenCalledWith(
-      'electron.main.send',
-      expect.objectContaining({
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        tags: expect.objectContaining({
-          'span.kind': 'producer',
-          'span.type': 'worker',
-          component: 'electron',
-          'resource.name': 'my-channel',
-        }),
-      })
-    );
-    expect(mockSpan.finish).toHaveBeenCalled();
+    expect(received).toEqual([
+      expect.objectContaining({ role: 'source', method: 'send', channel: 'my-channel', error: false }),
+    ]);
+    // The generated id must be threaded through as the appended carrier on the underlying call.
+    const lastCallArgs = getSpy(result).mock.calls[0] as unknown[];
+    const carrier = lastCallArgs[lastCallArgs.length - 1] as { __ddIpcId: string };
+    expect(carrier.__ddIpcId).toBe(received[0].id);
   });
 
-  it('does not append an extra carrier argument for webContents.send', async () => {
+  it('appends an id carrier as the last argument for webContents.send', async () => {
     const result = await setup();
     result.instance.webContents.send('my-channel', 'arg1');
-    expect(result.sendSpy).toHaveBeenCalledWith('my-channel', 'arg1');
-    expect(result.sendSpy.mock.calls[0]).toEqual(['my-channel', 'arg1']);
+    expect(result.sendSpy).toHaveBeenCalledTimes(1);
+    const args = result.sendSpy.mock.calls[0] as unknown[];
+    expect(args[0]).toBe('my-channel');
+    expect(args[1]).toBe('arg1');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    expect(args[2]).toEqual({ __ddIpcId: expect.any(String) });
   });
 
-  it('does not append an extra carrier argument for webContents.sendToFrame', async () => {
+  it('appends an id carrier as the last argument for webContents.sendToFrame', async () => {
     const result = await setup();
     result.instance.webContents.sendToFrame(1, 'my-channel', 'arg1');
-    expect(result.sendToFrameSpy).toHaveBeenCalledWith(1, 'my-channel', 'arg1');
-    expect(result.sendToFrameSpy.mock.calls[0]).toEqual([1, 'my-channel', 'arg1']);
-  });
-
-  it.each(sendMethods)('parents the producer span to the active scope for webContents.$name', async ({ invoke }) => {
-    const activeSpan = { id: 'active-handle-span' };
-    mockScope.active.mockReturnValue(activeSpan);
-    const result = await setup();
-    invoke(result);
-    expect(mockDdTrace.startSpan).toHaveBeenCalledWith(
-      'electron.main.send',
-      expect.objectContaining({ childOf: activeSpan })
-    );
+    expect(result.sendToFrameSpy).toHaveBeenCalledTimes(1);
+    const args = result.sendToFrameSpy.mock.calls[0] as unknown[];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    expect(args).toEqual([1, 'my-channel', 'arg1', { __ddIpcId: expect.any(String) }]);
   });
 
   it.each(sendMethods)(
     'skips instrumentation for datadog: prefixed channels in $name',
     async ({ invokeDatadog, getSpy, datadogArgs }) => {
       const result = await setup();
+      const received: IpcChannelMessage[] = [];
+      result.setIpcEventHandler((message) => received.push(message));
       invokeDatadog(result);
-      expect(mockDdTrace.startSpan).not.toHaveBeenCalled();
+      expect(received).toEqual([]);
       expect(getSpy(result)).toHaveBeenCalledWith(...datadogArgs);
     }
   );
 
   it.each(sendMethods)(
-    'sets span error tag and finishes when underlying $name throws synchronously',
+    'publishes an event with error true when underlying $name throws synchronously',
     async ({ getSpy, invoke }) => {
       const err = new Error('send boom');
       const result = await setup();
+      const received: IpcChannelMessage[] = [];
+      result.setIpcEventHandler((message) => received.push(message));
       getSpy(result).mockImplementation(() => {
         throw err;
       });
       expect(() => invoke(result)).toThrow(err);
-      expect(mockSpan.setTag).toHaveBeenCalledWith('error', err);
-      expect(mockSpan.finish).toHaveBeenCalledTimes(1);
+      expect(received).toEqual([expect.objectContaining({ error: true })]);
     }
   );
 
-  it('does not throw and still calls the original when an SDK hook throws (finish throws)', async () => {
-    // A tracing failure in the producer span must not break webContents.send.
-    mockSpan.finish.mockImplementation(() => {
-      throw new Error('finish boom');
-    });
+  it('does not throw and still calls the original when the event handler throws', async () => {
+    // A failure publishing the event must not break webContents.send.
     const result = await setup();
+    result.setIpcEventHandler(() => {
+      throw new Error('handler boom');
+    });
     expect(() => {
       result.instance.webContents.send('my-channel', 'arg1');
     }).not.toThrow();
-    expect(result.sendSpy).toHaveBeenCalledWith('my-channel', 'arg1');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    expect(result.sendSpy).toHaveBeenCalledWith('my-channel', 'arg1', { __ddIpcId: expect.any(String) });
   });
 
   it('patches the parent prototype when BrowserWindow is a subclass without own webContents getter', async () => {
     // Simulates the DatadogBrowserWindow scenario: patchBrowserWindow creates a subclass
     // and patchWebContents receives the subclass. The getter lives on the parent prototype.
-    const { patchWebContents } = await import('./ipc');
+    const { patchWebContents, setIpcEventHandler } = await import('./ipc');
+    const received: IpcChannelMessage[] = [];
+    setIpcEventHandler((message) => received.push(message));
     const wc = makeMockWebContents();
     const parentProto = {
       get webContents() {
@@ -681,14 +694,16 @@ describe('patchWebContents', () => {
     expect(Object.getOwnPropertyDescriptor(subclassProto, 'webContents')).toBeUndefined();
     const instance = Object.create(subclassProto) as { webContents: ReturnType<typeof makeMockWebContents> };
     instance.webContents.send('test-channel', 'arg');
-    expect(mockDdTrace.startSpan).toHaveBeenCalledWith('electron.main.send', expect.any(Object));
+    expect(received).toEqual([expect.objectContaining({ role: 'source', channel: 'test-channel' })]);
   });
 
   it('only wraps webContents once when accessed multiple times', async () => {
-    const { instance } = await setup();
-    instance.webContents.send('ch', 'a');
-    vi.clearAllMocks();
-    instance.webContents.send('ch', 'b');
-    expect(mockDdTrace.startSpan).toHaveBeenCalledTimes(1);
+    const result = await setup();
+    const received: IpcChannelMessage[] = [];
+    result.setIpcEventHandler((message) => received.push(message));
+    result.instance.webContents.send('ch', 'a');
+    received.length = 0;
+    result.instance.webContents.send('ch', 'b');
+    expect(received).toHaveLength(1);
   });
 });
