@@ -6,6 +6,51 @@ import type { IpcChannelMessage } from './ipc';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyFn = (...args: any[]) => any;
 
+describe('ipc event handler sharing across separate module instances', () => {
+  afterEach(async () => {
+    const { setIpcEventHandler } = await import('./ipc');
+    setIpcEventHandler(() => undefined);
+  });
+
+  it('publishes events set on one module instance to patches applied via a separate instance', async () => {
+    // The `instrument` and `index` entry points are bundled independently, so ipc.ts is inlined as two
+    // separate, non-shared copies of its module code in the same process (e.g. IpcResourceCollector in
+    // the `index` bundle calling setIpcEventHandler, while patchIpcMain/patchWebContents run from the
+    // `instrument` bundle). vi.resetModules() + two dynamic imports simulates that: each import()
+    // returns a distinct module instance with its own closures, module-level `let`s, etc. Only a
+    // globalThis-backed (Symbol.for-keyed) handler slot is actually shared between them — this test
+    // would fail against a plain module-level variable, which is the bug this regression test targets.
+    vi.resetModules();
+    const instrumentBundle = await import('./ipc');
+    vi.resetModules();
+    const indexBundle = await import('./ipc');
+    expect(instrumentBundle).not.toBe(indexBundle);
+
+    const received: IpcChannelMessage[] = [];
+    indexBundle.setIpcEventHandler((message) => received.push(message));
+
+    const ipcMain: Record<string, AnyFn> = {
+      addListener: vi.fn(),
+      handle: vi.fn((_ch: string, l: AnyFn) => {
+        ipcMain._wrappedHandle = l;
+      }),
+      handleOnce: vi.fn(),
+      off: vi.fn(),
+      on: vi.fn(),
+      once: vi.fn(),
+      removeAllListeners: vi.fn(),
+      removeHandler: vi.fn(),
+      removeListener: vi.fn(),
+    };
+    instrumentBundle.patchIpcMain(ipcMain as unknown as Electron.IpcMain);
+    ipcMain.handle('ping', vi.fn());
+
+    ipcMain._wrappedHandle({}, { __ddIpcId: 'cross-bundle-call' });
+
+    expect(received).toEqual([expect.objectContaining({ id: 'cross-bundle-call', channel: 'ping' })]);
+  });
+});
+
 describe('patchIpcMain', () => {
   beforeEach(() => {
     vi.resetModules();

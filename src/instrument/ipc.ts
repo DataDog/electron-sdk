@@ -17,18 +17,32 @@ export interface IpcChannelMessage {
   error: boolean;
 }
 
-let ipcEventHandler: ((message: IpcChannelMessage) => void) | undefined;
+// The `instrument` and `index` entry points are bundled independently (see instrumentElectron.ts's
+// INSTRUMENTED symbol for the same class of problem), so this module is inlined as two separate,
+// non-shared copies of its code in the same process: one where patchIpcMain/patchWebContents run,
+// another where IpcResourceCollector calls setIpcEventHandler. A module-level `let` would give each
+// copy its own private variable. Symbol.for() returns the same symbol across both copies, so keying
+// the handler off globalThis makes it a truly shared slot.
+const IPC_EVENT_HANDLER = Symbol.for('@datadog/electron-sdk:ipc-event-handler');
+
+interface GlobalWithIpcEventHandler {
+  [IPC_EVENT_HANDLER]?: (message: IpcChannelMessage) => void;
+}
+
+function getGlobalScope(): GlobalWithIpcEventHandler {
+  return globalThis as GlobalWithIpcEventHandler;
+}
 
 // Set by IpcResourceCollector once it exists (during init()). ipc.ts's patches are applied at
 // `instrument` time, before init() runs, so there is a window where this is unset — publishIpcEvent
 // is a safe no-op during that window, the same way it would be if this were a diagnostics_channel
 // with zero subscribers.
 export function setIpcEventHandler(handler: (message: IpcChannelMessage) => void): void {
-  ipcEventHandler = handler;
+  getGlobalScope()[IPC_EVENT_HANDLER] = handler;
 }
 
 function publishIpcEvent(params: IpcChannelMessage): void {
-  ipcEventHandler?.(params);
+  getGlobalScope()[IPC_EVENT_HANDLER]?.(params);
 }
 
 interface IpcIdCarrier {
