@@ -28,6 +28,27 @@ datadogRum.init({
   trackUserInteractions: true,
 });
 
+declare global {
+  interface Window {
+    DatadogIpcBridge?: {
+      registerResourceHandler: (
+        handler: (event: { action: 'start' | 'stop'; url: string; options?: Record<string, unknown> }) => void
+      ) => void;
+    };
+  }
+}
+
+window.DatadogIpcBridge?.registerResourceHandler((event) => {
+  if (event.action === 'start') {
+    datadogRum.startResource(event.url, { type: 'native' });
+  } else {
+    datadogRum.stopResource(event.url, {
+      type: 'native',
+      context: event.options?.context as Record<string, unknown>,
+    });
+  }
+});
+
 // Type definition for the exposed API
 interface ElectronAPI {
   getInternalContext: () => Promise<{ session_id: string } | undefined>;
@@ -63,6 +84,8 @@ interface ElectronAPI {
   clearAccountInfo: () => Promise<void>;
   triggerPingRenderer: () => Promise<void>;
   onPingFromMain: (callback: (data: unknown) => void) => void;
+  broadcast: (data: unknown) => Promise<void>;
+  onBroadcastReceived: (callback: (data: unknown) => void) => void;
 }
 
 declare global {
@@ -285,6 +308,11 @@ window.electronAPI.onProfileProgress((data) =>
 setupDemoButton('ipc-nested-profile', 'ipc-demo:get-profile-with-progress', () =>
   window.electronAPI.getProfileWithProgress()
 );
+
+window.electronAPI.onBroadcastReceived((data) =>
+  logIpcCall('ipc-demo:broadcast-received', 'done', 0, JSON.stringify(data))
+);
+setupDemoButton('ipc-broadcast', 'ipc-demo:broadcast', () => window.electronAPI.broadcast({ from: 'main-window' }));
 
 // --- Custom duration vital demo buttons ---
 

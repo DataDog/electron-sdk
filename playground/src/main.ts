@@ -167,6 +167,34 @@ ipcMain.handle('ipc-demo:trigger-ping-renderer', () => {
   mainWindow?.webContents.send('ipc-demo:ping-renderer', { from: 'main' });
 });
 
+let broadcastWindows: BrowserWindow[] = [];
+
+function ensureBroadcastWindows(): BrowserWindow[] {
+  if (broadcastWindows.length === 0) {
+    broadcastWindows = [0, 1].map(
+      () =>
+        new BrowserWindow({
+          width: 400,
+          height: 300,
+          show: !isTestMode,
+          webPreferences: {
+            contextIsolation: true,
+            nodeIntegration: false,
+            preload: path.join(__dirname, 'preload.js'),
+          },
+        })
+    );
+    broadcastWindows.forEach((win) => void win.loadURL('app://app/'));
+  }
+  return broadcastWindows;
+}
+
+ipcMain.handle('ipc-demo:broadcast', (_event, data: unknown) => {
+  for (const win of ensureBroadcastWindows()) {
+    win.webContents.send('ipc-demo:broadcast-received', data);
+  }
+});
+
 // IPC handler to crash the main process
 ipcMain.handle('crash', () => {
   process.crash();
