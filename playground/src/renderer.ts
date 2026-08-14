@@ -1,4 +1,5 @@
 import { datadogRum } from '@datadog/browser-rum';
+import type { Context, ResourceType } from '@datadog/browser-core';
 
 interface DurationVitalOptions {
   vitalKey?: string;
@@ -40,11 +41,11 @@ declare global {
 
 window.DatadogIpcBridge?.registerResourceHandler((event) => {
   if (event.action === 'start') {
-    datadogRum.startResource(event.url, { type: 'native' });
+    datadogRum.startResource(event.url, { type: 'native' as ResourceType });
   } else {
     datadogRum.stopResource(event.url, {
-      type: 'native',
-      context: event.options?.context as Record<string, unknown>,
+      type: 'native' as ResourceType,
+      context: event.options?.context as Context,
     });
   }
 });
