@@ -50,6 +50,7 @@ interface ElectronAPI {
   mainFetchApiFetch: () => Promise<unknown>;
   mainFetchApiNet: () => Promise<unknown>;
   getProfile: () => Promise<unknown>;
+  pingMain: () => void;
   openRumExplorer: () => Promise<void>;
   flushTransport: () => Promise<void>;
   setUserInfo: () => Promise<void>;
@@ -263,6 +264,10 @@ setupDemoButton('main-fetch', 'main:fetch-api', () => window.electronAPI.mainFet
 setupDemoButton('main-fetch-fetch', 'main:fetch-api-fetch', () => window.electronAPI.mainFetchApiFetch());
 setupDemoButton('main-fetch-net', 'main:fetch-api-net', () => window.electronAPI.mainFetchApiNet());
 setupDemoButton('ipc-get-profile', 'ipc-demo:get-profile', () => window.electronAPI.getProfile());
+setupDemoButton('ipc-ping-main', 'ipc-demo:ping-main', () => {
+  window.electronAPI.pingMain();
+  return Promise.resolve();
+});
 
 // --- Custom duration vital demo buttons ---
 

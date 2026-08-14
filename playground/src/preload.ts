@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   mainFetchApiFetch: () => ipcRenderer.invoke('main:fetch-api-fetch'),
   mainFetchApiNet: () => ipcRenderer.invoke('main:fetch-api-net'),
   getProfile: () => ipcRenderer.invoke('ipc-demo:get-profile'),
+  pingMain: () => ipcRenderer.send('ipc-demo:ping-main'),
   openRumExplorer: () => ipcRenderer.invoke('open-rum-explorer'),
   flushTransport: () => ipcRenderer.invoke('flush-transport'),
   setUserInfo: () => ipcRenderer.invoke('main:set-user-info'),
