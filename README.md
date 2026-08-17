@@ -435,8 +435,19 @@ interface FeatureOperationOptions {
 | `defaultPrivacyLevel`     | `'mask' \| 'allow' \| 'mask-user-input'` | No       | `'mask'`   | Default privacy level for renderer session replay                                                                                                                                    |
 | `allowedRendererHosts`    | `string[]`                               | Yes      | —          | Hostnames allowed for the renderer bridge (required; see table below)                                                                                                                |
 
-`traceSamplingRules` can match the configured service, root span name, resource, or tags with case-insensitive glob
-patterns. Child spans inherit the root decision. A rejected HTTP trace still produces an unlinked RUM Resource.
+#### `traceSamplingRules`
+
+Rules are evaluated in order when a root trace starts. The first matching rule determines the percentage of traces
+to keep; unmatched traces are kept. Patterns are case-insensitive globs, child spans inherit the root decision, and
+a rejected HTTP trace still produces an unlinked RUM Resource.
+
+| Key          | Required | Purpose                                                                   |
+| ------------ | -------- | ------------------------------------------------------------------------- |
+| `sampleRate` | Yes      | Percentage of matching traces to keep, from `0` to `100`                  |
+| `service`    | No       | Matches the configured Electron service                                   |
+| `name`       | No       | Matches the root span operation name, such as `electron.main.handle`      |
+| `resource`   | No       | Matches the root span resource, such as an IPC channel                    |
+| `tags`       | No       | Matches root span tags by name and value; every configured tag must match |
 
 ```ts
 await init({

@@ -2,7 +2,7 @@ import { ONE_SECOND } from '@datadog/js-core/time';
 import { isIndexableObject } from '@datadog/js-core/util';
 import { ONE_KIBI_BYTE, ONE_MEBI_BYTE, DefaultPrivacyLevel } from '@datadog/browser-core';
 import { display } from './tools/display';
-import { isFiniteNumber, isOneOf } from './tools/validation';
+import { isFiniteNumber, isOneOf, isValidString } from './tools/validation';
 
 const VALID_DATADOG_SITES = [
   'datadoghq.com',
@@ -208,7 +208,7 @@ function isValidTraceSamplingRule(value: unknown): value is TraceSamplingRule {
   if (!isFiniteNumber(value.sampleRate) || value.sampleRate < 0 || value.sampleRate > 100) {
     return false;
   }
-  if (!['service', 'name', 'resource'].every((key) => isOptionalNonEmptyString(value[key]))) {
+  if (!['service', 'name', 'resource'].every((key) => value[key] === undefined || isValidString(value[key]))) {
     return false;
   }
   if (value.tags === undefined) {
@@ -216,16 +216,8 @@ function isValidTraceSamplingRule(value: unknown): value is TraceSamplingRule {
   }
   return (
     isIndexableObject(value.tags) &&
-    Object.entries(value.tags).every(([key, pattern]) => key.length > 0 && isNonEmptyString(pattern))
+    Object.entries(value.tags).every(([key, pattern]) => isValidString(key) && isValidString(pattern))
   );
-}
-
-function isOptionalNonEmptyString(value: unknown): boolean {
-  return value === undefined || isNonEmptyString(value);
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0;
 }
 
 /**

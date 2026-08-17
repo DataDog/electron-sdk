@@ -79,6 +79,13 @@ export class Tracing {
     }
   }
 
+  static isTraceSampled(trace: { metrics: Record<string, number> }[]): boolean {
+    return !trace.some((span) => {
+      const priority = span.metrics['_sampling_priority_v1'];
+      return priority !== undefined && priority <= 0;
+    });
+  }
+
   // dd-trace's electron exporter batches spans on a flushInterval (2s by default).
   // Flushing it before the SDK transport ensures any pending HTTP spans become RUM resource events synchronously,
   // so _flushTransport() captures them in one shot.
@@ -90,6 +97,8 @@ export class Tracing {
   }
 }
 
+// dd-trace expects rates between 0 and 1 and initializes before Electron's final service is known.
+// Match that service here, then delegate the remaining rule matching and sampling to dd-trace.
 function toDdTraceSamplingRules(rules: TraceSamplingRule[], service: string): DdTraceSamplingRule[] {
   return rules.flatMap(({ service: servicePattern, sampleRate, ...rule }) => {
     if (servicePattern !== undefined && !matchesGlob(servicePattern, service)) {

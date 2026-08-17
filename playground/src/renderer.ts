@@ -49,6 +49,7 @@ interface ElectronAPI {
   ) => Promise<void>;
   mainFetchApiFetch: () => Promise<unknown>;
   mainFetchApiNet: () => Promise<unknown>;
+  mainFetchApiNetDrop: () => Promise<unknown>;
   openRumExplorer: () => Promise<void>;
   flushTransport: () => Promise<void>;
   setUserInfo: () => Promise<void>;
@@ -268,6 +269,7 @@ setupDemoButton('add-error', 'main:add-error', () => window.electronAPI.addError
 setupDemoButton('main-fetch', 'main:fetch-api', () => window.electronAPI.mainFetchApi());
 setupDemoButton('main-fetch-fetch', 'main:fetch-api-fetch', () => window.electronAPI.mainFetchApiFetch());
 setupDemoButton('main-fetch-net', 'main:fetch-api-net', () => window.electronAPI.mainFetchApiNet());
+setupDemoButton('main-fetch-net-drop', 'main:fetch-api-net-drop', () => window.electronAPI.mainFetchApiNetDrop());
 
 // --- Custom duration vital demo buttons ---
 

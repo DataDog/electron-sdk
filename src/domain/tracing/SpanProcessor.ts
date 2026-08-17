@@ -10,6 +10,7 @@ import { computeIntakeHostname } from '../../transport';
 import { RawRumResource } from '../rum';
 import { monitor } from '../telemetry';
 import { NsTimeStamp, RawSpanData, RawTraceData } from './rawTracingData.types';
+import { Tracing } from './Tracing';
 
 /**
  * Structure of spans exported by dd-trace electron exporter.
@@ -72,7 +73,7 @@ export class SpanProcessor {
 
   private processTrace(trace: ExportedSpan[]): void {
     const processedSpans: RawSpanData[] = [];
-    const traceSampled = isTraceSampled(trace);
+    const traceSampled = Tracing.isTraceSampled(trace);
 
     for (const exportedSpan of trace) {
       if (this.isIntakeRequest(exportedSpan)) {
@@ -88,11 +89,9 @@ export class SpanProcessor {
         this.emitResource(spanToResource(exportedSpan, traceSampled));
       }
 
-      if (!traceSampled) {
-        continue;
+      if (traceSampled) {
+        processedSpans.push(combine(span, hookResult));
       }
-
-      processedSpans.push(combine(span, hookResult));
     }
 
     const processedTrace = { env: this.env, spans: processedSpans };
@@ -145,13 +144,6 @@ export class SpanProcessor {
 
 function isHttpSpan(span: ExportedSpan): boolean {
   return span.type === 'http' && !!span.meta['http.url'];
-}
-
-function isTraceSampled(trace: ExportedSpan[]): boolean {
-  return !trace.some((span) => {
-    const priority = span.metrics['_sampling_priority_v1'];
-    return priority !== undefined && priority <= 0;
-  });
 }
 
 function toRawSpan(exportedSpan: ExportedSpan, service: string): RawSpanData {
