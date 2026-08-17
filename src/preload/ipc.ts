@@ -1,13 +1,8 @@
 import { generateUUID } from '@datadog/browser-core';
 import { contextBridge, ipcRenderer } from 'electron';
+import type { ResourceHandler } from '../domain/tracing/ipcResourceBridgeTypes';
 
-export interface ResourceHandlerEvent {
-  action: 'start' | 'stop';
-  url: string;
-  options?: Record<string, unknown>;
-}
-
-export type ResourceHandler = (event: ResourceHandlerEvent) => void;
+export type { ResourceHandlerEvent, ResourceHandler } from '../domain/tracing/ipcResourceBridgeTypes';
 
 interface IpcRendererLike {
   invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;

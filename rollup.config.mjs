@@ -172,6 +172,32 @@ const config = [
     external: ['electron'],
     plugins: sharedPlugins,
   },
+  // Renderer: wires the preload's IPC resource bridge to a host app's own datadogRum instance
+  {
+    input: 'src/entries/renderer.ts',
+    output: [
+      {
+        file: 'dist/renderer.cjs',
+        format: 'cjs',
+        sourcemap: true,
+      },
+      {
+        file: 'dist/renderer.mjs',
+        format: 'esm',
+        sourcemap: true,
+      },
+    ],
+    plugins: sharedPlugins,
+  },
+  // TypeScript declarations: renderer
+  {
+    input: 'src/entries/renderer.ts',
+    output: {
+      file: 'dist/renderer.d.ts',
+      format: 'esm',
+    },
+    plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
+  },
 ];
 
 export default config;

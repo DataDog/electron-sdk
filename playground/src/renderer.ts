@@ -1,5 +1,5 @@
 import { datadogRum } from '@datadog/browser-rum';
-import type { Context, ResourceType } from '@datadog/browser-core';
+import { wireIpcResourceBridge } from '@datadog/electron-sdk/renderer';
 
 interface DurationVitalOptions {
   vitalKey?: string;
@@ -29,26 +29,7 @@ datadogRum.init({
   trackUserInteractions: true,
 });
 
-declare global {
-  interface Window {
-    DatadogIpcBridge?: {
-      registerResourceHandler: (
-        handler: (event: { action: 'start' | 'stop'; url: string; options?: Record<string, unknown> }) => void
-      ) => void;
-    };
-  }
-}
-
-window.DatadogIpcBridge?.registerResourceHandler((event) => {
-  if (event.action === 'start') {
-    datadogRum.startResource(event.url, { type: 'native' as ResourceType });
-  } else {
-    datadogRum.stopResource(event.url, {
-      type: 'native' as ResourceType,
-      context: event.options?.context as Context,
-    });
-  }
-});
+wireIpcResourceBridge(datadogRum);
 
 // Type definition for the exposed API
 interface ElectronAPI {

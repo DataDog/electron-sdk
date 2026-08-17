@@ -32,7 +32,12 @@
       "require": "./dist/esbuild-plugin.cjs",
       "import": "./dist/esbuild-plugin.mjs"
     },
-    "./preload": "./dist/preload.js"
+    "./preload": "./dist/preload.js",
+    "./renderer": {
+      "types": "./dist/renderer.d.ts",
+      "require": "./dist/renderer.cjs",
+      "import": "./dist/renderer.mjs"
+    }
   },
   "typesVersions": {
     "*": {
@@ -47,6 +52,9 @@
       ],
       "esbuild-plugin": [
         "./dist/esbuild-plugin.d.ts"
+      ],
+      "renderer": [
+        "./dist/renderer.d.ts"
       ]
     }
   },
@@ -81,6 +89,11 @@
     "dist/esbuild-plugin.mjs.map",
     "dist/esbuild-plugin.d.ts",
     "dist/preload.js",
+    "dist/renderer.cjs",
+    "dist/renderer.cjs.map",
+    "dist/renderer.mjs",
+    "dist/renderer.mjs.map",
+    "dist/renderer.d.ts",
     "README.md",
     "LICENSE",
     "LICENSE-3rdparty.csv"
