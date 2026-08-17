@@ -526,6 +526,7 @@ describe('buildConfiguration', () => {
       [{ sampleRate: 101 }],
       [{ sampleRate: Number.NaN }],
       [{ sampleRate: 50, name: '' }],
+      [{ sampleRate: 50, name: '   ' }],
       [{ sampleRate: 50, tags: { 'http.url': 42 } }],
       [{ sampleRate: 0, url: '*/health' }],
     ])('rejects invalid rules: %j', (traceSamplingRules) => {

@@ -1,5 +1,5 @@
 import { test, expect } from '../lib/helpers';
-import type { RumViewEvent } from '@datadog/electron-sdk';
+import type { RumResourceEvent, RumViewEvent } from '@datadog/electron-sdk';
 import type { MainPage } from '../lib/mainPage';
 
 const ipcSpanCases: {
@@ -95,3 +95,53 @@ for (const { description, invoke, ipcChannel } of httpSpanCases) {
     expect(httpSpan.parent_id).toBe(ipcSpan.span_id);
   });
 }
+
+test.describe('trace sampling rules', () => {
+  test.use({
+    sdkConfigOverrides: {
+      traceSamplingRules: [
+        { name: 'electron.main.handle', resource: 'mainNetRequest', sampleRate: 0 },
+        { name: 'electron.main.handle', resource: 'mainNetRequest', sampleRate: 100 },
+      ],
+    },
+  });
+
+  test('uses the first matching rule and keeps the RUM resource unlinked', async ({ intake, mainPage, testServer }) => {
+    const url = testServer.urlFor(200);
+
+    await mainPage.mainNetRequest(url);
+    await mainPage.flushTransport();
+
+    const [received] = await intake.waitForEventCount('resource', 1, {
+      predicate: (event) => (event.body as RumResourceEvent).resource.url === url,
+    });
+    const resource = received.body as RumResourceEvent;
+    expect(resource._dd.trace_id).toBeUndefined();
+    expect(resource._dd.span_id).toBeUndefined();
+    expect(testServer.headersFor(200)['x-datadog-trace-id']).toBeUndefined();
+    expect(testServer.headersFor(200).traceparent).toBeUndefined();
+    expect(
+      intake.getSpans(
+        (span) =>
+          (span.name === 'electron.main.handle' && span.resource === 'mainNetRequest') ||
+          (span.name === 'http.request' && span.meta['http.url'] === url)
+      )
+    ).toHaveLength(0);
+  });
+
+  test('keeps traces that do not match a rule', async ({ intake, mainPage, testServer }) => {
+    const url = testServer.urlFor(201);
+
+    await mainPage.mainNetFetch(url);
+    await mainPage.flushTransport();
+
+    const [received] = await intake.waitForEventCount('resource', 1, {
+      predicate: (event) => (event.body as RumResourceEvent).resource.url === url,
+    });
+    const resource = received.body as RumResourceEvent;
+    expect(resource._dd.trace_id).toBeDefined();
+    expect(resource._dd.span_id).toBeDefined();
+    expect(testServer.headersFor(201)['x-datadog-trace-id']).toBeDefined();
+    await intake.waitForSpan((span) => span.name === 'electron.main.handle' && span.resource === 'mainNetFetch');
+  });
+});

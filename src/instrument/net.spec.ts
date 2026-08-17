@@ -199,6 +199,23 @@ describe('patchNet', () => {
     expect(opts.headers).toEqual({ authorization: 'token' });
   });
 
+  it.each([
+    { header: 'x-b3-sampled', value: '0' },
+    { header: 'x-b3-sampled', value: 'false' },
+    { header: 'b3', value: '123-456-0' },
+    { header: 'b3', value: '0' },
+  ])('does not propagate a rejected trace using $header: $value', async ({ header, value }) => {
+    mockDdTrace.inject.mockImplementation((_, __, carrier: Record<string, string>) => {
+      carrier[header] = value;
+    });
+    const { patchedNet, originalRequest } = await setupNet();
+
+    patchedNet.request({ url: 'https://example.com' });
+
+    const [opts] = originalRequest.mock.calls[0] as unknown as [Electron.ClientRequestConstructorOptions];
+    expect(opts.headers).toBeUndefined();
+  });
+
   it('preserves existing headers and does not overwrite them', async () => {
     const { patchedNet, originalRequest } = await setupNet();
 
