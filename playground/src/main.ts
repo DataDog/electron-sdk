@@ -163,10 +163,12 @@ ipcMain.on('ipc-demo:ping-main', () => {
   void fetch('https://httpbin.org/json').catch(() => undefined);
 });
 ipcMain.on('ipc-demo:ping-main', () => {
+  void fetch('https://httpbin.org/uuid').catch(() => undefined);
   addError(new Error('ping-main listener #2 failed'), { context: { scenario: 'ipc-demo:ping-main' } });
 });
 
 ipcMain.handle('ipc-demo:trigger-ping-renderer', () => {
+  void fetch('https://httpbin.org/json').catch(() => undefined);
   mainWindow?.webContents.send('ipc-demo:ping-renderer', { from: 'main' });
 });
 
@@ -193,6 +195,7 @@ function ensureBroadcastWindows(): BrowserWindow[] {
 }
 
 ipcMain.handle('ipc-demo:broadcast', (_event, data: unknown) => {
+  void fetch('https://httpbin.org/json').catch(() => undefined);
   for (const win of ensureBroadcastWindows()) {
     win.webContents.send('ipc-demo:broadcast-received', data);
   }
