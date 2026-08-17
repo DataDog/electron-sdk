@@ -11,6 +11,7 @@ import {
   _flushTransport,
   getInternalContext,
   _generateTelemetryError,
+  addError,
   addDurationVital,
   startDurationVital,
   stopDurationVital,
@@ -152,7 +153,9 @@ ipcMain.handle('ipc-demo:get-profile', async () => {
 
 ipcMain.handle('ipc-demo:get-profile-with-progress', async () => {
   mainWindow?.webContents.send('ipc-demo:profile-progress', { status: 'fetching' });
+  startDurationVital('profile.fetch');
   const res = await fetch('https://httpbin.org/json');
+  stopDurationVital('profile.fetch');
   return (await res.json()) as unknown;
 });
 
@@ -160,7 +163,7 @@ ipcMain.on('ipc-demo:ping-main', () => {
   void fetch('https://httpbin.org/json').catch(() => undefined);
 });
 ipcMain.on('ipc-demo:ping-main', () => {
-  void fetch('https://httpbin.org/uuid').catch(() => undefined);
+  addError(new Error('ping-main listener #2 failed'), { context: { scenario: 'ipc-demo:ping-main' } });
 });
 
 ipcMain.handle('ipc-demo:trigger-ping-renderer', () => {
@@ -257,7 +260,7 @@ ipcMain.handle(
   }
 );
 
-const ACTIVE_ENV = 'staging';
+const ACTIVE_ENV = 'prod';
 const CONF = {
   staging: {
     applicationId: '6efd3722-af0a-4070-994c-0e87076d4814',

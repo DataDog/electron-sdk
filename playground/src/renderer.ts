@@ -299,7 +299,14 @@ setupDemoButton('ipc-ping-main', 'ipc-demo:ping-main', () => {
 
 // Register two separate listeners for ping-renderer to demonstrate multiplicity
 window.electronAPI.onPingFromMain((data) => logIpcCall('ipc-demo:ping-renderer#1', 'done', 0, JSON.stringify(data)));
-window.electronAPI.onPingFromMain((data) => logIpcCall('ipc-demo:ping-renderer#2', 'done', 0, JSON.stringify(data)));
+window.electronAPI.onPingFromMain((data) => {
+  logIpcCall('ipc-demo:ping-renderer#2', 'done', 0, JSON.stringify(data));
+  datadogRum.addDurationVital('ping-renderer.handling', {
+    startTime: Date.now() - 50,
+    duration: 50,
+    context: { scenario: 'ipc-demo:ping-renderer' },
+  });
+});
 
 setupDemoButton('ipc-ping-renderer', 'ipc-demo:trigger-ping-renderer', () => window.electronAPI.triggerPingRenderer());
 
@@ -310,9 +317,10 @@ setupDemoButton('ipc-nested-profile', 'ipc-demo:get-profile-with-progress', () =
   window.electronAPI.getProfileWithProgress()
 );
 
-window.electronAPI.onBroadcastReceived((data) =>
-  logIpcCall('ipc-demo:broadcast-received', 'done', 0, JSON.stringify(data))
-);
+window.electronAPI.onBroadcastReceived((data) => {
+  logIpcCall('ipc-demo:broadcast-received', 'done', 0, JSON.stringify(data));
+  datadogRum.addError(new Error('broadcast-received handling failed'), { scenario: 'ipc-demo:broadcast-received' });
+});
 setupDemoButton('ipc-broadcast', 'ipc-demo:broadcast', () => window.electronAPI.broadcast({ from: 'main-window' }));
 
 // --- Custom duration vital demo buttons ---
