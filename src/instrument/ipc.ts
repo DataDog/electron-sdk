@@ -1,5 +1,6 @@
 import { generateUUID } from '@datadog/browser-core';
 import { callMonitored } from '../domain/telemetry';
+import { isExcludedIpcChannel } from '../domain/tracing/ipcChannelFilter';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyFn = (...args: any[]) => any;
@@ -134,7 +135,7 @@ function wrapAddListener(
 ): (addListener: AnyFn) => AnyFn {
   return (addListener) =>
     function (this: unknown, ipcChannel: string, listener: AnyFn) {
-      if (ipcChannel.startsWith('datadog:')) {
+      if (isExcludedIpcChannel(ipcChannel)) {
         return addListener.call(this, ipcChannel, listener) as unknown;
       }
 
@@ -256,14 +257,14 @@ function wrapSend(webContents: Electron.WebContents): void {
   wrappedWebContents.add(webContents);
 
   wrap(webContents, 'send', (original) => (channel: string, ...args: unknown[]) => {
-    if (channel.startsWith('datadog:')) {
+    if (isExcludedIpcChannel(channel)) {
       return original(channel, ...args) as unknown;
     }
     return startSendWithIpcId(channel, args, (argsWithId) => original(channel, ...argsWithId));
   });
 
   wrap(webContents, 'sendToFrame', (original) => (frameId: unknown, channel: string, ...args: unknown[]) => {
-    if (channel.startsWith('datadog:')) {
+    if (isExcludedIpcChannel(channel)) {
       return original(frameId, channel, ...args) as unknown;
     }
     return startSendWithIpcId(channel, args, (argsWithId) => original(frameId, channel, ...argsWithId));

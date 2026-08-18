@@ -1,6 +1,7 @@
 import { generateUUID } from '@datadog/browser-core';
 import { contextBridge, ipcRenderer } from 'electron';
 import type { ResourceHandler } from '../domain/tracing/ipcResourceBridgeTypes';
+import { isExcludedIpcChannel } from '../domain/tracing/ipcChannelFilter';
 
 export type { ResourceHandlerEvent, ResourceHandler } from '../domain/tracing/ipcResourceBridgeTypes';
 
@@ -36,7 +37,7 @@ export function patchIpcRenderer(ipcRendererLike: IpcRendererLike): {
   const rawOn = ipcRendererLike.on.bind(ipcRendererLike);
 
   ipcRendererLike.invoke = (channel: string, ...args: unknown[]) => {
-    if (channel.startsWith('datadog:')) {
+    if (isExcludedIpcChannel(channel)) {
       return rawInvoke(channel, ...args);
     }
 
@@ -63,7 +64,7 @@ export function patchIpcRenderer(ipcRendererLike: IpcRendererLike): {
   };
 
   ipcRendererLike.send = (channel: string, ...args: unknown[]) => {
-    if (channel.startsWith('datadog:')) {
+    if (isExcludedIpcChannel(channel)) {
       rawSend(channel, ...args);
       return;
     }
@@ -79,7 +80,7 @@ export function patchIpcRenderer(ipcRendererLike: IpcRendererLike): {
   };
 
   ipcRendererLike.on = (channel: string, listener: (event: unknown, ...args: unknown[]) => void) => {
-    if (channel.startsWith('datadog:')) {
+    if (isExcludedIpcChannel(channel)) {
       return rawOn(channel, listener);
     }
 
