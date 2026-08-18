@@ -1,5 +1,5 @@
 import { test, expect } from '../lib/helpers';
-import type { RumResourceEvent, RumViewEvent } from '@datadog/electron-sdk';
+import type { RumResourceEvent, RumViewEvent, TraceSamplingRule } from '@datadog/electron-sdk';
 import type { MainPage } from '../lib/mainPage';
 
 const ipcSpanCases: {
@@ -145,3 +145,33 @@ test.describe('trace sampling rules', () => {
     await intake.waitForSpan((span) => span.name === 'electron.main.handle' && span.resource === 'mainNetFetch');
   });
 });
+
+const traceSamplingRuleCases: { description: string; rule: TraceSamplingRule }[] = [
+  { description: 'name', rule: { name: 'electron.main.handle', sampleRate: 0 } },
+  { description: 'resource', rule: { resource: 'mainNetRequest', sampleRate: 0 } },
+  { description: 'tags', rule: { tags: { component: 'electron', 'span.kind': 'consumer' }, sampleRate: 0 } },
+];
+
+for (const { description, rule } of traceSamplingRuleCases) {
+  test.describe(`${description} trace sampling rule`, () => {
+    test.use({ sdkConfigOverrides: { traceSamplingRules: [rule] } });
+
+    test('drops a matching trace', async ({ intake, mainPage, testServer }) => {
+      const url = testServer.urlFor(200);
+
+      await mainPage.mainNetRequest(url);
+      await mainPage.flushTransport();
+
+      await intake.waitForEventCount('resource', 1, {
+        predicate: (event) => (event.body as RumResourceEvent).resource.url === url,
+      });
+      expect(
+        intake.getSpans(
+          (span) =>
+            (span.name === 'electron.main.handle' && span.resource === 'mainNetRequest') ||
+            (span.name === 'http.request' && span.meta['http.url'] === url)
+        )
+      ).toHaveLength(0);
+    });
+  });
+}

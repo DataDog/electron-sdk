@@ -33,8 +33,6 @@ export type UploadFrequency = keyof typeof BatchUploadFrequencies;
 export interface TraceSamplingRule {
   /** Percentage of matching traces to keep, between 0 and 100. */
   sampleRate: number;
-  /** Case-insensitive glob matched against the configured service. */
-  service?: string;
   /** Case-insensitive glob matched against the root span operation name. */
   name?: string;
   /** Case-insensitive glob matched against the root span resource name. */
@@ -201,14 +199,14 @@ function isValidTraceSamplingRule(value: unknown): value is TraceSamplingRule {
   if (!isIndexableObject(value)) {
     return false;
   }
-  const allowedKeys = new Set(['sampleRate', 'service', 'name', 'resource', 'tags']);
+  const allowedKeys = new Set(['sampleRate', 'name', 'resource', 'tags']);
   if (Object.keys(value).some((key) => !allowedKeys.has(key))) {
     return false;
   }
   if (!isFiniteNumber(value.sampleRate) || value.sampleRate < 0 || value.sampleRate > 100) {
     return false;
   }
-  if (!['service', 'name', 'resource'].every((key) => value[key] === undefined || isValidString(value[key]))) {
+  if (!['name', 'resource'].every((key) => value[key] === undefined || isValidString(value[key]))) {
     return false;
   }
   if (value.tags === undefined) {

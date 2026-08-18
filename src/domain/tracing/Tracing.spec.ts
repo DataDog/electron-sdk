@@ -27,10 +27,8 @@ describe('Tracing', () => {
     const tracing = new Tracing(
       createTestConfiguration({
         env: 'production',
-        service: 'checkout-main',
         traceSamplingRules: [
-          { service: 'checkout-*', tags: { 'http.url': '*/health' }, sampleRate: 5 },
-          { service: 'other-service', sampleRate: 0 },
+          { tags: { 'http.url': '*/health' }, sampleRate: 5 },
           { name: 'electron.main.*', sampleRate: 100 },
         ],
       }),

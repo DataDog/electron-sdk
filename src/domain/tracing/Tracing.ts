@@ -66,7 +66,7 @@ export class Tracing {
 
       if (config.traceSamplingRules.length > 0) {
         internals._tracer?._prioritySampler?.configure(config.env ?? '', {
-          rules: toDdTraceSamplingRules(config.traceSamplingRules, config.service),
+          rules: toDdTraceSamplingRules(config.traceSamplingRules),
           rateLimit: -1,
         });
       }
@@ -97,21 +97,7 @@ export class Tracing {
   }
 }
 
-// dd-trace expects rates between 0 and 1 and initializes before Electron's final service is known.
-// Match that service here, then delegate the remaining rule matching and sampling to dd-trace.
-function toDdTraceSamplingRules(rules: TraceSamplingRule[], service: string): DdTraceSamplingRule[] {
-  return rules.flatMap(({ service: servicePattern, sampleRate, ...rule }) => {
-    if (servicePattern !== undefined && !matchesGlob(servicePattern, service)) {
-      return [];
-    }
-    return [{ ...rule, sampleRate: sampleRate / 100 }];
-  });
-}
-
-function matchesGlob(pattern: string, value: string): boolean {
-  const escaped = pattern
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*/g, '.*')
-    .replace(/\?/g, '.');
-  return new RegExp(`^${escaped}$`, 'i').test(value);
+// Electron exposes percentages while dd-trace expects rates between 0 and 1.
+function toDdTraceSamplingRules(rules: TraceSamplingRule[]): DdTraceSamplingRule[] {
+  return rules.map(({ sampleRate, ...rule }) => ({ ...rule, sampleRate: sampleRate / 100 }));
 }

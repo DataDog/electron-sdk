@@ -512,7 +512,7 @@ describe('buildConfiguration', () => {
     it('preserves valid ordered rules', () => {
       const traceSamplingRules = [
         { name: 'electron.main.*', resource: 'health-*', sampleRate: 0 },
-        { service: 'checkout-*', tags: { 'http.url': '*/api/*' }, sampleRate: 25 },
+        { tags: { 'http.url': '*/api/*' }, sampleRate: 25 },
       ];
 
       expect(buildConfiguration({ ...DEFAULT_CONFIG, traceSamplingRules })?.traceSamplingRules).toEqual(
@@ -529,6 +529,7 @@ describe('buildConfiguration', () => {
       [{ sampleRate: 50, name: '   ' }],
       [{ sampleRate: 50, tags: { 'http.url': 42 } }],
       [{ sampleRate: 0, url: '*/health' }],
+      [{ sampleRate: 50, service: 'checkout-*' }],
     ])('rejects invalid rules: %j', (traceSamplingRules) => {
       const result = buildConfiguration({
         ...DEFAULT_CONFIG,

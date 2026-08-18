@@ -235,8 +235,10 @@ function mergeHeaders<T extends string | string[]>(
 }
 
 function shouldPropagateTrace(carrier: Record<string, string>): boolean {
-  // dd-trace can inject the sampling decision using any configured propagation style. It does not
-  // expose that decision through a public API, so read it from the temporary carrier before merging.
+  // dd-trace injects the sampling decision via whatever propagation style is configured, with no
+  // public API to read it directly, so we read it from the carrier instead. Checking every style here,
+  // not just the ones we enable by default, also covers DD_TRACE_PROPAGATION_STYLE being set via env
+  // var, and future support for configuring other styles ourselves.
   const datadogPriority = Number(carrier['x-datadog-sampling-priority']);
   if (Number.isFinite(datadogPriority) && datadogPriority <= 0) {
     return false;

@@ -444,7 +444,6 @@ a rejected HTTP trace still produces an unlinked RUM Resource.
 | Key          | Required | Purpose                                                                   |
 | ------------ | -------- | ------------------------------------------------------------------------- |
 | `sampleRate` | Yes      | Percentage of matching traces to keep, from `0` to `100`                  |
-| `service`    | No       | Matches the configured Electron service                                   |
 | `name`       | No       | Matches the root span operation name, such as `electron.main.handle`      |
 | `resource`   | No       | Matches the root span resource, such as an IPC channel                    |
 | `tags`       | No       | Matches root span tags by name and value; every configured tag must match |
