@@ -1,11 +1,7 @@
 import { test, expect } from '../lib/helpers';
+import { isBridgeView } from '../lib/intake';
 import type { ElectronApplication } from '@playwright/test';
-import type { RumViewEvent } from '@datadog/electron-sdk';
 import type { MainPage } from '../lib/mainPage';
-
-function isBridgeView(event: { body: unknown }): boolean {
-  return (event.body as RumViewEvent).view.url !== 'electron://main-process';
-}
 
 interface Scenario {
   name: string;

@@ -1,5 +1,4 @@
 import { test, expect } from '../lib/helpers';
-import type { RumViewEvent } from '@datadog/electron-sdk';
 import type { MainPage } from '../lib/mainPage';
 
 const ipcSpanCases: {
@@ -36,7 +35,7 @@ for (const { title, trigger, spanName, resource, spanKind } of ipcSpanCases) {
   test(`emits an ${title} span with Electron context`, async ({ mainPage, intake }) => {
     await mainPage.flushTransport();
     const viewEvents = await intake.getEventsByType('view');
-    const view = viewEvents[0].body as RumViewEvent;
+    const view = viewEvents[0].body;
 
     await trigger(mainPage);
     await mainPage.flushTransport();

@@ -10,8 +10,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { test, expect, launchApp } from '../lib/integrationFixture';
 import { getElectronBuilderViteArchivePath } from '../lib/electronBuilderVite';
-import type { RumErrorEvent, RumResourceEvent, RumViewEvent } from '@datadog/electron-sdk';
-import { Intake, type ReceivedEvent, type Span } from '../../lib/intake';
+import { Intake, type EventBodyByType, type EventType, type ReceivedEvent, type Span } from '../../lib/intake';
 import type { Page } from '@playwright/test';
 import { ONE_SECOND } from '@datadog/js-core/time';
 
@@ -60,7 +59,7 @@ test.describe('view event on startup @integration', () => {
   test('sends a view event with a session id on startup', async ({ window, intake }) => {
     const viewEvents = await flushUntilEventArrives(window, intake, 'view', 1, 15 * ONE_SECOND);
     expect(viewEvents).toHaveLength(1);
-    const view = viewEvents[0].body as RumViewEvent;
+    const view = viewEvents[0].body;
 
     expect(view.type).toBe('view');
     expect(view.session.id).toBeDefined();
@@ -84,7 +83,7 @@ test.describe('renderer error propagation @integration', () => {
     const errorEvents = await intake.waitForEventCount('error', 1, { timeout: 10 * ONE_SECOND });
     expect(errorEvents).toHaveLength(1);
 
-    const error = errorEvents[0].body as RumErrorEvent;
+    const error = errorEvents[0].body;
     expect(error.type).toBe('error');
     expect(error.error.message).toBe('integration test error');
     expect(error.session.id).toBeDefined();
@@ -98,14 +97,14 @@ test.describe('main-process fetch resource @integration', () => {
     testServer,
   }) => {
     const [viewEvent] = await flushUntilEventArrives(window, intake, 'view', 1, 15 * ONE_SECOND);
-    const view = viewEvent.body as RumViewEvent;
+    const view = viewEvent.body;
 
     const url = testServer.urlFor(200);
     await window.evaluate((u) => (globalThis as unknown as IntegrationTestWindow).electronAPI?.mainFetch(u), url);
     await flushTransport(window);
 
     const resourceEvents = await intake.waitForEventCount('resource', 1, { timeout: 10 * ONE_SECOND });
-    const resource = resourceEvents[0].body as RumResourceEvent;
+    const resource = resourceEvents[0].body;
     expect(resource.resource.method).toBe('GET');
     expect(resource.resource.status_code).toBe(200);
     expect(resource.resource.url).toBe(url);
@@ -155,7 +154,7 @@ test.describe('custom-session window instrumentation @integration', () => {
     await customWindow.waitForTimeout(ONE_SECOND);
 
     const errors = await flushUntilEventArrives(window, intake, 'error', 1, 15 * ONE_SECOND);
-    expect(errors.some((e) => (e.body as RumErrorEvent).error.message === message)).toBe(true);
+    expect(errors.some((e) => e.body.error.message === message)).toBe(true);
   });
 });
 
@@ -197,7 +196,7 @@ test.describe('crash reporting across restart @integration', () => {
         const errorEvents = await flushUntilEventArrives(secondWindow, intake, 'error', 1, 15 * ONE_SECOND);
         expect(errorEvents).toHaveLength(1);
 
-        const error = errorEvents[0].body as RumErrorEvent;
+        const error = errorEvents[0].body;
         expect(error.error.is_crash).toBe(true);
         expect(error.error.source).toBe('source');
         expect(error.error.handling).toBe('unhandled');
@@ -223,13 +222,13 @@ async function flushTransport(window: Page): Promise<void> {
  * arrive or `timeout` ms elapses. Handles variable crash processing time across toolchains
  * and modes (e.g. slower when reading from an asar archive in packaged mode).
  */
-async function flushUntilEventArrives(
+async function flushUntilEventArrives<T extends EventType>(
   window: Page,
   intake: Intake,
-  type: string,
+  type: T,
   count: number,
   timeout: number
-): Promise<ReceivedEvent[]> {
+): Promise<ReceivedEvent<EventBodyByType[T]>[]> {
   const pollInterval = 500;
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {

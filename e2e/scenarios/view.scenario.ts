@@ -1,23 +1,12 @@
 import { test, expect } from '../lib/helpers';
-import type { RumViewEvent } from '@datadog/electron-sdk';
-
-const isMainProcessView = (event: { body: unknown }) =>
-  (event.body as RumViewEvent).view.url === 'electron://main-process';
+import { isMainProcessView } from '../lib/intake';
 
 test('emits an initial active view event on SDK init', async ({ mainPage, intake }) => {
   await mainPage.flushTransport();
   const events = await intake.getEventsByType('view');
   expect(events).toHaveLength(1);
 
-  const {
-    body: view,
-    headers,
-    ddforward,
-  } = events[0] as {
-    body: RumViewEvent;
-    headers: Record<string, string>;
-    ddforward: string;
-  };
+  const { body: view, headers, ddforward } = events[0];
 
   expect(view.ddtags).toMatch(/sdk_version:\d+\.\d+\.\d+/);
   expect(view.ddtags).toContain('env:test');
@@ -50,13 +39,13 @@ test.describe('session renewal via user activity', () => {
   }) => {
     await mainPage.flushTransport();
     const initialEvents = await intake.getEventsByType('view');
-    const initialViewId = (initialEvents.find(isMainProcessView)!.body as RumViewEvent).view.id;
+    const initialViewId = initialEvents.find(isMainProcessView)!.body.view.id;
 
     await mainPage.stopSession();
     await mainPage.flushTransport();
 
     const eventsAfterStop = await intake.waitForEventCount('view', 2, { predicate: isMainProcessView });
-    const inactiveView = eventsAfterStop[1].body as RumViewEvent;
+    const inactiveView = eventsAfterStop[1].body;
 
     expect(inactiveView.view.id).toBe(initialViewId);
     expect(inactiveView.view.is_active).toBe(false);
@@ -66,7 +55,7 @@ test.describe('session renewal via user activity', () => {
     await mainPage.flushTransport();
 
     const eventsAfterRenewal = await intake.waitForEventCount('view', 3, { predicate: isMainProcessView });
-    const newView = eventsAfterRenewal[2].body as RumViewEvent;
+    const newView = eventsAfterRenewal[2].body;
 
     expect(newView.view.id).not.toBe(initialViewId);
     expect(newView.view.is_active).toBe(true);
@@ -80,7 +69,7 @@ test('increments view error count after an uncaught exception', async ({ mainPag
 
   await intake.getEventsByType('error');
   const viewEvents = await intake.waitForEventCount('view', 2);
-  const updatedView = viewEvents[1].body as RumViewEvent;
+  const updatedView = viewEvents[1].body;
 
   expect(updatedView.view.error.count).toBe(1);
   expect(updatedView._dd.document_version).toBeGreaterThan(1);

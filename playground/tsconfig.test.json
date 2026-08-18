@@ -6,6 +6,13 @@
     "types": ["node"],
     // Include e2e/lib/intake.ts so playground tests can reuse the mock intake server.
     // The relative import (../../e2e/lib/intake) works at runtime without a path alias.
+    // It does need this alias to type-check though: intake.ts imports the SDK's event types, and
+    // node resolution from e2e/lib/ walks up past the repo root without ever seeing the
+    // playground/node_modules symlink that playground/src/ relies on. Mirrors e2e/tsconfig.json.
+    "baseUrl": ".",
+    "paths": {
+      "@datadog/electron-sdk": ["../dist/index.d.ts"]
+    },
     "composite": true,
     "emitDeclarationOnly": true,
     "outDir": "./dist/types",
