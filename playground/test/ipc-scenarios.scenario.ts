@@ -137,21 +137,9 @@ test("nested IPC: progress send falls within the parent handle event's time wind
 });
 
 test('broadcast produces an independent source/destination pair for each relayed send', async ({ window, intake }) => {
-  // The helper BrowserWindows are created lazily on the first click and load asynchronously
-  // (`win.loadURL(...)`), while main's relay `webContents.send` fires immediately on that same first
-  // invocation — Electron drops a `send` aimed at a renderer that hasn't registered its `ipcRenderer.on`
-  // listener yet, no buffering. Confirmed directly: the first click's 2 relay sends never get a
-  // matching destination event, while a second click on the now-loaded (already-existing, reused)
-  // windows produces both sides cleanly. So: fire a throwaway warm-up click to create+load the windows,
-  // wait for them to finish loading, discard whatever that warm-up produced, then click again for the
-  // real assertion.
-  await window.click('#ipc-broadcast');
-  await new Promise((resolve) => setTimeout(resolve, 3000));
-  // Flush before clearing: clearing only resets what the fake intake has already received, and the
-  // warm-up click's events are still sitting un-flushed in the SDK's batch at this point.
-  await flushTransport(window);
-  intake.clear();
-
+  // The helper BrowserWindows are created lazily on the first click; `ensureBroadcastWindows` in
+  // main.ts awaits each window's `loadURL(...)` before relaying, so even the very first click is safe
+  // — no warm-up click needed.
   await window.click('#ipc-broadcast');
   const relayedEvents = await flushUntilEventCount(
     window,

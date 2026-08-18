@@ -173,9 +173,15 @@ ipcMain.handle('ipc-demo:trigger-ping-renderer', () => {
 });
 
 let broadcastWindows: BrowserWindow[] = [];
+let broadcastWindowsReady: Promise<BrowserWindow[]> | undefined;
 
-function ensureBroadcastWindows(): BrowserWindow[] {
-  if (broadcastWindows.length === 0) {
+// Created lazily on first broadcast, not at app startup, since the demo shouldn't spawn windows
+// nobody asked for. `loadURL` resolves once the page has finished loading (by which point the
+// renderer's synchronous top-level script — including its ipcRenderer.on registration — has already
+// run), so awaiting it before sending avoids Electron silently dropping a send aimed at a listener
+// that isn't registered yet.
+function ensureBroadcastWindows(): Promise<BrowserWindow[]> {
+  if (!broadcastWindowsReady) {
     broadcastWindows = [0, 1].map(
       () =>
         new BrowserWindow({
@@ -189,14 +195,17 @@ function ensureBroadcastWindows(): BrowserWindow[] {
           },
         })
     );
-    broadcastWindows.forEach((win) => void win.loadURL('app://app/'));
+    broadcastWindowsReady = Promise.all(broadcastWindows.map((win) => win.loadURL('app://app/'))).then(
+      () => broadcastWindows
+    );
   }
-  return broadcastWindows;
+  return broadcastWindowsReady;
 }
 
-ipcMain.handle('ipc-demo:broadcast', (_event, data: unknown) => {
+ipcMain.handle('ipc-demo:broadcast', async (_event, data: unknown) => {
   void fetch('https://httpbin.org/json').catch(() => undefined);
-  for (const win of ensureBroadcastWindows()) {
+  const windows = await ensureBroadcastWindows();
+  for (const win of windows) {
     win.webContents.send('ipc-demo:broadcast-received', data);
   }
 });
