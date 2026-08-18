@@ -1,13 +1,12 @@
 /**
- * Renderer entry point — wires the SDK's preload-exposed IPC resource bridge to a host app's own
- * `datadogRum` instance, without this package depending on `@datadog/browser-rum`.
+ * Renderer entry point — a `RumPlugin` that wires the SDK's preload-exposed IPC resource bridge to
+ * `datadogRum`, without this package depending on `@datadog/browser-rum`/`@datadog/browser-rum-core`.
  *
  * Usage:
  *   import { datadogRum } from '@datadog/browser-rum';
- *   import { wireIpcResourceBridge } from '@datadog/electron-sdk/renderer';
+ *   import { datadogRendererPlugin } from '@datadog/electron-sdk/renderer';
  *
- *   datadogRum.init({ ... });
- *   wireIpcResourceBridge(datadogRum);
+ *   datadogRum.init({ ..., plugins: [datadogRendererPlugin()] });
  */
-export { wireIpcResourceBridge } from '../renderer/wireIpcResourceBridge';
-export type { IpcRumResourceApi } from '../renderer/wireIpcResourceBridge';
+export { datadogRendererPlugin } from '../renderer/datadogRendererPlugin';
+export type { DatadogRendererPlugin, IpcRumResourceApi } from '../renderer/datadogRendererPlugin';

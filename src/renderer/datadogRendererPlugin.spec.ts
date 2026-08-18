@@ -7,14 +7,14 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { ResourceHandler } from '../domain/tracing/ipcResourceBridgeTypes';
-import { wireIpcResourceBridge } from './wireIpcResourceBridge';
+import { datadogRendererPlugin } from './datadogRendererPlugin';
 
 afterEach(() => {
   delete (window as { DatadogIpcBridge?: unknown }).DatadogIpcBridge;
 });
 
-describe('wireIpcResourceBridge', () => {
-  it('registers a handler on window.DatadogIpcBridge that forwards start/stop events to the given RUM API', () => {
+describe('datadogRendererPlugin', () => {
+  it('exposes the RumPlugin name/onInit shape and forwards start/stop events to the RUM public API', () => {
     let registeredHandler: ResourceHandler | undefined;
     window.DatadogIpcBridge = {
       registerResourceHandler: (handler) => {
@@ -22,18 +22,21 @@ describe('wireIpcResourceBridge', () => {
       },
     };
 
-    const rum = { startResource: vi.fn(), stopResource: vi.fn() };
-    wireIpcResourceBridge(rum);
+    const plugin = datadogRendererPlugin();
+    expect(plugin.name).toBe('electron-ipc-bridge');
+
+    const publicApi = { startResource: vi.fn(), stopResource: vi.fn() };
+    plugin.onInit!({ publicApi });
 
     registeredHandler!({ action: 'start', url: 'ipc-demo:get-profile' });
-    expect(rum.startResource).toHaveBeenCalledWith('ipc-demo:get-profile', { type: 'native' });
+    expect(publicApi.startResource).toHaveBeenCalledWith('ipc-demo:get-profile', { type: 'native' });
 
     registeredHandler!({
       action: 'stop',
       url: 'ipc-demo:get-profile',
       options: { context: { ipc: { role: 'source', id: 'call-abc', method: 'invoke' } } },
     });
-    expect(rum.stopResource).toHaveBeenCalledWith('ipc-demo:get-profile', {
+    expect(publicApi.stopResource).toHaveBeenCalledWith('ipc-demo:get-profile', {
       type: 'native',
       context: { ipc: { role: 'source', id: 'call-abc', method: 'invoke' } },
     });
@@ -41,9 +44,10 @@ describe('wireIpcResourceBridge', () => {
 
   it('does nothing (no throw) when window.DatadogIpcBridge is not present', () => {
     delete (window as { DatadogIpcBridge?: unknown }).DatadogIpcBridge;
-    const rum = { startResource: vi.fn(), stopResource: vi.fn() };
+    const publicApi = { startResource: vi.fn(), stopResource: vi.fn() };
 
-    expect(() => wireIpcResourceBridge(rum)).not.toThrow();
-    expect(rum.startResource).not.toHaveBeenCalled();
+    const plugin = datadogRendererPlugin();
+    expect(() => plugin.onInit!({ publicApi })).not.toThrow();
+    expect(publicApi.startResource).not.toHaveBeenCalled();
   });
 });

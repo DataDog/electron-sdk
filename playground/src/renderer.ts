@@ -1,5 +1,5 @@
 import { datadogRum } from '@datadog/browser-rum';
-import { wireIpcResourceBridge } from '@datadog/electron-sdk/renderer';
+import { datadogRendererPlugin } from '@datadog/electron-sdk/renderer';
 
 interface DurationVitalOptions {
   vitalKey?: string;
@@ -27,9 +27,8 @@ datadogRum.init({
   trackResources: true,
   trackLongTasks: true,
   trackUserInteractions: true,
+  plugins: [datadogRendererPlugin()],
 });
-
-wireIpcResourceBridge(datadogRum);
 
 // Type definition for the exposed API
 interface ElectronAPI {
