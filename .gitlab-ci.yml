@@ -4,6 +4,12 @@ variables:
   DD_ELECTRON_SDK_GIT_REF:
     value: ''
     description: 'Optional branch, tag, or commit to package as the SDK under compatibility test.'
+  DD_ELECTRON_COMPATIBILITY_ENVIRONMENTS:
+    value: ''
+    description: 'Optional comma-separated compatibility environments, for example linux,macos.'
+  DD_ELECTRON_COMPATIBILITY_TARGETS:
+    value: ''
+    description: 'Optional comma-separated compatibility targets, for example electron-41,electron-44-prerelease.'
 
 stages:
   - docker
