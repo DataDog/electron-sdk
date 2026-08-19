@@ -1,20 +1,33 @@
 variables:
   CI_IMAGE_REPO: 'ci/${CI_PROJECT_NAME}'
   CI_IMAGE: 'registry.ddbuild.io/ci/electron-sdk:v120778963-d70c392e@sha256:fbd772ca8047e7992bc030306e287e8c35d8cf5a5daba327c4024b5a4d009c4f' # https://gitlab.ddbuild.io/DataDog/electron-sdk/-/jobs/1800425126
+  DD_ELECTRON_SDK_GIT_REF:
+    value: ''
+    description: 'Optional branch, tag, or commit to package as the SDK under compatibility test.'
 
 stages:
   - docker
   - test
+  - compatibility
   - notify
 
 default:
   tags: ['arch:amd64']
   image: $CI_IMAGE
 
+.regular-pipeline:
+  rules:
+    - if: '$COMPATIBILITY_TESTS == "true"'
+      when: never
+    - when: on_success
+
 build-container-image:
   stage: docker
   image: 'registry.ddbuild.io/images/docker:27.3.1'
-  when: manual
+  rules:
+    - if: '$COMPATIBILITY_TESTS == "true"'
+      when: never
+    - when: manual
   id_tokens:
     DDSIGN_ID_TOKEN:
       aud: image-integrity
@@ -25,42 +38,49 @@ build-container-image:
     - ddsign sign registry.ddbuild.io/${CI_IMAGE_REPO}:${CI_IMAGE_TAG} --docker-metadata-file ${METADATA_FILE}
 
 format:
+  extends: .regular-pipeline
   stage: test
   script:
     - yarn
     - yarn format:check
 
 lint:
+  extends: .regular-pipeline
   stage: test
   script:
     - yarn
     - yarn lint
 
 build:
+  extends: .regular-pipeline
   stage: test
   script:
     - yarn
     - yarn build
 
 unit:
+  extends: .regular-pipeline
   stage: test
   script:
     - yarn
     - yarn test:unit
 
 check-node-version:
+  extends: .regular-pipeline
   stage: test
   script:
     - yarn
     - node scripts/check-node-version.ts
 
 check-licenses:
+  extends: .regular-pipeline
   stage: test
   script:
     - yarn
     - node scripts/check-licenses.ts
 
 check-package-content:
+  extends: .regular-pipeline
   stage: test
   script:
     - yarn
@@ -68,6 +88,7 @@ check-package-content:
     - node scripts/check-package-content.ts
 
 e2e:
+  extends: .regular-pipeline
   stage: test
   script:
     - yarn
@@ -80,6 +101,7 @@ e2e:
       - e2e/playwright-report/
 
 integration:
+  extends: .regular-pipeline
   stage: test
   script:
     - yarn
@@ -92,12 +114,40 @@ integration:
       - e2e/playwright-report/
 
 playground:
+  extends: .regular-pipeline
   stage: test
   script:
     - yarn
     - yarn build
     - yarn dev:init
     - cd playground && xvfb-run -a yarn test
+
+generate-compatibility-pipeline:
+  stage: compatibility
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $COMPATIBILITY_TESTS == "true"'
+    - if: '$CI_PIPELINE_SOURCE == "web" && $COMPATIBILITY_TESTS == "true"'
+  script:
+    - yarn install --immutable
+    - yarn test:compatibility:ci:generate
+  artifacts:
+    paths:
+      - e2e/compatibility/generated.gitlab-ci.yml
+
+compatibility:
+  stage: compatibility
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $COMPATIBILITY_TESTS == "true"'
+    - if: '$CI_PIPELINE_SOURCE == "web" && $COMPATIBILITY_TESTS == "true"'
+  needs:
+    - generate-compatibility-pipeline
+  trigger:
+    include:
+      - artifact: e2e/compatibility/generated.gitlab-ci.yml
+        job: generate-compatibility-pipeline
+    strategy: depend
+    forward:
+      pipeline_variables: true
 
 ########################################################################################################################
 # Notify
