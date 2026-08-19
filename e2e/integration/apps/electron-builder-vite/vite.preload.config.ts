@@ -1,10 +1,9 @@
 import { builtinModules } from 'node:module';
 import { defineConfig } from 'vite';
-import { getWorkflow } from './workflow';
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig({
   build: {
-    outDir: `dist/${getWorkflow(mode)}`,
+    outDir: 'dist',
     emptyOutDir: false,
     lib: {
       entry: 'src/preload.ts',
@@ -15,4 +14,4 @@ export default defineConfig(({ mode }) => ({
       external: ['electron', ...builtinModules, ...builtinModules.map((m) => `node:${m}`)],
     },
   },
-}));
+});

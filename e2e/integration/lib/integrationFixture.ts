@@ -5,8 +5,19 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { Intake } from '../../lib/intake';
 import { TestServer } from '../../lib/testServer';
+import { assertExpectedElectronVersion } from '../../lib/compatibility';
 import type { IntegrationApp, IntegrationMode, IntegrationVariant } from '../../playwright.config';
 import type { InitConfiguration } from '@datadog/electron-sdk';
+
+const compatibilityRoot = process.env.DD_ELECTRON_COMPATIBILITY_ROOT;
+const integrationAppsDirectory = compatibilityRoot
+  ? join(compatibilityRoot, 'integration-apps')
+  : join(__dirname, '../apps');
+
+export function getIntegrationAppDirectory(app: IntegrationApp, variant: IntegrationVariant): string {
+  const appDirectory = join(integrationAppsDirectory, app);
+  return compatibilityRoot ? join(appDirectory, variant) : appDirectory;
+}
 
 export interface IntegrationFixtures {
   /** The integration app name, set via Playwright project `use` config. */
@@ -28,7 +39,7 @@ export interface IntegrationFixtures {
 export const test = base.extend<IntegrationFixtures>({
   app: ['' as IntegrationApp, { option: true }],
   mode: ['' as IntegrationMode, { option: true }],
-  variant: [null, { option: true }],
+  variant: ['default', { option: true }],
 
   intake: [
     // eslint-disable-next-line no-empty-pattern
@@ -53,9 +64,9 @@ export const test = base.extend<IntegrationFixtures>({
   ],
 
   electronApp: async ({ app, mode, variant, intake }, use) => {
-    const appDir = join(__dirname, '../apps', app);
+    const appDir = getIntegrationAppDirectory(app, variant);
     const userDataDir = await mkdtemp(join(tmpdir(), 'electron-sdk-integration-'));
-    const electronApp = await launchApp(appDir, mode, intake, userDataDir, variant);
+    const electronApp = await launchApp(appDir, mode, intake, userDataDir);
     await use(electronApp);
     await electronApp.close();
     await rm(userDataDir, { recursive: true, force: true });
@@ -78,18 +89,13 @@ export async function launchApp(
   appDir: string,
   mode: IntegrationMode,
   intake: Intake,
-  userDataDir: string,
-  variant: IntegrationVariant = null
+  userDataDir: string
 ): Promise<ElectronApplication> {
   const config = buildSdkConfig(intake);
   const userDataArgs = [`--user-data-dir=${userDataDir}`];
 
   if (mode === 'packaged') {
-    return electron.launch({
-      executablePath: findPackagedBinary(appDir, variant),
-      args: userDataArgs,
-      env: { ...process.env, DD_SDK_CONFIG: JSON.stringify(config) },
-    });
+    return launchAndAssertVersion(findPackagedBinary(appDir), userDataArgs, config);
   }
 
   // Dev mode: launch electron directly against the webpack/vite build output.
@@ -97,13 +103,28 @@ export async function launchApp(
   // the app's declared peer dependency version.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const electronPath = require(join(appDir, 'node_modules/electron')) as string;
-  const mainScript = findDevMainScript(appDir, variant);
+  const mainScript = findDevMainScript(appDir);
 
-  return electron.launch({
-    executablePath: electronPath,
-    args: [mainScript, ...userDataArgs],
+  return launchAndAssertVersion(electronPath, [mainScript, ...userDataArgs], config);
+}
+
+async function launchAndAssertVersion(
+  executablePath: string,
+  args: string[],
+  config: InitConfiguration
+): Promise<ElectronApplication> {
+  const electronApp = await electron.launch({
+    executablePath,
+    args,
     env: { ...process.env, DD_SDK_CONFIG: JSON.stringify(config) },
   });
+  try {
+    await assertExpectedElectronVersion(electronApp);
+    return electronApp;
+  } catch (error) {
+    await electronApp.close();
+    throw error;
+  }
 }
 
 function buildSdkConfig(intake: Intake): InitConfiguration {
@@ -126,9 +147,9 @@ function buildSdkConfig(intake: Intake): InitConfiguration {
  * Each integration app declares its dev main entry in `package.json` under
  * `integration.devMain` — a path relative to the app directory.
  */
-function findDevMainScript(appDir: string, variant: IntegrationVariant): string {
+export function findDevMainScript(appDir: string): string {
   const pkgPath = join(appDir, 'package.json');
-  const integration = getIntegrationLaunchConfiguration(pkgPath, variant);
+  const integration = getIntegrationLaunchConfiguration(pkgPath);
   const devMain = integration.devMain;
 
   if (!devMain) {
@@ -154,9 +175,9 @@ function findDevMainScript(appDir: string, variant: IntegrationVariant): string 
  * `${platform}` (e.g. "darwin"), allowing arch-specific overrides where packagers use
  * different output directory names per arch (e.g. electron-builder: `mac-arm64` vs `mac`).
  */
-function findPackagedBinary(appDir: string, variant: IntegrationVariant): string {
+export function findPackagedBinary(appDir: string): string {
   const pkgPath = join(appDir, 'package.json');
-  const integration = getIntegrationLaunchConfiguration(pkgPath, variant);
+  const integration = getIntegrationLaunchConfiguration(pkgPath);
   const packagedBinary = integration.packagedBinary;
 
   if (!packagedBinary) {
@@ -188,27 +209,16 @@ interface IntegrationLaunchConfiguration {
   packagedBinary?: Record<string, string>;
 }
 
-function getIntegrationLaunchConfiguration(
-  packageJsonPath: string,
-  variant: IntegrationVariant
-): IntegrationLaunchConfiguration {
+function getIntegrationLaunchConfiguration(packageJsonPath: string): IntegrationLaunchConfiguration {
   const pkg = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
-    integration?: IntegrationLaunchConfiguration & {
-      variants?: Partial<Record<NonNullable<IntegrationVariant>, IntegrationLaunchConfiguration>>;
-    };
+    integration?: IntegrationLaunchConfiguration;
   };
   const integration = pkg.integration;
 
   if (!integration) {
     throw new Error(`No "integration" field in ${packageJsonPath}.`);
   }
-  if (!variant) return integration;
-
-  const variantConfiguration = integration.variants?.[variant];
-  if (!variantConfiguration) {
-    throw new Error(`No integration variant "${variant}" in ${packageJsonPath}.`);
-  }
-  return variantConfiguration;
+  return integration;
 }
 
 export { expect } from '@playwright/test';
