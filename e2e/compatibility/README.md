@@ -80,6 +80,28 @@ Generated apps install the packed SDK tarball and are written below `e2e/compati
 by Git. Integration variants live at `generated/<target>/integration-apps/<template>/<variant>`. Each Electron launch
 asserts the exact configured runtime version before executing its scenarios.
 
+## Generate the CI matrix locally
+
+Preview the child pipeline generated from `config.json` with:
+
+```sh
+yarn test:compatibility:ci:generate
+```
+
+The command writes `e2e/compatibility/generated.gitlab-ci.yml`. This is a disposable, ignored artifact and should not
+be committed. With no filters it contains every configured environment × target job.
+
+Use comma-separated environment and target filters to generate a smaller matrix:
+
+```sh
+DD_ELECTRON_COMPATIBILITY_ENVIRONMENTS=linux,macos \
+DD_ELECTRON_COMPATIBILITY_TARGETS=electron-41,electron-44-prerelease \
+yarn test:compatibility:ci:generate
+```
+
+Unknown identifiers and malformed lists fail generation with the available values. The filters affect CI generation
+only; local `test:compatibility:init` and `test:compatibility` selection continues to use their CLI options.
+
 ## Scheduled CI
 
 Create a GitLab pipeline schedule with `COMPATIBILITY_TESTS=true`. The parent pipeline generates one child job for
@@ -89,6 +111,17 @@ Electron nightly jobs are marked non-blocking through the target's `ci.allowFail
 When starting a pipeline in GitLab, the selected pipeline branch or tag supplies the compatibility harness. Set
 `DD_ELECTRON_SDK_GIT_REF` only when the SDK should come from a different branch, tag, or commit. Manual and scheduled
 pipeline variables are explicitly forwarded to the generated child pipeline.
+
+The optional `DD_ELECTRON_COMPATIBILITY_ENVIRONMENTS` and `DD_ELECTRON_COMPATIBILITY_TARGETS` pipeline variables use
+the same comma-separated filters as local CI generation. They make it possible to introduce or diagnose the matrix in
+stages without editing `config.json`. A typical rollout is:
+
+1. `linux` with `electron-41`
+2. `linux` with every target by leaving the target filter empty
+3. `linux,macos` with `electron-41`, then with every target
+4. `linux,macos,windows` with `electron-41`, then with every target
+
+Leave both filters empty for the complete configured matrix.
 
 The runner images must provide the repository-pinned Node and Yarn versions and support launching Electron desktop
 applications. Linux additionally runs Electron under Xvfb.
