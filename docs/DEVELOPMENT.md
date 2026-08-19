@@ -23,6 +23,8 @@ Run appropriate tests based on your changes:
 - **Build**: `yarn build` - Verify the SDK builds correctly
 - **Unit tests**: `yarn test:unit` - For SDK code changes
 - **E2E tests**: `yarn test:e2e:init && yarn test:e2e` - For integration testing
+- **Compatibility tests**: `yarn test:compatibility:init electron-41 && yarn test:compatibility electron-41` - Run
+  the scheduled-suite fixtures locally for one pinned Electron target
 
 ### Git Hooks
 

@@ -26,6 +26,7 @@ Testing a new feature end-to-end means updating the `e2e/app/` to exercise it, t
   - `intake.ts`: Local HTTP server that captures RUM events sent by the SDK
 - **`e2e/scenarios/`**: Test files using Playwright
 - **`e2e/integration/`**: Integration tests with realistic Electron setups
+- **`e2e/compatibility/`**: Scheduled Electron-version and operating-system matrix
 
 ### Custom Test Fixtures
 
@@ -55,3 +56,12 @@ The `e2e/app/` is the reference implementation for IPC bridge patterns and SDK i
 ### Integration testing
 
 See e2e/integration/README.md for integration tests strategy and structure
+
+### Compatibility testing
+
+The every-PR jobs continue to run the repository's current Electron version. Scheduled compatibility pipelines run
+the same minimal E2E scenarios and every configured integration app/variant against each explicitly pinned Electron
+target on Linux, macOS, and Windows. See e2e/compatibility/README.md for configuration and local usage.
+The pipeline ref selects the compatibility harness; `DD_ELECTRON_SDK_GIT_REF` can independently select a committed
+SDK branch, tag, or SHA. Target/template overlays capture version-specific fixture differences without duplicating a
+complete application.
