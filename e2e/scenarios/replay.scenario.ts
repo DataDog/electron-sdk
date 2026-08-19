@@ -109,11 +109,9 @@ test.describe('session replay', () => {
 
     const viewEvents = await intake.waitForEventCount('view', 1, {
       timeout: 20_000,
-      predicate: (e) => {
-        const body = e.body as Record<string, unknown>;
-        const session = body['session'] as Record<string, unknown> | undefined;
-        return session?.['has_replay'] === true;
-      },
+      // `session` is required by the schema, but this polls live intake output — read it defensively
+      // so a partial payload fails the match rather than throwing out of the poll loop.
+      predicate: (e) => e.body.session?.has_replay === true,
     });
 
     expect(viewEvents.length).toBeGreaterThanOrEqual(1);

@@ -1,5 +1,4 @@
 import { test, expect, launchAppManually, createUserDataDir, cleanupUserDataDir } from '../lib/helpers';
-import type { RumErrorEvent, RumViewEvent } from '@datadog/electron-sdk';
 
 test('emits a crash error event after a native crash', async ({ intake }) => {
   const userDataDir = await createUserDataDir();
@@ -8,7 +7,7 @@ test('emits a crash error event after a native crash', async ({ intake }) => {
   const { electronApp: firstElectronApp, mainPage: firstMainPage } = await launchAppManually(intake, userDataDir);
   await firstMainPage.flushTransport();
   const viewEvents = await intake.getEventsByType('view');
-  const sessionId = (viewEvents[0].body as RumViewEvent).session.id;
+  const sessionId = viewEvents[0].body.session.id;
 
   const appClosed = firstElectronApp.waitForEvent('close');
   firstMainPage.crash();
@@ -23,7 +22,7 @@ test('emits a crash error event after a native crash', async ({ intake }) => {
     const errorEvents = await intake.getEventsByType('error', { timeout: 15_000 });
     expect(errorEvents).toHaveLength(1);
 
-    const error = errorEvents[0].body as RumErrorEvent;
+    const error = errorEvents[0].body;
     expect(error.session.id).toBe(sessionId);
     expect(error.error.is_crash).toBe(true);
     expect(error.error.source).toBe('source');
@@ -59,7 +58,7 @@ test('crash error event carries user and account context set before the crash', 
   try {
     await secondMainPage.flushTransport();
     const errorEvents = await intake.getEventsByType('error', { timeout: 15_000 });
-    const error = errorEvents[0].body as RumErrorEvent;
+    const error = errorEvents[0].body;
 
     expect(error.error.is_crash).toBe(true);
     expect(error.usr).toMatchObject({ id: 'crash-user', name: 'Alice' });

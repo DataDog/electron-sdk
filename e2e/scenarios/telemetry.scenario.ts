@@ -1,9 +1,14 @@
 import { test, expect } from '../lib/helpers';
 import { byTelemetryType, type ReceivedEvent } from '../lib/intake';
-import type { TelemetryConfigurationEvent, TelemetryErrorEvent, TelemetryUsageEvent } from '@datadog/electron-sdk';
+import type {
+  TelemetryConfigurationEvent,
+  TelemetryErrorEvent,
+  TelemetryEvent,
+  TelemetryUsageEvent,
+} from '@datadog/electron-sdk';
 
 /** Every telemetry event that counts toward the per-session cap, i.e. all but `configuration`. */
-const isCapped = (event: ReceivedEvent) => !byTelemetryType('configuration')(event);
+const isCapped = (event: ReceivedEvent<TelemetryEvent>) => !byTelemetryType('configuration')(event);
 
 test('SDK sends telemetry error event to intake', async ({ mainPage, intake }) => {
   await mainPage.generateTelemetryError();
@@ -90,7 +95,7 @@ test('SDK sends a usage telemetry event per public API used', async ({ mainPage,
     { feature: 'add-operation-step-vital', action_type: 'succeed' },
   ]);
 
-  const event = usageEvents[0].body as TelemetryUsageEvent;
+  const event = usageEvents[0].body;
   expect(event).toMatchObject({ type: 'telemetry', service: 'electron-sdk', source: 'electron' });
   expect(event.session?.id).toBeDefined();
   expect(event.application?.id).toBe('e2e-test-app-id');
