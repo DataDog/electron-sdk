@@ -668,7 +668,7 @@ describe('patchWebContents', () => {
     expect(args[0]).toBe('my-channel');
     expect(args[1]).toBe('arg1');
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    expect(args[2]).toEqual({ __ddIpcId: expect.any(String) });
+    expect(args[2]).toEqual({ __ddIpcId: expect.any(String), __ddParentIds: [] });
   });
 
   it('appends an id carrier as the last argument for webContents.sendToFrame', async () => {
@@ -677,7 +677,7 @@ describe('patchWebContents', () => {
     expect(result.sendToFrameSpy).toHaveBeenCalledTimes(1);
     const args = result.sendToFrameSpy.mock.calls[0] as unknown[];
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    expect(args).toEqual([1, 'my-channel', 'arg1', { __ddIpcId: expect.any(String) }]);
+    expect(args).toEqual([1, 'my-channel', 'arg1', { __ddIpcId: expect.any(String), __ddParentIds: [] }]);
   });
 
   it.each(sendMethods)(
@@ -716,8 +716,13 @@ describe('patchWebContents', () => {
     expect(() => {
       result.instance.webContents.send('my-channel', 'arg1');
     }).not.toThrow();
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    expect(result.sendSpy).toHaveBeenCalledWith('my-channel', 'arg1', { __ddIpcId: expect.any(String) });
+
+    expect(result.sendSpy).toHaveBeenCalledWith(
+      'my-channel',
+      'arg1',
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      { __ddIpcId: expect.any(String), __ddParentIds: [] }
+    );
   });
 
   it('patches the parent prototype when BrowserWindow is a subclass without own webContents getter', async () => {
@@ -750,5 +755,81 @@ describe('patchWebContents', () => {
     received.length = 0;
     result.instance.webContents.send('ch', 'b');
     expect(received).toHaveLength(1);
+  });
+});
+
+describe('parent_ids propagation', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('a send triggered synchronously from within a destination handler inherits that handler as its parent', async () => {
+    const { patchIpcMain, patchWebContents, setIpcEventHandler } = await import('./ipc');
+
+    const wc = { send: vi.fn(), sendToFrame: vi.fn() };
+    const rawSendSpy = wc.send;
+    const BrowserWindow = {
+      prototype: {
+        get webContents() {
+          return wc;
+        },
+      },
+    } as unknown as typeof Electron.BrowserWindow;
+    patchWebContents(BrowserWindow);
+    const instance = Object.create(BrowserWindow.prototype) as { webContents: typeof wc };
+
+    const _wrapped: Record<string, (...args: unknown[]) => unknown> = {};
+    const ipcMain = {
+      addListener: vi.fn(),
+      handle: vi.fn((ch: string, l: (...args: unknown[]) => unknown) => {
+        _wrapped[`handle:${ch}`] = l;
+      }),
+      handleOnce: vi.fn(),
+      off: vi.fn(),
+      on: vi.fn(),
+      once: vi.fn(),
+      removeAllListeners: vi.fn(),
+      removeHandler: vi.fn(),
+      removeListener: vi.fn(),
+    };
+    patchIpcMain(ipcMain as unknown as Electron.IpcMain);
+
+    ipcMain.handle('ipc-demo:trigger', () => {
+      instance.webContents.send('ipc-demo:relay', 'payload');
+    });
+
+    const received: IpcChannelMessage[] = [];
+    setIpcEventHandler((message) => received.push(message));
+
+    await _wrapped['handle:ipc-demo:trigger']({}, { __ddIpcId: 'call-A', __ddParentIds: [] });
+
+    const relaySource = received.find((m) => m.channel === 'ipc-demo:relay' && m.role === 'source');
+    expect(relaySource?.parentIds).toEqual(['call-A']);
+
+    const sentArgs = rawSendSpy.mock.calls[0] as unknown[];
+    const carrier = sentArgs[sentArgs.length - 1] as { __ddParentIds: string[] };
+    expect(carrier.__ddParentIds).toEqual(['call-A']);
+  });
+
+  it('a send made outside any destination handler has no parent ids', async () => {
+    const { patchWebContents, setIpcEventHandler } = await import('./ipc');
+
+    const wc = { send: vi.fn(), sendToFrame: vi.fn() };
+    const BrowserWindow = {
+      prototype: {
+        get webContents() {
+          return wc;
+        },
+      },
+    } as unknown as typeof Electron.BrowserWindow;
+    patchWebContents(BrowserWindow);
+    const instance = Object.create(BrowserWindow.prototype) as { webContents: typeof wc };
+
+    const received: IpcChannelMessage[] = [];
+    setIpcEventHandler((message) => received.push(message));
+
+    instance.webContents.send('ipc-demo:standalone', 'payload');
+
+    expect(received).toEqual([expect.objectContaining({ parentIds: [] })]);
   });
 });

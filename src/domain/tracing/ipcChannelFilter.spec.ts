@@ -11,6 +11,10 @@ describe('isExcludedIpcChannel', () => {
     expect(isExcludedIpcChannel('get-internal-context')).toBe(true);
   });
 
+  it('excludes the hardcoded ipc-demo:open-broadcast-windows channel', () => {
+    expect(isExcludedIpcChannel('ipc-demo:open-broadcast-windows')).toBe(true);
+  });
+
   it('does not exclude other channels', () => {
     expect(isExcludedIpcChannel('ipc-demo:get-profile')).toBe(false);
     expect(isExcludedIpcChannel('stop-session')).toBe(false);

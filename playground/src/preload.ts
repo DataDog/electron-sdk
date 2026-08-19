@@ -53,6 +53,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onPingFromMain: (callback: (data: unknown) => void) => {
     ipcRenderer.on('ipc-demo:ping-renderer', (_event, data) => callback(data));
   },
+  openBroadcastWindows: () => ipcRenderer.invoke('ipc-demo:open-broadcast-windows'),
   broadcast: (data: unknown) => ipcRenderer.invoke('ipc-demo:broadcast', data),
   onBroadcastReceived: (callback: (data: unknown) => void) => {
     ipcRenderer.on('ipc-demo:broadcast-received', (_event, data) => callback(data));

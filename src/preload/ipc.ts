@@ -2,6 +2,7 @@ import { generateUUID } from '@datadog/browser-core';
 import { contextBridge, ipcRenderer } from 'electron';
 import type { ResourceHandler } from '../domain/tracing/ipcResourceBridgeTypes';
 import { isExcludedIpcChannel } from '../domain/tracing/ipcChannelFilter';
+import { withIpcContext, computeChildParentIds } from '../domain/tracing/ipcParentContext';
 
 export type { ResourceHandlerEvent, ResourceHandler } from '../domain/tracing/ipcResourceBridgeTypes';
 
@@ -13,18 +14,19 @@ interface IpcRendererLike {
 
 interface IpcIdCarrier {
   __ddIpcId: string;
+  __ddParentIds: string[];
 }
 
 function isIpcIdCarrier(value: unknown): value is IpcIdCarrier {
   return typeof value === 'object' && value !== null && typeof (value as IpcIdCarrier).__ddIpcId === 'string';
 }
 
-function extractIpcId(args: unknown[]): { id: string | undefined; strippedArgs: unknown[] } {
+function extractIpcId(args: unknown[]): { id: string | undefined; parentIds: string[]; strippedArgs: unknown[] } {
   const last = args[args.length - 1];
   if (isIpcIdCarrier(last)) {
-    return { id: last.__ddIpcId, strippedArgs: args.slice(0, -1) };
+    return { id: last.__ddIpcId, parentIds: last.__ddParentIds ?? [], strippedArgs: args.slice(0, -1) };
   }
-  return { id: undefined, strippedArgs: args };
+  return { id: undefined, parentIds: [], strippedArgs: args };
 }
 
 export function patchIpcRenderer(ipcRendererLike: IpcRendererLike): {
@@ -42,13 +44,14 @@ export function patchIpcRenderer(ipcRendererLike: IpcRendererLike): {
     }
 
     const id = generateUUID();
+    const parentIds = computeChildParentIds();
     handler?.({ action: 'start', url: channel });
-    return rawInvoke(channel, ...args, { __ddIpcId: id }).then(
+    return rawInvoke(channel, ...args, { __ddIpcId: id, __ddParentIds: parentIds }).then(
       (value) => {
         handler?.({
           action: 'stop',
           url: channel,
-          options: { context: { ipc: { role: 'source', id, method: 'invoke' } } },
+          options: { context: { ipc: { role: 'source', id, parent_ids: parentIds, method: 'invoke' } } },
         });
         return value;
       },
@@ -56,7 +59,9 @@ export function patchIpcRenderer(ipcRendererLike: IpcRendererLike): {
         handler?.({
           action: 'stop',
           url: channel,
-          options: { context: { ipc: { role: 'source', id, method: 'invoke', error: true } } },
+          options: {
+            context: { ipc: { role: 'source', id, parent_ids: parentIds, method: 'invoke', error: true } },
+          },
         });
         throw err;
       }
@@ -70,12 +75,13 @@ export function patchIpcRenderer(ipcRendererLike: IpcRendererLike): {
     }
 
     const id = generateUUID();
+    const parentIds = computeChildParentIds();
     handler?.({ action: 'start', url: channel });
-    rawSend(channel, ...args, { __ddIpcId: id });
+    rawSend(channel, ...args, { __ddIpcId: id, __ddParentIds: parentIds });
     handler?.({
       action: 'stop',
       url: channel,
-      options: { context: { ipc: { role: 'source', id, method: 'send' } } },
+      options: { context: { ipc: { role: 'source', id, parent_ids: parentIds, method: 'send' } } },
     });
   };
 
@@ -85,15 +91,20 @@ export function patchIpcRenderer(ipcRendererLike: IpcRendererLike): {
     }
 
     return rawOn(channel, (event: unknown, ...args: unknown[]) => {
-      const { id, strippedArgs } = extractIpcId(args);
+      const { id, parentIds, strippedArgs } = extractIpcId(args);
       handler?.({ action: 'start', url: channel });
+      const callListener = () => listener(event, ...strippedArgs);
       try {
-        listener(event, ...strippedArgs);
+        if (id) {
+          withIpcContext(id, parentIds, callListener);
+        } else {
+          callListener();
+        }
         if (id) {
           handler?.({
             action: 'stop',
             url: channel,
-            options: { context: { ipc: { role: 'destination', id, method: 'on' } } },
+            options: { context: { ipc: { role: 'destination', id, parent_ids: parentIds, method: 'on' } } },
           });
         }
       } catch (err) {
@@ -101,7 +112,9 @@ export function patchIpcRenderer(ipcRendererLike: IpcRendererLike): {
           handler?.({
             action: 'stop',
             url: channel,
-            options: { context: { ipc: { role: 'destination', id, method: 'on', error: true } } },
+            options: {
+              context: { ipc: { role: 'destination', id, parent_ids: parentIds, method: 'on', error: true } },
+            },
           });
         }
         throw err;

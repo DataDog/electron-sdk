@@ -18,6 +18,7 @@ describe('IpcResourceCollector', () => {
     registeredHandler!({
       role: 'destination',
       id: 'call-abc',
+      parentIds: ['call-root'],
       method: 'handle',
       channel: 'get-profile',
       startTime: 1000,
@@ -34,7 +35,7 @@ describe('IpcResourceCollector', () => {
           type: 'resource',
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           resource: expect.objectContaining({ type: 'native', url: 'get-profile' }),
-          context: { ipc: { role: 'destination', id: 'call-abc', method: 'handle' } },
+          context: { ipc: { role: 'destination', id: 'call-abc', parent_ids: ['call-root'], method: 'handle' } },
         }),
       })
     );

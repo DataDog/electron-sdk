@@ -173,39 +173,38 @@ ipcMain.handle('ipc-demo:trigger-ping-renderer', () => {
 });
 
 let broadcastWindows: BrowserWindow[] = [];
-let broadcastWindowsReady: Promise<BrowserWindow[]> | undefined;
 
-// Created lazily on first broadcast, not at app startup, since the demo shouldn't spawn windows
-// nobody asked for. `loadURL` resolves once the page has finished loading (by which point the
+// Opening the helper windows is its own explicit user action (the "Open broadcast windows" button),
+// separate from actually broadcasting. This keeps the broadcast handler itself fully synchronous — no
+// await between receiving the trigger and relaying to each window — which matters for two reasons:
+// (1) by the time a user can click "Broadcast", the windows the earlier click already opened are
+// guaranteed loaded (`loadURL` resolves once the page has finished loading, by which point the
 // renderer's synchronous top-level script — including its ipcRenderer.on registration — has already
-// run), so awaiting it before sending avoids Electron silently dropping a send aimed at a listener
-// that isn't registered yet.
-function ensureBroadcastWindows(): Promise<BrowserWindow[]> {
-  if (!broadcastWindowsReady) {
-    broadcastWindows = [0, 1].map(
-      () =>
-        new BrowserWindow({
-          width: 400,
-          height: 300,
-          show: !isTestMode,
-          webPreferences: {
-            contextIsolation: true,
-            nodeIntegration: false,
-            preload: path.join(__dirname, 'preload.js'),
-          },
-        })
-    );
-    broadcastWindowsReady = Promise.all(broadcastWindows.map((win) => win.loadURL('app://app/'))).then(
-      () => broadcastWindows
-    );
-  }
-  return broadcastWindowsReady;
-}
+// run), so Electron never silently drops a send aimed at a not-yet-registered listener; and (2) a
+// synchronous handler keeps the relay sends within the same ambient IPC context as the trigger call,
+// so they correctly inherit it as their parent (see src/domain/tracing/ipcParentContext.ts) — an
+// `await` between the trigger and the relay would clear that context before the sends fire.
+ipcMain.handle('ipc-demo:open-broadcast-windows', async () => {
+  if (broadcastWindows.length > 0) return; // already opened, idempotent
+  broadcastWindows = [0, 1].map(
+    () =>
+      new BrowserWindow({
+        width: 400,
+        height: 300,
+        show: !isTestMode,
+        webPreferences: {
+          contextIsolation: true,
+          nodeIntegration: false,
+          preload: path.join(__dirname, 'preload.js'),
+        },
+      })
+  );
+  await Promise.all(broadcastWindows.map((win) => win.loadURL('app://app/')));
+});
 
-ipcMain.handle('ipc-demo:broadcast', async (_event, data: unknown) => {
+ipcMain.handle('ipc-demo:broadcast', (_event, data: unknown) => {
   void fetch('https://httpbin.org/json').catch(() => undefined);
-  const windows = await ensureBroadcastWindows();
-  for (const win of windows) {
+  for (const win of broadcastWindows) {
     win.webContents.send('ipc-demo:broadcast-received', data);
   }
 });

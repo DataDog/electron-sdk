@@ -34,7 +34,10 @@ describe('patchIpcRenderer', () => {
 
     // The real ipcRenderer.invoke was called with the id appended as the last argument.
     expect(calls[0][0]).toBe('userId123');
-    expect(calls[0][1]).toEqual({ __ddIpcId: expect.any(String) as unknown });
+    expect(calls[0][1]).toEqual({
+      __ddIpcId: expect.any(String) as unknown,
+      __ddParentIds: [],
+    });
     const wireId = (calls[0][1] as { __ddIpcId: string }).__ddIpcId;
 
     expect(handler).toHaveBeenCalledWith(expect.objectContaining({ action: 'start', url: 'get-profile' }));
@@ -43,7 +46,7 @@ describe('patchIpcRenderer', () => {
         action: 'stop',
         url: 'get-profile',
         options: expect.objectContaining({
-          context: { ipc: { role: 'source', id: wireId, method: 'invoke' } },
+          context: { ipc: { role: 'source', id: wireId, parent_ids: [], method: 'invoke' } },
         }) as unknown,
       })
     );
@@ -77,5 +80,63 @@ describe('patchIpcRenderer', () => {
     expect(sendCalls[0]).toEqual(['payload']);
     expect(onListener).toHaveBeenCalledWith('event', 'arg1');
     expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('an invoke made synchronously from within an on listener inherits that listener as its parent', async () => {
+    const listeners: Record<string, (event: unknown, ...args: unknown[]) => void> = {};
+    const invokeCalls: unknown[][] = [];
+    let followUpPromise: Promise<unknown> | undefined;
+    const fakeIpcRenderer = {
+      invoke: vi.fn((_channel: string, ...args: unknown[]) => {
+        invokeCalls.push(args);
+        return Promise.resolve('ok');
+      }),
+      send: vi.fn(),
+      on: vi.fn((channel: string, listener: (event: unknown, ...args: unknown[]) => void) => {
+        listeners[channel] = listener;
+      }),
+    };
+
+    const events: unknown[] = [];
+    const { registerResourceHandler } = patchIpcRenderer(fakeIpcRenderer);
+    registerResourceHandler((event) => events.push(event));
+
+    fakeIpcRenderer.on('ipc-demo:ping-renderer', () => {
+      followUpPromise = fakeIpcRenderer.invoke('ipc-demo:follow-up');
+    });
+    listeners['ipc-demo:ping-renderer']('event', { __ddIpcId: 'call-A', __ddParentIds: [] });
+    await followUpPromise;
+
+    // The follow-up invoke's carrier must inherit ['call-A'] as its parent chain.
+    const followUpArgs = invokeCalls[0];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    expect(followUpArgs[0]).toEqual({ __ddIpcId: expect.any(String), __ddParentIds: ['call-A'] });
+
+    const followUpStop = events.find(
+      (e) =>
+        (e as { url?: string; action?: string }).url === 'ipc-demo:follow-up' &&
+        (e as { action?: string }).action === 'stop'
+    ) as { options?: { context?: { ipc?: { parent_ids?: string[] } } } };
+    expect(followUpStop.options?.context?.ipc?.parent_ids).toEqual(['call-A']);
+  });
+
+  it('an invoke made outside any on listener has no parent ids', async () => {
+    const invokeCalls: unknown[][] = [];
+    const fakeIpcRenderer = {
+      invoke: vi.fn((_channel: string, ...args: unknown[]) => {
+        invokeCalls.push(args);
+        return Promise.resolve('ok');
+      }),
+      send: vi.fn(),
+      on: vi.fn(),
+    };
+
+    const { registerResourceHandler } = patchIpcRenderer(fakeIpcRenderer);
+    registerResourceHandler(() => undefined);
+
+    await fakeIpcRenderer.invoke('ipc-demo:standalone');
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    expect(invokeCalls[0][0]).toEqual({ __ddIpcId: expect.any(String), __ddParentIds: [] });
   });
 });

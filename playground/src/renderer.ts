@@ -65,6 +65,7 @@ interface ElectronAPI {
   clearAccountInfo: () => Promise<void>;
   triggerPingRenderer: () => Promise<void>;
   onPingFromMain: (callback: (data: unknown) => void) => void;
+  openBroadcastWindows: () => Promise<void>;
   broadcast: (data: unknown) => Promise<void>;
   onBroadcastReceived: (callback: (data: unknown) => void) => void;
 }
@@ -301,6 +302,9 @@ window.electronAPI.onBroadcastReceived((data) => {
   logIpcCall('ipc-demo:broadcast-received', 'done', 0, JSON.stringify(data));
   datadogRum.addError(new Error('broadcast-received handling failed'), { scenario: 'ipc-demo:broadcast-received' });
 });
+setupDemoButton('ipc-open-broadcast-windows', 'ipc-demo:open-broadcast-windows', () =>
+  window.electronAPI.openBroadcastWindows()
+);
 setupDemoButton('ipc-broadcast', 'ipc-demo:broadcast', () => window.electronAPI.broadcast({ from: 'main-window' }));
 
 // --- Custom duration vital demo buttons ---

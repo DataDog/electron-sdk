@@ -1,6 +1,7 @@
 import { generateUUID } from '@datadog/browser-core';
 import { callMonitored } from '../domain/telemetry';
 import { isExcludedIpcChannel } from '../domain/tracing/ipcChannelFilter';
+import { withIpcContext, computeChildParentIds } from '../domain/tracing/ipcParentContext';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyFn = (...args: any[]) => any;
@@ -11,6 +12,7 @@ const wrappedWebContents = new WeakSet<Electron.WebContents>();
 export interface IpcChannelMessage {
   role: 'source' | 'destination';
   id: string;
+  parentIds: string[];
   method: 'invoke' | 'handle' | 'send' | 'on';
   channel: string;
   startTime: number;
@@ -48,6 +50,7 @@ function publishIpcEvent(params: IpcChannelMessage): void {
 
 interface IpcIdCarrier {
   __ddIpcId: string;
+  __ddParentIds: string[];
 }
 
 function isIpcIdCarrier(value: unknown): value is IpcIdCarrier {
@@ -56,16 +59,16 @@ function isIpcIdCarrier(value: unknown): value is IpcIdCarrier {
 
 // Extracts an appended carrier from the end of an args array, if present, returning both the id and
 // the args with the carrier stripped so the app's real handler/listener sees its original arity.
-function extractIpcId(args: unknown[]): { id: string | undefined; strippedArgs: unknown[] } {
+function extractIpcId(args: unknown[]): { id: string | undefined; parentIds: string[]; strippedArgs: unknown[] } {
   const last = args[args.length - 1];
   if (isIpcIdCarrier(last)) {
-    return { id: last.__ddIpcId, strippedArgs: args.slice(0, -1) };
+    return { id: last.__ddIpcId, parentIds: last.__ddParentIds ?? [], strippedArgs: args.slice(0, -1) };
   }
-  return { id: undefined, strippedArgs: args };
+  return { id: undefined, parentIds: [], strippedArgs: args };
 }
 
-function appendIpcId(args: unknown[], id: string): unknown[] {
-  return [...args, { __ddIpcId: id } satisfies IpcIdCarrier];
+function appendIpcId(args: unknown[], id: string, parentIds: string[]): unknown[] {
+  return [...args, { __ddIpcId: id, __ddParentIds: parentIds } satisfies IpcIdCarrier];
 }
 
 export function patchIpcMain(ipcMain: Electron.IpcMain): void {
@@ -156,7 +159,7 @@ function wrapAddListener(
           if (index !== -1) wrappers.splice(index, 1);
         }
 
-        const { id, strippedArgs } = extractIpcId(args);
+        const { id, parentIds, strippedArgs } = extractIpcId(args);
         const startTime = Date.now();
         const method = spanName === 'electron.main.handle' ? 'handle' : 'on';
 
@@ -166,6 +169,7 @@ function wrapAddListener(
               publishIpcEvent({
                 role: 'destination',
                 id,
+                parentIds,
                 method,
                 channel: ipcChannel,
                 startTime,
@@ -176,9 +180,11 @@ function wrapAddListener(
           }
         };
 
+        const callListener = () => listener.call(this, event, ...strippedArgs) as unknown;
+
         let result: unknown;
         try {
-          result = listener.call(this, event, ...strippedArgs) as unknown;
+          result = id ? withIpcContext(id, parentIds, callListener) : callListener();
         } catch (err) {
           finish(true);
           throw err;
@@ -273,6 +279,7 @@ function wrapSend(webContents: Electron.WebContents): void {
 
 function startSendWithIpcId(channel: string, args: unknown[], invokeOriginal: (args: unknown[]) => unknown): unknown {
   const id = generateUUID();
+  const parentIds = computeChildParentIds();
   const startTime = Date.now();
 
   const finish = (error: boolean) => {
@@ -280,6 +287,7 @@ function startSendWithIpcId(channel: string, args: unknown[], invokeOriginal: (a
       publishIpcEvent({
         role: 'source',
         id,
+        parentIds,
         method: 'send',
         channel,
         startTime,
@@ -290,7 +298,7 @@ function startSendWithIpcId(channel: string, args: unknown[], invokeOriginal: (a
   };
 
   try {
-    const result = invokeOriginal(appendIpcId(args, id));
+    const result = invokeOriginal(appendIpcId(args, id, parentIds));
     finish(false);
     return result;
   } catch (err) {

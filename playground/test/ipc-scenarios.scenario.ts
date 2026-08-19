@@ -5,7 +5,7 @@ import { test, expect, flushTransport } from './helpers';
 interface IpcResourceBody {
   type: 'resource';
   resource: { type: string; url: string; duration: number };
-  context: { ipc: { role: 'source' | 'destination'; id: string; method: string } };
+  context: { ipc: { role: 'source' | 'destination'; id: string; parent_ids: string[]; method: string } };
 }
 
 /**
@@ -58,6 +58,10 @@ test('request/response IPC produces two RUM ipc resource events sharing the same
   expect(destination!.context.ipc.method).toBe('handle');
   expect(source!.context.ipc.id).toBe(destination!.context.ipc.id);
   expect(source!.resource.type).toBe('native');
+
+  // Top-level, user-initiated call — not triggered from within any other IPC handler, so no parent.
+  expect(source!.context.ipc.parent_ids).toEqual([]);
+  expect(destination!.context.ipc.parent_ids).toEqual([]);
 });
 
 test('fire-and-forget renderer→main produces one source event and two destination events sharing ipc.id', async ({
@@ -94,6 +98,14 @@ test('fire-and-forget main→renderer produces one source event and two destinat
   // registered ipcRenderer.on listeners with the same appended id, so filtering by the relayed
   // channel/url gives 1 source + 2 destinations = 3 events, all sharing that one id (same shape as
   // above, just main-initiated instead of renderer-initiated).
+  const triggerEvents = await flushUntilEventCount(
+    window,
+    intake,
+    2,
+    (event) => (event.body as IpcResourceBody).resource?.url === 'ipc-demo:trigger-ping-renderer'
+  );
+  const triggerId = (triggerEvents[0].body as IpcResourceBody).context.ipc.id;
+
   const events = await flushUntilEventCount(
     window,
     intake,
@@ -103,6 +115,13 @@ test('fire-and-forget main→renderer produces one source event and two destinat
   const bodies = events.map((event) => event.body as IpcResourceBody);
   expect(bodies.filter((b) => b.context.ipc.role === 'destination')).toHaveLength(2);
   expect(bodies.every((b) => b.context.ipc.id === bodies[0].context.ipc.id)).toBe(true);
+
+  // The relay was triggered synchronously from within the trigger's handler, so it must inherit the
+  // trigger's id as its own parent chain — this is what lets a customer follow the causal chain from
+  // one IPC call to the one it spawned, not just correlate the two sides of a single call.
+  expect(bodies.every((b) => b.context.ipc.parent_ids.length === 1 && b.context.ipc.parent_ids[0] === triggerId)).toBe(
+    true
+  );
 });
 
 test("nested IPC: progress send falls within the parent handle event's time window", async ({ window, intake }) => {
@@ -134,13 +153,28 @@ test("nested IPC: progress send falls within the parent handle event's time wind
   // Validates axis 2.B's premise: the nested send's timestamp falls inside the handle event's window.
   expect(progressBody.date).toBeGreaterThanOrEqual(handleBody.date);
   expect(progressBody.date).toBeLessThanOrEqual(handleBody.date + handleBody.resource.duration);
+
+  // The progress send was triggered synchronously from within the outer handle's handler, so it
+  // must inherit the outer call's id as its own parent chain.
+  expect(progressBody.context.ipc.parent_ids).toEqual([handleBody.context.ipc.id]);
 });
 
 test('broadcast produces an independent source/destination pair for each relayed send', async ({ window, intake }) => {
-  // The helper BrowserWindows are created lazily on the first click; `ensureBroadcastWindows` in
-  // main.ts awaits each window's `loadURL(...)` before relaying, so even the very first click is safe
-  // — no warm-up click needed.
+  // Opening the helper windows is a separate, explicit action from broadcasting (see main.ts's
+  // comment on ipc-demo:open-broadcast-windows) — wait for the button to re-enable, which happens
+  // once its invoke (awaiting both windows' loadURL) resolves, before clicking broadcast.
+  await window.click('#ipc-open-broadcast-windows');
+  await expect(window.locator('#ipc-open-broadcast-windows')).toBeEnabled();
+
   await window.click('#ipc-broadcast');
+  const triggerEvents = await flushUntilEventCount(
+    window,
+    intake,
+    2,
+    (event) => (event.body as IpcResourceBody).resource?.url === 'ipc-demo:broadcast'
+  );
+  const triggerId = (triggerEvents[0].body as IpcResourceBody).context.ipc.id;
+
   const relayedEvents = await flushUntilEventCount(
     window,
     intake,
@@ -151,9 +185,9 @@ test('broadcast produces an independent source/destination pair for each relayed
   // The initial invoke/handle (channel 'ipc-demo:broadcast') and each relay send/on (channel
   // 'ipc-demo:broadcast-received', one per receiving window) are independent calls: main's relay loop
   // calls webContents.send once per window, and each call generates its OWN ipc.id (Task 2's
-  // startSendWithIpcId mints a fresh id every invocation). Nothing in this prototype links them (no
-  // parent_id, out of scope per Global Constraints) — the two relay pairs do NOT share an id with each
-  // other or with the original invoke/handle.
+  // startSendWithIpcId mints a fresh id every invocation) — the two relay pairs do NOT share an id
+  // with each other. They DO, however, each carry the trigger's id as their shared parent_ids, since
+  // both sends were triggered synchronously from within the trigger's own handler.
   const bodies = relayedEvents.map((event) => event.body as IpcResourceBody);
   const sources = bodies.filter((b) => b.context.ipc.role === 'source');
   const destinations = bodies.filter((b) => b.context.ipc.role === 'destination');
@@ -167,6 +201,13 @@ test('broadcast produces an independent source/destination pair for each relayed
   const destinationIds = destinations.map((d) => d.context.ipc.id).sort();
   expect(destinationIds).toEqual(sourceIds);
   expect(new Set(sourceIds).size).toBe(2);
+
+  // Both relay pairs share the SAME parent chain (the trigger's id), even though their own ids are
+  // independent of each other — this is what lets a customer find every call a given IPC event
+  // spawned, not just correlate one call's two sides.
+  expect(bodies.every((b) => b.context.ipc.parent_ids.length === 1 && b.context.ipc.parent_ids[0] === triggerId)).toBe(
+    true
+  );
 });
 
 test('a real network call inside a destination handler produces a correlated resource within the IPC event window', async ({

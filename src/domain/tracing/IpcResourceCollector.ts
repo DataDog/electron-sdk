@@ -42,6 +42,7 @@ export class IpcResourceCollector {
         ipc: {
           role: message.role,
           id: message.id,
+          parent_ids: message.parentIds,
           method: message.method,
         },
       },
