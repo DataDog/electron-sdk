@@ -3,14 +3,20 @@
  *
  * Each test runs once per Playwright project (app × mode, including configured variants).
  */
-import { join } from 'node:path';
-import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { test, expect, launchApp } from '../lib/integrationFixture';
-import { getElectronBuilderViteArchivePath } from '../lib/electronBuilderVite';
+import {
+  test,
+  expect,
+  findDevMainScript,
+  findPackagedBinary,
+  getIntegrationAppDirectory,
+  launchApp,
+} from '../lib/integrationFixture';
 import type { RumErrorEvent, RumResourceEvent, RumViewEvent } from '@datadog/electron-sdk';
+import { listPackage } from '@electron/asar';
 import { Intake, type ReceivedEvent, type Span } from '../../lib/intake';
 import type { Page } from '@playwright/test';
 import { ONE_SECOND } from '@datadog/js-core/time';
@@ -28,33 +34,39 @@ interface IntegrationTestWindow {
   };
 }
 
-test.describe('electron-builder runtime dependency packaging @integration', () => {
+test.describe('runtime dependency packaging @integration', () => {
   test('stages Datadog dependencies according to the plugin option', ({ app, mode, variant }) => {
-    test.skip(app !== 'electron-builder-vite' || mode !== 'packaged', 'electron-builder-vite packaged only');
+    test.skip(mode !== 'packaged', 'packaged apps only');
 
-    const appDir = join(__dirname, '../apps', app);
-    const workflow = variant === 'packager-copy' ? 'packager-copy' : 'default-copy';
-    const expectsPluginCopy = workflow === 'default-copy';
-    expect(existsSync(join(appDir, 'dist', workflow, 'node_modules'))).toBe(expectsPluginCopy);
+    const appDir = getIntegrationAppDirectory(app, variant);
+    const expectsPluginCopy = variant === 'default';
+    const buildOutput = dirname(findDevMainScript(appDir));
+    expect(existsSync(join(buildOutput, 'node_modules'))).toBe(expectsPluginCopy);
 
-    const archivePath = getElectronBuilderViteArchivePath(appDir, variant);
+    const archivePath = getPackagedArchivePath(findPackagedBinary(appDir));
     expect(existsSync(archivePath)).toBe(true);
-
-    const requireFromApp = createRequire(join(appDir, 'package.json'));
-    const { listPackage } = requireFromApp('@electron/asar') as {
-      listPackage: (archivePath: string, options: { isPack: boolean }) => string[];
-    };
     const archiveEntries = listPackage(archivePath, { isPack: false });
 
-    expect(archiveEntries).toContain('/node_modules/@datadog/electron-sdk/package.json');
-    expect(archiveEntries).toContain('/node_modules/dd-trace/package.json');
-    expect(archiveEntries).toContain(`/dist/${workflow}/main.js`);
-    expect(archiveEntries.includes(`/dist/${workflow}/node_modules/@datadog/electron-sdk/package.json`)).toBe(
-      expectsPluginCopy
+    const nestedRuntimeDependencies = archiveEntries.filter(
+      (entry) =>
+        (entry.endsWith('/node_modules/@datadog/electron-sdk/package.json') ||
+          entry.endsWith('/node_modules/dd-trace/package.json')) &&
+        !entry.startsWith('/node_modules/')
     );
-    expect(archiveEntries.includes(`/dist/${workflow}/node_modules/dd-trace/package.json`)).toBe(expectsPluginCopy);
+    expect(nestedRuntimeDependencies.length > 0).toBe(expectsPluginCopy);
+    if (!expectsPluginCopy) {
+      expect(archiveEntries).toContain('/node_modules/@datadog/electron-sdk/package.json');
+      expect(archiveEntries).toContain('/node_modules/dd-trace/package.json');
+    }
   });
 });
+
+function getPackagedArchivePath(packagedBinary: string): string {
+  if (process.platform === 'darwin') {
+    return join(dirname(dirname(packagedBinary)), 'Resources', 'app.asar');
+  }
+  return join(dirname(packagedBinary), 'resources', 'app.asar');
+}
 
 test.describe('view event on startup @integration', () => {
   test('sends a view event with a session id on startup', async ({ window, intake }) => {
@@ -161,7 +173,7 @@ test.describe('custom-session window instrumentation @integration', () => {
 
 test.describe('crash reporting across restart @integration', () => {
   test('processes a crash dump and sends an error event on restart', async ({ app, mode, variant }) => {
-    const appDir = join(__dirname, '../apps', app);
+    const appDir = getIntegrationAppDirectory(app, variant);
     // The `intake` fixture is not used here because this test needs a single intake instance
     // across two separate app launches. The fixture ties teardown to the `electronApp` lifecycle,
     // so we manage the intake manually to span both launches.
@@ -171,7 +183,7 @@ test.describe('crash reporting across restart @integration', () => {
 
     try {
       // Phase 1: Launch, confirm SDK is running, then crash
-      const firstApp = await launchApp(appDir, mode, intake, userDataDir, variant);
+      const firstApp = await launchApp(appDir, mode, intake, userDataDir);
       const firstWindow = await firstApp.firstWindow();
       await firstWindow.waitForLoadState('load');
       await firstWindow.waitForTimeout(500);
@@ -189,7 +201,7 @@ test.describe('crash reporting across restart @integration', () => {
       intake.clear();
 
       // Phase 2: Relaunch — crash dump is processed on startup, error event sent to intake
-      const secondApp = await launchApp(appDir, mode, intake, userDataDir, variant);
+      const secondApp = await launchApp(appDir, mode, intake, userDataDir);
       try {
         const secondWindow = await secondApp.firstWindow();
         await secondWindow.waitForLoadState('load');

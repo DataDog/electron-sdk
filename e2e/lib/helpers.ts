@@ -5,11 +5,15 @@ import { tmpdir } from 'node:os';
 import { Intake } from './intake';
 import { TestServer } from './testServer';
 import { MainPage } from './mainPage';
+import { assertExpectedElectronVersion } from './compatibility';
 import type { InitConfiguration } from '@datadog/electron-sdk';
+
+const compatibilityRoot = process.env.DD_ELECTRON_COMPATIBILITY_ROOT;
+const e2eAppDirectory = compatibilityRoot ? join(compatibilityRoot, 'e2e-app') : join(__dirname, '../app');
 
 // Get electron executable path from the app's node_modules
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const electronPath = require(join(__dirname, '../app/node_modules/electron')) as string;
+const electronPath = require(join(e2eAppDirectory, 'node_modules/electron')) as string;
 
 // Variables forwarded to the Electron child process. Keep this list minimal:
 // system essentials for the binary to launch, plus the few flags the test app
@@ -146,11 +150,18 @@ async function launchApp(
 
   Object.assign(env, extraEnv);
 
-  return electron.launch({
+  const electronApp = await electron.launch({
     executablePath: electronPath,
-    args: [join(__dirname, '../app/dist/main.js'), `--user-data-dir=${userDataDir}`],
+    args: [join(e2eAppDirectory, 'dist/main.js'), `--user-data-dir=${userDataDir}`],
     env,
   });
+  try {
+    await assertExpectedElectronVersion(electronApp);
+    return electronApp;
+  } catch (error) {
+    await electronApp.close();
+    throw error;
+  }
 }
 
 async function waitForWindowLoaded(electronApp: ElectronApplication): Promise<{ window: Page }> {

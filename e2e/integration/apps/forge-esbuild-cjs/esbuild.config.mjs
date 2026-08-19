@@ -4,6 +4,7 @@ import { builtinModules } from 'node:module';
 import { datadogEsbuildPlugin } from '@datadog/electron-sdk/esbuild-plugin';
 
 const nodeExternals = ['electron', ...builtinModules, ...builtinModules.map((m) => `node:${m}`)];
+const copyRuntimeDependencies = process.env.DD_ELECTRON_RUNTIME_DEPENDENCY_STRATEGY !== 'packager-copy';
 
 await rm('dist', { recursive: true, force: true });
 await mkdir('dist/renderer', { recursive: true });
@@ -16,7 +17,7 @@ await build({
   format: 'cjs',
   outfile: 'dist/main.js',
   external: nodeExternals,
-  plugins: [datadogEsbuildPlugin()],
+  plugins: [datadogEsbuildPlugin({ copyRuntimeDependencies })],
 });
 
 // Preload (CJS — Electron preload scripts must be CJS)
@@ -27,7 +28,7 @@ await build({
   format: 'cjs',
   outfile: 'dist/preload.js',
   external: nodeExternals,
-  plugins: [datadogEsbuildPlugin()],
+  plugins: [datadogEsbuildPlugin({ copyRuntimeDependencies })],
 });
 
 // Renderer (IIFE for plain <script src=…> loading)

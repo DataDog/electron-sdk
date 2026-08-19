@@ -1,26 +1,21 @@
 import { builtinModules } from 'node:module';
 import { defineConfig } from 'vite';
 import { datadogVitePlugin } from '@datadog/electron-sdk/vite-plugin';
-import { getWorkflow } from './workflow';
 
-export default defineConfig(({ mode }) => {
-  const workflow = getWorkflow(mode);
+const copyRuntimeDependencies = process.env.DD_ELECTRON_RUNTIME_DEPENDENCY_STRATEGY !== 'packager-copy';
 
-  return {
-    plugins: [
-      workflow === 'default-copy' ? datadogVitePlugin() : datadogVitePlugin({ copyRuntimeDependencies: false }),
-    ],
-    build: {
-      outDir: `dist/${workflow}`,
-      emptyOutDir: false,
-      lib: {
-        entry: 'src/main.ts',
-        formats: ['cjs'],
-        fileName: () => 'main.js',
-      },
-      rollupOptions: {
-        external: ['electron', ...builtinModules, ...builtinModules.map((m) => `node:${m}`)],
-      },
+export default defineConfig({
+  plugins: [datadogVitePlugin({ copyRuntimeDependencies })],
+  build: {
+    outDir: 'dist',
+    emptyOutDir: false,
+    lib: {
+      entry: 'src/main.ts',
+      formats: ['cjs'],
+      fileName: () => 'main.js',
     },
-  };
+    rollupOptions: {
+      external: ['electron', ...builtinModules, ...builtinModules.map((m) => `node:${m}`)],
+    },
+  },
 });

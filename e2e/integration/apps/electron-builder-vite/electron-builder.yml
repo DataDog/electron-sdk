@@ -1,12 +1,12 @@
 appId: com.example.electron-builder-vite
 productName: electron-builder-vite
 directories:
-  output: out/default-copy
+  output: out
 files:
-  - dist/default-copy/**
+  - dist/**
   - package.json
 extraMetadata:
-  main: dist/default-copy/main.js
+  main: dist/main.js
 linux:
   target: dir
 mac:

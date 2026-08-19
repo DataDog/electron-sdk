@@ -20,6 +20,7 @@ export default tseslint.config(
       // Integration apps are standalone projects with their own tsconfigs and toolchains.
       // They are not part of the root project service and are not linted here.
       'e2e/integration/apps/**',
+      'e2e/compatibility/generated/**',
     ],
   },
   js.configs.recommended,

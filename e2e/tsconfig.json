@@ -12,6 +12,6 @@
     "emitDeclarationOnly": true,
     "outDir": "./dist"
   },
-  "include": ["**/*.ts"],
-  "exclude": ["node_modules", "app", "integration/apps"]
+  "include": ["**/*.ts", "compatibility/config.json"],
+  "exclude": ["node_modules", "app", "integration/apps", "compatibility/generated"]
 }
