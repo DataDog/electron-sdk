@@ -1,0 +1,289 @@
+{
+  "environments": [
+    {
+      "id": "linux",
+      "runnerTags": ["arch:amd64"],
+      "image": "$CI_IMAGE",
+      "testCommandPrefix": ["xvfb-run", "-a"]
+    },
+    {
+      "id": "macos",
+      "runnerTags": ["macos:sequoia-arm64", "specific:true"],
+      "testCommandPrefix": []
+    },
+    {
+      "id": "windows",
+      "runnerTags": ["windows-v2:2022", "specific:true"],
+      "testCommandPrefix": []
+    }
+  ],
+  "targets": [
+    {
+      "id": "electron-39",
+      "dimensions": {
+        "electron": {
+          "dependency": "electron",
+          "version": "39.8.10",
+          "channel": "legacy"
+        }
+      }
+    },
+    {
+      "id": "electron-40",
+      "dimensions": {
+        "electron": {
+          "dependency": "electron",
+          "version": "40.10.6",
+          "channel": "legacy"
+        }
+      }
+    },
+    {
+      "id": "electron-41",
+      "dimensions": {
+        "electron": {
+          "dependency": "electron",
+          "version": "41.10.5",
+          "channel": "stable"
+        }
+      }
+    },
+    {
+      "id": "electron-42",
+      "dimensions": {
+        "electron": {
+          "dependency": "electron",
+          "version": "42.9.2",
+          "channel": "stable"
+        }
+      }
+    },
+    {
+      "id": "electron-43",
+      "dimensions": {
+        "electron": {
+          "dependency": "electron",
+          "version": "43.4.0",
+          "channel": "stable"
+        }
+      }
+    },
+    {
+      "id": "electron-44-prerelease",
+      "dimensions": {
+        "electron": {
+          "dependency": "electron",
+          "version": "44.0.0-beta.4",
+          "channel": "prerelease"
+        }
+      }
+    },
+    {
+      "id": "electron-45-nightly",
+      "ci": {
+        "allowFailure": true
+      },
+      "dimensions": {
+        "electron": {
+          "dependency": "electron-nightly",
+          "version": "45.0.0-nightly.20260814",
+          "channel": "nightly"
+        }
+      }
+    }
+  ],
+  "overrides": [],
+  "appTemplates": [
+    {
+      "id": "minimal-e2e",
+      "kind": "e2e",
+      "source": "e2e/app",
+      "parameters": {},
+      "variants": [
+        {
+          "id": "default",
+          "parameters": {},
+          "modes": ["e2e"]
+        }
+      ]
+    },
+    {
+      "id": "forge-webpack",
+      "kind": "integration",
+      "source": "e2e/integration/apps/forge-webpack",
+      "parameters": {
+        "bundler": "webpack",
+        "moduleFormat": "cjs"
+      },
+      "variants": [
+        {
+          "id": "default",
+          "parameters": {
+            "runtimeDependencyStrategy": "plugin-copy"
+          },
+          "modes": ["dev", "packaged"]
+        },
+        {
+          "id": "packager-copy",
+          "parameters": {
+            "runtimeDependencyStrategy": "packager-copy"
+          },
+          "modes": ["packaged"]
+        }
+      ]
+    },
+    {
+      "id": "forge-vite",
+      "kind": "integration",
+      "source": "e2e/integration/apps/forge-vite",
+      "parameters": {
+        "bundler": "vite",
+        "moduleFormat": "cjs"
+      },
+      "variants": [
+        {
+          "id": "default",
+          "parameters": {
+            "runtimeDependencyStrategy": "plugin-copy"
+          },
+          "modes": ["dev", "packaged"]
+        },
+        {
+          "id": "packager-copy",
+          "parameters": {
+            "runtimeDependencyStrategy": "packager-copy"
+          },
+          "modes": ["packaged"]
+        }
+      ]
+    },
+    {
+      "id": "forge-esbuild-cjs",
+      "kind": "integration",
+      "source": "e2e/integration/apps/forge-esbuild-cjs",
+      "parameters": {
+        "bundler": "esbuild",
+        "moduleFormat": "cjs"
+      },
+      "variants": [
+        {
+          "id": "default",
+          "parameters": {
+            "runtimeDependencyStrategy": "plugin-copy"
+          },
+          "modes": ["dev", "packaged"]
+        },
+        {
+          "id": "packager-copy",
+          "parameters": {
+            "runtimeDependencyStrategy": "packager-copy"
+          },
+          "modes": ["packaged"]
+        }
+      ]
+    },
+    {
+      "id": "forge-esbuild-esm",
+      "kind": "integration",
+      "source": "e2e/integration/apps/forge-esbuild-esm",
+      "parameters": {
+        "bundler": "esbuild",
+        "moduleFormat": "esm"
+      },
+      "variants": [
+        {
+          "id": "default",
+          "parameters": {
+            "runtimeDependencyStrategy": "plugin-copy"
+          },
+          "modes": ["dev", "packaged"]
+        },
+        {
+          "id": "packager-copy",
+          "parameters": {
+            "runtimeDependencyStrategy": "packager-copy"
+          },
+          "modes": ["packaged"]
+        }
+      ]
+    },
+    {
+      "id": "electron-vite",
+      "kind": "integration",
+      "source": "e2e/integration/apps/electron-vite",
+      "parameters": {
+        "bundler": "vite",
+        "moduleFormat": "cjs",
+        "packager": "electron-builder"
+      },
+      "variants": [
+        {
+          "id": "default",
+          "parameters": {
+            "runtimeDependencyStrategy": "plugin-copy"
+          },
+          "modes": ["dev", "packaged"]
+        },
+        {
+          "id": "packager-copy",
+          "parameters": {
+            "runtimeDependencyStrategy": "packager-copy"
+          },
+          "modes": ["packaged"]
+        }
+      ]
+    },
+    {
+      "id": "electron-vite-esm",
+      "kind": "integration",
+      "source": "e2e/integration/apps/electron-vite-esm",
+      "parameters": {
+        "bundler": "vite",
+        "moduleFormat": "esm",
+        "packager": "electron-builder"
+      },
+      "variants": [
+        {
+          "id": "default",
+          "parameters": {
+            "runtimeDependencyStrategy": "plugin-copy"
+          },
+          "modes": ["dev", "packaged"]
+        },
+        {
+          "id": "packager-copy",
+          "parameters": {
+            "runtimeDependencyStrategy": "packager-copy"
+          },
+          "modes": ["packaged"]
+        }
+      ]
+    },
+    {
+      "id": "electron-builder-vite",
+      "kind": "integration",
+      "source": "e2e/integration/apps/electron-builder-vite",
+      "parameters": {
+        "bundler": "vite",
+        "moduleFormat": "cjs",
+        "packager": "electron-builder"
+      },
+      "variants": [
+        {
+          "id": "default",
+          "parameters": {
+            "runtimeDependencyStrategy": "plugin-copy"
+          },
+          "modes": ["dev", "packaged"]
+        },
+        {
+          "id": "packager-copy",
+          "parameters": {
+            "runtimeDependencyStrategy": "packager-copy"
+          },
+          "modes": ["packaged"]
+        }
+      ]
+    }
+  ]
+}

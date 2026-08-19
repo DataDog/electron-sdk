@@ -22,6 +22,10 @@ e2e/integration/apps/*/out/
 e2e/integration/apps/*/.webpack/
 e2e/integration/apps/*/.vite/
 
+# Compatibility test generated applications
+e2e/compatibility/generated/
+e2e/compatibility/generated.gitlab-ci.yml
+
 # Logs
 *.log
 
