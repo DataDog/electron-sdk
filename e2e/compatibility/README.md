@@ -129,6 +129,11 @@ applications. Linux additionally runs Electron under Xvfb.
 Compatibility initialization retries each integration-app packaging command twice. This makes transient Electron
 runtime download failures recoverable while preserving the final failure when all three attempts fail.
 
+Before installing generated applications, initialization downloads the target Electron archive once with Node's
+native `fetch`. The downloader works on Linux, macOS, and Windows, retries interrupted requests, resumes partial
+downloads when the server supports byte ranges, and leaves checksum verification and cache placement to
+`@electron/get`. Generated app installs and Forge packaging then reuse the standard Electron cache.
+
 Each child job also retries the root dependency installation twice. Its three phases stream to the GitLab job output
 and to separate files under the job's `logs/` artifact:
 

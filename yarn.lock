@@ -194,6 +194,7 @@ __metadata:
     "@datadog/browser-core": "npm:7.5.0"
     "@datadog/js-core": "npm:0.0.5"
     "@electron/asar": "npm:3.4.1"
+    "@electron/get": "npm:2.0.3"
     "@eslint/js": "npm:10.0.1"
     "@playwright/test": "npm:1.61.1"
     "@rollup/plugin-commonjs": "npm:29.0.3"
@@ -330,7 +331,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@electron/get@npm:^2.0.0":
+"@electron/get@npm:2.0.3, @electron/get@npm:^2.0.0":
   version: 2.0.3
   resolution: "@electron/get@npm:2.0.3"
   dependencies:
