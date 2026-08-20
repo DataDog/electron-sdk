@@ -126,6 +126,9 @@ Leave both filters empty for the complete configured matrix.
 The runner images must provide the repository-pinned Node and Yarn versions and support launching Electron desktop
 applications. Linux additionally runs Electron under Xvfb.
 
+Compatibility initialization retries each integration-app packaging command twice. This makes transient Electron
+runtime download failures recoverable while preserving the final failure when all three attempts fail.
+
 ## Version-specific app overrides
 
 Use a committed override when a target cannot use a base app template unchanged, for example because an Electron API

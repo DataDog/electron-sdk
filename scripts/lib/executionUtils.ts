@@ -9,6 +9,30 @@ export function runMain(mainFunction: () => void | Promise<void>): void {
     });
 }
 
+/**
+ * Runs an operation once, then retries it after each configured delay.
+ */
+export async function retryWithDelays<T>(
+  operation: () => T | Promise<T>,
+  delays: number[],
+  onRetry?: (error: unknown, nextAttempt: number, delay: number) => void
+): Promise<T> {
+  let attempt = 1;
+
+  for (;;) {
+    try {
+      return await operation();
+    } catch (error) {
+      const delay = delays[attempt - 1];
+      if (delay === undefined) throw error;
+
+      attempt += 1;
+      onRetry?.(error, attempt, delay);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
 const resetColor = '\x1b[0m';
 
 export function printError(...params: any[]): void {
