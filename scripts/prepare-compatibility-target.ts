@@ -23,6 +23,7 @@ import {
   type CompatibilityParameterObject,
 } from './lib/compatibility.ts';
 import { applyCompatibilityOverrides } from './lib/compatibilityOverrides.ts';
+import { prefetchCompatibilityElectronArtifact } from './lib/compatibilityElectronArtifact.ts';
 import { parseCompatibilityPreparationOptions } from './lib/compatibilityOptions.ts';
 import { prepareSdkTarball } from './lib/compatibilitySdk.ts';
 import { command } from './lib/command.ts';
@@ -100,6 +101,7 @@ runMain(async () => {
   );
 
   if (!options.skipInstall) {
+    await prefetchCompatibilityElectronArtifact(target);
     await installAndBuildTemplates(materializedApps);
   }
 
