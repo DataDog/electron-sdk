@@ -19,9 +19,21 @@ describe('compatibility CI generator', () => {
   it('uses platform-specific launch commands and keeps nightly non-blocking', () => {
     const ci = generateCompatibilityCi(loadCompatibilityConfig());
 
-    expect(ci).toContain('xvfb-run -a yarn test:compatibility electron-39');
+    expect(ci).toContain('-- xvfb-run -a yarn test:compatibility electron-39');
     expect(ci).toContain('macos:electron-41:\n  stage: test\n  interruptible: true');
     expect(ci).toMatch(/windows:electron-45-nightly:[\s\S]*?allow_failure: true/);
+  });
+
+  it('preserves phase logs and retries dependency installation', () => {
+    const ci = generateCompatibilityCi(loadCompatibilityConfig());
+
+    expect(ci).toContain("YARN_ENABLE_INLINE_BUILDS: 'true'");
+    expect(ci).toContain(
+      '--log logs/01-yarn-install.log --env ELECTRON_SKIP_BINARY_DOWNLOAD=1 --retry-delay 2000 --retry-delay 5000'
+    );
+    expect(ci).toContain('--log logs/02-compatibility-init.log');
+    expect(ci).toContain('--log logs/03-compatibility-tests.log');
+    expect(ci).toContain('  artifacts:\n    when: always\n    paths:\n      - logs/');
   });
 
   it('filters environments and targets from comma-separated pipeline variables', () => {
