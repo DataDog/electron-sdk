@@ -26,7 +26,7 @@ import { applyCompatibilityOverrides } from './lib/compatibilityOverrides.ts';
 import { parseCompatibilityPreparationOptions } from './lib/compatibilityOptions.ts';
 import { prepareSdkTarball } from './lib/compatibilitySdk.ts';
 import { command } from './lib/command.ts';
-import { printLog, runMain } from './lib/executionUtils.ts';
+import { printError, printLog, retryWithDelays, runMain } from './lib/executionUtils.ts';
 
 const generatedArtifactNames = new Set([
   '.vite',
@@ -37,6 +37,7 @@ const generatedArtifactNames = new Set([
   'playwright-report',
   'test-results',
 ]);
+const packageRetryDelays = [2_000, 5_000];
 
 interface MaterializedApp {
   template: CompatibilityAppTemplate;
@@ -44,7 +45,7 @@ interface MaterializedApp {
   directory: string;
 }
 
-runMain(() => {
+runMain(async () => {
   const options = parseCompatibilityPreparationOptions(process.argv.slice(2));
   const config = loadCompatibilityConfig();
   const target = getCompatibilityTarget(config, options.targetId);
@@ -99,7 +100,7 @@ runMain(() => {
   );
 
   if (!options.skipInstall) {
-    installAndBuildTemplates(materializedApps);
+    await installAndBuildTemplates(materializedApps);
   }
 
   printLog(`Compatibility target ${target.id} generated at ${targetRoot}`);
@@ -209,7 +210,7 @@ function preapproveElectronPackage(yarnConfigPath: string, dependency: string, v
   fs.writeFileSync(yarnConfigPath, `${lines.join('\n')}\n`);
 }
 
-function installAndBuildTemplates(apps: MaterializedApp[]): void {
+async function installAndBuildTemplates(apps: MaterializedApp[]): Promise<void> {
   for (const { template, variant, directory } of apps) {
     const environment = getVariantEnvironment(template, variant);
     printLog(`Installing ${template.id}/${variant.id}`);
@@ -219,9 +220,22 @@ function installAndBuildTemplates(apps: MaterializedApp[]): void {
       .withLogs()
       .run();
 
-    printLog(`${template.kind === 'e2e' ? 'Building' : 'Packaging'} ${template.id}/${variant.id}`);
-    const script = template.kind === 'e2e' ? 'build' : 'package';
-    command`yarn ${script}`.withCurrentWorkingDirectory(directory).withEnvironment(environment).withLogs().run();
+    if (template.kind === 'e2e') {
+      printLog(`Building ${template.id}/${variant.id}`);
+      command`yarn build`.withCurrentWorkingDirectory(directory).withEnvironment(environment).withLogs().run();
+      continue;
+    }
+
+    printLog(`Packaging ${template.id}/${variant.id}`);
+    await retryWithDelays(
+      () => command`yarn package`.withCurrentWorkingDirectory(directory).withEnvironment(environment).withLogs().run(),
+      packageRetryDelays,
+      (_error, nextAttempt, delay) => {
+        printError(
+          `Packaging ${template.id}/${variant.id} failed. Retrying attempt ${nextAttempt}/${packageRetryDelays.length + 1} in ${delay / 1_000}s.`
+        );
+      }
+    );
   }
 }
 
