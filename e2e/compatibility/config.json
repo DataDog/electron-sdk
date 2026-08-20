@@ -73,7 +73,7 @@
       "dimensions": {
         "electron": {
           "dependency": "electron",
-          "version": "44.0.0-beta.4",
+          "version": "44.0.0-beta.5",
           "channel": "prerelease"
         }
       }
