@@ -37,17 +37,30 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
     }
   });
 
-  // Only reached with source MAIN today: renderer telemetry is dropped by RendererPipeline. It must
-  // become source-aware (like registerRum above) before that path is wired up in RUM-15253, since
-  // these attributes would otherwise overwrite the Browser SDK's own service/source/version/date.
-  hooks.registerTelemetry(() => ({
-    date: Date.now(),
-    source: 'electron',
-    service: 'electron-sdk',
-    version: __SDK_VERSION__,
-    application: { id: configuration.applicationId },
-    _dd: { format_version: 2 },
-  }));
+  hooks.registerTelemetry(({ source, startTime }) => {
+    switch (source) {
+      // Renderer telemetry crosses the bridge already assembled by the browser SDK, and it reports on
+      // that SDK: restamping date/source/service/version here would credit the Electron SDK for the
+      // renderer's own telemetry. The application is the only one of these the main process owns.
+      case EventSource.RENDERER:
+        return { application: { id: configuration.applicationId } };
+      case EventSource.MAIN:
+        return {
+          // The event's own start time rather than assembly time: SessionContext and ViewContext
+          // resolve from that same startTime, so a date taken here would point outside the session
+          // the event is attributed to whenever it is assembled after a renewal.
+          date: startTime,
+          source: 'electron',
+          service: 'electron-sdk',
+          version: __SDK_VERSION__,
+          application: { id: configuration.applicationId },
+          // Relayed renderer telemetry arrives with the browser SDK's own ddtags, so without these the
+          // Electron SDK's telemetry would be the only stream that cannot be filtered by env.
+          ddtags: buildDdtags(configuration),
+          _dd: { format_version: 2 },
+        };
+    }
+  });
 
   hooks.registerSpan(() => ({
     meta: {

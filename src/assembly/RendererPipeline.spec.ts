@@ -17,6 +17,7 @@ import {
   type RawProfileEvent,
   type RawReplayEvent,
   type ServerRumEvent,
+  type ServerTelemetryEvent,
 } from '../event';
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
 import { createMockSender, createTestConfiguration, type MockSender } from '../mocks.specUtil';
@@ -76,6 +77,24 @@ const RENDERER_CLICK_DATA = {
   ddtags: 'sdk_version:1.0.0',
 };
 
+/**
+ * A telemetry event as the renderer's browser RUM SDK assembles it before sending it over the bridge,
+ * already carrying its own service/source/version/date and the view it belongs to.
+ */
+const RENDERER_TELEMETRY_DATA = {
+  type: 'telemetry',
+  date: 12345 as TimeStamp,
+  source: 'browser',
+  service: 'browser-rum-sdk',
+  version: '6.0.0',
+  application: { id: 'renderer-app-id' },
+  session: { id: 'renderer-session-id' },
+  view: { id: 'renderer-view-id' },
+  ddtags: 'sdk_version:6.0.0,service:renderer-service',
+  _dd: { format_version: 2 },
+  telemetry: { type: 'log', status: 'error', message: 'renderer failure' },
+};
+
 interface IpcMessageExtra {
   /** Pass `null` to simulate a destroyed/navigated frame (senderFrame === null). */
   senderFrame?: null;
@@ -89,12 +108,14 @@ describe('RendererPipeline', () => {
   let hooks: FormatHooks;
   let simulateIpcMessage: (msg: string, origin?: string, url?: string, extra?: IpcMessageExtra) => void;
   let serverEvents: ServerRumEvent[];
+  let telemetryEvents: ServerTelemetryEvent[];
 
   beforeEach(() => {
     vi.clearAllMocks();
     eventManager = new EventManager();
     hooks = createFormatHooks();
     serverEvents = [];
+    telemetryEvents = [];
 
     mockIpcMainOn.mockImplementation(
       (
@@ -133,9 +154,18 @@ describe('RendererPipeline', () => {
       }
     );
 
+    // Telemetry shares the RUM track, so the two collectors split on the event type the way the
+    // intake does.
     eventManager.registerHandler<ServerRumEvent>({
-      canHandle: (event): event is ServerRumEvent => event.kind === EventKind.SERVER && event.track === EventTrack.RUM,
+      canHandle: (event): event is ServerRumEvent =>
+        event.kind === EventKind.SERVER && event.track === EventTrack.RUM && event.data.type !== 'telemetry',
       handle: (event) => serverEvents.push(event),
+    });
+
+    eventManager.registerHandler<ServerTelemetryEvent>({
+      canHandle: (event): event is ServerTelemetryEvent =>
+        event.kind === EventKind.SERVER && event.track === EventTrack.RUM && event.data.type === 'telemetry',
+      handle: (event) => telemetryEvents.push(event),
     });
 
     new RendererPipeline(eventManager, hooks, DEFAULT_CONFIG);
@@ -493,16 +523,126 @@ describe('RendererPipeline', () => {
     });
   });
 
+  describe('internal telemetry events', () => {
+    function simulateTelemetry(data: Record<string, unknown> = RENDERER_TELEMETRY_DATA) {
+      simulateIpcMessage(JSON.stringify({ eventType: 'internal_telemetry', event: data }));
+    }
+
+    it('emits a ServerTelemetryEvent with source RENDERER on the RUM track', () => {
+      simulateTelemetry();
+
+      expect(telemetryEvents).toHaveLength(1);
+      expect(telemetryEvents[0].source).toBe(EventSource.RENDERER);
+      expect(telemetryEvents[0].track).toBe(EventTrack.RUM);
+      expect(telemetryEvents[0].data.telemetry).toEqual(RENDERER_TELEMETRY_DATA.telemetry);
+    });
+
+    it('triggers the telemetry hooks with the renderer source and the event date', () => {
+      const callback = vi.fn(() => ({}));
+      hooks.registerTelemetry(callback);
+
+      simulateTelemetry();
+
+      expect(callback).toHaveBeenCalledWith({ startTime: RENDERER_TELEMETRY_DATA.date, source: EventSource.RENDERER });
+    });
+
+    it('lets the main process context override the application and session the renderer reported', () => {
+      hooks.registerTelemetry(() => ({ application: { id: 'main-app' }, session: { id: 'main-session' } }));
+
+      simulateTelemetry();
+
+      expect(telemetryEvents[0].data.application?.id).toBe('main-app');
+      expect(telemetryEvents[0].data.session?.id).toBe('main-session');
+    });
+
+    it("keeps the browser SDK's own attributes, so the event still reports on the SDK that raised it", () => {
+      hooks.registerTelemetry(() => ({ application: { id: 'main-app' } }));
+
+      simulateTelemetry();
+
+      expect(telemetryEvents[0].data).toMatchObject({
+        date: RENDERER_TELEMETRY_DATA.date,
+        source: 'browser',
+        service: 'browser-rum-sdk',
+        version: '6.0.0',
+        view: { id: 'renderer-view-id' },
+        ddtags: 'sdk_version:6.0.0,service:renderer-service',
+      });
+    });
+
+    it('drops the event when a hook discards it', () => {
+      hooks.registerTelemetry(() => DISCARDED);
+
+      simulateTelemetry();
+
+      expect(telemetryEvents).toHaveLength(0);
+    });
+
+    it('emits without sampling or deduplicating, which the browser SDK already did', () => {
+      for (let i = 0; i < 5; i++) simulateTelemetry();
+
+      expect(telemetryEvents).toHaveLength(5);
+    });
+
+    it('caps relayed telemetry per session, the browser cap resetting on every window load', () => {
+      for (let i = 0; i < 120; i++) simulateTelemetry();
+
+      expect(telemetryEvents).toHaveLength(100);
+    });
+
+    it('lifts the cap again on session renewal', () => {
+      for (let i = 0; i < 120; i++) simulateTelemetry();
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+      simulateTelemetry();
+
+      expect(telemetryEvents).toHaveLength(101);
+    });
+
+    it('does not charge the cap for events a hook discarded', () => {
+      hooks.registerTelemetry(() => DISCARDED);
+      for (let i = 0; i < 120; i++) simulateTelemetry();
+      expect(telemetryEvents).toHaveLength(0);
+    });
+
+    it("relays telemetry whatever the host app's own telemetrySampleRate is, including 0", () => {
+      const optedOutManager = new EventManager();
+      const relayed: ServerTelemetryEvent[] = [];
+      optedOutManager.registerHandler<ServerTelemetryEvent>({
+        canHandle: (event): event is ServerTelemetryEvent =>
+          event.kind === EventKind.SERVER && event.track === EventTrack.RUM,
+        handle: (event) => relayed.push(event),
+      });
+      new RendererPipeline(optedOutManager, createFormatHooks(), createTestConfiguration({ telemetrySampleRate: 0 }));
+
+      simulateTelemetry();
+
+      // The renderer's own rate already decided this event should be sent, and the main process's
+      // rate governs only what the Electron SDK reports about itself. Pinned so the crossover is not
+      // reintroduced as a "fix".
+      expect(relayed).toHaveLength(1);
+      expect(mockAddError).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['a payload that is not an object', 'a string'],
+      ['a null payload', null],
+      ['an event that is not telemetry', { type: 'view', date: 12345 }],
+      ['an event with no date, which resolves the session and view', { type: 'telemetry' }],
+      ['an event with a non-numeric date', { type: 'telemetry', date: '12345' }],
+      ['an event with no telemetry payload, i.e. an empty shell', { type: 'telemetry', date: 12345 }],
+    ])('reports a telemetry error and drops %s', (_label, event) => {
+      simulateIpcMessage(JSON.stringify({ eventType: 'internal_telemetry', event }));
+
+      expect(telemetryEvents).toHaveLength(0);
+      expect(mockAddError).toHaveBeenCalledOnce();
+      expect((mockAddError.mock.calls[0][0] as Error).message).toContain('malformed telemetry');
+    });
+  });
+
   describe('unimplemented event types', () => {
     it('does not emit for log events (TODO)', () => {
       const spy = vi.spyOn(eventManager, 'notify');
       simulateIpcMessage(JSON.stringify({ eventType: 'log', event: { message: 'hello' } }));
-      expect(spy).not.toHaveBeenCalled();
-    });
-
-    it('does not emit for internal_telemetry events (TODO)', () => {
-      const spy = vi.spyOn(eventManager, 'notify');
-      simulateIpcMessage(JSON.stringify({ eventType: 'internal_telemetry', event: {} }));
       expect(spy).not.toHaveBeenCalled();
     });
   });

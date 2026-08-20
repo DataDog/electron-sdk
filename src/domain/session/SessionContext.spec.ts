@@ -57,6 +57,13 @@ describe('SessionContext', () => {
 
       expect(hooks.triggerTelemetry({ startTime: T0, source: EventSource.MAIN })).toBeUndefined();
     });
+
+    it('telemetry hook returns DISCARDED for renderer events, which carry a session id of their own', async () => {
+      const hooks = createFormatHooks();
+      await SessionContext.init(hooks, EXPIRE_DELAY);
+
+      expect(hooks.triggerTelemetry({ startTime: T0, source: EventSource.RENDERER })).toBe(DISCARDED);
+    });
   });
 
   describe('after add()', () => {

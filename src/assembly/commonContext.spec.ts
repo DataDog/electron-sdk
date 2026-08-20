@@ -29,6 +29,12 @@ function parseDdtags(result: Record<string, unknown>): string[] {
   return ((result.ddtags as string) ?? '').split(',').filter(Boolean);
 }
 
+function triggerTelemetry(config: Configuration, source: EventSource, startTime: TimeStamp = T0) {
+  const hooks = createFormatHooks();
+  registerCommonContext(config, hooks);
+  return hooks.triggerTelemetry({ startTime, source }) as Record<string, unknown>;
+}
+
 describe('registerCommonContext', () => {
   describe('MAIN RUM events — top-level fields', () => {
     it.each([
@@ -156,6 +162,42 @@ describe('registerCommonContext', () => {
       const result = triggerRendererRum(createTestConfiguration());
 
       expect(result.container).toEqual({ source: 'electron' });
+    });
+  });
+
+  describe('telemetry events', () => {
+    it('describes the Electron SDK on MAIN events', () => {
+      const result = triggerTelemetry(
+        createTestConfiguration({ applicationId: 'app-id', service: 'my-service', env: 'staging' }),
+        EventSource.MAIN
+      );
+
+      expect(result).toEqual({
+        date: expect.any(Number) as unknown,
+        source: 'electron',
+        service: 'electron-sdk',
+        version: __SDK_VERSION__,
+        application: { id: 'app-id' },
+        // Tagged like the SDK's RUM events, so main-process telemetry is filterable by env too.
+        ddtags: `sdk_version:${__SDK_VERSION__},service:my-service,env:staging`,
+        _dd: { format_version: 2 },
+      });
+    });
+
+    it('dates MAIN events by their start time rather than by when they are assembled', () => {
+      const startTime = 1_700_000_000_000 as TimeStamp;
+
+      const result = triggerTelemetry(createTestConfiguration(), EventSource.MAIN, startTime);
+
+      // SessionContext and ViewContext resolve the session and view from this same start time, so a
+      // date taken at assembly time could point outside the session the event is attributed to.
+      expect(result.date).toBe(startTime);
+    });
+
+    it('contributes only the application on RENDERER events, leaving the browser SDK to describe itself', () => {
+      const result = triggerTelemetry(createTestConfiguration({ applicationId: 'app-id' }), EventSource.RENDERER);
+
+      expect(result).toEqual({ application: { id: 'app-id' } });
     });
   });
 });

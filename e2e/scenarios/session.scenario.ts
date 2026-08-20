@@ -1,5 +1,11 @@
 import { test, expect, launchAppManually, createUserDataDir, cleanupUserDataDir } from '../lib/helpers';
-import { byTelemetryType } from '../lib/intake';
+import { byMainProcessTelemetryType } from '../lib/intake';
+
+/**
+ * The SDK's own error telemetry. The main window runs the browser SDK in these tests, and the SDK
+ * relays that SDK's telemetry too, so reading by telemetry type alone could pick a renderer event.
+ */
+const isMainProcessError = byMainProcessTelemetryType('log');
 
 test.use({ rumBrowserSdk: {} });
 
@@ -7,7 +13,7 @@ test('new session id is generated when renewing a session', async ({ mainPage, i
   await mainPage.generateTelemetryErrors(1);
   await mainPage.flushTransport();
 
-  const firstEvents = await intake.getEventsByType('telemetry', { predicate: byTelemetryType('log') });
+  const firstEvents = await intake.getEventsByType('telemetry', { predicate: isMainProcessError });
   const firstSessionId = firstEvents[0].body.session?.id;
   expect(firstSessionId).toMatch(/^[0-9a-f-]+$/);
 
@@ -15,7 +21,7 @@ test('new session id is generated when renewing a session', async ({ mainPage, i
   await mainPage.generateTelemetryErrors(1);
   await mainPage.flushTransport();
 
-  const allEvents = await intake.waitForEventCount('telemetry', 2, { predicate: byTelemetryType('log') });
+  const allEvents = await intake.waitForEventCount('telemetry', 2, { predicate: isMainProcessError });
   const secondSessionId = allEvents[1].body.session?.id;
   expect(secondSessionId).toMatch(/^[0-9a-f-]+$/);
 

@@ -1,5 +1,12 @@
 import { test, expect } from '../lib/helpers';
-import { byTelemetryType, type ReceivedEvent } from '../lib/intake';
+import {
+  byRendererTelemetryType,
+  byTelemetryType,
+  isBridgeView,
+  isMainProcessTelemetry,
+  isRendererTelemetry,
+  type ReceivedEvent,
+} from '../lib/intake';
 import type {
   TelemetryConfigurationEvent,
   TelemetryErrorEvent,
@@ -7,8 +14,24 @@ import type {
   TelemetryUsageEvent,
 } from '@datadog/electron-sdk';
 
-/** Every telemetry event that counts toward the per-session cap, i.e. all but `configuration`. */
-const isCapped = (event: ReceivedEvent<TelemetryEvent>) => !byTelemetryType('configuration')(event);
+/**
+ * Every main-process telemetry event that counts toward the per-session cap, i.e. all but
+ * `configuration`. Telemetry relayed from a renderer is excluded: the cap is the main process's budget,
+ * and the browser SDK has already applied its own before its events cross the bridge.
+ */
+const isCapped = (event: ReceivedEvent<TelemetryEvent>) =>
+  isMainProcessTelemetry(event) && !byTelemetryType('configuration')(event);
+
+/**
+ * The browser SDK version the bridge window runs, which relayed telemetry must keep reporting: the
+ * event describes that SDK's behaviour, not the Electron SDK's.
+ */
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const BROWSER_SDK_VERSION = (require('../app/node_modules/@datadog/browser-rum/package.json') as { version: string })
+  .version;
+
+/** A usage event relayed from a renderer, which the browser SDK emits once its view exists. */
+const isRendererUsage = byRendererTelemetryType('usage');
 
 test('SDK sends telemetry error event to intake', async ({ mainPage, intake }) => {
   await mainPage.generateTelemetryError();
@@ -145,5 +168,58 @@ test.describe('telemetry rate-limit reset on session renewal', () => {
     // and its usage event are sent again.
     const allCappedEvents = await intake.waitForEventCount('telemetry', 102, { predicate: isCapped });
     expect(allCappedEvents).toHaveLength(102);
+  });
+});
+
+test.describe('renderer telemetry', () => {
+  test('relays browser SDK telemetry, re-attributed to the Electron application and session', async ({
+    electronApp,
+    mainPage,
+    intake,
+  }) => {
+    await mainPage.flushTransport();
+    const own = await intake.getEventsByType('telemetry', { predicate: isMainProcessTelemetry });
+    const ownTelemetry = own[0].body;
+
+    await mainPage.openBridgeFileWindow(electronApp);
+
+    const relayed = await mainPage.whileFlushing(() =>
+      intake.waitForEventCount('telemetry', 1, { predicate: isRendererTelemetry })
+    );
+    const event = relayed[0].body;
+
+    // The browser SDK stays the reported SDK: the event describes its behaviour, not the Electron SDK's,
+    // so the service, source and version identifying it have to survive the relay.
+    expect(event).toMatchObject({
+      type: 'telemetry',
+      source: 'browser',
+      service: 'browser-rum-sdk',
+      version: BROWSER_SDK_VERSION,
+    });
+    // Guards the assertion above against the two SDKs ever sharing a version number, which would let
+    // a relay that restamped `version` still satisfy it.
+    expect(BROWSER_SDK_VERSION).not.toBe(ownTelemetry.version);
+
+    // The application and session are the main process's, replacing the ones the renderer reported — in
+    // bridge mode the browser SDK's session id is a stub it generates for itself and nothing else knows.
+    expect(event.application?.id).toBe('e2e-test-app-id');
+    expect(event.session?.id).toMatch(/^[0-9a-f-]+$/);
+    expect(event.session?.id).toBe(ownTelemetry.session?.id);
+  });
+
+  test('keeps the view the renderer reported, the one its RUM events carry', async ({
+    electronApp,
+    mainPage,
+    intake,
+  }) => {
+    const bridgeWindow = await mainPage.openBridgeFileWindow(electronApp);
+    await bridgeWindow.generateTelemetryUsage();
+
+    const { bridgeViews, usage } = await mainPage.whileFlushing(async () => ({
+      bridgeViews: await intake.waitForEventCount('view', 1, { predicate: isBridgeView }),
+      usage: await intake.waitForEventCount('telemetry', 1, { predicate: isRendererUsage }),
+    }));
+
+    expect(usage[0].body.view?.id).toBe(bridgeViews[0].body.view.id);
   });
 });
