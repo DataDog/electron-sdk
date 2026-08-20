@@ -43,7 +43,17 @@ export function generateCompatibilityCi(config: CompatibilityConfig, filters: Co
 }
 
 function generateJob(environment: CompatibilityEnvironment, target: CompatibilityTarget): string[] {
-  const testCommand = [...environment.testCommandPrefix, 'yarn', 'test:compatibility', target.id].join(' ');
+  const testCommand = formatCommand([
+    'node',
+    'scripts/run-command-with-logs.ts',
+    '--log',
+    'logs/03-compatibility-tests.log',
+    '--',
+    ...environment.testCommandPrefix,
+    'yarn',
+    'test:compatibility',
+    target.id,
+  ]);
   const lines = [
     `${environment.id}:${target.id}:`,
     '  stage: test',
@@ -60,18 +70,48 @@ function generateJob(environment: CompatibilityEnvironment, target: Compatibilit
     '  variables:',
     `    DD_ELECTRON_COMPATIBILITY_ENVIRONMENT: ${quoteYaml(environment.id)}`,
     `    DD_ELECTRON_COMPATIBILITY_TARGET: ${quoteYaml(target.id)}`,
+    "    YARN_ENABLE_INLINE_BUILDS: 'true'",
     '  script:',
-    '    - yarn install --immutable',
-    `    - yarn test:compatibility:init ${target.id}`,
+    `    - ${formatCommand([
+      'node',
+      'scripts/run-command-with-logs.ts',
+      '--log',
+      'logs/01-yarn-install.log',
+      '--env',
+      'ELECTRON_SKIP_BINARY_DOWNLOAD=1',
+      '--retry-delay',
+      '2000',
+      '--retry-delay',
+      '5000',
+      '--',
+      'yarn',
+      'install',
+      '--immutable',
+    ])}`,
+    `    - ${formatCommand([
+      'node',
+      'scripts/run-command-with-logs.ts',
+      '--log',
+      'logs/02-compatibility-init.log',
+      '--',
+      'yarn',
+      'test:compatibility:init',
+      target.id,
+    ])}`,
     `    - ${testCommand}`,
     '  artifacts:',
-    '    when: on_failure',
+    '    when: always',
     '    paths:',
+    '      - logs/',
     '      - e2e/test-results/',
     '      - e2e/playwright-report/',
     '      - e2e/compatibility/generated/*/metadata.json'
   );
   return lines;
+}
+
+function formatCommand(command: string[]): string {
+  return command.join(' ');
 }
 
 function quoteYaml(value: string): string {

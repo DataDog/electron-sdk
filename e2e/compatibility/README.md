@@ -129,6 +129,19 @@ applications. Linux additionally runs Electron under Xvfb.
 Compatibility initialization retries each integration-app packaging command twice. This makes transient Electron
 runtime download failures recoverable while preserving the final failure when all three attempts fail.
 
+Each child job also retries the root dependency installation twice. Its three phases stream to the GitLab job output
+and to separate files under the job's `logs/` artifact:
+
+- `01-yarn-install.log`
+- `02-compatibility-init.log`
+- `03-compatibility-tests.log`
+
+Artifacts are uploaded whether the job succeeds or fails. Yarn dependency build output is kept inline so failures
+which would otherwise point only to a temporary `build.log` are included in `01-yarn-install.log`.
+
+The root install skips its Electron binary download because compatibility tests launch the binaries installed in the
+generated target apps. This does not skip any configured target Electron download or test.
+
 ## Version-specific app overrides
 
 Use a committed override when a target cannot use a base app template unchanged, for example because an Electron API
