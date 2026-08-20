@@ -1,6 +1,12 @@
 variables:
   CI_IMAGE_REPO: 'ci/${CI_PROJECT_NAME}'
   CI_IMAGE: 'registry.ddbuild.io/ci/electron-sdk:v120778963-d70c392e@sha256:fbd772ca8047e7992bc030306e287e8c35d8cf5a5daba327c4024b5a4d009c4f' # https://gitlab.ddbuild.io/DataDog/electron-sdk/-/jobs/1800425126
+  COMPATIBILITY_TESTS:
+    value: 'false'
+    options:
+      - 'false'
+      - 'true'
+    description: 'Run the Electron compatibility test matrix instead of the regular pipeline.'
   DD_ELECTRON_SDK_GIT_REF:
     value: ''
     description: 'Optional branch, tag, or commit to package as the SDK under compatibility test.'
