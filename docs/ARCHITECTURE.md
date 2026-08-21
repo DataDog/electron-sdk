@@ -179,42 +179,13 @@ schema has no feature for are reported as the closest one, with a comment at the
 
 #### Renderer telemetry
 
-The browser SDK reports telemetry of its own, which crosses the bridge as an `internal_telemetry` event
-and is forwarded onto the same RUM track by `RendererPipeline`.
+The browser SDK sends pre-assembled telemetry over the bridge as `internal_telemetry`. `RendererPipeline`
+validates the payload and forwards it on the RUM track without re-sampling or deduplicating it; the
+browser SDK has already applied its telemetry configuration and limits.
 
-It is deliberately **not** re-sampled or deduplicated: the browser SDK applied its own sampling and
-per-page cap before sending, and that rate is the one the renderer's `init()` configured. Drawing again
-would compound two rates, and since neither SDK stamps `effective_sample_rate` on these events, the
-backend could not scale the survivors back up — the loss would be silent. For the same reason the main
-process does not stamp its own `effective_sample_rate` on them: that rate was never applied. This
-follows iOS's `WebViewEventReceiver`; Android has no webview telemetry path.
-
-The two streams have **separate rates**, the same way they have separate caps. The Electron SDK's
-`telemetrySampleRate` is not consulted for relayed events at all, including when it is `0`: a renderer's
-rate is configured in its own `init()` and governs what crosses the bridge, while the main process's
-rate governs what the SDK reports about itself. iOS draws the same line — `WebViewEventReceiver` is
-given no sampler, where native telemetry gets one.
-
-Volume is still bounded. The browser SDK's per-page cap lives in the SDK instance, so it resets on every
-window load, and a long-lived main-process session outliving many windows would otherwise relay without
-any ceiling: `RendererPipeline` counts relayed events against a per-session cap of its own, held
-separately from the main process's telemetry budget so neither stream can starve the other. A cap is not
-a rate, so it cannot compound with the renderer's sampling.
-
-The event arrives fully assembled, so the telemetry hooks are source-aware (`commonContext`,
-`SessionContext`, `ViewContext`) and their result is merged _over_ it, contributing only what the main
-process owns:
-
-| Attribute                              | Owner    | Why                                                                                                                                                                                              |
-| -------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `date`, `source`, `service`, `version` | renderer | The event reports on the browser SDK, so it has to keep identifying it                                                                                                                           |
-| `application.id`, `session.id`         | main     | In bridge mode the browser SDK's session id is a stub it generates for itself                                                                                                                    |
-| `view.id`                              | renderer | The view its RUM events carry; telemetry has no `container` to hold the main-process view too                                                                                                    |
-| `ddtags`, `action.id`                  | renderer | Both describe the renderer: its `env`/`service`/`version` tags, and the action its own SDK attributed the event to. The SDK tags its own telemetry separately (`buildDdtags` in `commonContext`) |
-
-An event with no main-process session covering its date is dropped rather than sent carrying that stub
-session id — where main-process telemetry is still sent without a session, since an SDK error before the
-first session still reports a bug.
+Main-process context replaces the renderer's application and stub session while preserving the browser
+SDK fields that describe the event. If no tracked main-process session covers the event date, the
+optional `session` field is omitted.
 
 ## Profiling
 

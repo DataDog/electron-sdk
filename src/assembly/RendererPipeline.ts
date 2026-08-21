@@ -5,7 +5,6 @@ import { DISCARDED } from '@datadog/js-core/assembly';
 import { EventKind, EventSource, EventTrack, LifecycleKind, EventFormat } from '../event';
 import type {
   EventManager,
-  SessionRenewEvent,
   ServerRumEvent,
   ServerTelemetryEvent,
   BrowserProfileEvent,
@@ -18,16 +17,10 @@ import { BRIDGE_CHANNEL, setBridgeConfig, type BridgeOptions } from '../common';
 import type { FormatHooks } from './hooks';
 import type { RumEvent } from '../domain/rum';
 import { Configuration } from '../config';
+import { isFiniteNumber } from '../tools/validation';
 import { RendererIpcGate } from './RendererIpcGate';
 
 type BridgeEventType = 'rum' | 'log' | 'internal_telemetry' | 'profile' | 'record';
-
-/**
- * Per-session ceiling on telemetry relayed from renderers, held separately from the main process's
- * budget so neither stream can starve the other: a chatty renderer must not crowd out the Electron
- * SDK's own error reporting, and vice versa.
- */
-const MAX_RELAYED_TELEMETRY_EVENTS_PER_SESSION = 100;
 
 interface BridgeEvent {
   eventType: BridgeEventType;
@@ -48,8 +41,6 @@ interface BridgeEvent {
  */
 export class RendererPipeline {
   private readonly bridgeOptions: BridgeOptions;
-  /** Relayed telemetry emitted in the current session, against {@link MAX_RELAYED_TELEMETRY_EVENTS_PER_SESSION}. */
-  private relayedTelemetryCount = 0;
 
   constructor(
     private readonly eventManager: EventManager,
@@ -77,14 +68,6 @@ export class RendererPipeline {
         this.onBridgeMessage(msg);
       })
     );
-
-    eventManager.registerHandler<SessionRenewEvent>({
-      canHandle: (event): event is SessionRenewEvent =>
-        event.kind === EventKind.LIFECYCLE && event.lifecycle === LifecycleKind.SESSION_RENEW,
-      handle: () => {
-        this.relayedTelemetryCount = 0;
-      },
-    });
 
     // The CONFIG_CHANNEL responder is registered at instrument time; here we publish the real config
     // so it replaces the fallback returned for windows loaded before init().
@@ -147,11 +130,7 @@ export class RendererPipeline {
         // Segment.addRecord derives start/end from timestamp via Math.min/Math.max, so a missing
         // or non-finite value turns segment metadata into NaN (serialized as null) and makes the
         // uploaded segment unusable. Reject at the boundary instead, matching the profile validation.
-        if (
-          typeof bridgeEvent.event.timestamp !== 'number' ||
-          !Number.isFinite(bridgeEvent.event.timestamp) ||
-          typeof bridgeEvent.event.type !== 'number'
-        ) {
+        if (!isFiniteNumber(bridgeEvent.event.timestamp) || !isFiniteNumber(bridgeEvent.event.type)) {
           addTelemetryError(new Error('Received replay record with invalid timestamp or type'));
           break;
         }
@@ -196,44 +175,27 @@ export class RendererPipeline {
   /**
    * Forwards a telemetry event the renderer's browser RUM SDK has already assembled.
    *
-   * Deliberately not re-sampled: the browser SDK applied its own `telemetrySampleRate` before the
-   * event crossed the bridge, and that rate is the one the renderer's `init()` configured for it.
-   * Drawing again here would compound two rates — and since neither SDK stamps
-   * `effective_sample_rate` on these events, the backend could not scale the survivors back up, so
-   * the loss would be silent. This follows iOS's `WebViewEventReceiver`, which forwards webview
-   * telemetry with no re-sampling; Android has no webview telemetry path.
-   *
-   * The Electron SDK's own `telemetrySampleRate` is not consulted at all, including when it is `0`:
-   * the two streams have separate rates the same way they have separate caps. A renderer's rate is
-   * configured in its own `init()` and governs what crosses the bridge; the main process's rate
-   * governs what the Electron SDK reports about itself. Reaching across would make the host's rate
-   * silently override a decision the renderer already made, which is also how iOS behaves — its
-   * `WebViewEventReceiver` is given no sampler, while native telemetry gets one.
-   *
-   * Volume is still bounded, by {@link MAX_RELAYED_TELEMETRY_EVENTS_PER_SESSION} rather than by the
-   * main process's budget. A cap is not a rate, so it cannot compound with the renderer's sampling.
+   * It is not re-sampled or deduplicated because the browser SDK has already applied its telemetry
+   * configuration before sending the event over the bridge.
    */
   private handleTelemetryEvent(eventData: unknown): void {
-    // A bridge/SDK version mismatch, or a renderer sending on the channel itself, could put anything
-    // here. Reject it at the boundary: the payload is forwarded to intake untouched apart from the
-    // hook result, so nothing downstream would notice it is not a telemetry event.
-    // `date` is required as well as `type`: it resolves the session and view the event is attributed
-    // to, and a missing one makes SessionContext discard the event with no error of its own. So is
-    // `telemetry`, the payload the event exists to carry — without it the rest is an empty shell the
-    // backend can only reject. The identity fields it also carries (`service`, `source`, `version`,
-    // `_dd`) are deliberately left unchecked: they are the browser SDK's to report, and pinning their
-    // shape here would drop valid telemetry the day browser-core reshapes its envelope.
+    // Validate the bridge payload without restricting renderer-owned fields or telemetry kinds,
+    // which may evolve independently in the browser SDK.
     if (
       !isIndexableObject(eventData) ||
       eventData.type !== 'telemetry' ||
-      typeof eventData.date !== 'number' ||
-      !isIndexableObject(eventData.telemetry)
+      !isFiniteNumber(eventData.date) ||
+      !isIndexableObject(eventData.telemetry) ||
+      (typeof eventData.telemetry.type !== 'string' && typeof eventData.telemetry.status !== 'string')
     ) {
       addTelemetryError(new Error('Received malformed telemetry bridge event'));
       return;
     }
 
-    const data = eventData as unknown as TelemetryEvent;
+    const data = { ...eventData } as unknown as TelemetryEvent;
+    // The browser SDK creates a stub session in bridge mode. Only keep the main-process session
+    // that the telemetry hooks add when one covers the event date.
+    delete data.session;
 
     const hookResult = this.hooks.triggerTelemetry({
       startTime: data.date as TimeStamp,
@@ -243,13 +205,6 @@ export class RendererPipeline {
     if (hookResult === DISCARDED) {
       return;
     }
-
-    // Counted only once the event is known to be emitted, so events a hook discarded (an unsampled
-    // session, say) do not consume the session's budget.
-    if (this.relayedTelemetryCount >= MAX_RELAYED_TELEMETRY_EVENTS_PER_SESSION) {
-      return;
-    }
-    this.relayedTelemetryCount++;
 
     this.emitRendererEvent(data, hookResult);
   }

@@ -37,25 +37,18 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
     }
   });
 
-  hooks.registerTelemetry(({ source, startTime }) => {
+  hooks.registerTelemetry(({ source }) => {
     switch (source) {
-      // Renderer telemetry crosses the bridge already assembled by the browser SDK, and it reports on
-      // that SDK: restamping date/source/service/version here would credit the Electron SDK for the
-      // renderer's own telemetry. The application is the only one of these the main process owns.
+      // Renderer telemetry already identifies the browser SDK that assembled it.
       case EventSource.RENDERER:
         return { application: { id: configuration.applicationId } };
       case EventSource.MAIN:
         return {
-          // The event's own start time rather than assembly time: SessionContext and ViewContext
-          // resolve from that same startTime, so a date taken here would point outside the session
-          // the event is attributed to whenever it is assembled after a renewal.
-          date: startTime,
+          date: Date.now(),
           source: 'electron',
           service: 'electron-sdk',
           version: __SDK_VERSION__,
           application: { id: configuration.applicationId },
-          // Relayed renderer telemetry arrives with the browser SDK's own ddtags, so without these the
-          // Electron SDK's telemetry would be the only stream that cannot be filtered by env.
           ddtags: buildDdtags(configuration),
           _dd: { format_version: 2 },
         };

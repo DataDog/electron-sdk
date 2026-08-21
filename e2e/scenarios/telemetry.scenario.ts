@@ -222,4 +222,18 @@ test.describe('renderer telemetry', () => {
 
     expect(usage[0].body.view?.id).toBe(bridgeViews[0].body.view.id);
   });
+
+  test.describe('without a tracked Electron session', () => {
+    test.use({ sdkConfigOverrides: { sessionSampleRate: 0 } });
+
+    test("omits the browser SDK's stub session", async ({ electronApp, mainPage, intake }) => {
+      await mainPage.openBridgeFileWindow(electronApp);
+
+      const relayed = await mainPage.whileFlushing(() =>
+        intake.waitForEventCount('telemetry', 1, { predicate: isRendererTelemetry })
+      );
+
+      expect(relayed[0].body.session).toBeUndefined();
+    });
+  });
 });

@@ -3,7 +3,6 @@ import * as path from 'node:path';
 import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED, SKIPPED } from '@datadog/js-core/assembly';
 import type { FormatHooks } from '../../assembly';
-import { EventSource } from '../../event';
 import { DiskValueHistory } from '../../tools/DiskValueHistory';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
 
@@ -23,13 +22,8 @@ export class SessionContext {
 
     hooks.registerTelemetry((params) => {
       const sessionId = this.history.find(params.startTime);
-      if (sessionId !== undefined) return { session: { id: sessionId } };
-      // Main-process telemetry is still worth sending without a session: an SDK error raised before the
-      // first session, or in one that was sampled out, still reports a bug. A renderer event instead
-      // arrives with the session id the browser SDK generates for itself in bridge mode — a stub nothing
-      // else knows — and `combine` cannot remove a key, so drop the event rather than attribute telemetry
-      // to a session Datadog never sees. Matches iOS, which drops webview telemetry for unsampled sessions.
-      return params.source === EventSource.RENDERER ? DISCARDED : SKIPPED;
+      if (sessionId === undefined) return SKIPPED;
+      return { session: { id: sessionId } };
     });
 
     hooks.registerSpan((params) => {

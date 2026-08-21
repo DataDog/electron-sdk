@@ -578,30 +578,16 @@ describe('RendererPipeline', () => {
       expect(telemetryEvents).toHaveLength(0);
     });
 
-    it('emits without sampling or deduplicating, which the browser SDK already did', () => {
-      for (let i = 0; i < 5; i++) simulateTelemetry();
-
-      expect(telemetryEvents).toHaveLength(5);
-    });
-
-    it('caps relayed telemetry per session, the browser cap resetting on every window load', () => {
+    it('emits without sampling, deduplicating, or applying another limit', () => {
       for (let i = 0; i < 120; i++) simulateTelemetry();
 
-      expect(telemetryEvents).toHaveLength(100);
+      expect(telemetryEvents).toHaveLength(120);
     });
 
-    it('lifts the cap again on session renewal', () => {
-      for (let i = 0; i < 120; i++) simulateTelemetry();
-      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+    it("removes the browser SDK's stub session when the main process has no matching session", () => {
       simulateTelemetry();
 
-      expect(telemetryEvents).toHaveLength(101);
-    });
-
-    it('does not charge the cap for events a hook discarded', () => {
-      hooks.registerTelemetry(() => DISCARDED);
-      for (let i = 0; i < 120; i++) simulateTelemetry();
-      expect(telemetryEvents).toHaveLength(0);
+      expect(telemetryEvents[0].data.session).toBeUndefined();
     });
 
     it("relays telemetry whatever the host app's own telemetrySampleRate is, including 0", () => {
@@ -623,6 +609,27 @@ describe('RendererPipeline', () => {
       expect(mockAddError).not.toHaveBeenCalled();
     });
 
+    it('relays a kind the schema does not define, which the browser SDK can add before we sync', () => {
+      simulateTelemetry({ ...RENDERER_TELEMETRY_DATA, telemetry: { type: 'a-kind-added-later' } });
+
+      expect(telemetryEvents).toHaveLength(1);
+      expect(telemetryEvents[0].data.telemetry).toEqual({ type: 'a-kind-added-later' });
+      expect(mockAddError).not.toHaveBeenCalled();
+    });
+
+    it('relays log-shaped telemetry with no kind, which the schema makes optional for error/debug', () => {
+      // `status` is the discriminator here: the schema requires it on the two variants that make
+      // `type` optional, so a payload carrying one is well-formed telemetry, not an empty shell.
+      // Pinned so requiring `type` outright is not reintroduced as a "fix" — it would silently drop
+      // the renderer's error telemetry, the stream we would need to notice anything else breaking.
+      const telemetry = { status: 'error', message: 'no type' };
+      simulateTelemetry({ ...RENDERER_TELEMETRY_DATA, telemetry });
+
+      expect(telemetryEvents).toHaveLength(1);
+      expect(telemetryEvents[0].data.telemetry).toEqual(telemetry);
+      expect(mockAddError).not.toHaveBeenCalled();
+    });
+
     it.each([
       ['a payload that is not an object', 'a string'],
       ['a null payload', null],
@@ -630,6 +637,8 @@ describe('RendererPipeline', () => {
       ['an event with no date, which resolves the session and view', { type: 'telemetry' }],
       ['an event with a non-numeric date', { type: 'telemetry', date: '12345' }],
       ['an event with no telemetry payload, i.e. an empty shell', { type: 'telemetry', date: 12345 }],
+      ['an event whose telemetry payload is empty', { type: 'telemetry', date: 12345, telemetry: {} }],
+      ['an event whose telemetry payload is an array', { type: 'telemetry', date: 12345, telemetry: [] }],
     ])('reports a telemetry error and drops %s', (_label, event) => {
       simulateIpcMessage(JSON.stringify({ eventType: 'internal_telemetry', event }));
 

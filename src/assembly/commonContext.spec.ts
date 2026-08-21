@@ -29,10 +29,10 @@ function parseDdtags(result: Record<string, unknown>): string[] {
   return ((result.ddtags as string) ?? '').split(',').filter(Boolean);
 }
 
-function triggerTelemetry(config: Configuration, source: EventSource, startTime: TimeStamp = T0) {
+function triggerTelemetry(config: Configuration, source: EventSource) {
   const hooks = createFormatHooks();
   registerCommonContext(config, hooks);
-  return hooks.triggerTelemetry({ startTime, source }) as Record<string, unknown>;
+  return hooks.triggerTelemetry({ startTime: T0, source }) as Record<string, unknown>;
 }
 
 describe('registerCommonContext', () => {
@@ -178,20 +178,9 @@ describe('registerCommonContext', () => {
         service: 'electron-sdk',
         version: __SDK_VERSION__,
         application: { id: 'app-id' },
-        // Tagged like the SDK's RUM events, so main-process telemetry is filterable by env too.
         ddtags: `sdk_version:${__SDK_VERSION__},service:my-service,env:staging`,
         _dd: { format_version: 2 },
       });
-    });
-
-    it('dates MAIN events by their start time rather than by when they are assembled', () => {
-      const startTime = 1_700_000_000_000 as TimeStamp;
-
-      const result = triggerTelemetry(createTestConfiguration(), EventSource.MAIN, startTime);
-
-      // SessionContext and ViewContext resolve the session and view from this same start time, so a
-      // date taken at assembly time could point outside the session the event is attributed to.
-      expect(result.date).toBe(startTime);
     });
 
     it('contributes only the application on RENDERER events, leaving the browser SDK to describe itself', () => {
