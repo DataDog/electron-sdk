@@ -82,6 +82,16 @@ describe('BatchManager', () => {
       });
     });
 
+    it('limits LOGS batches to the intake maximum of 1,000 entries', async () => {
+      await BatchManager.create(config, createBatchConfig({ trackType: EventTrack.LOGS }));
+
+      expect(mockProducerCreate).toHaveBeenCalledWith({
+        trackPath: '/mock/path/logs',
+        batchSize: BatchSizes.MEDIUM,
+        maxEventsPerBatch: 1_000,
+      });
+    });
+
     it('creates a StandardBatchConsumer with the resolved trackPath, intakeUrl and clientToken', async () => {
       const { StandardBatchConsumer } = await import('./standard/StandardBatchConsumer');
       await BatchManager.create(config, batchConfig);

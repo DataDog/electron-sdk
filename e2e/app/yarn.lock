@@ -14,6 +14,21 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@datadog/browser-logs@npm:7.5.0":
+  version: 7.5.0
+  resolution: "@datadog/browser-logs@npm:7.5.0"
+  dependencies:
+    "@datadog/browser-core": "npm:7.5.0"
+    "@datadog/js-core": "npm:0.0.5"
+  peerDependencies:
+    "@datadog/browser-rum": 7.5.0
+  peerDependenciesMeta:
+    "@datadog/browser-rum":
+      optional: true
+  checksum: 10c0/6226c9f350d1bd09d1293622856a8b4f158ab9957f9c79f634f5c87a0fd4c6be4b693892c9b022c2b54f9e0b950f6f75d08d2bbe10a73ba491c0be33a670664a
+  languageName: node
+  linkType: hard
+
 "@datadog/browser-rum-core@npm:7.5.0":
   version: 7.5.0
   resolution: "@datadog/browser-rum-core@npm:7.5.0"
@@ -828,6 +843,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "e2e-test-app@workspace:."
   dependencies:
+    "@datadog/browser-logs": "npm:7.5.0"
     "@datadog/browser-rum": "npm:7.5.0"
     "@datadog/electron-sdk": "portal:../.."
     electron: "npm:41.1.0"

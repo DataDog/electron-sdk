@@ -8,6 +8,8 @@ import type { BatchProducerConfig } from '../BatchProducer';
 export interface StandardBatchProducerConfig extends BatchProducerConfig {
   /** Maximum byte size of a single batch file before it is rotated. */
   batchSize: number;
+  /** Optional maximum number of events in a batch file before it is rotated. */
+  maxEventsPerBatch?: number;
 }
 
 /**
@@ -16,12 +18,15 @@ export interface StandardBatchProducerConfig extends BatchProducerConfig {
  */
 export class StandardBatchProducer extends BatchProducer {
   private batchSize: number;
+  private maxEventsPerBatch: number | undefined;
   private currentBatchFile: string | null = null;
   private currentBatchSize = 0;
+  private currentBatchEventCount = 0;
 
   private constructor(config: StandardBatchProducerConfig) {
     super(config);
     this.batchSize = config.batchSize;
+    this.maxEventsPerBatch = config.maxEventsPerBatch;
   }
 
   /**
@@ -48,13 +53,17 @@ export class StandardBatchProducer extends BatchProducer {
     const serialized = `${JSON.stringify(event.data)}\n`;
     const dataSize = Buffer.byteLength(serialized, 'utf8');
 
-    if (this.currentBatchSize + dataSize > this.batchSize && this.currentBatchSize > 0) {
+    const exceedsByteLimit = this.currentBatchSize + dataSize > this.batchSize;
+    const reachedEventLimit =
+      this.maxEventsPerBatch !== undefined && this.currentBatchEventCount >= this.maxEventsPerBatch;
+    if (this.currentBatchSize > 0 && (exceedsByteLimit || reachedEventLimit)) {
       await this.rotateBatch();
     }
 
     const batchPath = this.getCurrentBatchPath();
     await fs.appendFile(batchPath, serialized, 'utf8');
     this.currentBatchSize += dataSize;
+    this.currentBatchEventCount++;
   }
 
   /** Returns the full path to the current batch file, creating a new name if needed. */
@@ -73,5 +82,6 @@ export class StandardBatchProducer extends BatchProducer {
     await this.renameBatchFile(this.currentBatchFile);
     this.currentBatchFile = null;
     this.currentBatchSize = 0;
+    this.currentBatchEventCount = 0;
   }
 }

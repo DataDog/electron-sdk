@@ -197,6 +197,20 @@ describe('ViewContext', () => {
       expect(hooks.triggerSpan({ startTime: T0, source: EventSource.MAIN })).toBe(DISCARDED);
     });
 
+    it('logs hook attributes MAIN logs to the view but leaves a renderer log its own', async () => {
+      const hooks = createFormatHooks();
+      const context = await ViewContext.init(hooks, EXPIRE_DELAY);
+
+      context.add(VIEW_ID); // at T0 = 0
+      vi.advanceTimersByTime(10);
+      context.close();
+
+      expect(hooks.triggerLogs({ startTime: T0, source: EventSource.MAIN })).toMatchObject({
+        view: { id: VIEW_ID },
+      });
+      expect(hooks.triggerLogs({ startTime: T0, source: EventSource.RENDERER })).toBeUndefined();
+    });
+
     it('telemetry hook still attributes events during the view period', async () => {
       const hooks = createFormatHooks();
       const context = await ViewContext.init(hooks, EXPIRE_DELAY);
