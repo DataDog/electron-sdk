@@ -37,6 +37,7 @@ describe('ErrorCollection', () => {
       expect(data.error.type).toBe('Error');
       expect(data.error.stack).toBeDefined();
       expect(data.error.id).toBeDefined();
+      expect(data.error.source_type).toBe('nodejs');
     });
 
     it('emits an error event with fallback message from a non-Error value', () => {
