@@ -33,9 +33,14 @@ export class Transport {
    * Tracks to buffer and upload. The PROFILE track is only set up when profiling can produce data
    * (matching the `profiles` capability gating in RendererPipeline), to avoid idle disk and scheduler
    * work in apps that never enable profiling.
+   *
+   * LOGS is unconditional even though only renderers produce logs today and many apps never will. Its
+   * handler must be ready before RendererPipeline opens the IPC listener because EventManager does not
+   * queue unclaimed events. Keeping it active at `logsSampleRate: 0` also lets a later process launch
+   * recover and upload logs that were already accepted and persisted under an earlier configuration.
    */
   private getTracks(): EventTrack[] {
-    const tracks: EventTrack[] = [EventTrack.RUM, EventTrack.SPANS];
+    const tracks: EventTrack[] = [EventTrack.RUM, EventTrack.SPANS, EventTrack.LOGS];
     if (this.config.profilingSampleRate > 0) {
       tracks.push(EventTrack.PROFILE);
     }

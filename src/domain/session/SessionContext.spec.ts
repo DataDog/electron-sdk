@@ -190,6 +190,31 @@ describe('SessionContext', () => {
       });
     });
 
+    it('logs hook still attributes logs during the session period', async () => {
+      const hooks = createFormatHooks();
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
+
+      context.add('session-abc'); // at T0 = 0
+      vi.advanceTimersByTime(10);
+      context.close();
+
+      expect(hooks.triggerLogs({ startTime: T0, source: EventSource.RENDERER })).toEqual({
+        session_id: 'session-abc',
+        session: { id: 'session-abc' },
+      });
+    });
+
+    it('logs hook nulls the ids rather than discarding when no session covers the log', async () => {
+      const hooks = createFormatHooks();
+      await SessionContext.init(hooks, EXPIRE_DELAY);
+
+      // No session was ever added, so the renderer's stub id must not survive.
+      expect(hooks.triggerLogs({ startTime: T0, source: EventSource.RENDERER })).toEqual({
+        session_id: null,
+        session: { id: null },
+      });
+    });
+
     it('RUM hook returns DISCARDED for events after the session ended', async () => {
       const hooks = createFormatHooks();
       const context = await SessionContext.init(hooks, EXPIRE_DELAY);

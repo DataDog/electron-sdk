@@ -85,6 +85,26 @@ await init({
 
 In order to monitor the renderer process, you must [set up the Browser SDK](https://docs.datadoghq.com/real_user_monitoring/application_monitoring/browser/setup/) in pages loaded by the renderer.
 
+#### Renderer log collection
+
+Logs assembled by the Browser Logs SDK are forwarded through the Electron bridge and uploaded by the
+main process. Configure renderer-log sampling on the Electron SDK:
+
+```ts
+await init({
+  clientToken: '<CLIENT_TOKEN>',
+  applicationId: '<APPLICATION_ID>',
+  service: 'my-electron-app',
+  site: 'datadoghq.com',
+  allowedRendererHosts: ['*'],
+  logsSampleRate: 25, // forwards 25% of renderer logs
+});
+```
+
+`logsSampleRate` defaults to `100` and is applied independently to each bridged log. It is separate
+from RUM `sessionSampleRate`. The Browser Logs SDK does not apply its own `sessionSampleRate` in bridge
+mode, so the Electron setting is authoritative, matching the Android and iOS WebView integrations.
+
 #### Bundler plugins
 
 The SDK instruments Electron as it is loaded, which requires correct module loading order. The SDK provides bundler plugins to ensure this works in all environments:
@@ -428,6 +448,7 @@ interface FeatureOperationOptions {
 | `env`                     | `string`                                 | No       | —          | Application environment                                                                                                                                                              |
 | `version`                 | `string`                                 | No       | —          | Application version                                                                                                                                                                  |
 | `sessionSampleRate`       | `number`                                 | No       | `100`      | Percentage of sessions to collect (0–100). `0` collects no sessions; `100` collects all sessions.                                                                                    |
+| `logsSampleRate`          | `number`                                 | No       | `100`      | Percentage of bridged renderer logs to forward (0–100), sampled independently per log. In bridge mode this replaces the Browser Logs `sessionSampleRate`.                            |
 | `traceSamplingRules`      | `TraceSamplingRule[]`                    | No       | `[]`       | Ordered sampling rules for main-process traces. The first matching rule determines the percentage of traces to keep; unmatched traces are kept.                                      |
 | `sessionReplaySampleRate` | `number`                                 | No       | `0`        | Percentage of sampled sessions that record session replay (0–100). `0` disables renderer session replay. Applied as a child of `sessionSampleRate`.                                  |
 | `profilingSampleRate`     | `number`                                 | No       | `0`        | Percentage of sampled sessions that are profiled (0–100). `0` disables renderer profiling. Applied as a child of `sessionSampleRate`. See [Renderer Profiling](#renderer-profiling). |

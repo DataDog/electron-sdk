@@ -35,6 +35,12 @@ function triggerTelemetry(config: Configuration, source: EventSource) {
   return hooks.triggerTelemetry({ startTime: T0, source }) as Record<string, unknown>;
 }
 
+function triggerLogs(config: Configuration, source: EventSource, startTime: TimeStamp = T0) {
+  const hooks = createFormatHooks();
+  registerCommonContext(config, hooks);
+  return hooks.triggerLogs({ startTime, source });
+}
+
 describe('registerCommonContext', () => {
   describe('MAIN RUM events — top-level fields', () => {
     it.each([
@@ -162,6 +168,21 @@ describe('registerCommonContext', () => {
       const result = triggerRendererRum(createTestConfiguration());
 
       expect(result.container).toEqual({ source: 'electron' });
+    });
+  });
+
+  describe('log events', () => {
+    it('contributes only the application on RENDERER logs, so the renderer keeps its own identity', () => {
+      const result = triggerLogs(createTestConfiguration({ applicationId: 'app-id' }), EventSource.RENDERER);
+
+      expect(result).toEqual({ application_id: 'app-id' });
+    });
+
+    it('contributes nothing on MAIN logs, which the SDK does not produce yet', () => {
+      const result = triggerLogs(createTestConfiguration(), EventSource.MAIN);
+
+      // Every callback skipped, so there is nothing to combine and the hook yields undefined.
+      expect(result).toBeUndefined();
     });
   });
 

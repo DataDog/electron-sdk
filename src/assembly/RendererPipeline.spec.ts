@@ -16,6 +16,7 @@ import {
   type EndUserActivityEvent,
   type RawProfileEvent,
   type RawReplayEvent,
+  type ServerLogsEvent,
   type ServerRumEvent,
   type ServerTelemetryEvent,
 } from '../event';
@@ -54,6 +55,20 @@ const RENDERER_RUM_DATA = {
   session: { id: 'renderer-session-id', type: 'user' },
   view: { id: 'renderer-view-id', name: 'My View', url: 'http://localhost' },
   ddtags: 'sdk_version:1.0.0',
+};
+
+const RENDERER_LOG_DATA = {
+  date: 12345 as TimeStamp,
+  message: 'Workspace switched',
+  status: 'info',
+  service: 'renderer-service',
+  origin: 'logger',
+  logger: { name: 'workspace' },
+  application_id: 'renderer-app-id',
+  session_id: 'renderer-stub-session',
+  session: { id: 'renderer-stub-session' },
+  view: { id: 'renderer-view-id', url: 'https://app.example.com/workspace' },
+  ddtags: 'sdk_version:6.0.0,service:renderer-service,env:prod',
 };
 
 const RENDERER_CLICK_DATA = {
@@ -109,6 +124,7 @@ describe('RendererPipeline', () => {
   let simulateIpcMessage: (msg: string, origin?: string, url?: string, extra?: IpcMessageExtra) => void;
   let serverEvents: ServerRumEvent[];
   let telemetryEvents: ServerTelemetryEvent[];
+  let logsEvents: ServerLogsEvent[];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -116,6 +132,7 @@ describe('RendererPipeline', () => {
     hooks = createFormatHooks();
     serverEvents = [];
     telemetryEvents = [];
+    logsEvents = [];
 
     mockIpcMainOn.mockImplementation(
       (
@@ -166,6 +183,12 @@ describe('RendererPipeline', () => {
       canHandle: (event): event is ServerTelemetryEvent =>
         event.kind === EventKind.SERVER && event.track === EventTrack.RUM && event.data.type === 'telemetry',
       handle: (event) => telemetryEvents.push(event),
+    });
+
+    eventManager.registerHandler<ServerLogsEvent>({
+      canHandle: (event): event is ServerLogsEvent =>
+        event.kind === EventKind.SERVER && event.track === EventTrack.LOGS,
+      handle: (event) => logsEvents.push(event),
     });
 
     new RendererPipeline(eventManager, hooks, DEFAULT_CONFIG);
@@ -523,6 +546,150 @@ describe('RendererPipeline', () => {
     });
   });
 
+  describe('log events', () => {
+    function simulateLog(data: Record<string, unknown> = RENDERER_LOG_DATA) {
+      simulateIpcMessage(JSON.stringify({ eventType: 'log', event: data }));
+    }
+
+    it('emits a ServerLogsEvent with source RENDERER on the LOGS track', () => {
+      simulateLog();
+
+      expect(logsEvents).toHaveLength(1);
+      expect(logsEvents[0].source).toBe(EventSource.RENDERER);
+      expect(logsEvents[0].track).toBe(EventTrack.LOGS);
+      expect(logsEvents[0].data.message).toBe(RENDERER_LOG_DATA.message);
+    });
+
+    it('triggers the logs hooks with the renderer source and the log date', () => {
+      const callback = vi.fn(() => ({}));
+      hooks.registerLogs(callback);
+
+      simulateLog();
+
+      expect(callback).toHaveBeenCalledWith({ startTime: RENDERER_LOG_DATA.date, source: EventSource.RENDERER });
+    });
+
+    it('lets the main process override the application and session the renderer reported', () => {
+      hooks.registerLogs(() => ({
+        application_id: 'main-app',
+        session_id: 'main-session',
+        session: { id: 'main-session' },
+      }));
+
+      simulateLog();
+
+      expect(logsEvents[0].data).toMatchObject({
+        application_id: 'main-app',
+        session_id: 'main-session',
+        session: { id: 'main-session' },
+      });
+    });
+
+    it("keeps the renderer's own service, ddtags, status and view", () => {
+      hooks.registerLogs(() => ({ application_id: 'main-app' }));
+
+      simulateLog();
+
+      expect(logsEvents[0].data).toMatchObject({
+        date: RENDERER_LOG_DATA.date,
+        service: 'renderer-service',
+        status: 'info',
+        ddtags: 'sdk_version:6.0.0,service:renderer-service,env:prod',
+        view: { id: 'renderer-view-id' },
+        logger: { name: 'workspace' },
+      });
+    });
+
+    it('forwards a log whose stub session ids a hook nulled, rather than dropping it', () => {
+      hooks.registerLogs(() => ({ session_id: null, session: { id: null } }));
+
+      simulateLog();
+
+      expect(logsEvents).toHaveLength(1);
+      expect(logsEvents[0].data.session_id).toBeNull();
+      expect(logsEvents[0].data.session).toEqual({ id: null });
+    });
+
+    it('drops the log when a hook discards it', () => {
+      hooks.registerLogs(() => DISCARDED);
+
+      simulateLog();
+
+      expect(logsEvents).toHaveLength(0);
+    });
+
+    it('drops renderer logs before enrichment when logsSampleRate is 0', () => {
+      const callback = vi.fn(() => ({}));
+      hooks.registerLogs(callback);
+      new RendererPipeline(eventManager, hooks, createTestConfiguration({ logsSampleRate: 0 }));
+
+      simulateLog();
+
+      expect(logsEvents).toHaveLength(0);
+      expect(callback).not.toHaveBeenCalled();
+    });
+
+    it('samples each renderer log independently when logsSampleRate is between 0 and 100', () => {
+      const random = vi.spyOn(Math, 'random').mockReturnValueOnce(0.25).mockReturnValueOnce(0.75);
+      new RendererPipeline(eventManager, hooks, createTestConfiguration({ logsSampleRate: 50 }));
+
+      try {
+        simulateLog({ ...RENDERER_LOG_DATA, message: 'sampled in' });
+        simulateLog({ ...RENDERER_LOG_DATA, message: 'sampled out' });
+      } finally {
+        random.mockRestore();
+      }
+
+      expect(logsEvents).toHaveLength(1);
+      expect(logsEvents[0].data.message).toBe('sampled in');
+    });
+
+    it('does not deduplicate or relay-cap logs sampled in at logsSampleRate 100', () => {
+      for (let i = 0; i < 150; i++) simulateLog();
+
+      expect(logsEvents).toHaveLength(150);
+    });
+
+    it("prefers the renderer's own user over the main process's", () => {
+      hooks.registerLogs(() => ({ usr: { id: 'main-user' } }));
+
+      simulateLog({ ...RENDERER_LOG_DATA, usr: { id: 'renderer-user' } });
+
+      expect(logsEvents[0].data.usr).toEqual({ id: 'renderer-user' });
+    });
+
+    it('enriches an anonymous-only renderer user with the main process user', () => {
+      hooks.registerLogs(() => ({ usr: { id: 'main-user' } }));
+
+      simulateLog({ ...RENDERER_LOG_DATA, usr: { anonymous_id: 'anon-1' } });
+
+      expect(logsEvents[0].data.usr).toEqual({ id: 'main-user', anonymous_id: 'anon-1' });
+    });
+
+    it('treats null renderer customer contexts as absent instead of dropping the log', () => {
+      hooks.registerLogs(() => ({ usr: { id: 'main-user' }, account: { id: 'main-account' } }));
+
+      simulateLog({ ...RENDERER_LOG_DATA, usr: null, account: null });
+
+      expect(logsEvents).toHaveLength(1);
+      expect(logsEvents[0].data.usr).toEqual({ id: 'main-user' });
+      expect(logsEvents[0].data.account).toEqual({ id: 'main-account' });
+    });
+
+    it.each([
+      ['not an object', 'not-an-object'],
+      ['a missing date', { message: 'm', status: 'info' }],
+      ['a non-numeric date', { date: 'yesterday', message: 'm', status: 'info' }],
+      ['a missing message', { date: 1, status: 'info' }],
+      ['a missing status', { date: 1, message: 'm' }],
+    ])('reports a telemetry error and drops a log with %s', (_label, payload) => {
+      simulateLog(payload as unknown as Record<string, unknown>);
+
+      expect(logsEvents).toHaveLength(0);
+      expect(mockAddError).toHaveBeenCalledWith(new Error('Received malformed log bridge event'));
+    });
+  });
+
   describe('internal telemetry events', () => {
     function simulateTelemetry(data: Record<string, unknown> = RENDERER_TELEMETRY_DATA) {
       simulateIpcMessage(JSON.stringify({ eventType: 'internal_telemetry', event: data }));
@@ -645,14 +812,6 @@ describe('RendererPipeline', () => {
       expect(telemetryEvents).toHaveLength(0);
       expect(mockAddError).toHaveBeenCalledOnce();
       expect((mockAddError.mock.calls[0][0] as Error).message).toContain('malformed telemetry');
-    });
-  });
-
-  describe('unimplemented event types', () => {
-    it('does not emit for log events (TODO)', () => {
-      const spy = vi.spyOn(eventManager, 'notify');
-      simulateIpcMessage(JSON.stringify({ eventType: 'log', event: { message: 'hello' } }));
-      expect(spy).not.toHaveBeenCalled();
     });
   });
 

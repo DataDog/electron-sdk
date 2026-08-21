@@ -10,12 +10,14 @@ import type {
   BrowserProfileEvent,
   BrowserProfilerTrace,
   RawReplayEvent,
+  ServerLogsEvent,
 } from '../event';
-import { isEmptyObject } from '@datadog/browser-core';
+import { isEmptyObject, performDraw } from '@datadog/browser-core';
 import { monitor, addError as addTelemetryError, type TelemetryEvent } from '../domain/telemetry';
 import { BRIDGE_CHANNEL, setBridgeConfig, type BridgeOptions } from '../common';
 import type { FormatHooks } from './hooks';
 import type { RumEvent } from '../domain/rum';
+import type { LogsEvent } from '../domain/logs';
 import { Configuration } from '../config';
 import { isFiniteNumber } from '../tools/validation';
 import { RendererIpcGate } from './RendererIpcGate';
@@ -41,12 +43,14 @@ interface BridgeEvent {
  */
 export class RendererPipeline {
   private readonly bridgeOptions: BridgeOptions;
+  private readonly logsSampleRate: number;
 
   constructor(
     private readonly eventManager: EventManager,
     private readonly hooks: FormatHooks,
     config: Configuration
   ) {
+    this.logsSampleRate = config.logsSampleRate;
     this.bridgeOptions = {
       defaultPrivacyLevel: config.defaultPrivacyLevel,
       allowedRendererHosts: config.allowedRendererHosts,
@@ -88,8 +92,7 @@ export class RendererPipeline {
         this.handleRumEvent(bridgeEvent.event);
         break;
       case 'log':
-        // TODO(RUM-15047): when Logs are implemented, enrich them with user/account context
-        // matching mobile: `usr.*` and `account.*`.
+        this.handleLogEvent(bridgeEvent.event);
         break;
       case 'internal_telemetry':
         this.handleTelemetryEvent(bridgeEvent.event);
@@ -169,7 +172,7 @@ export class RendererPipeline {
       return;
     }
 
-    this.emitRendererEvent(data, resolveCustomerContextOverrides(data, hookResult));
+    this.emitRendererEvent(EventTrack.RUM, data, resolveCustomerContextOverrides(data, hookResult));
   }
 
   /**
@@ -206,7 +209,58 @@ export class RendererPipeline {
       return;
     }
 
-    this.emitRendererEvent(data, hookResult);
+    this.emitRendererEvent(EventTrack.RUM, data, hookResult);
+  }
+
+  /**
+   * Forwards a log the renderer's browser Logs SDK has already assembled, onto the LOGS track.
+   *
+   * Relaying is what makes the renderer's logs reachable at all: once the preload exposes the bridge
+   * and the renderer's host is allowed, `startLogs` picks `startLogsBridge` over `startLogsBatch` and
+   * `preStartLogs` rewrites the renderer's `clientToken` to `'empty'`, so the browser SDK stops talking
+   * to intake entirely and this is the only path left.
+   *
+   * Browser Logs uses an always-tracked session stub in bridge mode, so its `sessionSampleRate` does
+   * not gate these events. Like the Android and iOS WebView integrations, Electron applies its own
+   * per-log `logsSampleRate` after receiving a valid payload and before enriching or uploading it.
+   */
+  private handleLogEvent(eventData: unknown): void {
+    // A bridge/SDK version mismatch, or a renderer sending on the channel itself, could put anything
+    // here. The payload is forwarded to intake untouched apart from the hook result, so reject it at
+    // the boundary, as the telemetry/profile/record cases do.
+    //
+    // `date` resolves the session the log is attributed to, and `message`/`status` are what the logs
+    // intake maps to the body and severity of the log — a payload missing them would land as an
+    // unreadable blob. It has to be *finite* for the same reason it does for telemetry, and it matters
+    // more here: logs have no relay cap, so an `Infinity` date that `JSON.stringify` writes as `null`
+    // would be unbounded rather than capped at a session's budget. Everything else stays unchecked: the
+    // log's attributes are the customer's own, and pinning their shape here would drop valid logs.
+    if (
+      !isIndexableObject(eventData) ||
+      !isFiniteNumber(eventData.date) ||
+      typeof eventData.message !== 'string' ||
+      typeof eventData.status !== 'string'
+    ) {
+      addTelemetryError(new Error('Received malformed log bridge event'));
+      return;
+    }
+
+    if (!performDraw(this.logsSampleRate)) {
+      return;
+    }
+
+    const data = eventData as unknown as LogsEvent;
+
+    const hookResult = this.hooks.triggerLogs({
+      startTime: data.date as TimeStamp,
+      source: EventSource.RENDERER,
+    });
+
+    if (hookResult === DISCARDED) {
+      return;
+    }
+
+    this.emitRendererEvent(EventTrack.LOGS, data, resolveCustomerContextOverrides(data, hookResult));
   }
 
   /**
@@ -216,29 +270,39 @@ export class RendererPipeline {
    * Overrides are merged last, so the application and session the main process owns win over the ones
    * the renderer reported. Everything else stays the renderer's, see `registerCommonContext`.
    */
-  private emitRendererEvent<E extends RumEvent | TelemetryEvent>(
+  private emitRendererEvent<E extends RumEvent | TelemetryEvent | LogsEvent>(
+    track: typeof EventTrack.RUM | typeof EventTrack.LOGS,
     data: E,
     overrides: RecursivePartial<E> | undefined
   ): void {
     this.eventManager.notify({
       kind: EventKind.SERVER,
-      track: EventTrack.RUM,
+      track,
       source: EventSource.RENDERER,
       data: combine(data, overrides),
-    } as ServerRumEvent | ServerTelemetryEvent);
+    } as ServerRumEvent | ServerTelemetryEvent | ServerLogsEvent);
   }
+}
+
+/** An assembled renderer event that may already carry the customer context the renderer set. */
+interface CustomerContextCarrier {
+  usr?: Readonly<Record<string, unknown>> | null;
+  account?: Readonly<Record<string, unknown>> | null;
 }
 
 /**
  * The renderer's own user/account context takes precedence. An anonymous-only renderer user
  * is the exception: preserve its anonymous_id while enriching it with the main-process user.
  * session/application/container always come from the main process.
+ *
+ * Shared by RUM events and logs so both report the same user for the same renderer — the mobile SDKs
+ * are narrower here, merging only the native `anonymous_id` into a webview log.
  */
-function resolveCustomerContextOverrides(
-  data: RumEvent,
-  hookResult: RecursivePartial<RumEvent> | null | undefined
-): RecursivePartial<RumEvent> {
-  const overrides = { ...(hookResult ?? {}) };
+function resolveCustomerContextOverrides<E extends CustomerContextCarrier>(
+  data: E,
+  hookResult: RecursivePartial<E> | null | undefined
+): RecursivePartial<E> {
+  const overrides = { ...(hookResult ?? {}) } as CustomerContextCarrier;
   if (hasContext(data.usr)) {
     if (isAnonymousOnlyUserContext(data.usr) && hasContext(overrides.usr)) {
       overrides.usr = combine(overrides.usr, data.usr);
@@ -247,17 +311,17 @@ function resolveCustomerContextOverrides(
     }
   }
   if (hasContext(data.account)) delete overrides.account;
-  return overrides;
+  return overrides as RecursivePartial<E>;
 }
 
 /** Whether the renderer event already carries a non-empty context object. */
-function hasContext(context: object | undefined): boolean {
-  return context !== undefined && !isEmptyObject(context);
+function hasContext(context: unknown): context is Readonly<Record<string, unknown>> {
+  return isIndexableObject(context) && !isEmptyObject(context);
 }
 
 /** Whether the renderer carries only Browser RUM's automatically generated anonymous user id. */
-function isAnonymousOnlyUserContext(context: RumEvent['usr']): boolean {
-  if (context === undefined) return false;
+function isAnonymousOnlyUserContext(context: unknown): boolean {
+  if (!isIndexableObject(context)) return false;
   const keys = Object.keys(context);
   return keys.length > 0 && keys.every((key) => key === 'anonymous_id');
 }

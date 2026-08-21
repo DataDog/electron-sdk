@@ -28,6 +28,12 @@ describe('computeIntakeUrlForTrack', () => {
     );
   });
 
+  it('preserves the browser source for renderer logs', () => {
+    expect(computeIntakeUrlForTrack('datadoghq.com', 'logs')).toBe(
+      'https://browser-intake-datadoghq.com/api/v2/logs?ddsource=browser'
+    );
+  });
+
   it('uses proxy when provided, with ddforward for rum track', () => {
     expect(computeIntakeUrlForTrack('datadoghq.com', 'rum', { proxy: 'http://localhost:3000' })).toBe(
       'http://localhost:3000?ddforward=%2Fapi%2Fv2%2Frum%3Fddsource%3Delectron'

@@ -504,6 +504,25 @@ describe('buildConfiguration', () => {
     });
   });
 
+  describe('logsSampleRate validation', () => {
+    it('defaults to 100 when not provided', () => {
+      expect(buildConfiguration({ ...DEFAULT_CONFIG })?.logsSampleRate).toBe(100);
+    });
+
+    it.each([0, 50, 100])('accepts valid value: %d', (value) => {
+      expect(buildConfiguration({ ...DEFAULT_CONFIG, logsSampleRate: value })?.logsSampleRate).toBe(value);
+    });
+
+    it.each([-1, 101, 'fifty', {}, NaN])('rejects invalid value: %s', (value) => {
+      const config = { ...DEFAULT_CONFIG, logsSampleRate: value } as unknown as InitConfiguration;
+
+      expect(buildConfiguration(config)).toBeUndefined();
+      expect(display.error).toHaveBeenCalledWith(
+        "Configuration error: 'logsSampleRate' must be a number between 0 and 100"
+      );
+    });
+  });
+
   describe('traceSamplingRules validation', () => {
     it('defaults to an empty list', () => {
       expect(buildConfiguration({ ...DEFAULT_CONFIG })?.traceSamplingRules).toEqual([]);
