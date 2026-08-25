@@ -14,8 +14,10 @@ export default tseslint.config(
       '.worktrees/**',
       '**/*.mjs',
       'rum-events-format/**',
-      '**/rumEvent.types.ts',
+      '**/rendererRumEvent.types.ts',
+      '**/mainRumEvent.types.ts',
       '**/telemetryEvent.types.ts',
+      '**/profilingEvent.types.ts',
       'minidump-processor/**',
       // Integration apps are standalone projects with their own tsconfigs and toolchains.
       // They are not part of the root project service and are not linted here.

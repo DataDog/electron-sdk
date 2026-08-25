@@ -8,7 +8,7 @@ import { isEmptyObject } from '@datadog/browser-core';
 import { monitor, addError as addTelemetryError } from '../domain/telemetry';
 import { BRIDGE_CHANNEL, setBridgeConfig, type BridgeOptions } from '../common';
 import type { FormatHooks } from './hooks';
-import type { RumEvent } from '../domain/rum';
+import type { RendererRumEvent } from '../domain/rum';
 import { Configuration } from '../config';
 import { RendererIpcGate } from './RendererIpcGate';
 
@@ -145,7 +145,7 @@ export class RendererPipeline {
   }
 
   private handleRumEvent(eventData: unknown): void {
-    const data = eventData as RumEvent;
+    const data = eventData as RendererRumEvent;
 
     // Emit activity before the session check: a click after session expiry must still
     // create a new session even though triggerRum will return DISCARDED
@@ -184,9 +184,9 @@ export class RendererPipeline {
  * session/application/container always come from the main process.
  */
 function resolveCustomerContextOverrides(
-  data: RumEvent,
-  hookResult: RecursivePartial<RumEvent> | null | undefined
-): RecursivePartial<RumEvent> {
+  data: RendererRumEvent,
+  hookResult: RecursivePartial<RendererRumEvent> | null | undefined
+): RecursivePartial<RendererRumEvent> {
   const overrides = { ...(hookResult ?? {}) };
   if (hasContext(data.usr)) {
     if (isAnonymousOnlyUserContext(data.usr) && hasContext(overrides.usr)) {
@@ -205,7 +205,7 @@ function hasContext(context: object | undefined): boolean {
 }
 
 /** Whether the renderer carries only Browser RUM's automatically generated anonymous user id. */
-function isAnonymousOnlyUserContext(context: RumEvent['usr']): boolean {
+function isAnonymousOnlyUserContext(context: RendererRumEvent['usr']): boolean {
   if (context === undefined) return false;
   const keys = Object.keys(context);
   return keys.length > 0 && keys.every((key) => key === 'anonymous_id');

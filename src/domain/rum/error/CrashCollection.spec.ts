@@ -41,7 +41,7 @@ import { CrashCollection } from './CrashCollection';
 import { EventManager, EventKind, EventFormat, type RawRumEvent } from '../../../event';
 import { processMinidump } from '../../../wasm';
 import type { CrashReport } from '../../../wasm';
-import type { RawRumError } from '../rawRumData.types';
+import type { RawRumError } from '../types';
 import { display } from '../../../tools/display';
 import { addError } from '../../telemetry';
 

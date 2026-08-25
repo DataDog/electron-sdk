@@ -12,5 +12,7 @@ rulesets:
             - 'src/index.ts' # allow new for SDK initialization
 
 ignore:
-  - '**/rumEvent.types.ts' # generated
+  - '**/rendererRumEvent.types.ts' # generated
+  - '**/mainRumEvent.types.ts' # generated
   - '**/telemetryEvent.types.ts' # generated
+  - '**/profilingEvent.types.ts' # generated
