@@ -2,7 +2,6 @@ import { type TimeStamp, type ServerDuration } from '@datadog/js-core/time';
 import { type RecursivePartial } from '@datadog/js-core/util';
 import {
   RumErrorEvent,
-  RumEvent,
   RumResourceEvent,
   RumViewEvent,
   RumVitalDurationEvent,
@@ -10,7 +9,6 @@ import {
 } from './rumEvent.types';
 
 export type RawRumData = RawRumView | RawRumError | RawRumOperationStepVital | RawRumDurationVital | RawRumResource;
-export type MainRumEvent = Extract<RumEvent, { type: RawRumData['type'] }>;
 
 export interface RawRumView extends RecursivePartial<RumViewEvent> {
   type: 'view';
@@ -105,8 +103,8 @@ export interface RawRumResource extends RecursivePartial<RumResourceEvent> {
     url: string;
   };
   _dd: {
-    trace_id: string;
-    span_id: string;
+    trace_id?: string;
+    span_id?: string;
     format_version: 2;
   };
 }

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self' https://httpbin.org"
+      content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; connect-src 'self' https://httpbin.org"
     />
     <title>Electron SDK Playground</title>
     <style>
@@ -196,6 +196,7 @@
         <button id="main-fetch">Main Fetch (https)</button>
         <button id="main-fetch-fetch">Main Fetch (fetch)</button>
         <button id="main-fetch-net">Main Fetch (net)</button>
+        <button id="main-fetch-net-drop">Main Fetch (net, drop trace)</button>
       </div>
 
       <div class="section-label">Custom Duration Vitals (main process)</div>
@@ -216,6 +217,11 @@
         <button id="add-account-extra-info">Add Account Extra Info (tier=enterprise)</button>
         <button id="clear-account-info">Clear Account Info</button>
       </div>
+      <div class="button-group">
+        <button id="get-user-info">Get User Info</button>
+        <button id="get-account-info">Get Account Info</button>
+        <button id="add-error">Add Error</button>
+      </div>
 
       <div class="section-label">Operation Monitoring (main process, experimental)</div>
       <div class="button-group">
@@ -227,7 +233,7 @@
         <button id="op-parallel-uploads">Run 5 parallel uploads</button>
       </div>
 
-      <div class="section-label">beforeSend</div>
+      <div class="section-label">beforeSendRum</div>
       <div class="button-group">
         <button id="before-send-scrub">Scrub Error</button>
         <button id="before-send-filter">Filter Error</button>
@@ -235,7 +241,7 @@
 
       <div class="session-section">
         <h2>IPC Activity Log:</h2>
-        <div id="ipc-log"></div>
+        <div id="ipc-log" data-dd-privacy="mask"></div>
       </div>
     </div>
 

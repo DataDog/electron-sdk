@@ -40,7 +40,6 @@ function serveBridgeWindowOverAppProtocol(): void {
 import {
   init,
   addError,
-  _generateTelemetryError,
   _flushTransport,
   stopSession,
   addDurationVital,
@@ -70,14 +69,14 @@ let rendererHttpServer: http.Server | null = null;
 
 const noop = () => undefined;
 
-type BeforeSend = NonNullable<InitConfiguration['beforeSend']>;
+type BeforeSendRum = NonNullable<InitConfiguration['beforeSendRum']>;
 
 const e2eControls: {
-  beforeSend: BeforeSend;
+  beforeSendRum: BeforeSendRum;
   init?: () => Promise<void>;
   openWindow?: () => void;
 } = {
-  beforeSend: () => true,
+  beforeSendRum: () => true,
 };
 
 (globalThis as Record<string, unknown>).__ddE2E = e2eControls;
@@ -139,7 +138,7 @@ void app.whenReady().then(async () => {
 
   ipcMain.handle('generateTelemetryErrors', (_event, count: number) => {
     for (let i = 0; i < count; i++) {
-      _generateTelemetryError();
+      generateTelemetryError(i);
     }
   });
 
@@ -356,11 +355,27 @@ function createWindow() {
   void mainWindow.loadFile(join(__dirname, 'main-window.html'));
 }
 
+/**
+ * Provoke an SDK-internal error through a public API: `setAccountInfo` deep-clones its argument, so a
+ * throwing getter surfaces as a monitored error and produces one error telemetry event.
+ *
+ * `discriminator` varies the message: telemetry deduplicates identical events per session, so without
+ * it a burst collapses into a single event.
+ */
+function generateTelemetryError(discriminator: number) {
+  setAccountInfo({
+    id: 'telemetry-error',
+    get name(): string {
+      throw new Error(`expected error ${discriminator}`);
+    },
+  });
+}
+
 function getConfiguration(): InitConfiguration {
   if (process.env.DD_ELECTRON_SDK_CONFIG) {
     const config = JSON.parse(process.env.DD_ELECTRON_SDK_CONFIG) as InitConfiguration;
-    if (process.env.DD_E2E_BEFORE_SEND === '1') {
-      config.beforeSend = (event) => e2eControls.beforeSend(event);
+    if (process.env.DD_E2E_BEFORE_SEND_RUM === '1') {
+      config.beforeSendRum = (event, context) => e2eControls.beforeSendRum(event, context);
     }
     return config;
   }

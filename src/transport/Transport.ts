@@ -1,6 +1,6 @@
 import { app } from 'electron';
 
-import { BatchSizes, BatchUploadFrequencies, type Configuration } from '../config';
+import { resolveBatchSize, resolveUploadFrequency, type Configuration } from '../config';
 import { EventKind, EventTrack, type EventManager, type ServerEvent } from '../event';
 import { BatchManager } from './batch';
 
@@ -39,6 +39,10 @@ export class Transport {
     if (this.config.profilingSampleRate > 0) {
       tracks.push(EventTrack.PROFILE);
     }
+
+    if (this.config.sessionReplaySampleRate > 0) {
+      tracks.push(EventTrack.REPLAY);
+    }
     return tracks;
   }
 
@@ -48,10 +52,8 @@ export class Transport {
    */
   private async createBatchManager(trackType: EventTrack) {
     const path = this.basePath;
-    const batchSize = this.config.batchSize ? BatchSizes[this.config.batchSize] : BatchSizes.MEDIUM;
-    const uploadFrequency = this.config.uploadFrequency
-      ? BatchUploadFrequencies[this.config.uploadFrequency]
-      : BatchUploadFrequencies.NORMAL;
+    const batchSize = resolveBatchSize(this.config);
+    const uploadFrequency = resolveUploadFrequency(this.config);
 
     const manager = await BatchManager.create(this.config, {
       path,

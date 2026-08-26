@@ -123,6 +123,14 @@ describe('ViewCollection', () => {
       expect(data._dd.document_version).toBe(2);
     });
 
+    it('does not emit another update when the view is already inactive', () => {
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+
+      expect(rawRumEvents).toHaveLength(2);
+      expect((rawRumEvents[1].data as RawRumView)._dd.document_version).toBe(2);
+    });
+
     it('stops periodic updates after expiration', () => {
       eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
       vi.advanceTimersByTime(SESSION_KEEP_ALIVE_INTERVAL);

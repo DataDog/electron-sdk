@@ -2,30 +2,44 @@
   "name": "electron-builder-vite",
   "version": "1.0.0",
   "private": true,
-  "packageManager": "yarn@4.17.0",
-  "main": "dist/main.js",
+  "packageManager": "yarn@4.17.1",
+  "main": "dist/default-copy/main.js",
   "integration": {
-    "devMain": "dist/main.js",
+    "devMain": "dist/default-copy/main.js",
     "packagedBinary": {
-      "darwin-arm64": "out/mac-arm64/electron-builder-vite.app/Contents/MacOS/electron-builder-vite",
-      "darwin-x64": "out/mac/electron-builder-vite.app/Contents/MacOS/electron-builder-vite",
-      "linux": "out/linux-unpacked/electron-builder-vite",
-      "win32": "out/win-unpacked/electron-builder-vite.exe"
+      "darwin-arm64": "out/default-copy/mac-arm64/electron-builder-vite.app/Contents/MacOS/electron-builder-vite",
+      "darwin-x64": "out/default-copy/mac/electron-builder-vite.app/Contents/MacOS/electron-builder-vite",
+      "linux": "out/default-copy/linux-unpacked/electron-builder-vite",
+      "win32": "out/default-copy/win-unpacked/electron-builder-vite.exe"
+    },
+    "variants": {
+      "packager-copy": {
+        "devMain": "dist/packager-copy/main.js",
+        "packagedBinary": {
+          "darwin-arm64": "out/packager-copy/mac-arm64/electron-builder-vite-packager-copy.app/Contents/MacOS/electron-builder-vite-packager-copy",
+          "darwin-x64": "out/packager-copy/mac/electron-builder-vite-packager-copy.app/Contents/MacOS/electron-builder-vite-packager-copy",
+          "linux": "out/packager-copy/linux-unpacked/electron-builder-vite-packager-copy",
+          "win32": "out/packager-copy/win-unpacked/electron-builder-vite-packager-copy.exe"
+        }
+      }
     }
   },
   "scripts": {
-    "build": "vite build -c vite.main.config.ts && vite build -c vite.preload.config.ts && vite build -c vite.renderer.config.ts",
-    "package": "yarn build && electron-builder --dir --publish never"
+    "build": "yarn build:default-copy && yarn build:packager-copy",
+    "build:default-copy": "vite build -c vite.main.config.ts --mode default-copy && vite build -c vite.preload.config.ts --mode default-copy && vite build -c vite.renderer.config.ts --mode default-copy",
+    "build:packager-copy": "vite build -c vite.main.config.ts --mode packager-copy && vite build -c vite.preload.config.ts --mode packager-copy && vite build -c vite.renderer.config.ts --mode packager-copy",
+    "package": "yarn build && electron-builder --dir --publish never --config electron-builder.yml && electron-builder --dir --publish never --config electron-builder.packager-copy.yml"
   },
   "dependencies": {
-    "@datadog/browser-rum": "7.4.0",
+    "@datadog/browser-rum": "7.5.0",
     "@datadog/electron-sdk": "file:../../integration-sdk.tgz"
   },
   "devDependencies": {
-    "@types/node": "24.13.2",
+    "@electron/asar": "3.4.1",
+    "@types/node": "24.13.3",
     "electron": "41.1.0",
     "electron-builder": "26.15.3",
     "typescript": "5.9.3",
-    "vite": "8.0.16"
+    "vite": "8.1.5"
   }
 }

@@ -15,10 +15,12 @@ import {
   type BrowserProfilerTrace,
   type EndUserActivityEvent,
   type RawProfileEvent,
+  type RawReplayEvent,
   type ServerRumEvent,
 } from '../event';
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
-import { createTestConfiguration } from '../mocks.specUtil';
+import type { RumBeforeSend } from '../config';
+import { createMockSender, createTestConfiguration, type MockSender } from '../mocks.specUtil';
 
 const { mockIpcMainOn, mockAddError, mockSetBridgeConfig } = vi.hoisted(() => {
   const mockIpcMainOn = vi.fn();
@@ -75,10 +77,18 @@ const RENDERER_CLICK_DATA = {
   ddtags: 'sdk_version:1.0.0',
 };
 
+interface IpcMessageExtra {
+  /** Pass `null` to simulate a destroyed/navigated frame (senderFrame === null). */
+  senderFrame?: null;
+  processId?: number;
+  frameId?: number;
+  sender?: MockSender;
+}
+
 describe('RendererPipeline', () => {
   let eventManager: EventManager;
   let hooks: FormatHooks;
-  let simulateIpcMessage: (msg: string) => void;
+  let simulateIpcMessage: (msg: string, origin?: string, url?: string, extra?: IpcMessageExtra) => void;
   let serverEvents: ServerRumEvent[];
 
   beforeEach(() => {
@@ -87,11 +97,42 @@ describe('RendererPipeline', () => {
     hooks = createFormatHooks();
     serverEvents = [];
 
-    mockIpcMainOn.mockImplementation((channel: string, callback: (_event: unknown, msg: string) => void) => {
-      if (channel === BRIDGE_CHANNEL) {
-        simulateIpcMessage = (msg: string) => callback({}, msg);
+    mockIpcMainOn.mockImplementation(
+      (
+        channel: string,
+        callback: (
+          event: {
+            senderFrame: { origin: string; url?: string } | null;
+            processId: number;
+            frameId: number;
+            sender: {
+              once: (event: string, cb: () => void) => void;
+              on: (event: string, cb: (...args: unknown[]) => void) => void;
+              off: (event: string, cb: (...args: unknown[]) => void) => void;
+            };
+          },
+          msg: string
+        ) => void
+      ) => {
+        if (channel === BRIDGE_CHANNEL) {
+          simulateIpcMessage = (
+            msg: string,
+            origin = 'https://any.example.com',
+            url?: string,
+            extra?: IpcMessageExtra
+          ) =>
+            callback(
+              {
+                senderFrame: extra?.senderFrame === null ? null : { origin, url },
+                processId: extra?.processId ?? 1,
+                frameId: extra?.frameId ?? 1,
+                sender: extra?.sender ?? createMockSender(),
+              },
+              msg
+            );
+        }
       }
-    });
+    );
 
     eventManager.registerHandler<ServerRumEvent>({
       canHandle: (event): event is ServerRumEvent => event.kind === EventKind.SERVER && event.track === EventTrack.RUM,
@@ -113,28 +154,36 @@ describe('RendererPipeline', () => {
   it('publishes bridgeOptions derived from config via setBridgeConfig', () => {
     const config = createTestConfiguration({
       defaultPrivacyLevel: 'allow',
-      allowedWebViewHosts: ['example.com'],
+      allowedRendererHosts: ['example.com'],
       profilingSampleRate: 0,
+      sessionReplaySampleRate: 0,
     });
     mockSetBridgeConfig.mockClear();
     new RendererPipeline(eventManager, hooks, config);
     expect(mockSetBridgeConfig).toHaveBeenCalledWith({
       defaultPrivacyLevel: 'allow',
-      allowedWebViewHosts: ['example.com'],
+      allowedRendererHosts: ['example.com'],
       capabilities: [],
     });
   });
 
   describe('capabilities', () => {
     it('advertises the profiles capability when profilingSampleRate > 0', () => {
-      const config = createTestConfiguration({ profilingSampleRate: 100 });
+      const config = createTestConfiguration({ profilingSampleRate: 100, sessionReplaySampleRate: 0 });
       mockSetBridgeConfig.mockClear();
       new RendererPipeline(new EventManager(), createFormatHooks(), config);
       expect((mockSetBridgeConfig.mock.calls[0]?.[0] as BridgeOptions).capabilities).toEqual(['profiles']);
     });
 
-    it('advertises no capabilities when profilingSampleRate is 0', () => {
-      const config = createTestConfiguration({ profilingSampleRate: 0 });
+    it('advertises replay and profiling capabilities when both are enabled', () => {
+      const config = createTestConfiguration({ profilingSampleRate: 100, sessionReplaySampleRate: 100 });
+      mockSetBridgeConfig.mockClear();
+      new RendererPipeline(new EventManager(), createFormatHooks(), config);
+      expect((mockSetBridgeConfig.mock.calls[0]?.[0] as BridgeOptions).capabilities).toEqual(['profiles', 'records']);
+    });
+
+    it('advertises no capabilities when profiling and replay are disabled', () => {
+      const config = createTestConfiguration({ profilingSampleRate: 0, sessionReplaySampleRate: 0 });
       mockSetBridgeConfig.mockClear();
       new RendererPipeline(new EventManager(), createFormatHooks(), config);
       expect((mockSetBridgeConfig.mock.calls[0]?.[0] as BridgeOptions).capabilities).toEqual([]);
@@ -177,6 +226,37 @@ describe('RendererPipeline', () => {
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
 
       expect(serverEvents[0].data.container).toMatchObject({ source: 'electron' });
+    });
+
+    it('applies beforeSendRum after enrichment with the renderer source', () => {
+      hooks.registerRum(() => ({ session: { id: 'main-session' } }));
+      let callbackSource: string | undefined;
+      let callbackSessionId: string | undefined;
+      const beforeSendRum: RumBeforeSend = (event, { source }) => {
+        callbackSource = source;
+        callbackSessionId = event.session.id;
+        event.view.name = 'redacted view';
+        return true;
+      };
+      new RendererPipeline(eventManager, hooks, createTestConfiguration({ beforeSendRum }));
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
+
+      expect(callbackSource).toBe('renderer');
+      expect(callbackSessionId).toBe('main-session');
+      expect(serverEvents[0].data.view.name).toBe('redacted view');
+    });
+
+    it('does not emit renderer events discarded by beforeSendRum', () => {
+      new RendererPipeline(
+        eventManager,
+        hooks,
+        createTestConfiguration({ beforeSendRum: (event) => event.type !== 'action' })
+      );
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_CLICK_DATA }));
+
+      expect(serverEvents).toHaveLength(0);
     });
 
     it('preserves renderer source, service, view, and ddtags', () => {
@@ -377,6 +457,74 @@ describe('RendererPipeline', () => {
     });
   });
 
+  describe('record bridge events', () => {
+    it('dispatches RawReplayEvent when bridge sends a record message', () => {
+      const record = { type: 2, timestamp: 123 };
+      const received: RawReplayEvent[] = [];
+      eventManager.registerHandler<RawReplayEvent>({
+        canHandle: (e): e is RawReplayEvent => e.kind === EventKind.RAW && e.format === EventFormat.REPLAY,
+        handle: (e) => received.push(e),
+      });
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'record', event: record, view: { id: 'view-1' } }));
+
+      expect(received).toHaveLength(1);
+      expect(received[0].format).toBe(EventFormat.REPLAY);
+      expect(received[0].data).toEqual(record);
+      expect(received[0].view).toEqual({ id: 'view-1' });
+      expect(received[0].source).toBe(EventSource.RENDERER);
+    });
+
+    it('reports telemetry error and drops records missing view', () => {
+      const spy = vi.spyOn(eventManager, 'notify');
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'record', event: { type: 2, timestamp: 123 } }));
+
+      expect(spy).not.toHaveBeenCalled();
+      expect(mockAddError).toHaveBeenCalledOnce();
+      expect((mockAddError.mock.calls[0][0] as Error).message).toContain('missing view');
+    });
+
+    it('reports telemetry error and drops malformed record payloads', () => {
+      const spy = vi.spyOn(eventManager, 'notify');
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'record', event: 'not-an-object', view: { id: 'view-1' } }));
+
+      expect(spy).not.toHaveBeenCalled();
+      expect(mockAddError).toHaveBeenCalledOnce();
+      expect((mockAddError.mock.calls[0][0] as Error).message).toContain('malformed replay record');
+    });
+
+    it.each([
+      ['empty view id', { id: '' }],
+      ['missing view id', {}],
+      ['non-string view id', { id: 123 }],
+    ])('reports telemetry error and drops records with an %s', (_label, view) => {
+      const spy = vi.spyOn(eventManager, 'notify');
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'record', event: { type: 2, timestamp: 123 }, view }));
+
+      expect(spy).not.toHaveBeenCalled();
+      expect(mockAddError).toHaveBeenCalledOnce();
+      expect((mockAddError.mock.calls[0][0] as Error).message).toContain('missing view');
+    });
+
+    it.each([
+      ['missing timestamp', { type: 2 }],
+      ['non-numeric timestamp', { type: 2, timestamp: 'now' }],
+      ['null timestamp', { type: 2, timestamp: null }],
+      ['missing type', { timestamp: 123 }],
+    ])('reports telemetry error and drops records with %s', (_label, event) => {
+      const spy = vi.spyOn(eventManager, 'notify');
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'record', event, view: { id: 'view-1' } }));
+
+      expect(spy).not.toHaveBeenCalled();
+      expect(mockAddError).toHaveBeenCalledOnce();
+      expect((mockAddError.mock.calls[0][0] as Error).message).toContain('invalid timestamp or type');
+    });
+  });
+
   describe('unimplemented event types', () => {
     it('does not emit for log events (TODO)', () => {
       const spy = vi.spyOn(eventManager, 'notify');
@@ -402,6 +550,26 @@ describe('RendererPipeline', () => {
       simulateIpcMessage(JSON.stringify({ eventType: 'unknown', event: {} }));
       expect(mockAddError).toHaveBeenCalledOnce();
       expect((mockAddError.mock.calls[0][0] as Error).message).toContain('Unhandled bridge event type');
+    });
+  });
+
+  describe('origin enforcement (integration)', () => {
+    it('processes messages from an allowed origin', () => {
+      const config = createTestConfiguration({ allowedRendererHosts: ['example.com'], profilingSampleRate: 0 });
+      new RendererPipeline(eventManager, hooks, config);
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }), 'https://example.com');
+
+      expect(serverEvents).toHaveLength(1);
+    });
+
+    it('drops messages from a disallowed origin', () => {
+      const config = createTestConfiguration({ allowedRendererHosts: ['example.com'], profilingSampleRate: 0 });
+      new RendererPipeline(eventManager, hooks, config);
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }), 'https://other.com');
+
+      expect(serverEvents).toHaveLength(0);
     });
   });
 });

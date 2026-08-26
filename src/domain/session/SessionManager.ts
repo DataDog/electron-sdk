@@ -101,6 +101,10 @@ export class SessionManager {
   }
 
   private expireSession(): void {
+    if (this.currentSession.status === 'expired') {
+      return;
+    }
+
     this.clearTimers();
     this.currentSession.status = 'expired';
     this.sessionContext.close();

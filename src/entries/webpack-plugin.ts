@@ -3,7 +3,7 @@
  *
  * This plugin handles four concerns for packaged Electron apps:
  *
- * 1. Prepends dd-trace initialization (via @datadog/electron-sdk/instrument)
+ * 1. Prepends Electron instrumentation (via @datadog/electron-sdk/instrument)
  *    as a banner to the main entry, so the user doesn't need to manually
  *    import '@datadog/electron-sdk/instrument'.
  *
@@ -30,6 +30,10 @@
 import { join, dirname } from 'node:path';
 import { mkdirSync, existsSync, readFileSync, cpSync } from 'node:fs';
 import { createRequire } from 'node:module';
+
+import type { DatadogBundlerPluginOptions } from './bundler-plugin-options';
+
+export type { DatadogBundlerPluginOptions } from './bundler-plugin-options';
 
 interface Rule {
   test?: RegExp;
@@ -108,7 +112,15 @@ function copyPackageTree(pkg: string, destModules: string, visited: Set<string>)
   }
 }
 
+/**
+ * Configures Datadog instrumentation for webpack.
+ *
+ * @example
+ * plugins: [new DatadogWebpackPlugin({ copyRuntimeDependencies: false })]
+ */
 export class DatadogWebpackPlugin {
+  constructor(private readonly pluginOptions: DatadogBundlerPluginOptions = {}) {}
+
   apply(compiler: Compiler): void {
     // Externalize dd-trace and @datadog/electron-sdk so webpack doesn't bundle them
     const ddTraceExternals = [/^dd-trace(\/.*)?$/, /^@datadog\/electron-sdk(\/.*)?$/];
@@ -121,7 +133,7 @@ export class DatadogWebpackPlugin {
       compiler.options.externals = [existing as RegExp, ...ddTraceExternals];
     }
 
-    // Prepend dd-trace initialization banner so the user doesn't need to
+    // Prepend the Electron instrumentation banner so the user doesn't need to
     // manually import '@datadog/electron-sdk/instrument'
     new compiler.webpack.BannerPlugin({
       banner: 'try{require("@datadog/electron-sdk/instrument")}catch{}',
@@ -139,6 +151,8 @@ export class DatadogWebpackPlugin {
         addExcludeToRule(rule as Rule);
       }
     }
+
+    if (this.pluginOptions.copyRuntimeDependencies === false) return;
 
     // Copy externalized packages and their transitive dependencies into the output
     compiler.hooks.afterEmit.tap('DatadogWebpackPlugin', (compilation) => {

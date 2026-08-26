@@ -77,6 +77,7 @@ export class ErrorCollection {
         handling: options.handling,
         stack,
         type: kind,
+        source_type: 'nodejs',
       },
     };
 

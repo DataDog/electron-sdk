@@ -11,7 +11,6 @@ import {
   stopSession,
   _flushTransport,
   getInternalContext,
-  _generateTelemetryError,
   addDurationVital,
   startDurationVital,
   stopDurationVital,
@@ -24,6 +23,8 @@ import {
   setAccountInfo,
   clearAccountInfo,
   addAccountExtraInfo,
+  getUserInfo,
+  getAccountInfo,
   type AddDurationVitalOptions,
   type DurationVitalOptions,
   type FailureReason,
@@ -103,8 +104,18 @@ ipcMain.handle('stop-session', () => {
   stopSession();
 });
 
+let telemetryErrorCount = 0;
 ipcMain.handle('generateTelemetryError', () => {
-  _generateTelemetryError();
+  // Provoke an SDK-internal error through a public API: `setAccountInfo` deep-clones its argument, so a
+  // throwing getter surfaces as a monitored error and produces one error telemetry event. The counter
+  // varies the message, since telemetry deduplicates identical events per session.
+  const discriminator = telemetryErrorCount++;
+  setAccountInfo({
+    id: 'telemetry-error',
+    get name(): string {
+      throw new Error(`expected error ${discriminator}`);
+    },
+  });
 });
 
 // IPC handler to generate uncaught exception
@@ -120,7 +131,7 @@ ipcMain.handle('generateUnhandledRejection', () => {
 });
 
 ipcMain.handle('main:before-send-error', (_event, behavior: 'scrub' | 'filter') => {
-  addError(new Error('Sensitive error for beforeSend'), {
+  addError(new Error('Sensitive error for beforeSendRum'), {
     context: { beforeSend: behavior, email: 'customer@example.com' },
   });
 });
@@ -147,10 +158,13 @@ ipcMain.handle('main:fetch-api-fetch', async () => {
   return (await res.json()) as unknown;
 });
 
-ipcMain.handle('main:fetch-api-net', async () => {
+async function fetchWithNet(): Promise<unknown> {
   const res = await net.fetch('https://httpbin.org/json');
   return (await res.json()) as unknown;
-});
+}
+
+ipcMain.handle('main:fetch-api-net', fetchWithNet);
+ipcMain.handle('main:fetch-api-net-drop', fetchWithNet);
 
 // IPC handler to crash the main process
 ipcMain.handle('crash', () => {
@@ -195,6 +209,17 @@ ipcMain.handle('main:add-account-extra-info', () => {
 
 ipcMain.handle('main:clear-account-info', () => {
   clearAccountInfo();
+});
+
+// --- Usage telemetry demo handlers ---
+// The getters report usage telemetry too, so they are worth a button of their own.
+
+ipcMain.handle('main:get-user-info', () => getUserInfo());
+
+ipcMain.handle('main:get-account-info', () => getAccountInfo());
+
+ipcMain.handle('main:add-error', () => {
+  addError(new Error('Playground error from addError()'));
 });
 
 // --- Operation Monitoring demo handlers ---
@@ -246,17 +271,25 @@ void app.whenReady().then(async () => {
     ...CONF[ACTIVE_ENV],
     service: 'electron-playground',
     env: 'dev',
+    traceSamplingRules: [{ name: 'electron.main.handle', resource: 'main:fetch-api-net-drop', sampleRate: 0 }],
+    sessionReplaySampleRate: 100,
     profilingSampleRate: 100,
-    beforeSend: (event) => {
+    beforeSendRum: (event) => {
       if (event.context?.beforeSend === 'filter') {
         return false;
       }
       if (event.type === 'error' && event.context?.beforeSend === 'scrub') {
-        event.error.message = '[REDACTED by beforeSend]';
+        event.error.message = '[REDACTED by beforeSendRum]';
+        event.error.stack = '[REDACTED by beforeSendRum]';
         event.context = { email: '[REDACTED]' };
       }
       return true;
     },
+    telemetrySampleRate: 100,
+    telemetryConfigurationSampleRate: 100,
+    telemetryUsageSampleRate: 100,
+    allowedRendererHosts: ['*'],
+    defaultPrivacyLevel: 'allow',
     ...(process.env.DD_SDK_PROXY ? { proxy: process.env.DD_SDK_PROXY } : {}),
   });
   console.log('SDK init result:', result);

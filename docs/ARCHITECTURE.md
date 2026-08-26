@@ -60,13 +60,14 @@ More details in the [Preload injection](#preload-injection) section.
 flowchart LR
     subgraph Sources
         RUM[RUM collection]
+        RRUM[Renderer RUM bridge]
         TEL[Telemetry]
     end
 
     subgraph Assembly
         HOOKS{Format Hooks}
         COMBINE[combine]
-        BEFORE_SEND[beforeSend]
+        BEFORE_SEND[beforeSendRum]
     end
 
     subgraph "Hook Providers"
@@ -82,6 +83,7 @@ flowchart LR
     end
 
     RUM -- RawRumEvent --> COMBINE
+    RRUM -- RumEvent --> COMBINE
     TEL -- RawTelemetryEvent --> COMBINE
     CC -. "application.id, service, ..." .-> HOOKS
     SC -. "session.id" .-> HOOKS
@@ -120,9 +122,10 @@ Two handlers transform events into `ServerEvent`s:
 - **`MainAssembly`**: handles main-process `RawEvent`s (excluding profile events), enriches them via `triggerRum` / `triggerTelemetry` hooks, and emits `ServerEvent`s with `source: MAIN`.
 - **`RendererPipeline`**: owns the renderer IPC channel, receives pre-assembled RUM events from the Browser SDK, enriches them via `triggerRum` with `source: EventSource.RENDERER`, and emits `ServerRumEvent`s with `source: RENDERER` directly, bypassing the `RawEvent` pipeline entirely.
 
-`MainAssembly` applies the configured `beforeSend` callback after enrichment and before emitting the final
-`ServerRumEvent`. Renderer events use the Browser SDK's `beforeSend` before crossing the bridge and are not processed
-again by the Electron SDK. Telemetry, profiles, and spans are not passed to `beforeSend`.
+`MainAssembly` and `RendererPipeline` apply the configured `beforeSendRum` callback after Electron enrichment and before
+emitting the final `ServerRumEvent`, with `source` identifying the originating process. Renderer events may already have
+passed through the Browser SDK's `beforeSend` before crossing the bridge. Telemetry, profiles, and spans are not passed to
+`beforeSendRum`.
 
 #### Format Hooks
 
@@ -145,10 +148,47 @@ Failures are routed by _who can act on them_:
   code reached by a Node.js/Electron callback, listener, or promise settlement instead of letting them
   surface into the host app. Sampled (`telemetrySampleRate`) and rate-limited per session. See
   `src/domain/telemetry/`.
+  See [Telemetry types](#telemetry-types) for the other telemetry the SDK reports.
 - **The customer, via console logs** — for environment failures the SDK cannot fix but the integrating
   app can: disk full or unwritable, a corrupt batch file on disk, a missing peer dependency. Surfaced
   through `display` (`src/tools/display`) at `warn`/`error`, and deliberately kept out of telemetry
   since they are not SDK bugs.
+
+### Telemetry types
+
+`Telemetry` (`src/domain/telemetry/Telemetry.ts`) collects three event types, all emitted as
+`RawEvent`s with `format: TELEMETRY` and assembled onto the RUM track:
+
+| Type            | Entry point        | Reports                              |
+| --------------- | ------------------ | ------------------------------------ |
+| `log` (error)   | `addError`         | Failures in the SDK's own logic      |
+| `configuration` | `addConfiguration` | The resolved SDK configuration       |
+| `usage`         | `addUsage`         | Which public APIs the host app calls |
+
+Each type is gated by its own sampling, deduplication and rate-limiting policy:
+
+- **Sampling** is drawn once per process. `telemetrySampleRate` gates all telemetry; `configuration`
+  and `usage` are then gated by `telemetryConfigurationSampleRate` / `telemetryUsageSampleRate` on top
+  of it. The combined rate is reported as `effective_sample_rate` so the backend can scale the data
+  back up — it is not recoverable from the event otherwise.
+- **Deduplication** drops an identical event for the rest of the session. Usage events would otherwise
+  exhaust the budget when an instrumented API is called in a loop, and repeated errors add no
+  information.
+- **Rate limiting** caps a session at 100 events. `configuration` events are exempt: there is at most
+  one per process and it must not be starved by a burst of errors.
+
+The configuration event is reported at the end of `init()` — the transport must be registered for it
+to reach a batch, and every component whose state it describes must be constructed. It reports
+_effective_ values (`src/domain/telemetry/configurationTelemetry.ts`): an unset option still produces
+behaviour, so defaults are resolved rather than reported as absent.
+
+Usage events are reported by the public API functions themselves (`src/index.ts`, `src/api.ts`), as
+the first statement of each call so that a call rejected by argument validation still counts as
+adoption. Only the schema's `feature` discriminator is sent, never the caller's arguments. APIs the
+schema has no feature for are reported as the closest one, with a comment at the call site.
+
+Renderer-originated telemetry (`internal_telemetry` over the bridge) is not yet consumed — see
+`RendererPipeline`.
 
 ## Profiling
 
@@ -205,8 +245,11 @@ import { app, BrowserWindow } from 'electron';
 
 On load it:
 
-1. Initializes dd-trace with the `electron` exporter.
+1. Loads the tracing runtime before Electron.
 2. Calls `patchBrowserWindow`, `patchIpcMain`, `patchWebContents`, and `patchNet`.
+
+The regular SDK `init()` then initializes dd-trace with the `electron` exporter and the resolved tracing
+configuration.
 
 Bundlers may reorder module evaluation and break this requirement; use the bundler plugins (see [Bundler plugins](#bundler-plugins)).
 
@@ -227,6 +270,13 @@ HTTP spans → Assembly → Transport → /api/v2/rum (as RUM resources)
 
 All spans are enriched with `_dd.application.id`, `_dd.session.id`, and `_dd.view.id`. Trace and span IDs are converted to **hexadecimal strings** for the spans intake.
 
+### Trace sampling rules
+
+`traceSamplingRules` are applied by dd-trace when a root trace is sampled. Rules are ordered, the first match wins,
+and child spans inherit the root decision. If no rule matches, the trace is kept. Rejected traces are not sent to the
+spans intake or propagated through Electron HTTP requests. Their HTTP spans still produce RUM resources without
+trace or span identifiers.
+
 ### Preload injection
 
 The SDK injects a preload script (`@datadog/electron-sdk/preload`) into every renderer process. The preload exposes `DatadogEventBridge` via `contextBridge`, enabling the Browser SDK to route RUM events through IPC to the Electron SDK instead of sending them directly to Datadog.
@@ -238,9 +288,9 @@ The SDK injects a preload script (`@datadog/electron-sdk/preload`) into every re
 
 ### Bridge-config lifecycle
 
-The preload fetches bridge configuration from the main process synchronously at load time via a `datadog:bridge-config` IPC request. This config drives renderer behavior: `defaultPrivacyLevel`, `allowedWebViewHosts`, and the advertised `capabilities` (the bridge features the Browser SDK may use, e.g. profiling or session replay).
+The preload fetches bridge configuration from the main process synchronously at load time via a `datadog:bridge-config` IPC request. This config drives renderer behavior: `defaultPrivacyLevel`, `allowedRendererHosts`, and the advertised `capabilities` (the bridge features the Browser SDK may use, e.g. profiling or session replay).
 
-The responder is registered at **instrument time** (when `@datadog/electron-sdk/instrument` loads), backed by a process-global holder keyed with `Symbol.for('@datadog/electron-sdk:bridgeConfig')`. The holder is seeded with fallback values (`defaultPrivacyLevel: 'mask'`, `allowedWebViewHosts: []`, and capabilities advertising the SDK's supported features) so the bridge works immediately, even before `init()` runs. When `init()` executes, `RendererPipeline` calls `setBridgeConfig` to replace the holder's value with the real configuration.
+The responder is registered at **instrument time** (when `@datadog/electron-sdk/instrument` loads), backed by a process-global holder keyed with `Symbol.for('@datadog/electron-sdk:bridgeConfig')`. The holder is seeded with fallback values (`defaultPrivacyLevel: 'mask'`, `allowedRendererHosts: ['*', '']`, and capabilities advertising the SDK's supported features) so the bridge works immediately, even before `init()` runs. When `init()` executes, `RendererPipeline` calls `setBridgeConfig` to replace the holder's value with the real configuration.
 
 The process-global (`Symbol.for`) is required because `instrument` and the `init()` bundle are separate CommonJS module instances: a module-level variable would not be shared between them, so they would always read the fallback.
 
@@ -250,9 +300,9 @@ Advertised capabilities tell the Browser SDK which bridge features it may use, b
 
 The instrumentation entry point must run before `require('electron')`. Bundlers can break this ordering requirement in different ways:
 
-- **Vite** (`datadogVitePlugin` from `@datadog/electron-sdk/vite-plugin`): hoists all `require()` calls to the top of the bundle, breaking import order. The plugin externalizes dd-trace and the SDK, prepends the initialization banner before hoisted requires, and copies their runtime dependencies into the build output.
-- **Webpack** (`DatadogWebpackPlugin` from `@datadog/electron-sdk/webpack-plugin`): preserves module execution order (lazy evaluation via `__webpack_require__`), so import order is maintained. The plugin externalizes dd-trace and the SDK, prepends the initialization banner, excludes them from `@vercel/webpack-asset-relocator-loader`, and copies their runtime dependencies into the build output.
-- **esbuild** (`datadogEsbuildPlugin` from `@datadog/electron-sdk/esbuild-plugin`): also preserves module execution order. The plugin externalizes dd-trace and the SDK, prepends the initialization banner, and copies their runtime dependencies via an `onEnd` hook. In ESM output the banner loads `instrument` via `createRequire`, since ES modules have no global `require`.
+- **Vite** (`datadogVitePlugin` from `@datadog/electron-sdk/vite-plugin`): hoists all `require()` calls to the top of the bundle, breaking import order. The plugin externalizes dd-trace and the SDK, prepends the instrumentation banner before hoisted requires, and by default copies their runtime dependencies into the build output (set `copyRuntimeDependencies: false` to delegate copying to the packager instead).
+- **Webpack** (`DatadogWebpackPlugin` from `@datadog/electron-sdk/webpack-plugin`): preserves module execution order (lazy evaluation via `__webpack_require__`), so import order is maintained. The plugin externalizes dd-trace and the SDK, prepends the instrumentation banner, excludes them from `@vercel/webpack-asset-relocator-loader`, and by default copies their runtime dependencies into the build output (set `copyRuntimeDependencies: false` to delegate copying to the packager instead).
+- **esbuild** (`datadogEsbuildPlugin` from `@datadog/electron-sdk/esbuild-plugin`): also preserves module execution order. The plugin externalizes dd-trace and the SDK, prepends the instrumentation banner, and by default copies their runtime dependencies via an `onEnd` hook (set `copyRuntimeDependencies: false` to delegate copying to the packager instead). In ESM output the banner loads `instrument` via `createRequire`, since ES modules have no global `require`.
 
 See `src/entries/instrument.ts`, `src/entries/vite-plugin.ts`, `src/entries/webpack-plugin.ts`, and `src/entries/esbuild-plugin.ts`.
 
@@ -264,7 +314,7 @@ dd-trace is declared as a **direct runtime dependency** in `package.json`, not a
 
 The SDK is tightly coupled to a specific dd-trace build:
 
-- The `instrument` entry point calls `tracer.init({ exporter: 'electron' })` (a custom exporter built specifically for the Electron SDK).
+- The SDK initializes dd-trace with the `electron` exporter, a custom exporter built specifically for the Electron SDK.
 - The `SpanProcessor` subscribes to a specific diagnostics channel (`datadog:apm:electron:export`) that dd-trace publishes to.
 
 Making it a direct dependency ensures a single, tested version is always present. The alternatives were considered:
@@ -279,19 +329,19 @@ Making it a direct dependency ensures a single, tested version is always present
 #### Optional dependencies are stripped
 
 dd-trace declares optional dependencies (OpenTelemetry bindings, OpenFeature, ASM, IAST, etc.) that are irrelevant for Electron:
-These optional dependencies may or may not install in the customer's `node_modules` depending on platform and package manager behavior. Critically, the **bundler plugins only copy `dependencies`, not `optionalDependencies`**, when populating the build output's `node_modules`. This means they are always excluded from the packaged app.
+These optional dependencies may or may not install in the customer's `node_modules` depending on platform and package manager behavior. By default, the **bundler plugins only copy `dependencies`, not `optionalDependencies`**, when populating the build output's `node_modules`. This excludes them when plugins own dependency staging; applications using `copyRuntimeDependencies: false` depend on their packager's behavior.
 
 #### Dependency size
 
-| What                                                                     | Size      | Notes                                            |
-| ------------------------------------------------------------------------ | --------- | ------------------------------------------------ |
-| dd-trace (stripped, no optional deps)                                    | ~7 MB     | The core dd-trace package                        |
-| Runtime transitive deps (dc-polyfill, import-in-the-middle, acorn, etc.) | ~1 MB     | Required by dd-trace at runtime                  |
-| **Total copied to packaged app**                                         | **~8 MB** | What bundler plugins copy via `copyPackageTree`  |
-| electron-sdk own dist                                                    | ~4 MB     | SDK code + WASM chunks                           |
-| dd-trace optional deps (NOT copied)                                      | Unknown   | Native modules, etc; excluded from packaged apps |
+| What                                                                     | Size      | Notes                                           |
+| ------------------------------------------------------------------------ | --------- | ----------------------------------------------- |
+| dd-trace (stripped, no optional deps)                                    | ~7 MB     | The core dd-trace package                       |
+| Runtime transitive deps (dc-polyfill, import-in-the-middle, acorn, etc.) | ~1 MB     | Required by dd-trace at runtime                 |
+| **Total copied to packaged app**                                         | **~8 MB** | What bundler plugins copy via `copyPackageTree` |
+| electron-sdk own dist                                                    | ~4 MB     | SDK code + WASM chunks                          |
+| dd-trace optional deps (not copied by plugins)                           | Unknown   | Inclusion depends on managed packager behavior  |
 
-The `copyPackageTree` function in all three bundler plugins walks only the `dependencies` field of each package's `package.json`, so the ~84 MB of optional native modules never end up in the packaged app.
+The `copyPackageTree` function in all three bundler plugins walks only the `dependencies` field of each package's `package.json`, so default plugin staging excludes ~84 MB of optional native modules. Applications whose packager stages external dependencies can disable this copy with `copyRuntimeDependencies: false`.
 
 ## Two-Tier Configuration
 

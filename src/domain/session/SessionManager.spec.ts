@@ -185,6 +185,15 @@ describe('sessionManager', () => {
       expect(sessionManager.getSession().status).toBe('expired');
       expect(lifecycleEvents).toContain(LifecycleKind.SESSION_EXPIRED);
     });
+
+    it('emits the expiration event only once', async () => {
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
+
+      sessionManager.expire();
+      sessionManager.expire();
+
+      expect(lifecycleEvents.filter((event) => event === LifecycleKind.SESSION_EXPIRED)).toHaveLength(1);
+    });
   });
 
   describe('hook registration', () => {

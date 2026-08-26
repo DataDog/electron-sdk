@@ -2,7 +2,7 @@ import type { DefaultPrivacyLevel } from '@datadog/browser-core';
 
 export interface BridgeOptions {
   defaultPrivacyLevel: DefaultPrivacyLevel;
-  allowedWebViewHosts: string[];
+  allowedRendererHosts: string[];
   capabilities: string[];
 }
 
@@ -22,7 +22,27 @@ function getHolder(): BridgeConfigHolder {
     // Advertise the SDK's supported capabilities by default to signal support. init() replaces this with
     // the config-derived value; that narrowing is only an optimization to save renderer work, since the
     // Electron SDK config (not the advertised capability) governs what is actually sent to Datadog.
-    holder = { value: { defaultPrivacyLevel: 'mask', allowedWebViewHosts: [], capabilities: ['profiles'] } };
+    //
+    // 'records' is deliberately excluded from this fallback: unlike profiling, replay recording
+    // captures DOM data and requires the initial full DOM snapshot to render later incremental records.
+    // If advertised here, a window opened before init() could produce that snapshot before
+    // RendererPipeline registers its BRIDGE_CHANNEL listener, causing Electron to drop the IPC
+    // message. Collecting subsequent records without that snapshot would produce a replay that cannot
+    // be rendered.
+    holder = {
+      value: {
+        defaultPrivacyLevel: 'mask',
+        // Pre-normalized equivalent of allowedRendererHosts: ['*']: '*' covers all non-empty hostnames
+        // but the Browser SDK's matchesHostEntry requires host.length > 0, so file:// pages
+        // (location.hostname === '') would not match. The '' entry covers that gap.
+        // TODO: Change to [] once a track-consent API exists. Currently ['*', ''] because customers
+        // must open a window to collect user consent before calling init(), which means windows
+        // can open before init() runs. A consent API will allow init() to be called immediately
+        // with trackingConsent: 'not-granted', eliminating the pre-init window scenario.
+        allowedRendererHosts: ['*', ''],
+        capabilities: ['profiles'],
+      },
+    };
     store[BRIDGE_CONFIG] = holder;
   }
   return holder;
@@ -33,7 +53,7 @@ export function getBridgeConfig(): BridgeOptions {
   // Return a copy (including a fresh array) so callers cannot mutate the shared holder and corrupt
   // subsequent responses.
   const { value } = getHolder();
-  return { ...value, allowedWebViewHosts: [...value.allowedWebViewHosts], capabilities: [...value.capabilities] };
+  return { ...value, allowedRendererHosts: [...value.allowedRendererHosts], capabilities: [...value.capabilities] };
 }
 
 /** Replaces the bridge config the responder returns. Called by init() once the real config is known. */

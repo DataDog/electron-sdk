@@ -62,7 +62,8 @@ import '@datadog/electron-sdk/instrument';
 import { app, BrowserWindow } from 'electron';
 ```
 
-This initializes dd-trace and automatically instruments the needed APIs.
+This instruments the needed Electron APIs. `dd-trace` is initialized with the resolved configuration when `init()`
+is called.
 
 Then initialize the Electron SDK by calling `init` before creating any browser windows:
 
@@ -74,10 +75,11 @@ await init({
   applicationId: '<APPLICATION_ID>',
   service: 'my-electron-app',
   site: 'datadoghq.com',
+  allowedRendererHosts: ['*'], // required: restrict to specific hostnames in production
 });
 ```
 
-> **Deferred init caveat:** if `init()` is called after some windows are already open (e.g. behind a user-consent gate), those windows keep the fallback configuration (`defaultPrivacyLevel: 'mask'`, no extra `allowedWebViewHosts`, and the default advertised capabilities) until they are reloaded, because the renderer reads bridge config once at load time. Your `init()` configuration still governs what is actually sent to Datadog, so this only affects renderer-side behavior. Navigation is never blocked.
+> **Deferred init caveat:** if `init()` is called after some windows are already open (e.g. behind a user-consent gate), those windows keep the fallback bridge configuration (`defaultPrivacyLevel: 'mask'` and the default advertised capabilities) until they are reloaded. SDK telemetry is only processed and collected once `init()` runs — at that point the configured `allowedRendererHosts` is enforced on all messages uniformly, regardless of when each window loaded.
 
 #### Renderer process setup
 
@@ -85,7 +87,7 @@ In order to monitor the renderer process, you must [set up the Browser SDK](http
 
 #### Bundler plugins
 
-dd-trace instruments `require('electron')` at runtime, which requires correct module loading order. The SDK provides bundler plugins to ensure this works in all environments:
+The SDK instruments Electron as it is loaded, which requires correct module loading order. The SDK provides bundler plugins to ensure this works in all environments:
 
 **Vite** (including Electron Forge with Vite and electron-vite):
 
@@ -120,6 +122,11 @@ await esbuild.build({
 });
 ```
 
+Bundler plugins copy the SDK, dd-trace, and their runtime dependencies into the build output by
+default. If your application packager stages external dependencies, pass
+`{ copyRuntimeDependencies: false }` to any plugin and ensure the packager includes both packages
+and their runtime dependencies.
+
 ## Available Features
 
 - **Sessions** — Session-based event grouping
@@ -130,22 +137,24 @@ await esbuild.build({
 - **Renderer Events** — Capture RUM events from renderer processes via the browser SDK
 - **Custom Duration Vitals** — Measure user-defined durations in the main process
 - **Renderer Profiling** — Collect JS Self-Profiling data from renderer pages and correlate it with RUM
+- **Session Replay** — Record renderer UI sessions in the main process and correlate them with RUM views
 - **User & Account Info** — Attach user and account identity to all RUM events and traces
 - **Operation Monitoring** _(experimental)_ — Track start / succeed / fail steps of critical user-facing workflows
-- **Event Filtering and Scrubbing** — Modify or discard main-process RUM events with `beforeSend`
+- **Event Filtering and Scrubbing** — Modify or discard RUM events with `beforeSendRum`
 
 ### Event Filtering and Scrubbing
 
-Use `beforeSend` to inspect fully assembled main-process RUM events before they are sent to Datadog:
+Use `beforeSendRum` to inspect fully assembled main-process and renderer RUM events before they are sent to Datadog:
 
 ```ts
 await init({
   // ...
-  beforeSend: (event) => {
+  beforeSendRum: (event, { source }) => {
     if (event.type === 'error') {
       event.error.message = event.error.message.replace(/token=[^&\s]+/g, 'token=[REDACTED]');
+      event.error.stack = event.error.stack?.replace(/token=[^&\s]+/g, 'token=[REDACTED]');
     }
-    if (event.context?.internal === true) {
+    if (source === 'main' && event.context?.internal === true) {
       return false;
     }
     return true;
@@ -155,15 +164,19 @@ await init({
 
 Only returning `false` discards the event. View and native crash events cannot be discarded. The editable fields are:
 
-- All events: `context`, `service`, `version`, `view.name`, and `view.url`
-- Errors: `error.message` and `error.stack`
-- Resources: `resource.url`
+- All events: `context`, `service`, `version`, `view.name`, `view.url`, and `view.referrer`
+- Views: `view.performance.lcp.resource_url`
+- Errors: `error.message`, `error.stack`, `error.handling_stack`, `error.resource.url`, `error.fingerprint`, and `_dd.debug_ids`
+- Resources: `resource.url`, GraphQL variables, request/response headers, and WebSocket close reasons
+- Actions: `action.target.name`
+- Long tasks: script source URLs, invokers, and `_dd.debug_ids`
 
 Event identity, session, application, and other fields remain unchanged. Callback errors are logged and the event is
 still sent. The callback is synchronous and should remain fast. It does not automatically detect PII.
 
-Renderer events are not passed to this callback. Configure the Browser SDK's `beforeSend` in each renderer that needs
-event filtering or scrubbing.
+Renderer events may first pass through the Browser SDK's `beforeSend`, then through Electron's `beforeSendRum` after
+main-process enrichment. Filtering them at this stage prevents upload but does not undo Browser counters, lifecycle
+effects, or Electron session activity that already occurred. Spans are not passed to this callback.
 
 ### Custom Duration Vitals
 
@@ -254,6 +267,7 @@ await init({
   applicationId: '<APPLICATION_ID>',
   site: 'datadoghq.com',
   service: 'my-electron-app',
+  allowedRendererHosts: ['*'],
   profilingSampleRate: 100, // percentage of sampled sessions that are profiled (0–100)
 });
 ```
@@ -276,6 +290,41 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
 ```
+
+### Session Replay
+
+The Browser SDK records renderer UI ([Session Replay](https://docs.datadoghq.com/real_user_monitoring/session_replay/browser/)) and streams the records to the main process, which buffers, compresses, and uploads them — correlated with your RUM views.
+
+**1. Enable session replay from the main process.** Set `sessionReplaySampleRate` on the Electron SDK `init()`:
+
+```ts
+await init({
+  clientToken: '<CLIENT_TOKEN>',
+  applicationId: '<APPLICATION_ID>',
+  site: 'datadoghq.com',
+  service: 'my-electron-app',
+  allowedRendererHosts: ['*'],
+  sessionReplaySampleRate: 100, // percentage of sampled sessions that record replay (0–100)
+  defaultPrivacyLevel: 'mask', // 'mask' | 'allow' | 'mask-user-input'
+});
+```
+
+The Electron SDK owns the replay sampling decision and performs the upload. `sessionReplaySampleRate` is applied as a child of `sessionSampleRate`, so with `sessionSampleRate: 0` no session records replay. The `defaultPrivacyLevel` set here is propagated to the renderer recorder through the bridge, so masking is enforced end-to-end.
+
+**2. Enable session replay in the renderer's Browser SDK.** In the pages loaded by the renderer, initialize `@datadog/browser-rum` with session replay turned on:
+
+```ts
+import { datadogRum } from '@datadog/browser-rum';
+
+datadogRum.init({
+  clientToken: '<CLIENT_TOKEN>',
+  applicationId: '<APPLICATION_ID>',
+  site: 'datadoghq.com',
+  service: 'my-electron-app',
+});
+```
+
+The Electron SDK advertises a `records` capability over the bridge, so the Browser SDK streams replay records to the main process instead of uploading them itself — no `startSessionReplayRecording()` call is required. See [Renderer process setup](#renderer-process-setup) for general Browser SDK configuration.
 
 ## API
 
@@ -407,19 +456,55 @@ interface FeatureOperationOptions {
 
 ### Configuration Options
 
-| Option                | Type                                     | Required | Default  | Description                                                                                                                               |
-| --------------------- | ---------------------------------------- | -------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `clientToken`         | `string`                                 | Yes      | —        | Datadog client token                                                                                                                      |
-| `applicationId`       | `string`                                 | Yes      | —        | RUM application ID                                                                                                                        |
-| `site`                | `string`                                 | Yes      | —        | Datadog site (e.g. `datadoghq.com`, `datadoghq.eu`, `us3.datadoghq.com`, `us5.datadoghq.com`, `ap1.datadoghq.com`, `ddog-gov.com`)        |
-| `service`             | `string`                                 | Yes      | —        | Service name                                                                                                                              |
-| `env`                 | `string`                                 | No       | —        | Application environment                                                                                                                   |
-| `version`             | `string`                                 | No       | —        | Application version                                                                                                                       |
-| `sessionSampleRate`   | `number`                                 | No       | `100`    | Percentage of sessions to collect (0–100). `0` collects no sessions; `100` collects all sessions.                                         |
-| `profilingSampleRate` | `number`                                 | No       | `0`      | Percentage of sampled sessions that are profiled (0–100). `0` disables renderer profiling. See [Renderer Profiling](#renderer-profiling). |
-| `telemetrySampleRate` | `number`                                 | No       | `20`     | Telemetry sample rate (0–100)                                                                                                             |
-| `batchSize`           | `'SMALL' \| 'MEDIUM' \| 'LARGE'`         | No       | —        | Batch size for event uploads                                                                                                              |
-| `uploadFrequency`     | `'RARE' \| 'NORMAL' \| 'FREQUENT'`       | No       | —        | Upload frequency for event batches                                                                                                        |
-| `defaultPrivacyLevel` | `'mask' \| 'allow' \| 'mask-user-input'` | No       | `'mask'` | Default privacy level for renderer session replay                                                                                         |
-| `allowedWebViewHosts` | `string[]`                               | No       | `[]`     | Hostnames allowed for the renderer bridge                                                                                                 |
-| `beforeSend`          | `(event: MainRumEvent) => boolean`       | No       | —        | Modify or discard fully assembled main-process RUM events before they are sent                                                            |
+| Option                    | Type                                     | Required | Default    | Description                                                                                                                                                                          |
+| ------------------------- | ---------------------------------------- | -------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `clientToken`             | `string`                                 | Yes      | —          | Datadog client token                                                                                                                                                                 |
+| `applicationId`           | `string`                                 | Yes      | —          | RUM application ID                                                                                                                                                                   |
+| `site`                    | `string`                                 | Yes      | —          | Datadog site (e.g. `datadoghq.com`, `datadoghq.eu`, `us3.datadoghq.com`, `us5.datadoghq.com`, `ap1.datadoghq.com`, `ddog-gov.com`)                                                   |
+| `service`                 | `string`                                 | Yes      | —          | Service name                                                                                                                                                                         |
+| `env`                     | `string`                                 | No       | —          | Application environment                                                                                                                                                              |
+| `version`                 | `string`                                 | No       | —          | Application version                                                                                                                                                                  |
+| `sessionSampleRate`       | `number`                                 | No       | `100`      | Percentage of sessions to collect (0–100). `0` collects no sessions; `100` collects all sessions.                                                                                    |
+| `traceSamplingRules`      | `TraceSamplingRule[]`                    | No       | `[]`       | Ordered sampling rules for main-process traces. The first matching rule determines the percentage of traces to keep; unmatched traces are kept.                                      |
+| `sessionReplaySampleRate` | `number`                                 | No       | `0`        | Percentage of sampled sessions that record session replay (0–100). `0` disables renderer session replay. Applied as a child of `sessionSampleRate`.                                  |
+| `profilingSampleRate`     | `number`                                 | No       | `0`        | Percentage of sampled sessions that are profiled (0–100). `0` disables renderer profiling. Applied as a child of `sessionSampleRate`. See [Renderer Profiling](#renderer-profiling). |
+| `batchSize`               | `'SMALL' \| 'MEDIUM' \| 'LARGE'`         | No       | `'MEDIUM'` | Byte threshold that rotates a batch file early: `SMALL` 16 KiB, `MEDIUM` 512 KiB, `LARGE` 4 MiB                                                                                      |
+| `uploadFrequency`         | `'RARE' \| 'NORMAL' \| 'FREQUENT'`       | No       | `'NORMAL'` | How often pending batches are uploaded, and the window over which events accumulate: `RARE` 30s, `NORMAL` 10s, `FREQUENT` 5s                                                         |
+| `defaultPrivacyLevel`     | `'mask' \| 'allow' \| 'mask-user-input'` | No       | `'mask'`   | Default privacy level for renderer session replay                                                                                                                                    |
+| `allowedRendererHosts`    | `string[]`                               | Yes      | —          | Hostnames allowed for the renderer bridge (required; see table below)                                                                                                                |
+| `beforeSendRum`           | `RumBeforeSend`                          | No       | —          | Modify or discard fully assembled main-process and renderer RUM events                                                                                                               |
+
+#### `traceSamplingRules`
+
+Rules are evaluated in order when a root trace starts. The first matching rule determines the percentage of traces
+to keep; unmatched traces are kept. Patterns are case-insensitive globs, child spans inherit the root decision, and
+a rejected HTTP trace still produces an unlinked RUM Resource.
+
+| Key          | Required | Purpose                                                                   |
+| ------------ | -------- | ------------------------------------------------------------------------- |
+| `sampleRate` | Yes      | Percentage of matching traces to keep, from `0` to `100`                  |
+| `name`       | No       | Matches the root span operation name, such as `electron.main.handle`      |
+| `resource`   | No       | Matches the root span resource, such as an IPC channel                    |
+| `tags`       | No       | Matches root span tags by name and value; every configured tag must match |
+
+```ts
+await init({
+  // ...
+  traceSamplingRules: [{ tags: { 'http.url': '*/health' }, sampleRate: 0 }],
+});
+```
+
+#### `allowedRendererHosts` Values
+
+Required list of renderer origins that may use the DatadogEventBridge. Controls which renderer processes can instrument themselves and send events to the main process.
+
+| Value               | Allows                                                                          |
+| ------------------- | ------------------------------------------------------------------------------- |
+| `['example.com']`   | Renderers on `example.com` and any subdomain                                    |
+| `['*.example.com']` | Only subdomains of `example.com`                                                |
+| `['myapp']`         | Custom-protocol renderers with hostname `myapp` (e.g. `app://myapp/index.html`) |
+| `['file://']`       | All `file://` renderers (path-level filtering is not possible for `file://`)    |
+| `['*']`             | All renderers including `file://`                                               |
+| `[]`                | No renderer can bridge                                                          |
+
+> **Custom protocols:** For custom protocols like `app://` or `your-scheme://`, use the hostname component (the part between `://` and the first `/`). For example, `app://myapp/index.html` matches the host `myapp`.

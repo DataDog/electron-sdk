@@ -111,7 +111,7 @@ export type RumActionEvent = CommonProperties &
     /**
      * View properties
      */
-    readonly view?: {
+    readonly view: {
       /**
        * Is the action starting in the foreground (focus in browser)
        */
@@ -170,12 +170,7 @@ export type RumActionEvent = CommonProperties &
          * The strategy of how the auto click action name is computed
          */
         name_source?:
-          | 'custom_attribute'
-          | 'mask_placeholder'
-          | 'standard_attribute'
-          | 'text_content'
-          | 'mask_disallowed'
-          | 'blank';
+          'custom_attribute' | 'mask_placeholder' | 'standard_attribute' | 'text_content' | 'mask_disallowed' | 'blank';
         [k: string]: unknown;
       };
       [k: string]: unknown;
@@ -190,6 +185,9 @@ export type RumTransitionEvent = CommonProperties & {
    * RUM event type
    */
   readonly type: 'transition';
+  readonly view: {
+    [k: string]: unknown;
+  };
   /**
    * Stream properties
    */
@@ -328,7 +326,8 @@ export type RumErrorEvent = CommonProperties &
         | 'windows'
         | 'macos'
         | 'linux'
-        | 'maui';
+        | 'maui'
+        | 'nodejs';
       /**
        * Resource properties of the error
        */
@@ -499,7 +498,7 @@ export type RumErrorEvent = CommonProperties &
     /**
      * View properties
      */
-    readonly view?: {
+    readonly view: {
       /**
        * Is the error starting in the foreground (focus in browser)
        */
@@ -548,6 +547,9 @@ export type RumLongTaskEvent = CommonProperties &
      * RUM event type
      */
     readonly type: 'long_task';
+    readonly view: {
+      [k: string]: unknown;
+    };
     /**
      * Long Task properties
      */
@@ -686,6 +688,9 @@ export type RumResourceEvent = CommonProperties &
      * RUM event type
      */
     readonly type: 'resource';
+    readonly view: {
+      [k: string]: unknown;
+    };
     /**
      * Resource properties
      */
@@ -698,17 +703,7 @@ export type RumResourceEvent = CommonProperties &
        * Resource type
        */
       readonly type:
-        | 'document'
-        | 'xhr'
-        | 'beacon'
-        | 'fetch'
-        | 'css'
-        | 'js'
-        | 'image'
-        | 'font'
-        | 'media'
-        | 'other'
-        | 'native';
+        'document' | 'xhr' | 'beacon' | 'fetch' | 'css' | 'js' | 'image' | 'font' | 'media' | 'other' | 'native';
       /**
        * HTTP method of the resource
        */
@@ -852,6 +847,10 @@ export type RumResourceEvent = CommonProperties &
        */
       readonly delivery_type?: 'cache' | 'navigational-prefetch' | 'other';
       /**
+       * Whether the resource was served from the device's local cache
+       */
+      readonly local_cache_hit?: boolean;
+      /**
        * The provider for this resource
        */
       readonly provider?: {
@@ -970,6 +969,9 @@ export type RumViewUpdateEvent = ViewContainerSchema &
      * RUM event type
      */
     readonly type: 'view_update';
+    readonly view: {
+      [k: string]: unknown;
+    };
     [k: string]: unknown;
   };
 export type RumVitalEvent = RumVitalDurationEvent | RumVitalOperationStepEvent;
@@ -1002,6 +1004,9 @@ export type RumVitalEventCommonProperties = CommonProperties &
      * RUM event type
      */
     readonly type: 'vital';
+    readonly view: {
+      [k: string]: unknown;
+    };
     /**
      * Vital properties
      */
@@ -1134,12 +1139,12 @@ export interface CommonProperties {
     | 'unity'
     | 'kotlin-multiplatform'
     | 'electron'
-    | 'rum-cpp'
+    | 'cpp'
     | 'maui';
   /**
    * View properties
    */
-  readonly view: {
+  readonly view?: {
     /**
      * UUID of the view
      */
@@ -1216,15 +1221,7 @@ export interface CommonProperties {
      * The list of available network interfaces
      */
     readonly interfaces?: (
-      | 'bluetooth'
-      | 'cellular'
-      | 'ethernet'
-      | 'wifi'
-      | 'wimax'
-      | 'mixed'
-      | 'other'
-      | 'unknown'
-      | 'none'
+      'bluetooth' | 'cellular' | 'ethernet' | 'wifi' | 'wimax' | 'mixed' | 'other' | 'unknown' | 'none'
     )[];
     /**
      * Cellular connection type reflecting the measured network performance
@@ -1427,6 +1424,10 @@ export interface CommonProperties {
        * The percentage of sessions with traced resources
        */
       readonly trace_sample_rate?: number;
+      /**
+       * Session Replay experimental features enabled in the SDK configuration
+       */
+      readonly session_replay_experimental_features?: string[];
       [k: string]: unknown;
     };
     /**
@@ -1488,7 +1489,7 @@ export interface ViewContainerSchema {
       | 'unity'
       | 'kotlin-multiplatform'
       | 'electron'
-      | 'rum-cpp'
+      | 'cpp'
       | 'maui';
     [k: string]: unknown;
   };
@@ -1615,10 +1616,7 @@ export interface ProfilingInternalContextSchema {
    * - `unexpected-exception`: An exception occurred when starting the Profiler.
    */
   readonly error_reason?:
-    | 'not-supported-by-browser'
-    | 'failed-to-lazy-load'
-    | 'missing-document-policy-header'
-    | 'unexpected-exception';
+    'not-supported-by-browser' | 'failed-to-lazy-load' | 'missing-document-policy-header' | 'unexpected-exception';
   /**
    * The reason provided by the profiling quota admission API. This attribute is only present if the status is `stopped` due to quota.
    *
@@ -1632,13 +1630,7 @@ export interface ProfilingInternalContextSchema {
    * - `api-error`: An API error occurred on the client side.
    */
   readonly quota_reason?:
-    | 'quota_ok'
-    | 'quota_exceeded'
-    | 'org_disabled'
-    | 'backend_unavailable'
-    | 'undefined'
-    | 'timeout'
-    | 'api-error';
+    'quota_ok' | 'quota_exceeded' | 'org_disabled' | 'backend_unavailable' | 'undefined' | 'timeout' | 'api-error';
   [k: string]: unknown;
 }
 /**

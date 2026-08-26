@@ -9,6 +9,7 @@ export const EventTrack = {
   RUM: 'rum',
   SPANS: 'spans',
   PROFILE: 'profile',
+  REPLAY: 'replay',
 } as const;
 export type EventTrack = (typeof EventTrack)[keyof typeof EventTrack];
 
@@ -16,6 +17,7 @@ export const EventFormat = {
   RUM: 'rum',
   TELEMETRY: 'telemetry',
   PROFILE: 'profile',
+  REPLAY: 'replay',
 } as const;
 
 export const EventKind = {

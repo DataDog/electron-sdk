@@ -1,9 +1,5 @@
 import { test, expect } from '../lib/helpers';
-import type { RumViewEvent, RumErrorEvent } from '@datadog/electron-sdk';
-
-function isBridgeView(event: { body: unknown }): boolean {
-  return (event.body as RumViewEvent).view.url !== 'electron://main-process';
-}
+import { isBridgeView } from '../lib/intake';
 
 test.describe('bridge window — file:// window', () => {
   test('renderer RUM view events arrive at the intake via the bridge', async ({ electronApp, mainPage, intake }) => {
@@ -16,7 +12,7 @@ test.describe('bridge window — file:// window', () => {
 
     const bridgeViews = await intake.waitForEventCount('view', 1, { predicate: isBridgeView });
     expect(bridgeViews).toHaveLength(1);
-    const view = bridgeViews[0].body as RumViewEvent;
+    const view = bridgeViews[0].body;
 
     expect(view.view.url).toContain('bridge-window.html');
     expect(view.session.id).toBeDefined();
@@ -33,7 +29,7 @@ test.describe('bridge window — http:// window', () => {
 
     const bridgeViews = await intake.waitForEventCount('view', 1, { predicate: isBridgeView });
     expect(bridgeViews).toHaveLength(1);
-    const view = bridgeViews[0].body as RumViewEvent;
+    const view = bridgeViews[0].body;
 
     expect(view.view.url).toMatch(/^http:\/\/localhost:\d+/);
     expect(view.session.id).toBeDefined();
@@ -54,7 +50,7 @@ test.describe('bridge window — contextIsolation: false', () => {
 
     const bridgeViews = await intake.waitForEventCount('view', 1, { predicate: isBridgeView });
     expect(bridgeViews).toHaveLength(1);
-    const view = bridgeViews[0].body as RumViewEvent;
+    const view = bridgeViews[0].body;
 
     expect(view.view.url).toContain('bridge-window.html');
     expect(view.session.id).toBeDefined();
@@ -65,13 +61,13 @@ test.describe('bridge window — event types', () => {
   test('renderer view events have correct attributes', async ({ electronApp, mainPage, intake }) => {
     await mainPage.flushTransport();
     const mainViewEvents = await intake.getEventsByType('view');
-    const mainView = mainViewEvents[0].body as RumViewEvent;
+    const mainView = mainViewEvents[0].body;
 
     await mainPage.openBridgeFileWindow(electronApp);
     await mainPage.flushTransport();
 
     const bridgeViews = await intake.waitForEventCount('view', 1, { predicate: isBridgeView });
-    const view = bridgeViews[0].body as RumViewEvent;
+    const view = bridgeViews[0].body;
 
     // Session attributes come from the main process (assembly hooks)
     expect(view.session.id).toBe(mainView.session.id);
@@ -86,7 +82,7 @@ test.describe('bridge window — event types', () => {
   test('renderer error events are captured with correct attributes', async ({ electronApp, mainPage, intake }) => {
     await mainPage.flushTransport();
     const mainViewEvents = await intake.getEventsByType('view');
-    const mainView = mainViewEvents[0].body as RumViewEvent;
+    const mainView = mainViewEvents[0].body;
 
     const bridgeWindowPage = await mainPage.openBridgeFileWindow(electronApp);
 
@@ -97,9 +93,9 @@ test.describe('bridge window — event types', () => {
 
     const errorEvents = await intake.waitForEventCount('error', 1, {
       timeout: 10_000,
-      predicate: (e) => (e.body as RumErrorEvent).error.message === errorMessage,
+      predicate: (e) => e.body.error.message === errorMessage,
     });
-    const error = errorEvents[0].body as RumErrorEvent;
+    const error = errorEvents[0].body;
 
     expect(error.error.source).toBe('source');
     // Session from main process

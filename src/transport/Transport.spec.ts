@@ -66,7 +66,15 @@ describe('Transport', () => {
 
       const tracks = mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType);
       expect(tracks).not.toContain(EventTrack.PROFILE);
-      expect(tracks).toEqual([EventTrack.RUM, EventTrack.SPANS]);
+      expect(tracks).toEqual([EventTrack.RUM, EventTrack.SPANS, EventTrack.REPLAY]);
+    });
+
+    it('should skip the REPLAY track when replay is disabled', async () => {
+      const configWithoutReplay = createTestConfiguration({ sessionReplaySampleRate: 0 });
+      await Transport.create(configWithoutReplay, eventManager);
+
+      const tracks = mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType);
+      expect(tracks).not.toContain(EventTrack.REPLAY);
     });
   });
 
@@ -136,23 +144,13 @@ describe('Transport', () => {
       const transport = await Transport.create(config, eventManager);
       await transport.flush();
 
-      expect(mockBatchFlush).toHaveBeenCalledTimes(3);
+      // RUM + SPANS + PROFILE + REPLAY
+      expect(mockBatchFlush).toHaveBeenCalledTimes(4);
     });
   });
 
   describe('batch configuration', () => {
-    it('should use default batch size when not specified', async () => {
-      await Transport.create(config, eventManager);
-
-      expect(mockBatchCreate).toHaveBeenCalledWith(
-        config,
-        expect.objectContaining({
-          batchSize: BatchSizes.MEDIUM,
-        })
-      );
-    });
-
-    it('should use configured batch size', async () => {
+    it('should translate the resolved batch size to a byte threshold', async () => {
       const configWithBatchSize = createTestConfiguration({ batchSize: 'SMALL' });
       await Transport.create(configWithBatchSize, eventManager);
 
@@ -164,18 +162,7 @@ describe('Transport', () => {
       );
     });
 
-    it('should use default upload frequency when not specified', async () => {
-      await Transport.create(config, eventManager);
-
-      expect(mockBatchCreate).toHaveBeenCalledWith(
-        config,
-        expect.objectContaining({
-          uploadFrequency: BatchUploadFrequencies.NORMAL,
-        })
-      );
-    });
-
-    it('should use configured upload frequency', async () => {
+    it('should translate the resolved upload frequency to an interval', async () => {
       const configWithFrequency = createTestConfiguration({ uploadFrequency: 'FREQUENT' });
       await Transport.create(configWithFrequency, eventManager);
 

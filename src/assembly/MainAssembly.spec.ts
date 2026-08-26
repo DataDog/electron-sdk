@@ -114,9 +114,9 @@ describe('MainAssembly', () => {
     expect((serverEvents[0] as ServerRumEvent).source).toBe(EventSource.MAIN);
   });
 
-  it('applies beforeSend to fully assembled RUM events after hooks', () => {
+  it('applies beforeSendRum to fully assembled RUM events after hooks', () => {
     hooks.registerRum(() => ({ session: { id: 'hook-session' } }));
-    vi.spyOn(beforeSend, 'apply').mockImplementation((event) => {
+    const applySpy = vi.spyOn(beforeSend, 'apply').mockImplementation((event) => {
       expect(event.session.id).toBe('hook-session');
       if (event.type === 'error') {
         event.error.message = 'modified';
@@ -126,10 +126,11 @@ describe('MainAssembly', () => {
 
     notifyRawRumEvent();
 
+    expect(applySpy).toHaveBeenCalledWith(expect.any(Object), 'main');
     expect(serverEvents[0].data).toMatchObject({ error: { message: 'modified' } });
   });
 
-  it('does not emit RUM events discarded by beforeSend', () => {
+  it('does not emit RUM events discarded by beforeSendRum', () => {
     hooks.registerRum(() => ({}));
     vi.spyOn(beforeSend, 'apply').mockReturnValue(undefined);
 

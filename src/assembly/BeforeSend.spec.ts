@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { RumVitalDurationEvent } from '../domain/rum';
-import { createServerRumError, createServerRumResource, createServerRumView } from '../mocks.specUtil';
+import type { RumLongTaskEvent, RumVitalDurationEvent } from '../domain/rum';
+import {
+  createServerRumAction,
+  createServerRumError,
+  createServerRumResource,
+  createServerRumView,
+} from '../mocks.specUtil';
 import { display } from '../tools/display';
 import { BeforeSend } from './BeforeSend';
 
@@ -8,24 +13,25 @@ vi.mock('../tools/display', () => ({
   display: { error: vi.fn(), warn: vi.fn() },
 }));
 
-describe('BeforeSend', () => {
+describe('beforeSendRum', () => {
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it('returns the event unchanged when beforeSend is not configured', () => {
+  it('returns the event unchanged when beforeSendRum is not configured', () => {
     const event = createServerRumError();
 
-    expect(new BeforeSend().apply(event)).toBe(event);
+    expect(new BeforeSend().apply(event, 'main')).toBe(event);
   });
 
-  it('lets beforeSend modify supported fields on a fully assembled event', () => {
+  it('lets beforeSendRum modify supported fields on a fully assembled event', () => {
     const event = createServerRumError({
       service: 'original-service',
       context: { secret: 'token' },
       error: { message: 'secret message', stack: 'secret stack' },
     });
-    const beforeSend = new BeforeSend((modifiableEvent) => {
+    const beforeSend = new BeforeSend((modifiableEvent, context) => {
+      expect(context).toEqual({ source: 'main' });
       expect(modifiableEvent.session.id).toBe('2');
       if (modifiableEvent.type === 'error') {
         modifiableEvent.service = 'modified-service';
@@ -37,7 +43,7 @@ describe('BeforeSend', () => {
       return true;
     });
 
-    expect(beforeSend.apply(event)).toMatchObject({
+    expect(beforeSend.apply(event, 'main')).toMatchObject({
       service: 'modified-service',
       view: { name: 'modified-view' },
       context: { scrubbed: true },
@@ -57,7 +63,7 @@ describe('BeforeSend', () => {
       return true;
     });
 
-    const result = beforeSend.apply(event);
+    const result = beforeSend.apply(event, 'main');
 
     expect(result?.type).toBe('error');
     expect(result?.date).toBe(originalDate);
@@ -79,14 +85,14 @@ describe('BeforeSend', () => {
       return true;
     });
 
-    expect(beforeSend.apply(event)).toMatchObject({
+    expect(beforeSend.apply(event, 'main')).toMatchObject({
       service: 'original-service',
       context: { secret: 'keep' },
       error: { message: 'original-message' },
     });
   });
 
-  it('lets beforeSend modify resource URLs', () => {
+  it('lets beforeSendRum modify resource URLs', () => {
     const beforeSend = new BeforeSend((event) => {
       if (event.type === 'resource') {
         event.resource.url = 'https://redacted.example';
@@ -94,12 +100,14 @@ describe('BeforeSend', () => {
       return true;
     });
 
-    expect(beforeSend.apply(createServerRumResource({ resource: { url: 'https://secret.example' } }))).toMatchObject({
+    expect(
+      beforeSend.apply(createServerRumResource({ resource: { url: 'https://secret.example' } }), 'main')
+    ).toMatchObject({
       resource: { url: 'https://redacted.example' },
     });
   });
 
-  it('ignores modifications to fields that are only produced by renderer events', () => {
+  it('lets beforeSendRum modify renderer-specific fields', () => {
     const view = createServerRumView({ view: { referrer: 'secret referrer' } });
     const error = createServerRumError({
       error: { handling_stack: 'secret handling stack', fingerprint: 'secret fingerprint' },
@@ -126,22 +134,50 @@ describe('BeforeSend', () => {
       return true;
     });
 
-    const viewResult = beforeSend.apply(view);
-    const errorResult = beforeSend.apply(error);
-    const resourceResult = beforeSend.apply(resource);
+    const viewResult = beforeSend.apply(view, 'renderer');
+    const errorResult = beforeSend.apply(error, 'renderer');
+    const resourceResult = beforeSend.apply(resource, 'renderer');
 
-    expect(viewResult?.view.referrer).toBe('secret referrer');
+    expect(viewResult?.view.referrer).toBe('redacted referrer');
     expect(errorResult?.error).toMatchObject({
-      handling_stack: 'secret handling stack',
-      fingerprint: 'secret fingerprint',
+      handling_stack: 'redacted handling stack',
+      fingerprint: 'redacted fingerprint',
     });
     expect(resourceResult?.resource).toMatchObject({
-      graphql: { variables: '{"secret":true}' },
-      request: { headers: { authorization: 'secret' } },
+      graphql: { variables: '{"redacted":true}' },
+      request: { headers: { authorization: '[REDACTED]' } },
     });
   });
 
-  it('lets beforeSend modify context on main-process events', () => {
+  it('lets beforeSendRum modify action targets and long task scripts', () => {
+    const action = createServerRumAction({ action: { target: { name: 'secret target' } } });
+    const longTask = {
+      type: 'long_task',
+      date: 1,
+      application: { id: 'app-id' },
+      session: { id: 'session-id', type: 'user' },
+      view: { id: 'view-id' },
+      long_task: { duration: 1, scripts: [{ source_url: 'secret.js', invoker: 'secret invoker' }] },
+    } as RumLongTaskEvent;
+    const beforeSend = new BeforeSend((event) => {
+      if (event.type === 'action' && event.action.target) {
+        event.action.target.name = 'redacted target';
+      }
+      if (event.type === 'long_task' && event.long_task.scripts) {
+        event.long_task.scripts[0].source_url = 'redacted.js';
+        event.long_task.scripts[0].invoker = 'redacted invoker';
+      }
+      return true;
+    });
+
+    expect(beforeSend.apply(action, 'renderer')?.action.target?.name).toBe('redacted target');
+    expect(beforeSend.apply(longTask, 'renderer')?.long_task.scripts?.[0]).toMatchObject({
+      source_url: 'redacted.js',
+      invoker: 'redacted invoker',
+    });
+  });
+
+  it('lets beforeSendRum modify context on main-process events', () => {
     const view = createServerRumView();
     const resource = createServerRumResource();
     const vital = {
@@ -157,9 +193,9 @@ describe('BeforeSend', () => {
       return true;
     });
 
-    expect(beforeSend.apply(view)?.context).toEqual({ scrubbed: true });
-    expect(beforeSend.apply(resource)?.context).toEqual({ scrubbed: true });
-    expect(beforeSend.apply(vital)?.context).toEqual({ scrubbed: true });
+    expect(beforeSend.apply(view, 'main')?.context).toEqual({ scrubbed: true });
+    expect(beforeSend.apply(resource, 'main')?.context).toEqual({ scrubbed: true });
+    expect(beforeSend.apply(vital, 'main')?.context).toEqual({ scrubbed: true });
   });
 
   it('sanitizes context changes', () => {
@@ -170,13 +206,13 @@ describe('BeforeSend', () => {
       return true;
     });
 
-    expect(beforeSend.apply(createServerRumError())?.context).toEqual({
+    expect(beforeSend.apply(createServerRumError(), 'main')?.context).toEqual({
       secret: 'token',
       circular: '[Reference seen at $]',
     });
   });
 
-  it('removes an empty context after beforeSend', () => {
+  it('removes an empty context after beforeSendRum', () => {
     const originalEvent = createServerRumError();
     const beforeSend = new BeforeSend((modifiableEvent) => {
       expect(originalEvent.context).toBeUndefined();
@@ -184,38 +220,38 @@ describe('BeforeSend', () => {
       return true;
     });
 
-    expect(beforeSend.apply(originalEvent)?.context).toBeUndefined();
+    expect(beforeSend.apply(originalEvent, 'main')?.context).toBeUndefined();
   });
 
-  it('removes context cleared by beforeSend', () => {
+  it('removes context cleared by beforeSendRum', () => {
     const beforeSend = new BeforeSend((event) => {
       delete event.context;
       return true;
     });
 
-    expect(beforeSend.apply(createServerRumError({ context: { secret: 'remove' } }))?.context).toBeUndefined();
+    expect(beforeSend.apply(createServerRumError({ context: { secret: 'remove' } }), 'main')?.context).toBeUndefined();
   });
 
-  it('drops an event only when beforeSend returns false', () => {
-    expect(new BeforeSend(() => false).apply(createServerRumError())).toBeUndefined();
-    expect(new BeforeSend(() => undefined as unknown as boolean).apply(createServerRumError())).toBeDefined();
+  it('drops an event only when beforeSendRum returns false', () => {
+    expect(new BeforeSend(() => false).apply(createServerRumError(), 'main')).toBeUndefined();
+    expect(new BeforeSend(() => undefined as unknown as boolean).apply(createServerRumError(), 'main')).toBeDefined();
   });
 
   it('does not drop view events', () => {
     const event = createServerRumView();
 
-    expect(new BeforeSend(() => false).apply(event)).toBe(event);
-    expect(display.warn).toHaveBeenCalledWith("Can't dismiss view events using beforeSend!");
+    expect(new BeforeSend(() => false).apply(event, 'main')).toBe(event);
+    expect(display.warn).toHaveBeenCalledWith("Can't dismiss view events using beforeSendRum!");
   });
 
   it('does not drop crash events', () => {
     const event = createServerRumError({ error: { is_crash: true } });
 
-    expect(new BeforeSend(() => false).apply(event)).toBe(event);
-    expect(display.warn).toHaveBeenCalledWith("Can't dismiss crash events using beforeSend!");
+    expect(new BeforeSend(() => false).apply(event, 'main')).toBe(event);
+    expect(display.warn).toHaveBeenCalledWith("Can't dismiss crash events using beforeSendRum!");
   });
 
-  it('fails open when beforeSend throws and keeps supported changes made before the error', () => {
+  it('fails open when beforeSendRum throws and keeps supported changes made before the error', () => {
     const event = createServerRumError();
     const beforeSend = new BeforeSend((modifiableEvent) => {
       if (modifiableEvent.type === 'error') {
@@ -224,7 +260,7 @@ describe('BeforeSend', () => {
       throw new Error('customer callback failed');
     });
 
-    expect(beforeSend.apply(event)).toMatchObject({ error: { message: 'redacted before throw' } });
-    expect(display.error).toHaveBeenCalledWith('beforeSend threw an error:', expect.any(Error));
+    expect(beforeSend.apply(event, 'main')).toMatchObject({ error: { message: 'redacted before throw' } });
+    expect(display.error).toHaveBeenCalledWith('beforeSendRum threw an error:', expect.any(Error));
   });
 });

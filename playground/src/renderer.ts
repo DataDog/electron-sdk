@@ -22,6 +22,7 @@ datadogRum.init({
   service: 'electron-playground',
   env: 'dev',
   sessionSampleRate: 100,
+  sessionReplaySampleRate: 100,
   trackResources: true,
   trackLongTasks: true,
   trackUserInteractions: true,
@@ -49,6 +50,7 @@ interface ElectronAPI {
   ) => Promise<void>;
   mainFetchApiFetch: () => Promise<unknown>;
   mainFetchApiNet: () => Promise<unknown>;
+  mainFetchApiNetDrop: () => Promise<unknown>;
   openRumExplorer: () => Promise<void>;
   flushTransport: () => Promise<void>;
   setUserInfo: () => Promise<void>;
@@ -57,6 +59,9 @@ interface ElectronAPI {
   setAccountInfo: () => Promise<void>;
   addAccountExtraInfo: () => Promise<void>;
   clearAccountInfo: () => Promise<void>;
+  getUserInfo: () => Promise<unknown>;
+  getAccountInfo: () => Promise<unknown>;
+  addError: () => Promise<void>;
 }
 
 declare global {
@@ -258,9 +263,14 @@ setupDemoButton('add-account-extra-info', 'main:add-account-extra-info', () =>
 );
 setupDemoButton('clear-account-info', 'main:clear-account-info', () => window.electronAPI.clearAccountInfo());
 
+setupDemoButton('get-user-info', 'main:get-user-info', () => window.electronAPI.getUserInfo());
+setupDemoButton('get-account-info', 'main:get-account-info', () => window.electronAPI.getAccountInfo());
+setupDemoButton('add-error', 'main:add-error', () => window.electronAPI.addError());
+
 setupDemoButton('main-fetch', 'main:fetch-api', () => window.electronAPI.mainFetchApi());
 setupDemoButton('main-fetch-fetch', 'main:fetch-api-fetch', () => window.electronAPI.mainFetchApiFetch());
 setupDemoButton('main-fetch-net', 'main:fetch-api-net', () => window.electronAPI.mainFetchApiNet());
+setupDemoButton('main-fetch-net-drop', 'main:fetch-api-net-drop', () => window.electronAPI.mainFetchApiNetDrop());
 
 // --- Custom duration vital demo buttons ---
 
@@ -285,10 +295,12 @@ setupDemoButton('vital-stop', 'main:stop-duration-vital(document.open)', () =>
   })
 );
 
-// --- beforeSend demo buttons ---
+// --- beforeSendRum demo buttons ---
 
-setupDemoButton('before-send-scrub', 'beforeSend(scrub)', () => window.electronAPI.generateBeforeSendError('scrub'));
-setupDemoButton('before-send-filter', 'beforeSend(filter)', () => window.electronAPI.generateBeforeSendError('filter'));
+setupDemoButton('before-send-scrub', 'beforeSendRum(scrub)', () => window.electronAPI.generateBeforeSendError('scrub'));
+setupDemoButton('before-send-filter', 'beforeSendRum(filter)', () =>
+  window.electronAPI.generateBeforeSendError('filter')
+);
 
 // --- Operation Monitoring demo buttons ---
 

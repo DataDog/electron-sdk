@@ -1,8 +1,5 @@
 import { test, expect } from '../lib/helpers';
-import type { RumErrorEvent, RumViewEvent } from '@datadog/electron-sdk';
-
-const isMainProcessView = (event: { body: unknown }) =>
-  (event.body as RumViewEvent).view.url === 'electron://main-process';
+import { isMainProcessView } from '../lib/intake';
 
 test.describe('event attribution with session renewal', () => {
   test.use({ rumBrowserSdk: {} });
@@ -10,7 +7,7 @@ test.describe('event attribution with session renewal', () => {
   test('attributes event to correct session and view based on startTime', async ({ mainPage, intake }) => {
     await mainPage.flushTransport();
     const viewEvents = await intake.getEventsByType('view');
-    const firstView = viewEvents.find(isMainProcessView)!.body as RumViewEvent;
+    const firstView = viewEvents.find(isMainProcessView)!.body;
     const firstSessionId = firstView.session.id;
     const firstViewId = firstView.view.id;
 
@@ -28,7 +25,7 @@ test.describe('event attribution with session renewal', () => {
     const errorEvents = await intake.getEventsByType('error');
     expect(errorEvents).toHaveLength(1);
 
-    const error = errorEvents[0].body as RumErrorEvent;
+    const error = errorEvents[0].body;
     expect(error.session.id).toBe(firstSessionId);
     expect(error.view.id).toBe(firstViewId);
     expect(error.date).toBe(timestampInFirstSession);

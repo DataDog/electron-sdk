@@ -1,10 +1,11 @@
 import { defineConfig } from 'vite';
+import { getWorkflow } from './workflow';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   root: 'src/renderer',
   base: './',
   build: {
-    outDir: '../../dist/renderer',
+    outDir: `../../dist/${getWorkflow(mode)}/renderer`,
     emptyOutDir: true,
   },
-});
+}));

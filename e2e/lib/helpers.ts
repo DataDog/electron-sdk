@@ -40,7 +40,7 @@ export interface TestFixtures {
   rumBrowserSdk: Record<string, unknown> | null;
   initialIntakeQuotaDecision: 'quota_ok' | 'quota_ko';
   sdkConfigOverrides: Partial<InitConfiguration> | null;
-  beforeSendEnabled: boolean;
+  beforeSendRumEnabled: boolean;
 }
 
 /**
@@ -72,10 +72,10 @@ export const test = base.extend<TestFixtures>({
     { option: true },
   ],
 
-  electronApp: async ({ intake, rumBrowserSdk, sdkConfigOverrides, beforeSendEnabled }, use) => {
+  electronApp: async ({ intake, rumBrowserSdk, sdkConfigOverrides, beforeSendRumEnabled }, use) => {
     const userDataDir = await createUserDataDir();
     const electronApp = await launchApp(intake, userDataDir, rumBrowserSdk, sdkConfigOverrides, {
-      ...(beforeSendEnabled && { DD_E2E_BEFORE_SEND: '1' }),
+      ...(beforeSendRumEnabled && { DD_E2E_BEFORE_SEND_RUM: '1' }),
     });
     await use(electronApp);
     await electronApp.close();
@@ -98,7 +98,7 @@ export const test = base.extend<TestFixtures>({
 
   sdkConfigOverrides: [null, { option: true }],
 
-  beforeSendEnabled: [false, { option: true }],
+  beforeSendRumEnabled: [false, { option: true }],
 });
 
 async function launchApp(
@@ -125,10 +125,13 @@ async function launchApp(
     env: 'test',
     version: '1.0.0',
     sessionSampleRate: 100,
+    sessionReplaySampleRate: 100,
     profilingSampleRate: 100,
     telemetrySampleRate: 100,
+    telemetryConfigurationSampleRate: 100,
+    telemetryUsageSampleRate: 100,
     defaultPrivacyLevel: 'mask',
-    allowedWebViewHosts: [],
+    allowedRendererHosts: ['*'],
     ...(sdkConfigOverrides ?? {}),
   };
   env.DD_ELECTRON_SDK_CONFIG = JSON.stringify(electronSdkConfig);
@@ -140,6 +143,7 @@ async function launchApp(
       site: 'datadoghq.com',
       service: 'e2e-main-window',
       sessionSampleRate: 100,
+      sessionReplaySampleRate: 100,
       trackUserInteractions: true,
       ...rumBrowserSdk,
     });
@@ -186,7 +190,7 @@ export async function launchDeferredInitApp(intake: Intake, userDataDir: string)
     userDataDir,
     null,
     {
-      allowedWebViewHosts: ['deferred-init.example.com'],
+      allowedRendererHosts: ['deferred-init.example.com'],
       defaultPrivacyLevel: 'allow',
     },
     { DD_E2E_DEFER_INIT: '1' }

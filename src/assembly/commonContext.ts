@@ -11,6 +11,7 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
   // so it is authoritative for the rates reported on every RUM event.
   const ddConfiguration = {
     session_sample_rate: configuration.sessionSampleRate,
+    session_replay_sample_rate: configuration.sessionReplaySampleRate,
     profiling_sample_rate: configuration.profilingSampleRate,
   };
 
@@ -36,6 +37,9 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
     }
   });
 
+  // Only reached with source MAIN today: renderer telemetry is dropped by RendererPipeline. It must
+  // become source-aware (like registerRum above) before that path is wired up in RUM-15253, since
+  // these attributes would otherwise overwrite the Browser SDK's own service/source/version/date.
   hooks.registerTelemetry(() => ({
     date: Date.now(),
     source: 'electron',

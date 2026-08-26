@@ -9,6 +9,8 @@ import { BatchConsumer } from './BatchConsumer';
 import type { BatchConsumerConfig } from './BatchConsumer';
 import { BatchProducer } from './BatchProducer';
 import { ProfileBatchConsumer, ProfileBatchProducer } from './profiling';
+import { ReplayBatchConsumer } from './replay/ReplayBatchConsumer';
+import { ReplayBatchProducer } from './replay/ReplayBatchProducer';
 import { StandardBatchConsumer } from './standard/StandardBatchConsumer';
 import { StandardBatchProducer } from './standard/StandardBatchProducer';
 import type { StandardBatchProducerConfig } from './standard/StandardBatchProducer';
@@ -24,7 +26,10 @@ export class BatchManager {
   private consumer: BatchConsumer;
   private uploadFrequency: number;
   private timeoutId: ReturnType<typeof setTimeout> | null = null;
-  private isUploading = false;
+  // The upload cycle currently running (rotate + upload), or null when idle.
+  private activeCycle: Promise<void> | null = null;
+  // A cycle queued to run after the active one. Concurrent flush() callers coalesce onto it.
+  private queuedCycle: Promise<void> | null = null;
 
   private constructor(producer: BatchProducer, consumer: BatchConsumer, uploadFrequency: number) {
     this.producer = producer;
@@ -48,9 +53,16 @@ export class BatchManager {
     this.producer.post(event);
   }
 
-  /** Drains the write queue, rotates the current batch, and uploads all pending files. */
+  /**
+   * Drains the write queue, rotates the current batch, and uploads all pending files.
+   *
+   * Guarantees a full cycle runs to completion *after* this call. A scheduled cycle already in
+   * flight may have scanned the directory before the caller rotated new files (e.g. the final
+   * replay segment flushed on quit), so we always run a fresh cycle behind it rather than
+   * short-circuiting — otherwise those files would sit on disk until the next launch.
+   */
   async flush() {
-    await this.triggerUploadCycle();
+    await this.enqueueUploadCycle();
   }
 
   /** Stops the periodic upload cycle. */
@@ -69,27 +81,56 @@ export class BatchManager {
   /** Schedules the next upload cycle after the configured frequency delay. */
   private scheduleNext() {
     this.timeoutId = setTimeout(() => {
-      void this.triggerUploadCycle()
+      void this.runPeriodicCycle()
         .catch((error) => addError(error))
         .then(() => this.scheduleNext());
     }, this.uploadFrequency);
   }
 
-  /** Flushes the producer to rotate pending files, then uploads all ready batches. */
-  private async triggerUploadCycle() {
-    if (this.isUploading) {
-      return;
+  /**
+   * Periodic tick: run a cycle only when nothing is active or queued, so ticks never stack up
+   * behind a slow upload (a fresh tick will fire next interval anyway).
+   */
+  private runPeriodicCycle(): Promise<void> {
+    if (this.activeCycle || this.queuedCycle) {
+      return this.activeCycle ?? Promise.resolve();
+    }
+    return this.enqueueUploadCycle();
+  }
+
+  /**
+   * Queues an upload cycle to run after any in-flight one. Multiple callers before the queued
+   * cycle starts share the same promise, so at most one cycle is ever pending and cycles never
+   * overlap (rotate + upload touch the same directory).
+   */
+  private enqueueUploadCycle(): Promise<void> {
+    if (this.queuedCycle) {
+      return this.queuedCycle;
     }
 
-    this.isUploading = true;
+    const previous = this.activeCycle ?? Promise.resolve();
+    const cycle = previous
+      // Swallow the prior cycle's failure — its own scheduler already reported it, and this
+      // cycle must still run so newly rotated files get uploaded.
+      .catch(() => undefined)
+      .then(() => {
+        this.queuedCycle = null;
+        this.activeCycle = this.runUploadCycle();
+        return this.activeCycle;
+      });
+    this.queuedCycle = cycle;
+    return cycle;
+  }
 
+  /** Flushes the producer to rotate pending files, then uploads all ready batches. */
+  private async runUploadCycle() {
     try {
       // Flush producer first to rotate any pending .tmp files to .log
       await this.producer.flush();
       // Then upload all .log files
       await this.consumer.upload();
     } finally {
-      this.isUploading = false;
+      this.activeCycle = null;
     }
   }
 
@@ -111,6 +152,12 @@ export class BatchManager {
     const intakeUrl = computeIntakeUrlForTrack(config.site, trackType, { proxy: config.proxy });
 
     const consumerConfig: BatchConsumerConfig = { trackPath, intakeUrl, clientToken };
+
+    if (trackType === EventTrack.REPLAY) {
+      const producer = await ReplayBatchProducer.create({ trackPath });
+      const consumer = new ReplayBatchConsumer(consumerConfig);
+      return { producer, consumer };
+    }
 
     if (trackType === EventTrack.PROFILE) {
       const producer = await ProfileBatchProducer.create({ trackPath });

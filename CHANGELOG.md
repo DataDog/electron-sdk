@@ -2,6 +2,44 @@
 
 All notable changes to `@datadog/electron-sdk` are documented here.
 
+## [0.8.1] - 2026-08-11
+
+### Internal
+
+- ⬆️ upgrade dd-trace to 6.10.0 (#196)
+
+## [0.8.0] - 2026-08-06
+
+### 💥 Breaking Changes
+
+- 💥 [RUM-17543] rename allowedWebViewHosts → allowedRendererHosts and enforce host filtering (#181)
+
+`allowedWebViewHosts` renamed to `allowedRendererHosts` and is now **required**. Configure which renderer hosts are allowed to send data to the electron-sdk, see [documentation](https://github.com/DataDog/electron-sdk/#allowedrendererhosts-values).
+
+Add `allowedRendererHosts: ['*']` to your init() call to preserve previous behavior.
+
+### ✨ Features
+
+- ✨ [RUM-15529] Integrate Session Replay (#131)
+- ✨ Add configurable runtime dependency copying (#182)
+
+## [0.7.0] - 2026-07-30
+
+### ✨ Features
+
+- ✨ add custom duration vitals to the main process (#172)
+- ✨ [RUM-15788] Add User & Account info (#135)
+- ✨ cap pending batch files with drop-oldest eviction (#173)
+
+### 🐛 Bug Fixes
+
+- 🐛 stop including the bridge payload in telemetry errors (#185)
+- 🐛 make session expiration idempotent (#183)
+
+### Internal
+
+- 👷 consolidate safe Renovate updates (#187)
+
 ## [0.6.0] - 2026-07-16
 
 ### ✨ Features

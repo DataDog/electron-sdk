@@ -14,6 +14,7 @@ const INTEGRATION_MODES = ['dev', 'packaged'] as const;
 
 export type IntegrationApp = (typeof INTEGRATION_APPS)[number];
 export type IntegrationMode = (typeof INTEGRATION_MODES)[number];
+export type IntegrationVariant = null | 'packager-copy';
 
 export default defineConfig<IntegrationFixtures>({
   timeout: 30000,
@@ -34,8 +35,18 @@ export default defineConfig<IntegrationFixtures>({
         name: `${app}-${mode}`,
         testDir: './integration/scenarios',
         testMatch: '**/*.scenario.ts',
-        use: { app, mode },
+        use: { app, mode, variant: null },
       }))
     ),
+    {
+      name: 'electron-builder-vite-packager-copy-packaged',
+      testDir: './integration/scenarios',
+      testMatch: '**/*.scenario.ts',
+      use: {
+        app: 'electron-builder-vite' as const,
+        mode: 'packaged' as const,
+        variant: 'packager-copy' as const,
+      },
+    },
   ],
 });

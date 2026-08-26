@@ -1,5 +1,5 @@
 import { test, expect } from '../lib/helpers';
-import type { RumResourceEvent, RumViewEvent } from '@datadog/electron-sdk';
+import type { RumResourceEvent } from '@datadog/electron-sdk';
 import { Span } from '../lib/intake';
 
 function matchResourceTraceId(resource: RumResourceEvent) {
@@ -9,7 +9,7 @@ function matchResourceTraceId(resource: RumResourceEvent) {
 test('emits a resource event for a main-process fetch', async ({ mainPage, intake, testServer }) => {
   await mainPage.flushTransport();
   const viewEvents = await intake.getEventsByType('view');
-  const view = viewEvents[0].body as RumViewEvent;
+  const view = viewEvents[0].body;
 
   const url = testServer.urlFor(200);
   await mainPage.mainFetch(url);
@@ -18,7 +18,7 @@ test('emits a resource event for a main-process fetch', async ({ mainPage, intak
   const resourceEvents = await intake.getEventsByType('resource');
   expect(resourceEvents).toHaveLength(1);
 
-  const resource = resourceEvents[0].body as RumResourceEvent;
+  const resource = resourceEvents[0].body;
   expect(resource.resource.method).toBe('GET');
   expect(resource.resource.status_code).toBe(200);
   expect(resource.resource.url).toBe(url);
@@ -38,7 +38,7 @@ test('emits a resource event for a main-process fetch', async ({ mainPage, intak
 test('emits a resource event for a main-process http.request', async ({ mainPage, intake, testServer }) => {
   await mainPage.flushTransport();
   const viewEvents = await intake.getEventsByType('view');
-  const view = viewEvents[0].body as RumViewEvent;
+  const view = viewEvents[0].body;
 
   const url = testServer.urlFor(404);
   await mainPage.mainHttpRequest(url);
@@ -47,7 +47,7 @@ test('emits a resource event for a main-process http.request', async ({ mainPage
   const resourceEvents = await intake.getEventsByType('resource');
   expect(resourceEvents).toHaveLength(1);
 
-  const resource = resourceEvents[0].body as RumResourceEvent;
+  const resource = resourceEvents[0].body;
   expect(resource.resource.method).toBe('GET');
   expect(resource.resource.status_code).toBe(404);
   expect(resource.resource.url).toBe(url);
@@ -67,7 +67,7 @@ test('emits a resource event for a main-process http.request', async ({ mainPage
 test('emits a resource event for a main-process net.request', async ({ mainPage, intake, testServer }) => {
   await mainPage.flushTransport();
   const viewEvents = await intake.getEventsByType('view');
-  const view = viewEvents[0].body as RumViewEvent;
+  const view = viewEvents[0].body;
 
   const url = testServer.urlFor(500);
   await mainPage.mainNetRequest(url);
@@ -76,7 +76,7 @@ test('emits a resource event for a main-process net.request', async ({ mainPage,
   const resourceEvents = await intake.getEventsByType('resource');
   expect(resourceEvents).toHaveLength(1);
 
-  const resource = resourceEvents[0].body as RumResourceEvent;
+  const resource = resourceEvents[0].body;
   expect(resource.resource.method).toBe('GET');
   expect(resource.resource.status_code).toBe(500);
   expect(resource.resource.url).toBe(url);
