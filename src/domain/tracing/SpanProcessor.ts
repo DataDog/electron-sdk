@@ -10,6 +10,7 @@ import { computeIntakeHostname } from '../../transport';
 import { RawRumResource } from '../rum';
 import { monitor } from '../telemetry';
 import { NsTimeStamp, RawSpanData, RawTraceData } from './rawTracingData.types';
+import { Tracing } from './Tracing';
 
 /**
  * Structure of spans exported by dd-trace electron exporter.
@@ -72,6 +73,7 @@ export class SpanProcessor {
 
   private processTrace(trace: ExportedSpan[]): void {
     const processedSpans: RawSpanData[] = [];
+    const traceSampled = Tracing.isTraceSampled(trace);
 
     for (const exportedSpan of trace) {
       if (this.isIntakeRequest(exportedSpan)) {
@@ -83,10 +85,12 @@ export class SpanProcessor {
         continue;
       }
 
-      processedSpans.push(combine(span, hookResult));
-
       if (isHttpSpan(exportedSpan)) {
-        this.emitResource(spanToResource(exportedSpan));
+        this.emitResource(spanToResource(exportedSpan, traceSampled));
+      }
+
+      if (traceSampled) {
+        processedSpans.push(combine(span, hookResult));
       }
     }
 
@@ -154,7 +158,7 @@ function toRawSpan(exportedSpan: ExportedSpan, service: string): RawSpanData {
   };
 }
 
-function spanToResource(exportedSpan: ExportedSpan): RawRumResource {
+function spanToResource(exportedSpan: ExportedSpan, traceSampled: boolean): RawRumResource {
   return {
     type: 'resource',
     date: toTimeStamp(exportedSpan.start),
@@ -166,11 +170,13 @@ function spanToResource(exportedSpan: ExportedSpan): RawRumResource {
       status_code: Number(exportedSpan.meta['http.status_code']) || 0,
       url: exportedSpan.meta['http.url'],
     },
-    _dd: {
-      trace_id: exportedSpan.trace_id.toString(10),
-      span_id: exportedSpan.span_id.toString(10),
-      format_version: 2,
-    },
+    _dd: traceSampled
+      ? {
+          trace_id: exportedSpan.trace_id.toString(10),
+          span_id: exportedSpan.span_id.toString(10),
+          format_version: 2,
+        }
+      : { format_version: 2 },
   };
 }
 

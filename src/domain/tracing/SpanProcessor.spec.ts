@@ -132,6 +132,29 @@ describe('SpanProcessor', () => {
       expect(resource.resource.method).toBe('GET');
       expect(resource.resource.status_code).toBe(0);
     });
+
+    it('should keep an unlinked RUM resource when trace sampling rejects the trace', () => {
+      const span = createSpan({ metrics: { _sampling_priority_v1: 0 } });
+
+      publish([[span]]);
+
+      const rawEvent = collected.find((event) => event.kind === EventKind.RAW) as RawRumEvent;
+      const resource = rawEvent.data as { _dd: { trace_id?: string; span_id?: string; format_version: number } };
+      expect(resource._dd).toEqual({ format_version: 2 });
+      expect(collected.filter((event) => event.kind === EventKind.SERVER)).toHaveLength(0);
+    });
+
+    it('should send the span and linked resource when trace sampling keeps the trace', () => {
+      const span = createSpan({ metrics: { _sampling_priority_v1: 1 } });
+
+      publish([[span]]);
+
+      const rawEvent = collected.find((event) => event.kind === EventKind.RAW) as RawRumEvent;
+      const resource = rawEvent.data as { _dd: { trace_id?: string; span_id?: string } };
+      expect(resource._dd.trace_id).toBe('123');
+      expect(resource._dd.span_id).toBe('456');
+      expect(collected.filter((event) => event.kind === EventKind.SERVER)).toHaveLength(1);
+    });
   });
 
   describe('non-HTTP spans', () => {
@@ -144,6 +167,12 @@ describe('SpanProcessor', () => {
 
       expect(rawEvents).toHaveLength(0);
       expect(serverEvents).toHaveLength(1);
+    });
+
+    it('should not emit a rejected trace without HTTP resources', () => {
+      publish([[createSpan({ type: 'system', meta: {}, metrics: { _sampling_priority_v1: -1 } })]]);
+
+      expect(collected).toHaveLength(0);
     });
   });
 

@@ -2,16 +2,15 @@
  * Vite plugin for Electron apps using the Datadog Electron SDK.
  *
  * Vite hoists all top-level `require()` calls to the start of the bundle,
- * regardless of their source module order. This breaks dd-trace's module
- * hooking because `require('electron')` runs before dd-trace can register
- * its hooks via `import '@datadog/electron-sdk/instrument'`.
+ * regardless of their source module order. This breaks Electron instrumentation
+ * because `require('electron')` runs before `@datadog/electron-sdk/instrument`.
  *
  * This plugin:
  * 1. Externalizes dd-trace and the electron-sdk so they remain as runtime
- *    requires (not bundled), preserving module hook mechanics.
- * 2. Prepends SDK initialization (via @datadog/electron-sdk/instrument)
- *    to the very top of the main process entry chunk, ensuring hooks are
- *    registered before any hoisted requires. No manual import needed.
+ *    requires (not bundled), preserving runtime instrumentation.
+ * 2. Prepends SDK instrumentation (via @datadog/electron-sdk/instrument)
+ *    to the very top of the main process entry chunk, before any hoisted
+ *    requires. No manual import needed.
  * 3. Copies dd-trace and @datadog/electron-sdk into the build output's
  *    node_modules so they are available at runtime in packaged apps.
  *

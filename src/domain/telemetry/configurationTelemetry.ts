@@ -50,6 +50,7 @@ function buildConfigurationTelemetry(
     batch_size: resolveUploadFrequency(configuration),
     batch_upload_frequency: resolveUploadFrequency(configuration),
     use_tracing: useTracing,
+    use_trace_sampling_rules: configuration.traceSamplingRules.length > 0,
     // dd-trace is the only tracer the SDK integrates with, so the API is Datadog's whenever tracing is on.
     tracer_api: useTracing ? 'Datadog' : undefined,
     tracer_api_version: useTracing ? tracerVersion : undefined,

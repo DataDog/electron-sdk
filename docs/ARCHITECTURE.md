@@ -235,8 +235,11 @@ import { app, BrowserWindow } from 'electron';
 
 On load it:
 
-1. Initializes dd-trace with the `electron` exporter.
+1. Loads the tracing runtime before Electron.
 2. Calls `patchBrowserWindow`, `patchIpcMain`, `patchWebContents`, and `patchNet`.
+
+The regular SDK `init()` then initializes dd-trace with the `electron` exporter and the resolved tracing
+configuration.
 
 Bundlers may reorder module evaluation and break this requirement; use the bundler plugins (see [Bundler plugins](#bundler-plugins)).
 
@@ -256,6 +259,13 @@ HTTP spans → Assembly → Transport → /api/v2/rum (as RUM resources)
 ```
 
 All spans are enriched with `_dd.application.id`, `_dd.session.id`, and `_dd.view.id`. Trace and span IDs are converted to **hexadecimal strings** for the spans intake.
+
+### Trace sampling rules
+
+`traceSamplingRules` are applied by dd-trace when a root trace is sampled. Rules are ordered, the first match wins,
+and child spans inherit the root decision. If no rule matches, the trace is kept. Rejected traces are not sent to the
+spans intake or propagated through Electron HTTP requests. Their HTTP spans still produce RUM resources without
+trace or span identifiers.
 
 ### Preload injection
 
@@ -280,9 +290,9 @@ Advertised capabilities tell the Browser SDK which bridge features it may use, b
 
 The instrumentation entry point must run before `require('electron')`. Bundlers can break this ordering requirement in different ways:
 
-- **Vite** (`datadogVitePlugin` from `@datadog/electron-sdk/vite-plugin`): hoists all `require()` calls to the top of the bundle, breaking import order. The plugin externalizes dd-trace and the SDK, prepends the initialization banner before hoisted requires, and by default copies their runtime dependencies into the build output (set `copyRuntimeDependencies: false` to delegate copying to the packager instead).
-- **Webpack** (`DatadogWebpackPlugin` from `@datadog/electron-sdk/webpack-plugin`): preserves module execution order (lazy evaluation via `__webpack_require__`), so import order is maintained. The plugin externalizes dd-trace and the SDK, prepends the initialization banner, excludes them from `@vercel/webpack-asset-relocator-loader`, and by default copies their runtime dependencies into the build output (set `copyRuntimeDependencies: false` to delegate copying to the packager instead).
-- **esbuild** (`datadogEsbuildPlugin` from `@datadog/electron-sdk/esbuild-plugin`): also preserves module execution order. The plugin externalizes dd-trace and the SDK, prepends the initialization banner, and by default copies their runtime dependencies via an `onEnd` hook (set `copyRuntimeDependencies: false` to delegate copying to the packager instead). In ESM output the banner loads `instrument` via `createRequire`, since ES modules have no global `require`.
+- **Vite** (`datadogVitePlugin` from `@datadog/electron-sdk/vite-plugin`): hoists all `require()` calls to the top of the bundle, breaking import order. The plugin externalizes dd-trace and the SDK, prepends the instrumentation banner before hoisted requires, and by default copies their runtime dependencies into the build output (set `copyRuntimeDependencies: false` to delegate copying to the packager instead).
+- **Webpack** (`DatadogWebpackPlugin` from `@datadog/electron-sdk/webpack-plugin`): preserves module execution order (lazy evaluation via `__webpack_require__`), so import order is maintained. The plugin externalizes dd-trace and the SDK, prepends the instrumentation banner, excludes them from `@vercel/webpack-asset-relocator-loader`, and by default copies their runtime dependencies into the build output (set `copyRuntimeDependencies: false` to delegate copying to the packager instead).
+- **esbuild** (`datadogEsbuildPlugin` from `@datadog/electron-sdk/esbuild-plugin`): also preserves module execution order. The plugin externalizes dd-trace and the SDK, prepends the instrumentation banner, and by default copies their runtime dependencies via an `onEnd` hook (set `copyRuntimeDependencies: false` to delegate copying to the packager instead). In ESM output the banner loads `instrument` via `createRequire`, since ES modules have no global `require`.
 
 See `src/entries/instrument.ts`, `src/entries/vite-plugin.ts`, `src/entries/webpack-plugin.ts`, and `src/entries/esbuild-plugin.ts`.
 
@@ -294,7 +304,7 @@ dd-trace is declared as a **direct runtime dependency** in `package.json`, not a
 
 The SDK is tightly coupled to a specific dd-trace build:
 
-- The `instrument` entry point calls `tracer.init({ exporter: 'electron' })` (a custom exporter built specifically for the Electron SDK).
+- The SDK initializes dd-trace with the `electron` exporter, a custom exporter built specifically for the Electron SDK.
 - The `SpanProcessor` subscribes to a specific diagnostics channel (`datadog:apm:electron:export`) that dd-trace publishes to.
 
 Making it a direct dependency ensures a single, tested version is always present. The alternatives were considered:

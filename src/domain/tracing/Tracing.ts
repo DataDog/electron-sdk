@@ -1,5 +1,7 @@
 import { createRequire } from 'node:module';
+import type { SamplingRule } from 'dd-trace';
 import { addError } from '../telemetry';
+import type { Configuration, TraceSamplingRule } from '../../config';
 
 const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
 
@@ -8,7 +10,9 @@ interface ExporterWithFlush {
 }
 
 interface TracerInternals {
-  _tracer?: { _exporter?: unknown };
+  _tracer?: {
+    _exporter?: unknown;
+  };
   _tracingInitialized?: boolean;
 }
 
@@ -18,9 +22,9 @@ interface TracerInternals {
  * Deliberately soft: the version is only telemetry, so a package that hides its manifest behind an
  * `exports` map must not take tracing down with it.
  */
-function readTracerVersion(): string | undefined {
+function readTracerVersion(requireFn: NodeRequire): string | undefined {
   try {
-    return (_require('dd-trace/package.json') as { version?: string }).version;
+    return (requireFn('dd-trace/package.json') as { version?: string }).version;
   } catch {
     return undefined;
   }
@@ -38,11 +42,21 @@ export class Tracing {
   version: string | undefined;
   private exporter: ExporterWithFlush | undefined;
 
-  constructor() {
+  constructor(config: Configuration, requireFn: NodeRequire = _require) {
     try {
-      const tracer = (_require('dd-trace') as { default: typeof import('dd-trace').default }).default;
+      const tracer = (requireFn('dd-trace') as { default: typeof import('dd-trace').default }).default;
 
-      // tracer.init() is a no-op if already called by instrument.ts.
+      tracer.init({
+        experimental: { exporter: 'electron' as 'datadog' },
+        ...(config.env !== undefined ? { env: config.env } : {}),
+        ...(config.traceSamplingRules.length > 0
+          ? {
+              samplingRules: toDdTraceSamplingRules(config.traceSamplingRules),
+              rateLimit: -1,
+            }
+          : {}),
+      });
+
       // Service/env/version are set per-span by SpanProcessor.
       // TODO(RUM-16445) discuss a more reliable way to flush the exporter
       const internals = tracer as unknown as TracerInternals;
@@ -53,10 +67,17 @@ export class Tracing {
 
       this.enabled = true;
       this.telemetryInitialized = internals._tracingInitialized === true;
-      this.version = readTracerVersion();
+      this.version = readTracerVersion(requireFn);
     } catch (error) {
       addError(error);
     }
+  }
+
+  static isTraceSampled(trace: { metrics: Record<string, number> }[]): boolean {
+    return !trace.some((span) => {
+      const priority = span.metrics['_sampling_priority_v1'];
+      return priority !== undefined && priority <= 0;
+    });
   }
 
   // dd-trace's electron exporter batches spans on a flushInterval (2s by default).
@@ -68,4 +89,9 @@ export class Tracing {
     }
     await new Promise<void>((resolve) => this.exporter!.flush(resolve));
   }
+}
+
+// Electron exposes percentages while dd-trace expects rates between 0 and 1.
+function toDdTraceSamplingRules(rules: TraceSamplingRule[]): SamplingRule[] {
+  return rules.map(({ sampleRate, ...rule }) => ({ ...rule, sampleRate: sampleRate / 100 }));
 }

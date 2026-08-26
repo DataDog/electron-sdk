@@ -103,8 +103,8 @@ export interface RawRumResource extends RecursivePartial<RumResourceEvent> {
     url: string;
   };
   _dd: {
-    trace_id: string;
-    span_id: string;
+    trace_id?: string;
+    span_id?: string;
     format_version: 2;
   };
 }
