@@ -44,7 +44,7 @@ const config = [
     external: ['electron'],
     plugins: sharedPlugins,
   },
-  // Instrumentation: imported before electron to hook require('electron') for BrowserWindow wrapping
+  // Instrumentation: imported before electron to patch BrowserWindow, IPC, and net APIs
   {
     input: 'src/entries/instrument.ts',
     output: [
@@ -62,7 +62,7 @@ const config = [
     external: ['electron', 'dd-trace'],
     plugins: sharedPlugins,
   },
-  // Vite plugin: ensures dd-trace initializes before hoisted requires
+  // Vite plugin: ensures Electron instrumentation runs before hoisted requires
   {
     input: 'src/entries/vite-plugin.ts',
     output: [
@@ -135,7 +135,7 @@ const config = [
     },
     plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
   },
-  // esbuild plugin: injects dd-trace init banner and externalizes dependencies
+  // esbuild plugin: injects the Electron instrumentation banner and externalizes dependencies
   {
     input: 'src/entries/esbuild-plugin.ts',
     output: [

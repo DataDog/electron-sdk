@@ -1,7 +1,7 @@
 /**
  * esbuild plugin for Electron apps using the Datadog Electron SDK.
  *
- * This plugin handles dd-trace initialization and dependency externalization
+ * This plugin handles early Electron instrumentation and dependency externalization
  * for both CJS and ESM esbuild output formats.
  *
  * For CJS output: prepends a banner that loads @datadog/electron-sdk/instrument,
@@ -64,7 +64,7 @@ export function datadogEsbuildPlugin(pluginOptions: DatadogBundlerPluginOptions 
       const isESM = build.initialOptions.format === 'esm';
       const ddBanner = isESM ? ESM_BANNER : CJS_BANNER;
 
-      // Prepend dd-trace initialization banner
+      // Prepend the Electron instrumentation banner
       const existingBanner = build.initialOptions.banner?.js;
       build.initialOptions.banner = {
         ...build.initialOptions.banner,

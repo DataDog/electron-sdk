@@ -62,7 +62,8 @@ import '@datadog/electron-sdk/instrument';
 import { app, BrowserWindow } from 'electron';
 ```
 
-This initializes dd-trace and automatically instruments the needed APIs.
+This instruments the needed Electron APIs. `dd-trace` is initialized with the resolved configuration when `init()`
+is called.
 
 Then initialize the Electron SDK by calling `init` before creating any browser windows:
 
@@ -86,7 +87,7 @@ In order to monitor the renderer process, you must [set up the Browser SDK](http
 
 #### Bundler plugins
 
-dd-trace instruments `require('electron')` at runtime, which requires correct module loading order. The SDK provides bundler plugins to ensure this works in all environments:
+The SDK instruments Electron as it is loaded, which requires correct module loading order. The SDK provides bundler plugins to ensure this works in all environments:
 
 **Vite** (including Electron Forge with Vite and electron-vite):
 
@@ -427,12 +428,33 @@ interface FeatureOperationOptions {
 | `env`                     | `string`                                 | No       | —          | Application environment                                                                                                                                                              |
 | `version`                 | `string`                                 | No       | —          | Application version                                                                                                                                                                  |
 | `sessionSampleRate`       | `number`                                 | No       | `100`      | Percentage of sessions to collect (0–100). `0` collects no sessions; `100` collects all sessions.                                                                                    |
+| `traceSamplingRules`      | `TraceSamplingRule[]`                    | No       | `[]`       | Ordered sampling rules for main-process traces. The first matching rule determines the percentage of traces to keep; unmatched traces are kept.                                      |
 | `sessionReplaySampleRate` | `number`                                 | No       | `0`        | Percentage of sampled sessions that record session replay (0–100). `0` disables renderer session replay. Applied as a child of `sessionSampleRate`.                                  |
 | `profilingSampleRate`     | `number`                                 | No       | `0`        | Percentage of sampled sessions that are profiled (0–100). `0` disables renderer profiling. Applied as a child of `sessionSampleRate`. See [Renderer Profiling](#renderer-profiling). |
 | `batchSize`               | `'SMALL' \| 'MEDIUM' \| 'LARGE'`         | No       | `'MEDIUM'` | Byte threshold that rotates a batch file early: `SMALL` 16 KiB, `MEDIUM` 512 KiB, `LARGE` 4 MiB                                                                                      |
 | `uploadFrequency`         | `'RARE' \| 'NORMAL' \| 'FREQUENT'`       | No       | `'NORMAL'` | How often pending batches are uploaded, and the window over which events accumulate: `RARE` 30s, `NORMAL` 10s, `FREQUENT` 5s                                                         |
 | `defaultPrivacyLevel`     | `'mask' \| 'allow' \| 'mask-user-input'` | No       | `'mask'`   | Default privacy level for renderer session replay                                                                                                                                    |
 | `allowedRendererHosts`    | `string[]`                               | Yes      | —          | Hostnames allowed for the renderer bridge (required; see table below)                                                                                                                |
+
+#### `traceSamplingRules`
+
+Rules are evaluated in order when a root trace starts. The first matching rule determines the percentage of traces
+to keep; unmatched traces are kept. Patterns are case-insensitive globs, child spans inherit the root decision, and
+a rejected HTTP trace still produces an unlinked RUM Resource.
+
+| Key          | Required | Purpose                                                                   |
+| ------------ | -------- | ------------------------------------------------------------------------- |
+| `sampleRate` | Yes      | Percentage of matching traces to keep, from `0` to `100`                  |
+| `name`       | No       | Matches the root span operation name, such as `electron.main.handle`      |
+| `resource`   | No       | Matches the root span resource, such as an IPC channel                    |
+| `tags`       | No       | Matches root span tags by name and value; every configured tag must match |
+
+```ts
+await init({
+  // ...
+  traceSamplingRules: [{ tags: { 'http.url': '*/health' }, sampleRate: 0 }],
+});
+```
 
 #### `allowedRendererHosts` Values
 

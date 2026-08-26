@@ -504,6 +504,45 @@ describe('buildConfiguration', () => {
     });
   });
 
+  describe('traceSamplingRules validation', () => {
+    it('defaults to an empty list', () => {
+      expect(buildConfiguration({ ...DEFAULT_CONFIG })?.traceSamplingRules).toEqual([]);
+    });
+
+    it('preserves valid ordered rules', () => {
+      const traceSamplingRules = [
+        { name: 'electron.main.*', resource: 'health-*', sampleRate: 0 },
+        { tags: { 'http.url': '*/api/*' }, sampleRate: 25 },
+      ];
+
+      expect(buildConfiguration({ ...DEFAULT_CONFIG, traceSamplingRules })?.traceSamplingRules).toEqual(
+        traceSamplingRules
+      );
+    });
+
+    it.each([
+      'not-an-array',
+      [{ sampleRate: -1 }],
+      [{ sampleRate: 101 }],
+      [{ sampleRate: Number.NaN }],
+      [{ sampleRate: 50, name: '' }],
+      [{ sampleRate: 50, name: '   ' }],
+      [{ sampleRate: 50, tags: { 'http.url': 42 } }],
+      [{ sampleRate: 0, url: '*/health' }],
+      [{ sampleRate: 50, service: 'checkout-*' }],
+    ])('rejects invalid rules: %j', (traceSamplingRules) => {
+      const result = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        traceSamplingRules,
+      } as unknown as InitConfiguration);
+
+      expect(result).toBeUndefined();
+      expect(display.error).toHaveBeenCalledWith(
+        "Configuration error: 'traceSamplingRules' must be an array of rules with a sampleRate between 0 and 100"
+      );
+    });
+  });
+
   describe('sessionReplaySampleRate validation', () => {
     it('defaults to 0 when not provided', () => {
       expect(buildConfiguration({ ...DEFAULT_CONFIG })?.sessionReplaySampleRate).toBe(0);

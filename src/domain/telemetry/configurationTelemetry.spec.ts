@@ -151,6 +151,20 @@ describe('reportConfiguration', () => {
     });
   });
 
+  describe('use_trace_sampling_rules', () => {
+    it('is true when trace sampling rules are configured', () => {
+      const configuration = createTestConfiguration({
+        traceSamplingRules: [{ name: 'electron.main.handle', sampleRate: 0 }],
+      });
+
+      expect(report(configuration).use_trace_sampling_rules).toBe(true);
+    });
+
+    it('is false when no trace sampling rules are configured', () => {
+      expect(report(createTestConfiguration()).use_trace_sampling_rules).toBe(false);
+    });
+  });
+
   describe('number_of_displays', () => {
     it('reports the display count available to the device', () => {
       displayCount = 3;

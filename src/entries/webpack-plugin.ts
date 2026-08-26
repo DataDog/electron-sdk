@@ -3,7 +3,7 @@
  *
  * This plugin handles four concerns for packaged Electron apps:
  *
- * 1. Prepends dd-trace initialization (via @datadog/electron-sdk/instrument)
+ * 1. Prepends Electron instrumentation (via @datadog/electron-sdk/instrument)
  *    as a banner to the main entry, so the user doesn't need to manually
  *    import '@datadog/electron-sdk/instrument'.
  *
@@ -133,7 +133,7 @@ export class DatadogWebpackPlugin {
       compiler.options.externals = [existing as RegExp, ...ddTraceExternals];
     }
 
-    // Prepend dd-trace initialization banner so the user doesn't need to
+    // Prepend the Electron instrumentation banner so the user doesn't need to
     // manually import '@datadog/electron-sdk/instrument'
     new compiler.webpack.BannerPlugin({
       banner: 'try{require("@datadog/electron-sdk/instrument")}catch{}',
