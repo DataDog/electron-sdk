@@ -1,6 +1,6 @@
 import { app } from 'electron';
 import * as path from 'node:path';
-import { timeStampNow } from '@datadog/js-core/time';
+import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED, SKIPPED } from '@datadog/js-core/assembly';
 import type { FormatHooks } from '../../../assembly';
 import { EventSource } from '../../../event';
@@ -12,7 +12,7 @@ export const VIEW_HISTORY_FILE_NAME = '_dd_view_history';
 export class ViewContext {
   private readonly history: DiskValueHistory<string>;
 
-  private constructor(history: DiskValueHistory<string>, hooks: FormatHooks) {
+  private constructor(history: DiskValueHistory<string>, hooks: FormatHooks, isExecutionContextEnabled: boolean) {
     this.history = history;
 
     hooks.registerRum(({ source, startTime }) => {
@@ -22,7 +22,9 @@ export class ViewContext {
         case EventSource.RENDERER:
           return { container: { view: { id } } };
         case EventSource.MAIN:
-          return { view: { id, name: 'main process', url: 'electron://main-process' } }; // TODO(RUM-14657) improve name / url
+          return isExecutionContextEnabled
+            ? { view: { id, url: 'electron://fake', is_fake: true } }
+            : { view: { id, name: 'main process', url: 'electron://main-process' } }; // TODO(RUM-14657) improve name / url
       }
     });
 
@@ -39,17 +41,21 @@ export class ViewContext {
     });
   }
 
-  static async init(hooks: FormatHooks, expireDelay = SESSION_TIME_OUT_DELAY): Promise<ViewContext> {
+  static async init(
+    hooks: FormatHooks,
+    expireDelay = SESSION_TIME_OUT_DELAY,
+    options?: { isExecutionContextEnabled?: boolean }
+  ): Promise<ViewContext> {
     const filePath = path.join(app.getPath('userData'), VIEW_HISTORY_FILE_NAME);
     const history = await DiskValueHistory.init<string>({ filePath, expireDelay });
-    return new ViewContext(history, hooks);
+    return new ViewContext(history, hooks, options?.isExecutionContextEnabled ?? false);
   }
 
-  add(id: string): void {
-    this.history.add(id, timeStampNow());
+  add(id: string, atTime: TimeStamp = timeStampNow()): void {
+    this.history.add(id, atTime);
   }
 
-  close(): void {
-    this.history.closeActive(timeStampNow());
+  close(atTime: TimeStamp = timeStampNow()): void {
+    this.history.closeActive(atTime);
   }
 }
