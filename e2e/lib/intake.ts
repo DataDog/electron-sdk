@@ -25,6 +25,12 @@ export interface EventBodyByType {
   resource: RumResourceEvent;
   vital: RumVitalEvent;
   telemetry: TelemetryEvent;
+  // PROVISIONAL: the `execution_context` and `action` event types are not yet part of the SDK's
+  // public API (see src/domain/rum/types/executionContext.types.ts and
+  // src/domain/rum/types/rendererRumEvent.types.ts), so these entries can't reference their real
+  // types here. Call sites cast `.body` to their own local shape, as the e2e scenarios do.
+  execution_context: Record<string, unknown>;
+  action: Record<string, unknown>;
 }
 
 export type EventType = keyof EventBodyByType;

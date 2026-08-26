@@ -129,6 +129,10 @@ Hooks are used by different parts of the SDK to attach their context (e.g., `reg
 
 See `src/assembly/` and `src/assembly/commonContext.ts`.
 
+#### Execution Context
+
+When `enableExecutionContext` is set, `ExecutionContextCollection` (`src/domain/rum/executionContext/`) tracks main and renderer process lifecycle and tags every RUM event with `execution_context.id`/`type` via a format hook, backed by a disk-persisted history so a crash replayed at the next launch (see Error Reporting) still resolves to the execution context of the process that actually crashed. It also swaps `ViewCollection` for `ExecutionContextViewCollection` (`src/domain/rum/view/`), which emits a lighter main-process view stream (start/renew only, no periodic updates) instead of the default `ViewCollection`.
+
 ## Error Reporting
 
 Failures are routed by _who can act on them_:
