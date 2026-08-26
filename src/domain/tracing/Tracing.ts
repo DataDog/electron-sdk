@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import type { SamplingRule } from 'dd-trace';
 import { addError } from '../telemetry';
 import type { Configuration, TraceSamplingRule } from '../../config';
 
@@ -11,18 +12,8 @@ interface ExporterWithFlush {
 interface TracerInternals {
   _tracer?: {
     _exporter?: unknown;
-    _prioritySampler?: {
-      configure(env: string, config: { rules: DdTraceSamplingRule[]; rateLimit: number }): void;
-    };
   };
   _tracingInitialized?: boolean;
-}
-
-interface DdTraceSamplingRule {
-  sampleRate: number;
-  name?: string;
-  resource?: string;
-  tags?: Record<string, string>;
 }
 
 /**
@@ -55,20 +46,23 @@ export class Tracing {
     try {
       const tracer = (requireFn('dd-trace') as { default: typeof import('dd-trace').default }).default;
 
-      // tracer.init() is a no-op if already called by instrument.ts.
+      tracer.init({
+        experimental: { exporter: 'electron' as 'datadog' },
+        ...(config.env !== undefined ? { env: config.env } : {}),
+        ...(config.traceSamplingRules.length > 0
+          ? {
+              samplingRules: toDdTraceSamplingRules(config.traceSamplingRules),
+              rateLimit: -1,
+            }
+          : {}),
+      });
+
       // Service/env/version are set per-span by SpanProcessor.
       // TODO(RUM-16445) discuss a more reliable way to flush the exporter
       const internals = tracer as unknown as TracerInternals;
       const internalExporter = internals._tracer?._exporter;
       if (internalExporter && typeof (internalExporter as ExporterWithFlush).flush === 'function') {
         this.exporter = internalExporter as ExporterWithFlush;
-      }
-
-      if (config.traceSamplingRules.length > 0) {
-        internals._tracer?._prioritySampler?.configure(config.env ?? '', {
-          rules: toDdTraceSamplingRules(config.traceSamplingRules),
-          rateLimit: -1,
-        });
       }
 
       this.enabled = true;
@@ -98,6 +92,6 @@ export class Tracing {
 }
 
 // Electron exposes percentages while dd-trace expects rates between 0 and 1.
-function toDdTraceSamplingRules(rules: TraceSamplingRule[]): DdTraceSamplingRule[] {
+function toDdTraceSamplingRules(rules: TraceSamplingRule[]): SamplingRule[] {
   return rules.map(({ sampleRate, ...rule }) => ({ ...rule, sampleRate: sampleRate / 100 }));
 }

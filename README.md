@@ -62,7 +62,8 @@ import '@datadog/electron-sdk/instrument';
 import { app, BrowserWindow } from 'electron';
 ```
 
-This initializes dd-trace and automatically instruments the needed APIs.
+This instruments the needed Electron APIs. `dd-trace` is initialized with the resolved configuration when `init()`
+is called.
 
 Then initialize the Electron SDK by calling `init` before creating any browser windows:
 
@@ -86,7 +87,7 @@ In order to monitor the renderer process, you must [set up the Browser SDK](http
 
 #### Bundler plugins
 
-dd-trace instruments `require('electron')` at runtime, which requires correct module loading order. The SDK provides bundler plugins to ensure this works in all environments:
+The SDK instruments Electron as it is loaded, which requires correct module loading order. The SDK provides bundler plugins to ensure this works in all environments:
 
 **Vite** (including Electron Forge with Vite and electron-vite):
 

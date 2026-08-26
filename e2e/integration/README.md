@@ -49,7 +49,7 @@ yarn test:integration --project=electron-builder-vite-packager-copy-packaged
 | `electron-builder-vite` | Vite (manual)       | CJS         | electron-builder |
 
 All apps use `import '@datadog/electron-sdk/instrument'` before importing `electron` in their main process.
-This loads the SDK's instrumentation, which initializes dd-trace and injects the SDK's preload script into every renderer process via `patchBrowserWindow`.
+This loads the SDK's instrumentation and injects the SDK's preload script into every renderer process via `patchBrowserWindow`. The regular SDK `init()` initializes dd-trace afterward.
 Vite-based apps use `datadogVitePlugin`, webpack-based apps use `DatadogWebpackPlugin`, and esbuild-based apps use `datadogEsbuildPlugin` to ensure correct module loading order and preload availability in packaged builds.
 The `forge-esbuild-esm` app additionally exercises the plugin's ESM path, where the banner loads `instrument` via `createRequire` because ES modules have no global `require`.
 The `electron-builder-vite` app packages two isolated variants: the default plugin-owned runtime dependency copy

@@ -3,13 +3,13 @@ import { createTestConfiguration } from '../../mocks.specUtil';
 import { Tracing } from './Tracing';
 
 function createTracerRequire() {
-  const configure = vi.fn();
+  const init = vi.fn();
   const flush = vi.fn((done: () => void) => done());
   const tracer = {
+    init,
     _tracingInitialized: true,
     _tracer: {
       _exporter: { flush },
-      _prioritySampler: { configure },
     },
   };
   const requireFn = ((id: string) => {
@@ -17,12 +17,12 @@ function createTracerRequire() {
     if (id === 'dd-trace/package.json') return { version: '6.10.0' };
     throw new Error(`Unexpected module: ${id}`);
   }) as NodeRequire;
-  return { configure, flush, requireFn };
+  return { init, flush, requireFn };
 }
 
 describe('Tracing', () => {
-  it('configures dd-trace with normalized matching rules', () => {
-    const { configure, requireFn } = createTracerRequire();
+  it('initializes dd-trace with normalized matching rules', () => {
+    const { init, requireFn } = createTracerRequire();
 
     const tracing = new Tracing(
       createTestConfiguration({
@@ -35,9 +35,11 @@ describe('Tracing', () => {
       requireFn
     );
 
-    expect(configure).toHaveBeenCalledWith('production', {
+    expect(init).toHaveBeenCalledWith({
+      env: 'production',
+      experimental: { exporter: 'electron' },
       rateLimit: -1,
-      rules: [
+      samplingRules: [
         { tags: { 'http.url': '*/health' }, sampleRate: 0.05 },
         { name: 'electron.main.*', sampleRate: 1 },
       ],
@@ -47,12 +49,12 @@ describe('Tracing', () => {
     expect(tracing.version).toBe('6.10.0');
   });
 
-  it('keeps the existing dd-trace sampler when no rules are configured', () => {
-    const { configure, requireFn } = createTracerRequire();
+  it('preserves dd-trace sampling configuration when no Electron rules are configured', () => {
+    const { init, requireFn } = createTracerRequire();
 
     new Tracing(createTestConfiguration({ traceSamplingRules: [] }), requireFn);
 
-    expect(configure).not.toHaveBeenCalled();
+    expect(init).toHaveBeenCalledWith({ experimental: { exporter: 'electron' } });
   });
 
   it('flushes the dd-trace exporter', async () => {
