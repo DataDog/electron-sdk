@@ -1161,6 +1161,10 @@ export interface CommonProperties {
      * User defined name of the view
      */
     name?: string;
+    /**
+     * Whether this view was synthetically created to carry view-less events
+     */
+    readonly is_fake?: boolean;
     [k: string]: unknown;
   };
   /**
@@ -1454,6 +1458,24 @@ export interface CommonProperties {
      * UUID of the stream
      */
     readonly id: string;
+    [k: string]: unknown;
+  };
+  /**
+   * Execution context properties
+   */
+  readonly execution_context?: {
+    /**
+     * UUID of the execution context
+     */
+    readonly id?: string;
+    /**
+     * Type of the execution context
+     */
+    readonly type?: 'main-process' | 'renderer-process' | 'utility-process';
+    /**
+     * Execution context name
+     */
+    readonly name?: string;
     [k: string]: unknown;
   };
   [k: string]: unknown;

@@ -50,6 +50,7 @@ interface ElectronAPI {
   mainFetchApiFetch: () => Promise<unknown>;
   mainFetchApiNet: () => Promise<unknown>;
   openRumExplorer: () => Promise<void>;
+  openSecondaryWindow: () => Promise<void>;
   flushTransport: () => Promise<void>;
   setUserInfo: () => Promise<void>;
   addUserExtraInfo: () => Promise<void>;
@@ -264,6 +265,10 @@ setupDemoButton('clear-account-info', 'main:clear-account-info', () => window.el
 setupDemoButton('get-user-info', 'main:get-user-info', () => window.electronAPI.getUserInfo());
 setupDemoButton('get-account-info', 'main:get-account-info', () => window.electronAPI.getAccountInfo());
 setupDemoButton('add-error', 'main:add-error', () => window.electronAPI.addError());
+
+// --- Process Lifecycle demo button ---
+
+setupDemoButton('open-secondary-window', 'main:open-secondary-window', () => window.electronAPI.openSecondaryWindow());
 
 setupDemoButton('main-fetch', 'main:fetch-api', () => window.electronAPI.mainFetchApi());
 setupDemoButton('main-fetch-fetch', 'main:fetch-api-fetch', () => window.electronAPI.mainFetchApiFetch());

@@ -9,7 +9,7 @@ vi.mock('../../../tools/display', () => ({
 }));
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { TimeStamp } from '@datadog/js-core/time';
+import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED } from '@datadog/js-core/assembly';
 import { createFormatHooks } from '../../../assembly';
 import { EventSource } from '../../../event';
@@ -114,6 +114,17 @@ describe('ViewContext', () => {
       context.add(VIEW_ID);
 
       expect(hooks.triggerTelemetry({ startTime: T0, source: EventSource.MAIN })).toEqual({ view: { id: VIEW_ID } });
+    });
+
+    it('tags MAIN events with the fake view shape when isExecutionContextEnabled is true', async () => {
+      const hooks = createFormatHooks();
+      const context = await ViewContext.init(hooks, EXPIRE_DELAY, { isExecutionContextEnabled: true });
+
+      context.add(VIEW_ID);
+
+      expect(hooks.triggerRum({ eventType: 'view', startTime: timeStampNow(), source: EventSource.MAIN })).toEqual({
+        view: { id: VIEW_ID, url: 'electron://fake', is_fake: true },
+      });
     });
 
     it('reflects the latest add()', async () => {

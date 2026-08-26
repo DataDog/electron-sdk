@@ -20,6 +20,12 @@ export function setInterval(callback: () => void, delay?: number): ReturnType<ty
   return global.setInterval(monitor(callback), delay);
 }
 
+// Paired with setInterval so timer usage goes through this module rather than reaching for the
+// globals directly. There is no callback to wrap here, so it simply delegates to global.clearInterval.
+export function clearInterval(intervalId: ReturnType<typeof global.setInterval> | undefined): void {
+  global.clearInterval(intervalId);
+}
+
 export function throttle(
   fn: () => void,
   wait: number,

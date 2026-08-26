@@ -21,6 +21,18 @@ describe('buildConfiguration', () => {
     vi.clearAllMocks();
   });
 
+  describe('enableExecutionContext', () => {
+    it('defaults to false when not provided', () => {
+      const config = buildConfiguration(DEFAULT_CONFIG);
+      expect(config?.enableExecutionContext).toBe(false);
+    });
+
+    it('is true when explicitly enabled', () => {
+      const config = buildConfiguration({ ...DEFAULT_CONFIG, enableExecutionContext: true });
+      expect(config?.enableExecutionContext).toBe(true);
+    });
+  });
+
   describe.each([
     { fieldName: 'service' as const },
     { fieldName: 'clientToken' as const },

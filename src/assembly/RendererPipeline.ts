@@ -57,7 +57,7 @@ export class RendererPipeline {
       BRIDGE_CHANNEL,
       monitor((ipcEvent: IpcMainEvent, msg: string) => {
         if (!gate.isAllowed(ipcEvent)) return;
-        this.onBridgeMessage(msg);
+        this.onBridgeMessage(msg, ipcEvent.sender.id);
       })
     );
 
@@ -66,7 +66,7 @@ export class RendererPipeline {
     setBridgeConfig(this.bridgeOptions);
   }
 
-  private onBridgeMessage(msg: string): void {
+  private onBridgeMessage(msg: string, webContentsId: number): void {
     let bridgeEvent: BridgeEvent;
     try {
       bridgeEvent = JSON.parse(msg) as BridgeEvent;
@@ -77,7 +77,7 @@ export class RendererPipeline {
 
     switch (bridgeEvent.eventType) {
       case 'rum':
-        this.handleRumEvent(bridgeEvent.event);
+        this.handleRumEvent(bridgeEvent.event, webContentsId);
         break;
       case 'log':
         // TODO(RUM-15047): when Logs are implemented, enrich them with user/account context
@@ -144,7 +144,7 @@ export class RendererPipeline {
     }
   }
 
-  private handleRumEvent(eventData: unknown): void {
+  private handleRumEvent(eventData: unknown, webContentsId: number): void {
     const data = eventData as RendererRumEvent;
 
     // Emit activity before the session check: a click after session expiry must still
@@ -159,13 +159,20 @@ export class RendererPipeline {
       startTime: data.date as TimeStamp,
       source: EventSource.RENDERER,
       rendererViewId: (data as { view?: { id?: string } }).view?.id,
+      webContentsId,
     });
 
     if (hookResult === DISCARDED) {
       return;
     }
 
-    const overrides = resolveCustomerContextOverrides(data, hookResult);
+    // hookResult is typed against RumEvent (main + renderer), since triggerRum() doesn't correlate
+    // its return type with the source passed in — but a hook triggered with source: RENDERER can
+    // never actually produce the execution_context-only member of that union.
+    const overrides = resolveCustomerContextOverrides(
+      data,
+      hookResult as RecursivePartial<RendererRumEvent> | undefined
+    );
 
     const serverEvent: ServerRumEvent = {
       kind: EventKind.SERVER,

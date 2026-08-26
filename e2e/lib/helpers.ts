@@ -172,9 +172,10 @@ async function waitForWindowLoaded(electronApp: ElectronApplication): Promise<{ 
 
 export async function launchAppManually(
   intake: Intake,
-  userDataDir: string
+  userDataDir: string,
+  sdkConfigOverrides: Partial<InitConfiguration> | null = null
 ): Promise<{ electronApp: ElectronApplication; window: Page; mainPage: MainPage }> {
-  const electronApp = await launchApp(intake, userDataDir);
+  const electronApp = await launchApp(intake, userDataDir, null, sdkConfigOverrides);
   const { window } = await waitForWindowLoaded(electronApp);
   return { electronApp, window, mainPage: new MainPage(window) };
 }

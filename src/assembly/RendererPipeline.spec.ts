@@ -20,6 +20,7 @@ import {
 } from '../event';
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
 import { createMockSender, createTestConfiguration, type MockSender } from '../mocks.specUtil';
+import type { RendererRumEvent } from '../domain/rum';
 
 const { mockIpcMainOn, mockAddError, mockSetBridgeConfig } = vi.hoisted(() => {
   const mockIpcMainOn = vi.fn();
@@ -232,7 +233,7 @@ describe('RendererPipeline', () => {
 
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
 
-      const data = serverEvents[0].data;
+      const data = serverEvents[0].data as RendererRumEvent;
       expect(data.source).toBe('browser');
       expect(data.service).toBe('renderer-service');
       expect(data.view.id).toBe('renderer-view-id');

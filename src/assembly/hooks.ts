@@ -14,6 +14,8 @@ export interface RumAssembleParams {
   source: EventSource;
   /** For renderer events: the view ID reported by the renderer's browser RUM SDK. */
   rendererViewId?: string;
+  /** For renderer events: the webContents id of the sender, used to look up its execution context. */
+  webContentsId?: number;
 }
 
 export interface TelemetryAssembleParams {
