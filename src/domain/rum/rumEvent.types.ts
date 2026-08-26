@@ -326,7 +326,8 @@ export type RumErrorEvent = CommonProperties &
         | 'windows'
         | 'macos'
         | 'linux'
-        | 'maui';
+        | 'maui'
+        | 'nodejs';
       /**
        * Resource properties of the error
        */

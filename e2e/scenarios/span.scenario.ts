@@ -1,5 +1,5 @@
 import { test, expect } from '../lib/helpers';
-import type { RumResourceEvent, RumViewEvent, TraceSamplingRule } from '@datadog/electron-sdk';
+import type { TraceSamplingRule } from '@datadog/electron-sdk';
 import type { MainPage } from '../lib/mainPage';
 
 const ipcSpanCases: {
@@ -36,7 +36,7 @@ for (const { title, trigger, spanName, resource, spanKind } of ipcSpanCases) {
   test(`emits an ${title} span with Electron context`, async ({ mainPage, intake }) => {
     await mainPage.flushTransport();
     const viewEvents = await intake.getEventsByType('view');
-    const view = viewEvents[0].body as RumViewEvent;
+    const view = viewEvents[0].body;
 
     await trigger(mainPage);
     await mainPage.flushTransport();
@@ -113,9 +113,9 @@ test.describe('trace sampling rules', () => {
     await mainPage.flushTransport();
 
     const [received] = await intake.waitForEventCount('resource', 1, {
-      predicate: (event) => (event.body as RumResourceEvent).resource.url === url,
+      predicate: (event) => event.body.resource.url === url,
     });
-    const resource = received.body as RumResourceEvent;
+    const resource = received.body;
     expect(resource._dd.trace_id).toBeUndefined();
     expect(resource._dd.span_id).toBeUndefined();
     expect(testServer.headersFor(200)['x-datadog-trace-id']).toBeUndefined();
@@ -136,9 +136,9 @@ test.describe('trace sampling rules', () => {
     await mainPage.flushTransport();
 
     const [received] = await intake.waitForEventCount('resource', 1, {
-      predicate: (event) => (event.body as RumResourceEvent).resource.url === url,
+      predicate: (event) => event.body.resource.url === url,
     });
-    const resource = received.body as RumResourceEvent;
+    const resource = received.body;
     expect(resource._dd.trace_id).toBeDefined();
     expect(resource._dd.span_id).toBeDefined();
     expect(testServer.headersFor(201)['x-datadog-trace-id']).toBeDefined();
@@ -163,7 +163,7 @@ for (const { description, rule } of traceSamplingRuleCases) {
       await mainPage.flushTransport();
 
       await intake.waitForEventCount('resource', 1, {
-        predicate: (event) => (event.body as RumResourceEvent).resource.url === url,
+        predicate: (event) => event.body.resource.url === url,
       });
       expect(
         intake.getSpans(

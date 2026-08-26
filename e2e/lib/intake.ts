@@ -1,18 +1,49 @@
 import * as http from 'node:http';
 import zlib from 'node:zlib';
+import type {
+  RumErrorEvent,
+  RumResourceEvent,
+  RumViewEvent,
+  RumVitalEvent,
+  TelemetryEvent,
+} from '@datadog/electron-sdk';
 
 /**
- * Fake Datadog intake used to assert what the SDK sends.
+ * Body shape keyed by the `type` the read methods filter on, so a read returns that type rather than
+ * `unknown` and call sites need no cast to reach its fields.
  *
- * The SDK is configured (via `proxy`) to POST events to this server instead of the real Datadog endpoint.
- * The `ddforward` query param in the request URL routes events to either the `rumEvents` store or the `traces` store.
- * Tests read back captured data through `getEventsByType`, `waitForEventCount`, `waitForSpan`, and `assertNoNewEvents`.
+ * `vital` and `telemetry` each cover several shapes behind a single `type`, so they resolve to a
+ * union. Beware that the generated event types carry `[k: string]: unknown` index signatures, so
+ * member-specific fields (`vital.step_type`, `telemetry.configuration`) degrade to `unknown` on the
+ * union and stop being checked — a call site wanting those must assert to the member it expects. That
+ * assertion is checked against the union, so asserting the body of a `vital` read to a telemetry event
+ * is a compile error, where asserting from `unknown` allowed it and failed at runtime.
  */
-export interface ReceivedEvent {
+export interface EventBodyByType {
+  view: RumViewEvent;
+  error: RumErrorEvent;
+  resource: RumResourceEvent;
+  vital: RumVitalEvent;
+  telemetry: TelemetryEvent;
+}
+
+export type EventType = keyof EventBodyByType;
+
+export interface ReceivedEvent<Body = unknown> {
   timestamp: number;
-  body: unknown;
+  body: Body;
   headers: Record<string, string>;
   ddforward: string;
+}
+
+interface ReadOptions<T extends EventType> {
+  timeout?: number;
+  predicate?: (event: ReceivedEvent<EventBodyByType[T]>) => boolean;
+}
+
+interface SettledReadOptions<T extends EventType> extends ReadOptions<T> {
+  /** How long the result must stay unchanged before it is considered final. */
+  settle?: number;
 }
 
 export interface ReplaySegment {
@@ -79,9 +110,27 @@ function splitBuffer(buf: Buffer, delimiter: Buffer): Buffer[] {
  */
 export const byTelemetryType =
   (type: 'log' | 'configuration' | 'usage') =>
-  (event: ReceivedEvent): boolean =>
-    (event.body as { telemetry?: { type?: string } }).telemetry?.type === type;
+  (event: ReceivedEvent<TelemetryEvent>): boolean =>
+    event.body.telemetry?.type === type;
 
+/** URL of the view the SDK emits for the main process; every other view comes from a bridge window. */
+const MAIN_PROCESS_VIEW_URL = 'electron://main-process';
+
+/** Selects the view the main process emits. */
+export const isMainProcessView = (event: ReceivedEvent<RumViewEvent>): boolean =>
+  event.body.view.url === MAIN_PROCESS_VIEW_URL;
+
+/** Selects views emitted by a bridge window, i.e. every view but the main process one. */
+export const isBridgeView = (event: ReceivedEvent<RumViewEvent>): boolean => !isMainProcessView(event);
+
+/**
+ * Fake Datadog intake used to assert what the SDK sends.
+ *
+ * The SDK is configured (via `proxy`) to POST events to this server instead of the real Datadog endpoint.
+ * The `ddforward` query param in the request URL routes events to either the `rumEvents` store or the `traces` store.
+ * Tests read back captured data through `getEventsByType`, `getSettledEventsByType`, `waitForEventCount`,
+ * `waitForSpan`, and `assertNoNewEvents`.
+ */
 export class Intake {
   private server: http.Server | null = null;
   private rumEvents: ReceivedEvent[] = [];
@@ -289,10 +338,22 @@ export class Intake {
     });
   }
 
-  async getEventsByType(
-    type: string,
-    options?: { timeout?: number; predicate?: (event: ReceivedEvent) => boolean }
-  ): Promise<ReceivedEvent[]> {
+  /**
+   * Events of `type` received so far that also match `predicate`.
+   *
+   * The store holds every event with an `unknown` body because the intake cannot know a shape before
+   * filtering. Selecting on `type` is what establishes it, so this is the single place the
+   * {@link EventBodyByType} mapping is asserted — call sites inherit it already typed.
+   */
+  private matching<T extends EventType>(type: T, options?: ReadOptions<T>): ReceivedEvent<EventBodyByType[T]>[] {
+    const ofType = this.rumEvents.filter(byType(type)) as ReceivedEvent<EventBodyByType[T]>[];
+    return options?.predicate ? ofType.filter(options.predicate) : ofType;
+  }
+
+  async getEventsByType<T extends EventType>(
+    type: T,
+    options?: ReadOptions<T>
+  ): Promise<ReceivedEvent<EventBodyByType[T]>[]> {
     // return as soon as we have one event
     return this.waitForEventCount(type, 1, options);
   }
@@ -304,12 +365,11 @@ export class Intake {
    * Use this for "exactly N" assertions: `getEventsByType` returns as soon as one event matches,
    * so it cannot observe a duplicate that arrives in a later batch, and the assertion can never fail.
    */
-  async getSettledEventsByType(
-    type: string,
-    options?: { timeout?: number; settle?: number; predicate?: (event: ReceivedEvent) => boolean }
-  ): Promise<ReceivedEvent[]> {
+  async getSettledEventsByType<T extends EventType>(
+    type: T,
+    options?: SettledReadOptions<T>
+  ): Promise<ReceivedEvent<EventBodyByType[T]>[]> {
     const settle = options?.settle ?? 1000;
-    const byPredicate = options?.predicate ?? (() => true);
     const pollInterval = 100;
 
     let events = await this.waitForEventCount(type, 1, options);
@@ -317,7 +377,7 @@ export class Intake {
     let quietFor = 0;
     while (quietFor < settle) {
       await new Promise((resolve) => setTimeout(resolve, pollInterval));
-      const current = this.rumEvents.filter(byType(type)).filter(byPredicate);
+      const current = this.matching(type, options);
       if (current.length > events.length) {
         events = current;
         quietFor = 0;
@@ -329,25 +389,24 @@ export class Intake {
     return events;
   }
 
-  async waitForEventCount(
-    type: string,
+  async waitForEventCount<T extends EventType>(
+    type: T,
     count: number,
-    options?: { timeout?: number; predicate?: (event: ReceivedEvent) => boolean }
-  ): Promise<ReceivedEvent[]> {
+    options?: ReadOptions<T>
+  ): Promise<ReceivedEvent<EventBodyByType[T]>[]> {
     const timeout = options?.timeout ?? 10000;
-    const byPredicate = options?.predicate ?? (() => true);
     const startTime = Date.now();
     const pollInterval = 100;
 
     while (Date.now() - startTime < timeout) {
-      const matchingEvents = this.rumEvents.filter(byType(type)).filter(byPredicate);
+      const matchingEvents = this.matching(type, options);
       if (matchingEvents.length >= count) {
         return matchingEvents;
       }
       await new Promise((resolve) => setTimeout(resolve, pollInterval));
     }
 
-    const received = this.rumEvents.filter(byType(type)).filter(byPredicate);
+    const received = this.matching(type, options);
     throw new Error(
       `Timed out waiting for ${count} "${type}" event(s) after ${timeout}ms. Received ${received.length}.`
     );
@@ -379,12 +438,12 @@ export class Intake {
     );
   }
 
-  async assertNoNewEvents(type: string, duration = 500): Promise<void> {
+  async assertNoNewEvents(type: EventType, duration = 500): Promise<void> {
     const startTime = Date.now();
     const pollInterval = 100;
 
     while (Date.now() - startTime < duration) {
-      const matchingEvents = this.rumEvents.filter(byType(type));
+      const matchingEvents = this.matching(type);
       if (matchingEvents.length > 0) {
         throw new Error(`Expected no "${type}" events but received ${matchingEvents.length} within ${duration}ms.`);
       }

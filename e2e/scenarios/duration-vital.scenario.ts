@@ -1,9 +1,9 @@
-import type { RumViewEvent, RumVitalDurationEvent } from '@datadog/electron-sdk';
 import { expect, test } from '../lib/helpers';
+import type { RumVitalDurationEvent } from '@datadog/electron-sdk';
 
 test('emits custom duration vitals from the main process', async ({ mainPage, intake }) => {
   await mainPage.flushTransport();
-  const view = (await intake.getEventsByType('view'))[0].body as RumViewEvent;
+  const view = (await intake.getEventsByType('view'))[0].body;
 
   const directStartTime = Date.now();
   await mainPage.addDurationVital('database.migration', {

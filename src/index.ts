@@ -359,6 +359,12 @@ export type {
   RumVitalDurationEvent,
   RumVitalOperationStepEvent,
 } from './domain/rum';
-export type { TelemetryConfigurationEvent, TelemetryErrorEvent, TelemetryUsageEvent } from './domain/telemetry';
+export type {
+  TelemetryConfigurationEvent,
+  TelemetryDebugEvent,
+  TelemetryErrorEvent,
+  TelemetryEvent,
+  TelemetryUsageEvent,
+} from './domain/telemetry';
 
 export { SESSION_TIME_OUT_DELAY } from './domain/session';
