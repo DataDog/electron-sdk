@@ -1,0 +1,22 @@
+schema-version: v1.0
+sast:
+  use-default-rulesets: false
+  use-rulesets:
+    - typescript-best-practices
+    - typescript-code-style
+  ruleset-configs:
+    typescript-best-practices:
+      rule-configs:
+        no-console:
+          ignore-paths:
+            - 'e2e/lib/**' # allow console.log from e2e tests framework
+            - '**/display.ts' # allow console.log from display.ts
+    typescript-code-style:
+      rule-configs:
+        no-new:
+          ignore-paths:
+            - 'src/index.ts' # allow new for SDK initialization
+  global-config:
+    ignore-paths:
+      - '**/rumEvent.types.ts' # generated
+      - '**/telemetryEvent.types.ts' # generated
