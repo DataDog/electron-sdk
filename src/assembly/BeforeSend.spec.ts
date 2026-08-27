@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { RumLongTaskEvent, RumVitalDurationEvent } from '../domain/rum';
+import type { RumEvent, RumLongTaskEvent, RumVitalDurationEvent } from '../domain/rum';
 import {
   createServerRumAction,
   createServerRumError,
@@ -22,6 +22,24 @@ describe('beforeSendRum', () => {
     const event = createServerRumError();
 
     expect(new BeforeSend().apply(event, 'main')).toBe(event);
+  });
+
+  it('uses common modifiable fields for an unknown renderer event type', () => {
+    const event = {
+      ...createServerRumError({ service: 'original-service' }),
+      type: 'future_event',
+    } as unknown as RumEvent;
+    const beforeSend = new BeforeSend((modifiableEvent) => {
+      modifiableEvent.service = 'modified-service';
+      modifiableEvent.context = { scrubbed: true };
+      return true;
+    });
+
+    expect(beforeSend.apply(event, 'renderer')).toMatchObject({
+      type: 'future_event',
+      service: 'modified-service',
+      context: { scrubbed: true },
+    });
   });
 
   it('lets beforeSendRum modify supported fields on a fully assembled event', () => {
