@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { display, rumApi, globalContextApi } = vi.hoisted(() => ({
+const { addUsage, display, rumApi, globalContextApi } = vi.hoisted(() => ({
+  addUsage: vi.fn(),
   display: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
   rumApi: {
     addDurationVital: vi.fn(),
@@ -17,6 +18,7 @@ const { display, rumApi, globalContextApi } = vi.hoisted(() => ({
 }));
 
 vi.mock('./domain/telemetry', () => ({
+  addUsage,
   callMonitored: (callback: () => unknown) => callback(),
 }));
 vi.mock('./tools/display', () => ({ display }));
@@ -131,6 +133,27 @@ describe.sequential('duration vital public API', () => {
       expect(display.warn).toHaveBeenCalledOnce();
     });
   });
+
+  describe('usage telemetry', () => {
+    it('reports the feature used by each duration vital API', () => {
+      addDurationVital('database.migration', { startTime: 0, duration: 1 });
+      startDurationVital('document.open');
+      stopDurationVital('document.open');
+
+      expect(addUsage.mock.calls.flat()).toEqual([
+        { feature: 'add-duration-vital' },
+        { feature: 'start-duration-vital' },
+        { feature: 'stop-duration-vital' },
+      ]);
+    });
+
+    it('reports usage of a call rejected by validation', () => {
+      addDurationVital('', { startTime: 0, duration: 1 });
+
+      expect(rumApi.addDurationVital).not.toHaveBeenCalled();
+      expect(addUsage).toHaveBeenCalledWith({ feature: 'add-duration-vital' });
+    });
+  });
 });
 
 describe.sequential('global context public API', () => {
@@ -140,7 +163,7 @@ describe.sequential('global context public API', () => {
   });
 
   describe('before initialization', () => {
-    it('does not throw and reports nothing', () => {
+    it('does not throw or report an error', () => {
       setGlobalContextApi(undefined);
 
       expect(() => {
@@ -223,6 +246,31 @@ describe.sequential('global context public API', () => {
       globalContextApi.getContext.mockReturnValueOnce({ team: 'checkout' });
 
       expect(getGlobalContext()).toEqual({ team: 'checkout' });
+    });
+  });
+
+  describe('usage telemetry', () => {
+    it('reports the feature used by each global context API', () => {
+      setGlobalContext({ team: 'checkout' });
+      getGlobalContext();
+      setGlobalContextProperty('build', '1.2.3');
+      removeGlobalContextProperty('build');
+      clearGlobalContext();
+
+      expect(addUsage.mock.calls.flat()).toEqual([
+        { feature: 'set-global-context' },
+        { feature: 'get-global-context' },
+        { feature: 'set-global-context-property' },
+        { feature: 'remove-global-context-property' },
+        { feature: 'clear-global-context' },
+      ]);
+    });
+
+    it('reports usage of a call rejected by validation', () => {
+      setGlobalContextProperty('', 'value');
+
+      expect(globalContextApi.setProperty).not.toHaveBeenCalled();
+      expect(addUsage).toHaveBeenCalledWith({ feature: 'set-global-context-property' });
     });
   });
 });

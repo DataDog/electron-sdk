@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('main:fail-operation', name, failureReason, options),
   mainFetchApiFetch: () => ipcRenderer.invoke('main:fetch-api-fetch'),
   mainFetchApiNet: () => ipcRenderer.invoke('main:fetch-api-net'),
+  mainFetchApiNetDrop: () => ipcRenderer.invoke('main:fetch-api-net-drop'),
   openRumExplorer: () => ipcRenderer.invoke('open-rum-explorer'),
   flushTransport: () => ipcRenderer.invoke('flush-transport'),
   setGlobalContext: () => ipcRenderer.invoke('main:set-global-context'),
@@ -47,4 +48,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setAccountInfo: () => ipcRenderer.invoke('main:set-account-info'),
   addAccountExtraInfo: () => ipcRenderer.invoke('main:add-account-extra-info'),
   clearAccountInfo: () => ipcRenderer.invoke('main:clear-account-info'),
+  getUserInfo: () => ipcRenderer.invoke('main:get-user-info'),
+  getAccountInfo: () => ipcRenderer.invoke('main:get-account-info'),
+  addError: () => ipcRenderer.invoke('main:add-error'),
 });

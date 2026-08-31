@@ -186,6 +186,36 @@ describe('patchNet', () => {
     expect(opts.headers?.['x-datadog-trace-id']).toBe('123');
   });
 
+  it('does not propagate a rejected trace through request options', async () => {
+    mockDdTrace.inject.mockImplementation((_, __, carrier: Record<string, string>) => {
+      carrier['x-datadog-trace-id'] = '123';
+      carrier['x-datadog-sampling-priority'] = '0';
+    });
+    const { patchedNet, originalRequest } = await setupNet();
+
+    patchedNet.request({ url: 'https://example.com', headers: { authorization: 'token' } });
+
+    const [opts] = originalRequest.mock.calls[0] as unknown as [Electron.ClientRequestConstructorOptions];
+    expect(opts.headers).toEqual({ authorization: 'token' });
+  });
+
+  it.each([
+    { header: 'x-b3-sampled', value: '0' },
+    { header: 'x-b3-sampled', value: 'false' },
+    { header: 'b3', value: '123-456-0' },
+    { header: 'b3', value: '0' },
+  ])('does not propagate a rejected trace using $header: $value', async ({ header, value }) => {
+    mockDdTrace.inject.mockImplementation((_, __, carrier: Record<string, string>) => {
+      carrier[header] = value;
+    });
+    const { patchedNet, originalRequest } = await setupNet();
+
+    patchedNet.request({ url: 'https://example.com' });
+
+    const [opts] = originalRequest.mock.calls[0] as unknown as [Electron.ClientRequestConstructorOptions];
+    expect(opts.headers).toBeUndefined();
+  });
+
   it('preserves existing headers and does not overwrite them', async () => {
     const { patchedNet, originalRequest } = await setupNet();
 
@@ -405,6 +435,18 @@ describe('patchNet', () => {
 
       const [, patchedInit] = originalFetch.mock.calls[0] as unknown as [string, RequestInit];
       expect((patchedInit.headers as Record<string, string>)?.['x-datadog-trace-id']).toBe('123');
+    });
+
+    it('does not propagate a rejected trace through fetch headers', async () => {
+      mockDdTrace.inject.mockImplementation((_, __, carrier: Record<string, string>) => {
+        carrier.traceparent = '00-0000000000000000000000000000007b-00000000000001c8-00';
+      });
+      const { patchedNet, originalFetch } = await setupNetWithFetch();
+
+      await patchedNet.fetch('https://example.com', { headers: { authorization: 'token' } });
+
+      const [, patchedInit] = originalFetch.mock.calls[0] as unknown as [string, RequestInit];
+      expect(patchedInit.headers).toEqual({ authorization: 'token' });
     });
 
     it('preserves existing headers and does not overwrite them', async () => {

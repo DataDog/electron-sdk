@@ -1,7 +1,7 @@
 /**
  * esbuild plugin for Electron apps using the Datadog Electron SDK.
  *
- * This plugin handles dd-trace initialization and dependency externalization
+ * This plugin handles early Electron instrumentation and dependency externalization
  * for both CJS and ESM esbuild output formats.
  *
  * For CJS output: prepends a banner that loads @datadog/electron-sdk/instrument,
@@ -23,6 +23,10 @@ import { createRequire } from 'node:module';
 import { cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import type { DatadogBundlerPluginOptions } from './bundler-plugin-options';
+
+export type { DatadogBundlerPluginOptions } from './bundler-plugin-options';
 
 interface EsbuildPlugin {
   name: string;
@@ -47,14 +51,20 @@ import { createRequire as __ddCR } from "module";
 try { __ddCR(import.meta.url)("@datadog/electron-sdk/instrument"); } catch {}
 `.trim();
 
-export function datadogEsbuildPlugin(): EsbuildPlugin {
+/**
+ * Creates the Datadog esbuild plugin.
+ *
+ * @example
+ * plugins: [datadogEsbuildPlugin({ copyRuntimeDependencies: false })]
+ */
+export function datadogEsbuildPlugin(pluginOptions: DatadogBundlerPluginOptions = {}): EsbuildPlugin {
   return {
     name: 'datadog-electron-sdk',
     setup(build) {
       const isESM = build.initialOptions.format === 'esm';
       const ddBanner = isESM ? ESM_BANNER : CJS_BANNER;
 
-      // Prepend dd-trace initialization banner
+      // Prepend the Electron instrumentation banner
       const existingBanner = build.initialOptions.banner?.js;
       build.initialOptions.banner = {
         ...build.initialOptions.banner,
@@ -69,6 +79,8 @@ export function datadogEsbuildPlugin(): EsbuildPlugin {
         }
       }
       build.initialOptions.external = external;
+
+      if (pluginOptions.copyRuntimeDependencies === false) return;
 
       const currentFile = typeof __filename !== 'undefined' ? __filename : fileURLToPath(import.meta.url);
       const _require = createRequire(currentFile);

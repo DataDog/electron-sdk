@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { ipcMain, type IpcMainEvent } from 'electron';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { combine, isIndexableObject, type RecursivePartial } from '@datadog/js-core/util';
 import { DISCARDED } from '@datadog/js-core/assembly';
@@ -10,6 +10,7 @@ import { BRIDGE_CHANNEL, setBridgeConfig, type BridgeOptions } from '../common';
 import type { FormatHooks } from './hooks';
 import type { RumEvent } from '../domain/rum';
 import { Configuration } from '../config';
+import { RendererIpcGate } from './RendererIpcGate';
 
 type BridgeEventType = 'rum' | 'log' | 'internal_telemetry' | 'profile' | 'record';
 
@@ -32,6 +33,7 @@ interface BridgeEvent {
  */
 export class RendererPipeline {
   private readonly bridgeOptions: BridgeOptions;
+
   constructor(
     private readonly eventManager: EventManager,
     private readonly hooks: FormatHooks,
@@ -39,7 +41,7 @@ export class RendererPipeline {
   ) {
     this.bridgeOptions = {
       defaultPrivacyLevel: config.defaultPrivacyLevel,
-      allowedWebViewHosts: config.allowedWebViewHosts,
+      allowedRendererHosts: config.allowedRendererHosts,
       // Capabilities are resolved once here and advertised globally, not per session. Bridge mode has no
       // channel to notify the renderer on session renew/expire or capability changes, so the browser SDK
       // cannot adjust its per-session behavior (e.g. stop profiling a sampled-out session). Out of scope for now.
@@ -49,9 +51,12 @@ export class RendererPipeline {
       ],
     };
 
+    const gate = new RendererIpcGate(this.bridgeOptions.allowedRendererHosts);
+
     ipcMain.on(
       BRIDGE_CHANNEL,
-      monitor((_ipcEvent: unknown, msg: string) => {
+      monitor((ipcEvent: IpcMainEvent, msg: string) => {
+        if (!gate.isAllowed(ipcEvent)) return;
         this.onBridgeMessage(msg);
       })
     );

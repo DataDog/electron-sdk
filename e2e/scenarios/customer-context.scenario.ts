@@ -1,5 +1,5 @@
 import { test, expect } from '../lib/helpers';
-import type { RumErrorEvent } from '@datadog/electron-sdk';
+import type { Intake } from '../lib/intake';
 import type { MainPage } from '../lib/mainPage';
 
 interface Info {
@@ -37,14 +37,14 @@ function getOps(mainPage: MainPage, label: Label) {
 
 async function getContext(
   mainPage: MainPage,
-  intake: { getEventsByType: (type: 'error') => Promise<{ body: unknown }[]> },
+  intake: Pick<Intake, 'getEventsByType'>,
   eventKey: EventKey
 ): Promise<Record<string, unknown> | undefined> {
   await mainPage.generateManualError();
   await mainPage.flushTransport();
 
   const errorEvents = await intake.getEventsByType('error');
-  const error = errorEvents[0].body as RumErrorEvent;
+  const error = errorEvents[0].body;
   return error[eventKey];
 }
 
@@ -90,7 +90,7 @@ test('attaches user email to subsequent events', async ({ mainPage, intake }) =>
   await mainPage.flushTransport();
 
   const errorEvents = await intake.getEventsByType('error');
-  const error = errorEvents[0].body as RumErrorEvent;
+  const error = errorEvents[0].body;
 
   expect(error.usr).toEqual({ id: 'user-1', name: 'Alice', email: 'alice@example.com' });
 });
@@ -102,7 +102,7 @@ test('attaches both user and account info to the same event', async ({ mainPage,
   await mainPage.flushTransport();
 
   const errorEvents = await intake.getEventsByType('error');
-  const error = errorEvents[0].body as RumErrorEvent;
+  const error = errorEvents[0].body;
 
   expect(error.usr).toEqual({ id: 'user-1', name: 'Alice' });
   expect(error.account).toEqual({ id: 'account-1', name: 'Acme Corp' });
@@ -137,7 +137,7 @@ test('attaches the global context to subsequent events', async ({ mainPage, inta
   await mainPage.generateManualError();
   await mainPage.flushTransport();
 
-  const error = (await intake.getEventsByType('error'))[0].body as RumErrorEvent;
+  const error = (await intake.getEventsByType('error'))[0].body;
   expect(error.context).toMatchObject({ team: 'checkout', build: '1.2.3' });
 });
 
@@ -154,9 +154,9 @@ test('merges the global context into renderer events, renderer keys winning', as
   await mainPage.flushTransport();
 
   const errors = await intake.getEventsByType('error', {
-    predicate: (event) => (event.body as RumErrorEvent).error.message === 'renderer error',
+    predicate: (event) => event.body.error.message === 'renderer error',
   });
-  expect(errors[0].body as RumErrorEvent).toMatchObject({
+  expect(errors[0].body).toMatchObject({
     context: { team: 'renderer-owned', build: '1.2.3' },
   });
 });

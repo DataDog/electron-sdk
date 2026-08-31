@@ -3,7 +3,7 @@ import { isIndexableObject } from '@datadog/js-core/util';
 import { type Context, generateUUID } from '@datadog/browser-core';
 import { EventFormat, EventKind, EventManager } from '../../../event';
 import { display } from '../../../tools/display';
-import { isValidString, VALID_VITAL_NAME_REGEX } from '../../../tools/validation';
+import { isOneOf, isValidString, VALID_VITAL_NAME_REGEX } from '../../../tools/validation';
 import type { RawRumOperationStepVital } from '../rawRumData.types';
 
 type OperationMethod = 'startOperation' | 'succeedOperation' | 'failOperation';
@@ -179,7 +179,7 @@ function validateArgs(method: OperationMethod, name: unknown, options: unknown, 
     display.error(`${method}: operation key cannot be empty or blank. Event will not be sent.`);
     return false;
   }
-  if (failureReason !== undefined && !VALID_FAILURE_REASONS.includes(failureReason as FailureReason)) {
+  if (failureReason !== undefined && !isOneOf(failureReason, VALID_FAILURE_REASONS)) {
     // Warn but do not drop — the backend is the source of truth on the enum policy and `failureReason` carries the
     // most diagnostic value of any field on a fail event, so swallowing it on a typo would lose more signal than it
     // protects. JSON.stringify keeps the warning safe when JS callers pass non-string values.

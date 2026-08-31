@@ -1,5 +1,5 @@
 import { test, expect } from '../lib/helpers';
-import type { RumViewEvent } from '@datadog/electron-sdk';
+import type { TraceSamplingRule } from '@datadog/electron-sdk';
 import type { MainPage } from '../lib/mainPage';
 
 const ipcSpanCases: {
@@ -36,7 +36,7 @@ for (const { title, trigger, spanName, resource, spanKind } of ipcSpanCases) {
   test(`emits an ${title} span with Electron context`, async ({ mainPage, intake }) => {
     await mainPage.flushTransport();
     const viewEvents = await intake.getEventsByType('view');
-    const view = viewEvents[0].body as RumViewEvent;
+    const view = viewEvents[0].body;
 
     await trigger(mainPage);
     await mainPage.flushTransport();
@@ -93,5 +93,85 @@ for (const { description, invoke, ipcChannel } of httpSpanCases) {
 
     const httpSpan = await intake.waitForSpan((s) => s.name === 'http.request' && s.trace_id === ipcSpan.trace_id);
     expect(httpSpan.parent_id).toBe(ipcSpan.span_id);
+  });
+}
+
+test.describe('trace sampling rules', () => {
+  test.use({
+    sdkConfigOverrides: {
+      traceSamplingRules: [
+        { name: 'electron.main.handle', resource: 'mainNetRequest', sampleRate: 0 },
+        { name: 'electron.main.handle', resource: 'mainNetRequest', sampleRate: 100 },
+      ],
+    },
+  });
+
+  test('uses the first matching rule and keeps the RUM resource unlinked', async ({ intake, mainPage, testServer }) => {
+    const url = testServer.urlFor(200);
+
+    await mainPage.mainNetRequest(url);
+    await mainPage.flushTransport();
+
+    const [received] = await intake.waitForEventCount('resource', 1, {
+      predicate: (event) => event.body.resource.url === url,
+    });
+    const resource = received.body;
+    expect(resource._dd.trace_id).toBeUndefined();
+    expect(resource._dd.span_id).toBeUndefined();
+    expect(testServer.headersFor(200)['x-datadog-trace-id']).toBeUndefined();
+    expect(testServer.headersFor(200).traceparent).toBeUndefined();
+    expect(
+      intake.getSpans(
+        (span) =>
+          (span.name === 'electron.main.handle' && span.resource === 'mainNetRequest') ||
+          (span.name === 'http.request' && span.meta['http.url'] === url)
+      )
+    ).toHaveLength(0);
+  });
+
+  test('keeps traces that do not match a rule', async ({ intake, mainPage, testServer }) => {
+    const url = testServer.urlFor(201);
+
+    await mainPage.mainNetFetch(url);
+    await mainPage.flushTransport();
+
+    const [received] = await intake.waitForEventCount('resource', 1, {
+      predicate: (event) => event.body.resource.url === url,
+    });
+    const resource = received.body;
+    expect(resource._dd.trace_id).toBeDefined();
+    expect(resource._dd.span_id).toBeDefined();
+    expect(testServer.headersFor(201)['x-datadog-trace-id']).toBeDefined();
+    await intake.waitForSpan((span) => span.name === 'electron.main.handle' && span.resource === 'mainNetFetch');
+  });
+});
+
+const traceSamplingRuleCases: { description: string; rule: TraceSamplingRule }[] = [
+  { description: 'name', rule: { name: 'electron.main.handle', sampleRate: 0 } },
+  { description: 'resource', rule: { resource: 'mainNetRequest', sampleRate: 0 } },
+  { description: 'tags', rule: { tags: { component: 'electron', 'span.kind': 'consumer' }, sampleRate: 0 } },
+];
+
+for (const { description, rule } of traceSamplingRuleCases) {
+  test.describe(`${description} trace sampling rule`, () => {
+    test.use({ sdkConfigOverrides: { traceSamplingRules: [rule] } });
+
+    test('drops a matching trace', async ({ intake, mainPage, testServer }) => {
+      const url = testServer.urlFor(200);
+
+      await mainPage.mainNetRequest(url);
+      await mainPage.flushTransport();
+
+      await intake.waitForEventCount('resource', 1, {
+        predicate: (event) => event.body.resource.url === url,
+      });
+      expect(
+        intake.getSpans(
+          (span) =>
+            (span.name === 'electron.main.handle' && span.resource === 'mainNetRequest') ||
+            (span.name === 'http.request' && span.meta['http.url'] === url)
+        )
+      ).toHaveLength(0);
+    });
   });
 }

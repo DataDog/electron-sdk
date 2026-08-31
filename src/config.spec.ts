@@ -14,6 +14,7 @@ describe('buildConfiguration', () => {
     service: 'test-service',
     clientToken: 'test-token',
     applicationId: 'test-app-id',
+    allowedRendererHosts: [],
   };
 
   afterEach(() => {
@@ -228,66 +229,89 @@ describe('buildConfiguration', () => {
     });
   });
 
-  describe('defaultPrivacyLevel validation', () => {
-    it('defaults to mask when not provided', () => {
-      const config = { ...DEFAULT_CONFIG };
+  describe.each([
+    {
+      fieldName: 'batchSize' as const,
+      valid: ['SMALL', 'MEDIUM', 'LARGE'],
+      defaultValue: 'MEDIUM',
+      wrongCase: 'small',
+    },
+    {
+      fieldName: 'uploadFrequency' as const,
+      valid: ['RARE', 'NORMAL', 'FREQUENT'],
+      defaultValue: 'NORMAL',
+      wrongCase: 'rare',
+    },
+    {
+      fieldName: 'defaultPrivacyLevel' as const,
+      valid: ['mask', 'allow', 'mask-user-input'],
+      defaultValue: 'mask',
+      wrongCase: 'MASK',
+    },
+  ])('$fieldName validation', ({ fieldName, valid, defaultValue, wrongCase }) => {
+    it.each(valid)('carries the configured value through to the resolved configuration: %s', (value) => {
+      const config = { ...DEFAULT_CONFIG, [fieldName]: value };
 
       const result = buildConfiguration(config);
 
-      expect(result?.defaultPrivacyLevel).toBe('mask');
-    });
-
-    it.each(['mask', 'allow', 'mask-user-input'] as const)('accepts valid value: %s', (value) => {
-      const config = { ...DEFAULT_CONFIG, defaultPrivacyLevel: value };
-
-      const result = buildConfiguration(config);
-
-      expect(result?.defaultPrivacyLevel).toBe(value);
+      expect(result?.[fieldName]).toBe(value);
+      expect(display.error).not.toHaveBeenCalled();
     });
 
     it.each([
-      { value: 'invalid', description: 'invalid string' },
-      { value: 123, description: 'number' },
-      { value: {}, description: 'object' },
-    ])('logs error and uses default when $description', ({ value }) => {
-      const config = { ...DEFAULT_CONFIG, defaultPrivacyLevel: value } as unknown as InitConfiguration;
+      { value: undefined, description: 'undefined' },
+      { value: null, description: 'null' },
+    ])(`resolves to the ${String(defaultValue)} default when $description`, ({ value }) => {
+      const config = { ...DEFAULT_CONFIG, [fieldName]: value };
 
       const result = buildConfiguration(config);
 
-      expect(result?.defaultPrivacyLevel).toBe('mask');
+      expect(result?.[fieldName]).toBe(defaultValue);
+      expect(display.error).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { value: 'NOPE', description: 'unknown value' },
+      { value: wrongCase, description: 'wrong case' },
+      { value: 123, description: 'number' },
+    ])('logs an error and resolves to the default when $description', ({ value }) => {
+      const config = { ...DEFAULT_CONFIG, [fieldName]: value };
+
+      const result = buildConfiguration(config);
+
+      expect(result?.[fieldName]).toBe(defaultValue);
       expect(display.error).toHaveBeenCalledWith(
-        "Configuration error: 'defaultPrivacyLevel' must be one of: mask, allow, mask-user-input"
+        `Configuration error: '${fieldName}' must be one of: ${valid.join(', ')}`
+      );
+    });
+  });
+
+  describe('allowedRendererHosts validation', () => {
+    it('aborts init when not provided', () => {
+      const raw: Record<string, unknown> = { ...DEFAULT_CONFIG };
+      delete raw.allowedRendererHosts;
+      const config = raw as unknown as InitConfiguration;
+
+      const result = buildConfiguration(config);
+
+      expect(result).toBeUndefined();
+      expect(display.error).toHaveBeenCalledWith(
+        "Configuration error: 'allowedRendererHosts' must be an array of hostnames (e.g. ['example.com', 'myapp']), ['file://'] for file:// renderers, or ['*'] to allow all renderers including file://"
       );
     });
 
     it.each([
       { value: null, description: 'null' },
       { value: undefined, description: 'undefined' },
-    ])('defaults to mask when $description (no error)', ({ value }) => {
-      const config = { ...DEFAULT_CONFIG, defaultPrivacyLevel: value } as unknown as InitConfiguration;
+    ])('aborts init when $description', ({ value }) => {
+      const config = { ...DEFAULT_CONFIG, allowedRendererHosts: value } as unknown as InitConfiguration;
 
       const result = buildConfiguration(config);
 
-      expect(result?.defaultPrivacyLevel).toBe('mask');
-      expect(display.error).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('allowedWebViewHosts validation', () => {
-    it('defaults to empty array when not provided', () => {
-      const config = { ...DEFAULT_CONFIG };
-
-      const result = buildConfiguration(config);
-
-      expect(result?.allowedWebViewHosts).toEqual([]);
-    });
-
-    it('accepts valid array of strings', () => {
-      const config = { ...DEFAULT_CONFIG, allowedWebViewHosts: ['example.com', 'other.com'] };
-
-      const result = buildConfiguration(config);
-
-      expect(result?.allowedWebViewHosts).toEqual(['example.com', 'other.com']);
+      expect(result).toBeUndefined();
+      expect(display.error).toHaveBeenCalledWith(
+        "Configuration error: 'allowedRendererHosts' must be an array of hostnames (e.g. ['example.com', 'myapp']), ['file://'] for file:// renderers, or ['*'] to allow all renderers including file://"
+      );
     });
 
     it.each([
@@ -295,27 +319,145 @@ describe('buildConfiguration', () => {
       { value: 123, description: 'number' },
       { value: [123, 456], description: 'array of non-strings' },
       { value: ['valid', 123], description: 'mixed array' },
-    ])('logs error and uses default when $description', ({ value }) => {
-      const config = { ...DEFAULT_CONFIG, allowedWebViewHosts: value } as unknown as InitConfiguration;
+    ])('aborts init when $description', ({ value }) => {
+      const config = { ...DEFAULT_CONFIG, allowedRendererHosts: value } as unknown as InitConfiguration;
 
       const result = buildConfiguration(config);
 
-      expect(result?.allowedWebViewHosts).toEqual([]);
+      expect(result).toBeUndefined();
       expect(display.error).toHaveBeenCalledWith(
-        "Configuration error: 'allowedWebViewHosts' must be an array of strings"
+        "Configuration error: 'allowedRendererHosts' must be an array of hostnames (e.g. ['example.com', 'myapp']), ['file://'] for file:// renderers, or ['*'] to allow all renderers including file://"
       );
     });
 
-    it.each([
-      { value: null, description: 'null' },
-      { value: undefined, description: 'undefined' },
-    ])('defaults to empty array when $description (no error)', ({ value }) => {
-      const config = { ...DEFAULT_CONFIG, allowedWebViewHosts: value } as unknown as InitConfiguration;
+    it('accepts empty array', () => {
+      const result = buildConfiguration({ ...DEFAULT_CONFIG, allowedRendererHosts: [] });
 
-      const result = buildConfiguration(config);
-
-      expect(result?.allowedWebViewHosts).toEqual([]);
+      expect(result?.allowedRendererHosts).toEqual([]);
       expect(display.error).not.toHaveBeenCalled();
+    });
+
+    it('passes through regular hostnames unchanged', () => {
+      const result = buildConfiguration({ ...DEFAULT_CONFIG, allowedRendererHosts: ['example.com', 'other.com'] });
+
+      expect(result?.allowedRendererHosts).toEqual(['example.com', 'other.com']);
+    });
+
+    it("normalizes '*' to ['*', '']", () => {
+      const result = buildConfiguration({ ...DEFAULT_CONFIG, allowedRendererHosts: ['*'] });
+
+      expect(result?.allowedRendererHosts).toEqual(['*', '']);
+    });
+
+    it("normalizes 'file://' to ['']", () => {
+      const result = buildConfiguration({ ...DEFAULT_CONFIG, allowedRendererHosts: ['file://'] });
+
+      expect(result?.allowedRendererHosts).toEqual(['']);
+    });
+
+    it("normalizes mixed list: ['example.com', '*', 'file://'] → ['example.com', '*', '', '']", () => {
+      const result = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        allowedRendererHosts: ['example.com', '*', 'file://'],
+      });
+
+      expect(result?.allowedRendererHosts).toEqual(['example.com', '*', '', '']);
+    });
+
+    it('skips empty string entries and logs error, leaving other valid entries intact', () => {
+      const result = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        allowedRendererHosts: ['example.com', '', 'other.com'],
+      });
+
+      expect(result?.allowedRendererHosts).toEqual(['example.com', 'other.com']);
+      expect(display.error).toHaveBeenCalledWith(
+        "Configuration error: 'allowedRendererHosts' entry '' is invalid and will be ignored (empty string)"
+      );
+    });
+
+    it('skips multi-wildcard entries and logs error, leaving other valid entries intact', () => {
+      const result = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        allowedRendererHosts: ['foo**bar.example.com', 'valid.com'],
+      });
+
+      expect(result?.allowedRendererHosts).toEqual(['valid.com']);
+      expect(display.error).toHaveBeenCalledWith(
+        "Configuration error: 'allowedRendererHosts' entry 'foo**bar.example.com' is invalid and will be ignored (multiple wildcards)"
+      );
+    });
+
+    it('skips overly-broad wildcard entries and logs error', () => {
+      const invalids = ['*.com', 'foo*', 'preview-*', '*example.com'];
+      for (const entry of invalids) {
+        vi.mocked(display.error).mockClear();
+        const result = buildConfiguration({ ...DEFAULT_CONFIG, allowedRendererHosts: [entry, 'valid.com'] });
+        expect(result?.allowedRendererHosts).toEqual(['valid.com']);
+        expect(display.error).toHaveBeenCalledWith(
+          `Configuration error: 'allowedRendererHosts' entry '${entry}' is invalid and will be ignored (wildcard must match subdomains of a full domain, e.g. '*.example.com')`
+        );
+      }
+    });
+
+    it('accepts valid subdomain wildcard entries', () => {
+      const result = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        allowedRendererHosts: ['*.example.com', 'preview-*.staging.example.com'],
+      });
+      expect(result?.allowedRendererHosts).toEqual(['*.example.com', 'preview-*.staging.example.com']);
+      expect(display.error).not.toHaveBeenCalled();
+    });
+
+    it('rejects trailing-dot entries', () => {
+      const result = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        allowedRendererHosts: ['com.', 'example.com.', 'valid.com'],
+      });
+
+      expect(result?.allowedRendererHosts).toEqual(['valid.com']);
+      expect(display.error).toHaveBeenCalledWith(
+        "Configuration error: 'allowedRendererHosts' entry 'com.' is not a valid hostname and will be ignored"
+      );
+      expect(display.error).toHaveBeenCalledWith(
+        "Configuration error: 'allowedRendererHosts' entry 'example.com.' is not a valid hostname and will be ignored"
+      );
+    });
+
+    it('skips truly invalid hostname entries and logs error', () => {
+      const result = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        allowedRendererHosts: ['not a hostname!', 'valid.com'],
+      });
+
+      expect(result?.allowedRendererHosts).toEqual(['valid.com']);
+      expect(display.error).toHaveBeenCalledWith(
+        "Configuration error: 'allowedRendererHosts' entry 'not a hostname!' is not a valid hostname and will be ignored"
+      );
+    });
+
+    it('rejects non-ASCII hostname', () => {
+      const result = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        allowedRendererHosts: ['bücher.example', 'valid.com'],
+      });
+
+      expect(result?.allowedRendererHosts).toEqual(['valid.com']);
+      expect(display.error).toHaveBeenCalledWith(
+        "Configuration error: 'allowedRendererHosts' entry 'bücher.example' is not a valid hostname and will be ignored (non-ASCII hostnames are not supported; use the ASCII-compatible encoding)"
+      );
+    });
+
+    it('rejects IPv6 literal (contains URL-syntax colon)', () => {
+      const result = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        allowedRendererHosts: ['[::1]', 'valid.com'],
+      });
+
+      expect(result?.allowedRendererHosts).toEqual(['valid.com']);
+      expect(display.error).toHaveBeenCalledWith(
+        "Configuration error: 'allowedRendererHosts' entry '[::1]' is not a valid hostname and will be ignored"
+      );
     });
   });
 
@@ -359,6 +501,45 @@ describe('buildConfiguration', () => {
 
       expect(result?.sessionSampleRate).toBe(100);
       expect(display.error).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('traceSamplingRules validation', () => {
+    it('defaults to an empty list', () => {
+      expect(buildConfiguration({ ...DEFAULT_CONFIG })?.traceSamplingRules).toEqual([]);
+    });
+
+    it('preserves valid ordered rules', () => {
+      const traceSamplingRules = [
+        { name: 'electron.main.*', resource: 'health-*', sampleRate: 0 },
+        { tags: { 'http.url': '*/api/*' }, sampleRate: 25 },
+      ];
+
+      expect(buildConfiguration({ ...DEFAULT_CONFIG, traceSamplingRules })?.traceSamplingRules).toEqual(
+        traceSamplingRules
+      );
+    });
+
+    it.each([
+      'not-an-array',
+      [{ sampleRate: -1 }],
+      [{ sampleRate: 101 }],
+      [{ sampleRate: Number.NaN }],
+      [{ sampleRate: 50, name: '' }],
+      [{ sampleRate: 50, name: '   ' }],
+      [{ sampleRate: 50, tags: { 'http.url': 42 } }],
+      [{ sampleRate: 0, url: '*/health' }],
+      [{ sampleRate: 50, service: 'checkout-*' }],
+    ])('rejects invalid rules: %j', (traceSamplingRules) => {
+      const result = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        traceSamplingRules,
+      } as unknown as InitConfiguration);
+
+      expect(result).toBeUndefined();
+      expect(display.error).toHaveBeenCalledWith(
+        "Configuration error: 'traceSamplingRules' must be an array of rules with a sampleRate between 0 and 100"
+      );
     });
   });
 
@@ -472,4 +653,54 @@ describe('buildConfiguration', () => {
       expect(display.error).not.toHaveBeenCalled();
     });
   });
+
+  describe.each([{ field: 'telemetryConfigurationSampleRate' }, { field: 'telemetryUsageSampleRate' }] as const)(
+    '$field validation',
+    ({ field }) => {
+      it('defaults to 20 when not provided', () => {
+        const config = { ...DEFAULT_CONFIG };
+
+        const result = buildConfiguration(config);
+
+        expect(result?.[field]).toBe(20);
+      });
+
+      it.each([0, 50, 100])('accepts valid value: %d', (value) => {
+        const config = { ...DEFAULT_CONFIG, [field]: value };
+
+        const result = buildConfiguration(config);
+
+        expect(result?.[field]).toBe(value);
+      });
+
+      it.each([
+        { value: -1, description: 'negative number' },
+        { value: 101, description: 'greater than 100' },
+        { value: 'fifty', description: 'non-number string' },
+        { value: {}, description: 'object' },
+        { value: NaN, description: 'NaN' },
+      ])('returns undefined and logs error when $description', ({ value }) => {
+        const config = { ...DEFAULT_CONFIG, [field]: value };
+
+        const result = buildConfiguration(config);
+
+        expect(result).toBeUndefined();
+        expect(display.error).toHaveBeenCalledWith(
+          `Configuration error: '${field}' must be a number between 0 and 100`
+        );
+      });
+
+      it.each([
+        { value: null, description: 'null' },
+        { value: undefined, description: 'undefined' },
+      ])('defaults to 20 when $description (no error)', ({ value }) => {
+        const config = { ...DEFAULT_CONFIG, [field]: value };
+
+        const result = buildConfiguration(config);
+
+        expect(result?.[field]).toBe(20);
+        expect(display.error).not.toHaveBeenCalled();
+      });
+    }
+  );
 });

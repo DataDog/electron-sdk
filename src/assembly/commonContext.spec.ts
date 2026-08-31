@@ -4,25 +4,10 @@ import { registerCommonContext } from './commonContext';
 import { createFormatHooks } from './hooks';
 import { EventSource } from '../event';
 import type { Configuration } from '../config';
+import { createTestConfiguration } from '../mocks.specUtil';
 import { display } from '../tools/display';
 
 const T0 = 0 as TimeStamp;
-
-function makeConfig(overrides: Partial<Configuration> = {}): Configuration {
-  return {
-    site: 'datadoghq.com',
-    service: 'test-service',
-    clientToken: 'test-token',
-    applicationId: 'test-app-id',
-    defaultPrivacyLevel: 'mask',
-    allowedWebViewHosts: [],
-    sessionSampleRate: 100,
-    sessionReplaySampleRate: 0,
-    profilingSampleRate: 0,
-    telemetrySampleRate: 20,
-    ...overrides,
-  };
-}
 
 function triggerMainRum(config: Configuration) {
   const hooks = createFormatHooks();
@@ -50,7 +35,7 @@ describe('registerCommonContext', () => {
       { field: 'service' as const, value: 'my-service' },
       { field: 'version' as const, value: '2.0.0' },
     ])('includes $field as a top-level field', ({ field, value }) => {
-      const result = triggerMainRum(makeConfig({ [field]: value }));
+      const result = triggerMainRum(createTestConfiguration({ [field]: value }));
 
       expect(result[field]).toBe(value);
     });
@@ -58,7 +43,7 @@ describe('registerCommonContext', () => {
 
   describe('MAIN RUM events — ddtags', () => {
     it('always includes sdk_version tag', () => {
-      const tags = parseDdtags(triggerMainRum(makeConfig()));
+      const tags = parseDdtags(triggerMainRum(createTestConfiguration()));
 
       expect(tags.some((t) => t.startsWith('sdk_version:'))).toBe(true);
     });
@@ -68,7 +53,7 @@ describe('registerCommonContext', () => {
       { configKey: 'env' as const, tagKey: 'env', value: 'production' },
       { configKey: 'version' as const, tagKey: 'version', value: '2.0.0' },
     ])('includes $tagKey tag when $configKey is configured', ({ configKey, tagKey, value }) => {
-      const tags = parseDdtags(triggerMainRum(makeConfig({ [configKey]: value })));
+      const tags = parseDdtags(triggerMainRum(createTestConfiguration({ [configKey]: value })));
 
       expect(tags).toContain(`${tagKey}:${value}`);
     });
@@ -78,7 +63,7 @@ describe('registerCommonContext', () => {
       { configKey: 'env' as const, tagKey: 'env', raw: 'prod,us', sanitized: 'prod_us' },
       { configKey: 'version' as const, tagKey: 'version', raw: '1.0,0', sanitized: '1.0_0' },
     ])('replaces commas in $tagKey value to avoid corrupting ddtags', ({ configKey, tagKey, raw, sanitized }) => {
-      const tags = parseDdtags(triggerMainRum(makeConfig({ [configKey]: raw })));
+      const tags = parseDdtags(triggerMainRum(createTestConfiguration({ [configKey]: raw })));
 
       expect(tags).toContain(`${tagKey}:${sanitized}`);
       expect(tags.some((t) => t.includes(','))).toBe(false);
@@ -91,7 +76,7 @@ describe('registerCommonContext', () => {
     ])('warns when $tagKey value contains forbidden characters', ({ configKey, tagKey, raw }) => {
       const warnSpy = vi.spyOn(display, 'warn').mockReturnValue(undefined);
 
-      triggerMainRum(makeConfig({ [configKey]: raw }));
+      triggerMainRum(createTestConfiguration({ [configKey]: raw }));
 
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(`${tagKey}:${raw}`));
       warnSpy.mockRestore();
@@ -101,7 +86,7 @@ describe('registerCommonContext', () => {
       const warnSpy = vi.spyOn(display, 'warn').mockReturnValue(undefined);
 
       // 'env:' = 4 chars, so value of 197 chars = 201-char tag (first value > 200)
-      triggerMainRum(makeConfig({ env: 'a'.repeat(197) }));
+      triggerMainRum(createTestConfiguration({ env: 'a'.repeat(197) }));
 
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('env:'));
       warnSpy.mockRestore();
@@ -111,7 +96,7 @@ describe('registerCommonContext', () => {
       const warnSpy = vi.spyOn(display, 'warn').mockReturnValue(undefined);
 
       // 'env:' = 4 chars, so value of 196 chars = exactly 200
-      triggerMainRum(makeConfig({ env: 'a'.repeat(196) }));
+      triggerMainRum(createTestConfiguration({ env: 'a'.repeat(196) }));
 
       expect(warnSpy).not.toHaveBeenCalled();
       warnSpy.mockRestore();
@@ -124,7 +109,7 @@ describe('registerCommonContext', () => {
     ])('does not warn when $tagKey value contains only allowed special characters', ({ configKey, raw }) => {
       const warnSpy = vi.spyOn(display, 'warn').mockReturnValue(undefined);
 
-      triggerMainRum(makeConfig({ [configKey]: raw }));
+      triggerMainRum(createTestConfiguration({ [configKey]: raw }));
 
       expect(warnSpy).not.toHaveBeenCalled();
       warnSpy.mockRestore();
@@ -134,7 +119,7 @@ describe('registerCommonContext', () => {
       { configKey: 'env' as const, tagKey: 'env' },
       { configKey: 'version' as const, tagKey: 'version' },
     ])('omits $tagKey tag when $configKey is not configured', ({ configKey, tagKey }) => {
-      const tags = parseDdtags(triggerMainRum(makeConfig({ [configKey]: undefined })));
+      const tags = parseDdtags(triggerMainRum(createTestConfiguration({ [configKey]: undefined })));
 
       expect(tags.some((t) => t.startsWith(`${tagKey}:`))).toBe(false);
     });
@@ -144,7 +129,11 @@ describe('registerCommonContext', () => {
     it.each([EventSource.MAIN, EventSource.RENDERER])(
       'injects the Electron SDK session, replay, and profiling sample rates for %s events',
       (source) => {
-        const config = makeConfig({ sessionSampleRate: 42, sessionReplaySampleRate: 25, profilingSampleRate: 100 });
+        const config = createTestConfiguration({
+          sessionSampleRate: 42,
+          sessionReplaySampleRate: 25,
+          profilingSampleRate: 100,
+        });
         const result = source === EventSource.MAIN ? triggerMainRum(config) : triggerRendererRum(config);
 
         expect((result._dd as { configuration: unknown }).configuration).toEqual({
@@ -156,7 +145,7 @@ describe('registerCommonContext', () => {
     );
 
     it('preserves format_version on MAIN events alongside the configuration', () => {
-      const result = triggerMainRum(makeConfig());
+      const result = triggerMainRum(createTestConfiguration());
 
       expect(result._dd).toMatchObject({ format_version: 2 });
     });
@@ -164,7 +153,7 @@ describe('registerCommonContext', () => {
 
   describe('RENDERER RUM events', () => {
     it('adds the electron container source', () => {
-      const result = triggerRendererRum(makeConfig());
+      const result = triggerRendererRum(createTestConfiguration());
 
       expect(result.container).toEqual({ source: 'electron' });
     });

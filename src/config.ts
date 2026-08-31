@@ -1,6 +1,8 @@
 import { ONE_SECOND } from '@datadog/js-core/time';
+import { isIndexableObject } from '@datadog/js-core/util';
 import { ONE_KIBI_BYTE, ONE_MEBI_BYTE, DefaultPrivacyLevel } from '@datadog/browser-core';
 import { display } from './tools/display';
+import { isFiniteNumber, isOneOf, isValidString } from './tools/validation';
 
 const VALID_DATADOG_SITES = [
   'datadoghq.com',
@@ -25,8 +27,22 @@ export const BatchUploadFrequencies = {
   FREQUENT: 5 * ONE_SECOND,
 } as const;
 
-export type BatchSize = 'SMALL' | 'MEDIUM' | 'LARGE';
-export type UploadFrequency = 'RARE' | 'NORMAL' | 'FREQUENT';
+export type BatchSize = keyof typeof BatchSizes;
+export type UploadFrequency = keyof typeof BatchUploadFrequencies;
+
+export interface TraceSamplingRule {
+  /** Percentage of matching traces to keep, between 0 and 100. */
+  sampleRate: number;
+  /** Case-insensitive glob matched against the root span operation name. */
+  name?: string;
+  /** Case-insensitive glob matched against the root span resource name. */
+  resource?: string;
+  /** Case-insensitive glob patterns matched against root span tags. */
+  tags?: Record<string, string>;
+}
+
+const DEFAULT_BATCH_SIZE: BatchSize = 'MEDIUM';
+const DEFAULT_UPLOAD_FREQUENCY: UploadFrequency = 'NORMAL';
 
 export interface InitConfiguration {
   site: string;
@@ -37,13 +53,46 @@ export interface InitConfiguration {
   env?: string;
   version?: string;
   sessionSampleRate?: number;
+  /**
+   * Ordered sampling rules for main-process traces. The first matching rule
+   * determines the percentage of traces to keep. Traces that do not match a rule are kept.
+   * @example [{ tags: { 'http.url': '*health' }, sampleRate: 0 }]
+   */
+  traceSamplingRules?: TraceSamplingRule[];
   sessionReplaySampleRate?: number;
   profilingSampleRate?: number;
+  /**
+   * Percentage of SDK instances that report telemetry (0–100), defaults to `20`. Drawn once at
+   * `init()` and kept for the lifetime of the process, so an instance either reports telemetry for
+   * its whole life or never does.
+   * @example telemetrySampleRate: 100
+   */
   telemetrySampleRate?: number;
+  /**
+   * Percentage of telemetry-enabled SDK instances that also report the resolved SDK configuration
+   * (0–100), defaults to `20`. Applied as a child of {@link InitConfiguration.telemetrySampleRate}:
+   * the effective rate is the product of the two, so the default pair reports from 4% of instances.
+   * Drawn once at `init()`.
+   * @example telemetryConfigurationSampleRate: 100
+   */
+  telemetryConfigurationSampleRate?: number;
+  /**
+   * Percentage of telemetry-enabled SDK instances that also report which public APIs the app calls
+   * (0–100), defaults to `20`. Applied as a child of {@link InitConfiguration.telemetrySampleRate}:
+   * the effective rate is the product of the two, so the default pair reports from 4% of instances.
+   * Drawn once at `init()`.
+   * @example telemetryUsageSampleRate: 100
+   */
+  telemetryUsageSampleRate?: number;
   batchSize?: BatchSize;
   uploadFrequency?: UploadFrequency;
   defaultPrivacyLevel?: DefaultPrivacyLevel;
-  allowedWebViewHosts?: string[];
+  /**
+   * Hostnames allowed to send bridge events to the main process. Supports exact hostnames,
+   * subdomain suffixes, single-wildcard globs, `'file://'` for local files, and `'*'` for all.
+   * @example ['app.example.com', '*.staging.example.com', 'file://', '*']
+   */
+  allowedRendererHosts: string[];
 }
 
 export interface Configuration {
@@ -55,13 +104,39 @@ export interface Configuration {
   version?: string;
   proxy?: string;
   sessionSampleRate: number;
+  traceSamplingRules: TraceSamplingRule[];
   sessionReplaySampleRate: number;
   profilingSampleRate: number;
   telemetrySampleRate: number;
-  batchSize?: BatchSize;
-  uploadFrequency?: UploadFrequency;
+  telemetryConfigurationSampleRate: number;
+  telemetryUsageSampleRate: number;
+  batchSize: BatchSize;
+  uploadFrequency: UploadFrequency;
   defaultPrivacyLevel: DefaultPrivacyLevel;
-  allowedWebViewHosts: string[];
+  allowedRendererHosts: string[];
+}
+
+/**
+ * Batch byte threshold the resolved `batchSize` stands for.
+ *
+ * Caps how large a single batch file may grow before it is rotated early; the batch window itself is
+ * driven by {@link resolveUploadFrequency}. Configuration telemetry deliberately does not report this
+ * — the schema's `batch_size` is a window duration in milliseconds, not a byte count; see
+ * `buildConfigurationTelemetry`.
+ */
+export function resolveBatchSize(configuration: Configuration): number {
+  return BatchSizes[configuration.batchSize];
+}
+
+/**
+ * Upload period in milliseconds the resolved `uploadFrequency` stands for.
+ *
+ * Doubles as the batch window: each upload cycle seals the open batch and drains every pending one,
+ * so events accumulate for exactly this long. Shared by the transport and configuration telemetry so
+ * both report the same value.
+ */
+export function resolveUploadFrequency(configuration: Configuration): number {
+  return BatchUploadFrequencies[configuration.uploadFrequency];
 }
 
 function validateRequiredString(value: unknown, fieldName: string): string | undefined {
@@ -73,7 +148,7 @@ function validateRequiredString(value: unknown, fieldName: string): string | und
 }
 
 function validateSite(value: unknown): string | undefined {
-  if (typeof value !== 'string' || value.length === 0 || !(VALID_DATADOG_SITES as readonly string[]).includes(value)) {
+  if (!isOneOf(value, VALID_DATADOG_SITES)) {
     display.error(`Configuration error: 'site' must be one of: ${VALID_DATADOG_SITES.join(', ')}`);
     return undefined;
   }
@@ -92,49 +167,81 @@ function validateOptionalString(value: unknown): string | undefined {
   return value.length > 0 ? value : undefined;
 }
 
-function validateSessionSampleRate(value: unknown): number | undefined {
+/**
+ * Validate a 0–100 percentage. Returns `defaultValue` when unset, or `undefined` on an invalid
+ * value to signal that initialization should abort.
+ */
+function validateSampleRate(value: unknown, fieldName: string, defaultValue: number): number | undefined {
   if (value === undefined || value === null) {
-    return 100;
+    return defaultValue;
   }
-  if (!Number.isFinite(value) || (value as number) < 0 || (value as number) > 100) {
-    display.error("Configuration error: 'sessionSampleRate' must be a number between 0 and 100");
+  if (!isFiniteNumber(value) || value < 0 || value > 100) {
+    display.error(`Configuration error: '${fieldName}' must be a number between 0 and 100`);
     return undefined;
   }
-  return value as number;
+  return value;
 }
 
-function validateSessionReplaySampleRate(value: unknown): number | undefined {
+function validateTraceSamplingRules(value: unknown): TraceSamplingRule[] | undefined {
   if (value === undefined || value === null) {
-    return 0;
+    return [];
   }
-  if (!Number.isFinite(value) || (value as number) < 0 || (value as number) > 100) {
-    display.error("Configuration error: 'sessionReplaySampleRate' must be a number between 0 and 100");
+  if (!Array.isArray(value) || !value.every(isValidTraceSamplingRule)) {
+    display.error(
+      "Configuration error: 'traceSamplingRules' must be an array of rules with a sampleRate between 0 and 100"
+    );
     return undefined;
   }
-  return value as number;
+  return value;
 }
 
-function validateProfilingSampleRate(value: unknown): number | undefined {
-  if (value === undefined || value === null) {
-    return 0;
+function isValidTraceSamplingRule(value: unknown): value is TraceSamplingRule {
+  if (!isIndexableObject(value)) {
+    return false;
   }
-  if (!Number.isFinite(value) || (value as number) < 0 || (value as number) > 100) {
-    display.error("Configuration error: 'profilingSampleRate' must be a number between 0 and 100");
-    return undefined;
+  const allowedKeys = new Set(['sampleRate', 'name', 'resource', 'tags']);
+  if (Object.keys(value).some((key) => !allowedKeys.has(key))) {
+    return false;
   }
-  return value as number;
+  if (!isFiniteNumber(value.sampleRate) || value.sampleRate < 0 || value.sampleRate > 100) {
+    return false;
+  }
+  if (!['name', 'resource'].every((key) => value[key] === undefined || isValidString(value[key]))) {
+    return false;
+  }
+  if (value.tags === undefined) {
+    return true;
+  }
+  return (
+    isIndexableObject(value.tags) &&
+    Object.entries(value.tags).every(([key, pattern]) => isValidString(key) && isValidString(pattern))
+  );
 }
 
-function validateTelemetrySampleRate(value: unknown): number | undefined {
+/**
+ * Validate an option whose value must be one of a fixed set of strings, resolving it to
+ * `defaultValue` when unset.
+ *
+ * An invalid value is reported and falls back to the default rather than aborting `init()`.
+ */
+function validateEnumOption<T extends string>(
+  value: unknown,
+  fieldName: string,
+  allowedValues: readonly T[],
+  defaultValue: T
+): T {
   if (value === undefined || value === null) {
-    return 20;
+    return defaultValue;
   }
-  if (!Number.isFinite(value) || (value as number) < 0 || (value as number) > 100) {
-    display.error("Configuration error: 'telemetrySampleRate' must be a number between 0 and 100");
-    return undefined;
+  if (!isOneOf(value, allowedValues)) {
+    display.error(`Configuration error: '${fieldName}' must be one of: ${allowedValues.join(', ')}`);
+    return defaultValue;
   }
-  return value as number;
+  return value;
 }
+
+const VALID_BATCH_SIZES = Object.keys(BatchSizes) as BatchSize[];
+const VALID_UPLOAD_FREQUENCIES = Object.keys(BatchUploadFrequencies) as UploadFrequency[];
 
 const VALID_PRIVACY_LEVELS: readonly DefaultPrivacyLevel[] = [
   DefaultPrivacyLevel.MASK,
@@ -142,26 +249,67 @@ const VALID_PRIVACY_LEVELS: readonly DefaultPrivacyLevel[] = [
   DefaultPrivacyLevel.MASK_USER_INPUT,
 ];
 
-function validateDefaultPrivacyLevel(value: unknown): DefaultPrivacyLevel {
-  if (value === undefined || value === null) {
-    return DefaultPrivacyLevel.MASK;
+function validateAllowedRendererHosts(value: unknown): string[] | undefined {
+  if (
+    value === undefined ||
+    value === null ||
+    !Array.isArray(value) ||
+    !value.every((item) => typeof item === 'string')
+  ) {
+    display.error(
+      "Configuration error: 'allowedRendererHosts' must be an array of hostnames (e.g. ['example.com', 'myapp']), ['file://'] for file:// renderers, or ['*'] to allow all renderers including file://"
+    );
+    return undefined;
   }
-  if (typeof value !== 'string' || !(VALID_PRIVACY_LEVELS as readonly string[]).includes(value)) {
-    display.error(`Configuration error: 'defaultPrivacyLevel' must be one of: ${VALID_PRIVACY_LEVELS.join(', ')}`);
-    return DefaultPrivacyLevel.MASK;
-  }
-  return value as DefaultPrivacyLevel;
-}
-
-function validateAllowedWebViewHosts(value: unknown): string[] {
-  if (value === undefined || value === null) {
-    return [];
-  }
-  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
-    display.error("Configuration error: 'allowedWebViewHosts' must be an array of strings");
-    return [];
-  }
-  return value;
+  return value.flatMap((host) => {
+    if (host === '*') return ['*', ''];
+    if (host === 'file://') return [''];
+    if (host === '') {
+      display.error(
+        `Configuration error: 'allowedRendererHosts' entry '${host}' is invalid and will be ignored (empty string)`
+      );
+      return [];
+    }
+    // Reject entries that contain URL-syntax characters that would cause the URL constructor
+    // to silently extract a different host (e.g. 'foo@evil.com' → 'evil.com', 'host:8443' → 'host').
+    // Also reject trailing dots: 'com.' has a dot, bypassing the single-label guard, and Node.js
+    // does not normalize trailing dots in URL.hostname, so 'attacker.com.' would match '.com.'.
+    if (/[@/:?#\s]/.test(host) || host.endsWith('.')) {
+      display.error(
+        `Configuration error: 'allowedRendererHosts' entry '${host}' is not a valid hostname and will be ignored`
+      );
+      return [];
+    }
+    // Only ASCII hostnames are supported. For internationalized domain names, provide the
+    // ASCII-compatible encoding (punycode) directly (e.g. 'bücher.example' → 'xn--bcher-kva.example').
+    if (/[-￿]/.test(host)) {
+      display.error(
+        `Configuration error: 'allowedRendererHosts' entry '${host}' is not a valid hostname and will be ignored (non-ASCII hostnames are not supported; use the ASCII-compatible encoding)`
+      );
+      return [];
+    }
+    const wildcardCount = (host.match(/\*/g) ?? []).length;
+    if (wildcardCount > 1) {
+      display.error(
+        `Configuration error: 'allowedRendererHosts' entry '${host}' is invalid and will be ignored (multiple wildcards)`
+      );
+      return [];
+    }
+    if (wildcardCount === 1) {
+      const suffix = host.slice(host.indexOf('*') + 1);
+      // Best-effort check: the wildcard must be immediately followed by '.' and the suffix must
+      // contain at least two domain labels (e.g. '.example.com') to reject obvious broad patterns
+      // like '*.com'. Country-code second-level domains such as '*.co.uk' pass this check by
+      // design — full public-suffix-list validation would require an additional dependency.
+      if (!suffix.startsWith('.') || suffix.split('.').length < 3) {
+        display.error(
+          `Configuration error: 'allowedRendererHosts' entry '${host}' is invalid and will be ignored (wildcard must match subdomains of a full domain, e.g. '*.example.com')`
+        );
+        return [];
+      }
+    }
+    return [host];
+  });
 }
 
 export function buildConfiguration(initConfig: InitConfiguration): Configuration | undefined {
@@ -175,17 +323,36 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
   }
 
   const proxy = validateOptionalString(initConfig.proxy);
-  const sessionSampleRate = validateSessionSampleRate(initConfig.sessionSampleRate);
-  const sessionReplaySampleRate = validateSessionReplaySampleRate(initConfig.sessionReplaySampleRate);
-  const profilingSampleRate = validateProfilingSampleRate(initConfig.profilingSampleRate);
-  const telemetrySampleRate = validateTelemetrySampleRate(initConfig.telemetrySampleRate);
+  const sessionSampleRate = validateSampleRate(initConfig.sessionSampleRate, 'sessionSampleRate', 100);
+  const traceSamplingRules = validateTraceSamplingRules(initConfig.traceSamplingRules);
+  const sessionReplaySampleRate = validateSampleRate(initConfig.sessionReplaySampleRate, 'sessionReplaySampleRate', 0);
+  const profilingSampleRate = validateSampleRate(initConfig.profilingSampleRate, 'profilingSampleRate', 0);
+  const telemetrySampleRate = validateSampleRate(initConfig.telemetrySampleRate, 'telemetrySampleRate', 20);
+  const telemetryConfigurationSampleRate = validateSampleRate(
+    initConfig.telemetryConfigurationSampleRate,
+    'telemetryConfigurationSampleRate',
+    20
+  );
+  const telemetryUsageSampleRate = validateSampleRate(
+    initConfig.telemetryUsageSampleRate,
+    'telemetryUsageSampleRate',
+    20
+  );
 
   if (
     sessionSampleRate === undefined ||
+    traceSamplingRules === undefined ||
     sessionReplaySampleRate === undefined ||
     profilingSampleRate === undefined ||
-    telemetrySampleRate === undefined
+    telemetrySampleRate === undefined ||
+    telemetryConfigurationSampleRate === undefined ||
+    telemetryUsageSampleRate === undefined
   ) {
+    return undefined;
+  }
+
+  const allowedRendererHosts = validateAllowedRendererHosts(initConfig.allowedRendererHosts);
+  if (allowedRendererHosts === undefined) {
     return undefined;
   }
 
@@ -198,10 +365,25 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     version: validateOptionalString(initConfig.version),
     proxy,
     sessionSampleRate,
+    traceSamplingRules,
     sessionReplaySampleRate,
     profilingSampleRate,
     telemetrySampleRate,
-    defaultPrivacyLevel: validateDefaultPrivacyLevel(initConfig.defaultPrivacyLevel),
-    allowedWebViewHosts: validateAllowedWebViewHosts(initConfig.allowedWebViewHosts),
+    telemetryConfigurationSampleRate,
+    telemetryUsageSampleRate,
+    batchSize: validateEnumOption(initConfig.batchSize, 'batchSize', VALID_BATCH_SIZES, DEFAULT_BATCH_SIZE),
+    uploadFrequency: validateEnumOption(
+      initConfig.uploadFrequency,
+      'uploadFrequency',
+      VALID_UPLOAD_FREQUENCIES,
+      DEFAULT_UPLOAD_FREQUENCY
+    ),
+    defaultPrivacyLevel: validateEnumOption(
+      initConfig.defaultPrivacyLevel,
+      'defaultPrivacyLevel',
+      VALID_PRIVACY_LEVELS,
+      DefaultPrivacyLevel.MASK
+    ),
+    allowedRendererHosts,
   };
 }

@@ -123,8 +123,10 @@ async function launchApp(
     sessionReplaySampleRate: 100,
     profilingSampleRate: 100,
     telemetrySampleRate: 100,
+    telemetryConfigurationSampleRate: 100,
+    telemetryUsageSampleRate: 100,
     defaultPrivacyLevel: 'mask',
-    allowedWebViewHosts: [],
+    allowedRendererHosts: ['*'],
     ...(sdkConfigOverrides ?? {}),
   };
   env.DD_ELECTRON_SDK_CONFIG = JSON.stringify(electronSdkConfig);
@@ -183,7 +185,7 @@ export async function launchDeferredInitApp(intake: Intake, userDataDir: string)
     userDataDir,
     null,
     {
-      allowedWebViewHosts: ['deferred-init.example.com'],
+      allowedRendererHosts: ['deferred-init.example.com'],
       defaultPrivacyLevel: 'allow',
     },
     { DD_E2E_DEFER_INIT: '1' }

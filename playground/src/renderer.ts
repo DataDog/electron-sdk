@@ -49,6 +49,7 @@ interface ElectronAPI {
   ) => Promise<void>;
   mainFetchApiFetch: () => Promise<unknown>;
   mainFetchApiNet: () => Promise<unknown>;
+  mainFetchApiNetDrop: () => Promise<unknown>;
   openRumExplorer: () => Promise<void>;
   flushTransport: () => Promise<void>;
   setGlobalContext: () => Promise<void>;
@@ -61,6 +62,9 @@ interface ElectronAPI {
   setAccountInfo: () => Promise<void>;
   addAccountExtraInfo: () => Promise<void>;
   clearAccountInfo: () => Promise<void>;
+  getUserInfo: () => Promise<unknown>;
+  getAccountInfo: () => Promise<unknown>;
+  addError: () => Promise<void>;
 }
 
 declare global {
@@ -270,9 +274,14 @@ setupDemoButton('add-account-extra-info', 'main:add-account-extra-info', () =>
 );
 setupDemoButton('clear-account-info', 'main:clear-account-info', () => window.electronAPI.clearAccountInfo());
 
+setupDemoButton('get-user-info', 'main:get-user-info', () => window.electronAPI.getUserInfo());
+setupDemoButton('get-account-info', 'main:get-account-info', () => window.electronAPI.getAccountInfo());
+setupDemoButton('add-error', 'main:add-error', () => window.electronAPI.addError());
+
 setupDemoButton('main-fetch', 'main:fetch-api', () => window.electronAPI.mainFetchApi());
 setupDemoButton('main-fetch-fetch', 'main:fetch-api-fetch', () => window.electronAPI.mainFetchApiFetch());
 setupDemoButton('main-fetch-net', 'main:fetch-api-net', () => window.electronAPI.mainFetchApiNet());
+setupDemoButton('main-fetch-net-drop', 'main:fetch-api-net-drop', () => window.electronAPI.mainFetchApiNetDrop());
 
 // --- Custom duration vital demo buttons ---
 

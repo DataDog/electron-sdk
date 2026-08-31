@@ -1,16 +1,14 @@
 import { test, expect } from '../lib/helpers';
+import { isBridgeView } from '../lib/intake';
 import type { ReceivedEvent } from '../lib/intake';
 import type { RumViewEvent } from '@datadog/electron-sdk';
 
 test.use({ rumBrowserSdk: {} });
 
 // Bridge windows profile; the file:// main-process view cannot (no Document-Policy header).
-function isBridgeView(event: ReceivedEvent): boolean {
-  return (event.body as RumViewEvent).view.url !== 'electron://main-process';
-}
 
-function profilingContext(event: ReceivedEvent): RumViewEvent['_dd']['profiling'] {
-  return (event.body as RumViewEvent)._dd.profiling;
+function profilingContext(event: ReceivedEvent<RumViewEvent>): RumViewEvent['_dd']['profiling'] {
+  return event.body._dd.profiling;
 }
 
 test('browser SDK profiler flushes through bridge and reaches profiling intake', async ({
@@ -96,6 +94,6 @@ test.describe('sampled out', () => {
     // Electron sampled the session out, so it overrides the context with an explicit `null`
     // (equivalent to absent for the backend: the session links no profile, so has_profile stays false).
     const [bridgeView] = await intake.waitForEventCount('view', 1, { predicate: isBridgeView });
-    expect((bridgeView.body as RumViewEvent)._dd).toHaveProperty('profiling', null);
+    expect(bridgeView.body._dd).toHaveProperty('profiling', null);
   });
 });

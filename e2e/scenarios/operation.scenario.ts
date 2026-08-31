@@ -1,10 +1,10 @@
 import { test, expect } from '../lib/helpers';
-import type { RumViewEvent, RumVitalOperationStepEvent } from '@datadog/electron-sdk';
+import type { RumVitalOperationStepEvent } from '@datadog/electron-sdk';
 
 test('emits start and succeed vital operation_step events', async ({ mainPage, intake }) => {
   await mainPage.flushTransport();
   const viewEvents = await intake.getEventsByType('view');
-  const view = viewEvents[0].body as RumViewEvent;
+  const view = viewEvents[0].body;
 
   await mainPage.startOperation('checkout');
   await mainPage.succeedOperation('checkout');

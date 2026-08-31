@@ -2,7 +2,7 @@ import { sanitize } from '@datadog/browser-core';
 import { isIndexableObject } from '@datadog/js-core/util';
 import type { Context, GlobalContext } from './domain/customer-context';
 import type { AddDurationVitalOptions, DurationVitalOptions, RumCollection } from './domain/rum';
-import { callMonitored } from './domain/telemetry';
+import { addUsage, callMonitored } from './domain/telemetry';
 import { display } from './tools/display';
 import { isFiniteNumber, isValidString, VALID_VITAL_NAME_REGEX } from './tools/validation';
 
@@ -42,6 +42,7 @@ export function setGlobalContextApi(api: GlobalContextApi | undefined): void {
  */
 export function setGlobalContext(context: Record<string, unknown>): void {
   callMonitored(() => {
+    addUsage({ feature: 'set-global-context' });
     if (!isIndexableObject(context)) {
       display.error('setGlobalContext: context must be an object. The context will not be updated.');
       return;
@@ -59,7 +60,12 @@ export function setGlobalContext(context: Record<string, unknown>): void {
  * ```
  */
 export function getGlobalContext(): Record<string, unknown> {
-  return globalContextApi?.getContext() ?? {};
+  return (
+    callMonitored(() => {
+      addUsage({ feature: 'get-global-context' });
+      return globalContextApi?.getContext();
+    }) ?? {}
+  );
 }
 
 /**
@@ -73,6 +79,7 @@ export function getGlobalContext(): Record<string, unknown> {
  */
 export function setGlobalContextProperty(key: string, value: unknown): void {
   callMonitored(() => {
+    addUsage({ feature: 'set-global-context-property' });
     if (!validateContextKey('setGlobalContextProperty', key)) {
       return;
     }
@@ -90,6 +97,7 @@ export function setGlobalContextProperty(key: string, value: unknown): void {
  */
 export function removeGlobalContextProperty(key: string): void {
   callMonitored(() => {
+    addUsage({ feature: 'remove-global-context-property' });
     if (!validateContextKey('removeGlobalContextProperty', key)) {
       return;
     }
@@ -106,7 +114,10 @@ export function removeGlobalContextProperty(key: string): void {
  * ```
  */
 export function clearGlobalContext(): void {
-  callMonitored(() => globalContextApi?.clearContext());
+  callMonitored(() => {
+    addUsage({ feature: 'clear-global-context' });
+    globalContextApi?.clearContext();
+  });
 }
 
 function validateContextKey(method: GlobalContextMethod, key: unknown): key is string {
@@ -133,6 +144,7 @@ function validateContextKey(method: GlobalContextMethod, key: unknown): key is s
  */
 export function addDurationVital(name: string, options: AddDurationVitalOptions): void {
   callMonitored(() => {
+    addUsage({ feature: 'add-duration-vital' });
     if (!validateDurationVitalArgs('addDurationVital', name, options, true)) {
       return;
     }
@@ -160,6 +172,7 @@ export function addDurationVital(name: string, options: AddDurationVitalOptions)
  */
 export function startDurationVital(name: string, options?: DurationVitalOptions): void {
   callMonitored(() => {
+    addUsage({ feature: 'start-duration-vital' });
     if (!validateDurationVitalArgs('startDurationVital', name, options, false)) {
       return;
     }
@@ -182,6 +195,7 @@ export function startDurationVital(name: string, options?: DurationVitalOptions)
  */
 export function stopDurationVital(name: string, options?: DurationVitalOptions): void {
   callMonitored(() => {
+    addUsage({ feature: 'stop-duration-vital' });
     if (!validateDurationVitalArgs('stopDurationVital', name, options, false)) {
       return;
     }

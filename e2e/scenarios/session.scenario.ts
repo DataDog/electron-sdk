@@ -1,5 +1,5 @@
 import { test, expect, launchAppManually, createUserDataDir, cleanupUserDataDir } from '../lib/helpers';
-import type { TelemetryErrorEvent, RumViewEvent } from '@datadog/electron-sdk';
+import { byTelemetryType } from '../lib/intake';
 
 test.use({ rumBrowserSdk: {} });
 
@@ -7,16 +7,16 @@ test('new session id is generated when renewing a session', async ({ mainPage, i
   await mainPage.generateTelemetryErrors(1);
   await mainPage.flushTransport();
 
-  const firstEvents = await intake.getEventsByType('telemetry');
-  const firstSessionId = (firstEvents[0].body as TelemetryErrorEvent).session?.id;
+  const firstEvents = await intake.getEventsByType('telemetry', { predicate: byTelemetryType('log') });
+  const firstSessionId = firstEvents[0].body.session?.id;
   expect(firstSessionId).toMatch(/^[0-9a-f-]+$/);
 
   await mainPage.renewSession();
   await mainPage.generateTelemetryErrors(1);
   await mainPage.flushTransport();
 
-  const allEvents = await intake.waitForEventCount('telemetry', 2);
-  const secondSessionId = (allEvents[1].body as TelemetryErrorEvent).session?.id;
+  const allEvents = await intake.waitForEventCount('telemetry', 2, { predicate: byTelemetryType('log') });
+  const secondSessionId = allEvents[1].body.session?.id;
   expect(secondSessionId).toMatch(/^[0-9a-f-]+$/);
 
   expect(secondSessionId).not.toBe(firstSessionId);
@@ -29,7 +29,7 @@ test('creates a new session on each app launch', async ({ intake }) => {
   const { electronApp: firstElectronApp, mainPage: firstMainPage } = await launchAppManually(intake, userDataDir);
   await firstMainPage.flushTransport();
   const firstViewEvents = await intake.getEventsByType('view');
-  const firstSessionId = (firstViewEvents[0].body as RumViewEvent).session.id;
+  const firstSessionId = firstViewEvents[0].body.session.id;
   await firstElectronApp.close();
   intake.clear();
 
@@ -38,7 +38,7 @@ test('creates a new session on each app launch', async ({ intake }) => {
   try {
     await secondMainPage.flushTransport();
     const secondViewEvents = await intake.getEventsByType('view');
-    const secondSessionId = (secondViewEvents[0].body as RumViewEvent).session.id;
+    const secondSessionId = secondViewEvents[0].body.session.id;
 
     expect(secondSessionId).toMatch(/^[0-9a-f-]+$/);
     expect(secondSessionId).not.toBe(firstSessionId);
