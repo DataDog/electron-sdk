@@ -27,6 +27,10 @@ interface ElectronAppWindow {
     mainFireAndForget: () => Promise<void>;
     triggerMainSend: () => Promise<void>;
     flushTransport: () => Promise<void>;
+    setGlobalContext: (context: Record<string, unknown>) => Promise<void>;
+    setGlobalContextProperty: (key: string, value: unknown) => Promise<void>;
+    removeGlobalContextProperty: (key: string) => Promise<void>;
+    clearGlobalContext: () => Promise<void>;
     setUserInfo: (user: UserInfo) => Promise<void>;
     clearUserInfo: () => Promise<void>;
     addUserExtraInfo: (extraInfo: Record<string, unknown>) => Promise<void>;
@@ -175,6 +179,31 @@ export class MainPage {
 
   async flushTransport() {
     await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.flushTransport());
+  }
+
+  async setGlobalContext(context: Record<string, unknown>) {
+    await this.page.evaluate(
+      (c) => (globalThis as unknown as ElectronAppWindow).electronAPI.setGlobalContext(c),
+      context
+    );
+  }
+
+  async setGlobalContextProperty(key: string, value: unknown) {
+    await this.page.evaluate(
+      ([k, v]) => (globalThis as unknown as ElectronAppWindow).electronAPI.setGlobalContextProperty(k as string, v),
+      [key, value]
+    );
+  }
+
+  async removeGlobalContextProperty(key: string) {
+    await this.page.evaluate(
+      (k) => (globalThis as unknown as ElectronAppWindow).electronAPI.removeGlobalContextProperty(k),
+      key
+    );
+  }
+
+  async clearGlobalContext() {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.clearGlobalContext());
   }
 
   async setUserInfo(user: UserInfo) {

@@ -1,8 +1,8 @@
 import { app } from 'electron';
 import { MainAssembly, RendererPipeline, createFormatHooks, registerCommonContext } from './assembly';
-import { setDurationVitalApi } from './api';
+import { setDurationVitalApi, setGlobalContextApi } from './api';
 import type { AccountInfo, UserInfo } from './domain/customer-context';
-import { AccountContext, UserContext } from './domain/customer-context';
+import { AccountContext, GlobalContext, UserContext } from './domain/customer-context';
 import type { InitConfiguration } from './config';
 import { buildConfiguration } from './config';
 import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './domain/rum';
@@ -53,6 +53,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   registerCommonContext(config, hooks);
   userContext = await UserContext.init(hooks);
   accountContext = await AccountContext.init(hooks);
+  setGlobalContextApi(await GlobalContext.init(hooks));
   startTelemetry(eventManager, config);
   sessionManager = await SessionManager.start(eventManager, hooks, config);
 
@@ -344,7 +345,16 @@ export function getInternalContext(): InternalContext | undefined {
   return { session_id: sessionId };
 }
 
-export { addDurationVital, startDurationVital, stopDurationVital } from './api';
+export {
+  addDurationVital,
+  startDurationVital,
+  stopDurationVital,
+  setGlobalContext,
+  getGlobalContext,
+  setGlobalContextProperty,
+  removeGlobalContextProperty,
+  clearGlobalContext,
+} from './api';
 export type { AccountInfo, UserInfo } from './domain/customer-context';
 export type { InitConfiguration, TraceSamplingRule } from './config';
 export type {

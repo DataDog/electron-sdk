@@ -32,13 +32,7 @@ export class AccountContext extends ContextManager<AccountInfo> {
 
   constructor(hooks: FormatHooks, history?: ContextHistory) {
     super('account', ACCOUNT_PROPERTIES, history);
-    hooks.registerRum(({ eventType, startTime }) => {
-      // View updates retain the view's original start time, but should reflect the customer context
-      // active when the update is emitted. Other events use history for start-time attribution.
-      const context = this.getContext(eventType === 'view' ? undefined : startTime);
-      if (isEmptyObject(context)) return SKIPPED;
-      return { account: context };
-    });
+    this.registerRumHook(hooks, 'account');
     hooks.registerSpan(({ startTime }) => {
       const context = this.getContext(startTime);
       if (isEmptyObject(context)) return SKIPPED;

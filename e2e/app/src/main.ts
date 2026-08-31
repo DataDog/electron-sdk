@@ -54,6 +54,10 @@ import {
   setAccountInfo,
   clearAccountInfo,
   addAccountExtraInfo,
+  setGlobalContext,
+  setGlobalContextProperty,
+  removeGlobalContextProperty,
+  clearGlobalContext,
   type FailureReason,
   type AddDurationVitalOptions,
   type DurationVitalOptions,
@@ -218,6 +222,22 @@ void app.whenReady().then(async () => {
 
   ipcMain.handle('flushTransport', async () => {
     await _flushTransport();
+  });
+
+  ipcMain.handle('setGlobalContext', (_event, context: Record<string, unknown>) => {
+    setGlobalContext(context);
+  });
+
+  ipcMain.handle('setGlobalContextProperty', (_event, key: string, value: unknown) => {
+    setGlobalContextProperty(key, value);
+  });
+
+  ipcMain.handle('removeGlobalContextProperty', (_event, key: string) => {
+    removeGlobalContextProperty(key);
+  });
+
+  ipcMain.handle('clearGlobalContext', () => {
+    clearGlobalContext();
   });
 
   ipcMain.handle('setUserInfo', (_event, user: UserInfo & { id: string }) => {

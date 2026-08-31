@@ -181,6 +181,9 @@ export class RendererPipeline {
 /**
  * The renderer's own user/account context takes precedence. An anonymous-only renderer user
  * is the exception: preserve its anonymous_id while enriching it with the main-process user.
+ * Global context is not replaced wholesale: both processes contribute free-form attributes and
+ * neither owns the whole object, so only the precedence is set here and the renderer wins on
+ * conflicting keys (`combine` already merges the rest).
  * session/application/container always come from the main process.
  */
 function resolveCustomerContextOverrides(
@@ -196,6 +199,9 @@ function resolveCustomerContextOverrides(
     }
   }
   if (hasContext(data.account)) delete overrides.account;
+  if (hasContext(data.context) && hasContext(overrides.context)) {
+    overrides.context = combine(overrides.context, data.context);
+  }
   return overrides;
 }
 

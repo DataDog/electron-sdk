@@ -138,6 +138,7 @@ and their runtime dependencies.
 - **Custom Duration Vitals** — Measure user-defined durations in the main process
 - **Renderer Profiling** — Collect JS Self-Profiling data from renderer pages and correlate it with RUM
 - **Session Replay** — Record renderer UI sessions in the main process and correlate them with RUM views
+- **Global Context** — Attach custom attributes to RUM events from the main process
 - **User & Account Info** — Attach user and account identity to all RUM events and traces
 - **Operation Monitoring** _(experimental)_ — Track start / succeed / fail steps of critical user-facing workflows
 
@@ -166,6 +167,31 @@ stopDurationVital('document.open', {
 ```
 
 Times passed to the API are in milliseconds. Use `vitalKey` to measure overlapping durations with the same name; it identifies the measurement but is not included in the event. A measurement must be started and stopped in the same process. In renderer processes, use the equivalent `@datadog/browser-rum` APIs directly.
+
+### Global Context
+
+Attach custom attributes to all subsequent RUM events emitted from the main process.
+
+```ts
+import {
+  setGlobalContext,
+  setGlobalContextProperty,
+  removeGlobalContextProperty,
+  clearGlobalContext,
+} from '@datadog/electron-sdk';
+
+setGlobalContext({ team: 'checkout', build: '1.2.3' });
+
+// Update one attribute, leaving the others untouched
+setGlobalContextProperty('feature_flag', 'new-cart');
+removeGlobalContextProperty('feature_flag');
+
+clearGlobalContext();
+```
+
+Attributes are sent in the event's `context` field. `setGlobalContext` replaces the whole context; use `setGlobalContextProperty` to change a single attribute. Setting an attribute to `null` removes it, as with `addUserExtraInfo`.
+
+Renderer processes keep their own global context, set through the Browser SDK's `datadogRum.setGlobalContext`. Both are merged on renderer events, and the renderer's value wins on a conflicting key.
 
 ### User & Account Info
 
@@ -294,6 +320,26 @@ The Electron SDK advertises a `records` capability over the bridge, so the Brows
 ### `init(config: InitConfiguration): Promise<boolean>`
 
 Initialize the SDK. Returns `true` on success, `false` if configuration is invalid.
+
+### `setGlobalContext(context: Record<string, unknown>): void`
+
+Replace the global context attached to all subsequent RUM events.
+
+### `getGlobalContext(): Record<string, unknown>`
+
+Return a copy of the current global context, or `{}` if none is set.
+
+### `setGlobalContextProperty(key: string, value: unknown): void`
+
+Set a single global context attribute, leaving the others untouched.
+
+### `removeGlobalContextProperty(key: string): void`
+
+Remove a single global context attribute.
+
+### `clearGlobalContext(): void`
+
+Remove all global context attributes from subsequent events.
 
 ### `setUserInfo(user: UserInfo & { id: string }): void`
 

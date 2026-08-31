@@ -39,13 +39,7 @@ export class UserContext extends ContextManager<UserInfo> {
 
   constructor(hooks: FormatHooks, history?: ContextHistory) {
     super('user', USER_PROPERTIES, history);
-    hooks.registerRum(({ eventType, startTime }) => {
-      // View updates retain the view's original start time, but should reflect the customer context
-      // active when the update is emitted. Other events use history for start-time attribution.
-      const context = this.getContext(eventType === 'view' ? undefined : startTime);
-      if (isEmptyObject(context)) return SKIPPED;
-      return { usr: context };
-    });
+    this.registerRumHook(hooks, 'usr');
     hooks.registerSpan(({ startTime }) => {
       const context = this.getContext(startTime);
       if (isEmptyObject(context)) return SKIPPED;

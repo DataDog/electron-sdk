@@ -38,6 +38,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       void ipcRenderer.invoke('triggerMainSend');
     }),
   flushTransport: () => ipcRenderer.invoke('flushTransport'),
+  setGlobalContext: (context: Record<string, unknown>) => ipcRenderer.invoke('setGlobalContext', context),
+  setGlobalContextProperty: (key: string, value: unknown) => ipcRenderer.invoke('setGlobalContextProperty', key, value),
+  removeGlobalContextProperty: (key: string) => ipcRenderer.invoke('removeGlobalContextProperty', key),
+  clearGlobalContext: () => ipcRenderer.invoke('clearGlobalContext'),
   setUserInfo: (user: Record<string, unknown>) => ipcRenderer.invoke('setUserInfo', user),
   clearUserInfo: () => ipcRenderer.invoke('clearUserInfo'),
   addUserExtraInfo: (extraInfo: Record<string, unknown>) => ipcRenderer.invoke('addUserExtraInfo', extraInfo),
