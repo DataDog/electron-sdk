@@ -167,12 +167,13 @@ Only returning `false` discards the event. View and native crash events cannot b
 - All events: `context`, `service`, `version`, `view.name`, `view.url`, and `view.referrer`
 - Views: `view.performance.lcp.resource_url`
 - Errors: `error.message`, `error.stack`, `error.handling_stack`, `error.resource.url`, `error.fingerprint`, and `_dd.debug_ids`
-- Resources: `resource.url`, GraphQL variables, request/response headers, and WebSocket close reasons
+- Resources: `resource.url`, GraphQL variables, request/response headers, and WebSocket close reasons and protocols
 - Actions: `action.target.name`
 - Long tasks: script source URLs, invokers, and `_dd.debug_ids`
 
 Event identity, session, application, and other fields remain unchanged. Callback errors are logged and the event is
-still sent. The callback is synchronous and should remain fast. It does not automatically detect PII.
+still sent. Editable string fields must remain strings; use an empty string to clear one because deleting it or assigning
+`null` or `undefined` is ignored. The callback is synchronous and should remain fast. It does not automatically detect PII.
 
 Renderer events may first pass through the Browser SDK's `beforeSend`, then through Electron's `beforeSendRum` after
 main-process enrichment. Filtering them at this stage prevents upload but does not undo Browser counters, lifecycle

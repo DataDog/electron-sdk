@@ -54,6 +54,8 @@ export interface BeforeSendContext {
 /**
  * Synchronous function called before a fully assembled RUM event is sent to Datadog.
  * Keep this callback fast. Only supported field changes are applied; mutations to unsupported fields are ignored.
+ * Editable string fields must remain strings. To clear one, assign an empty string; deleting it or assigning null or
+ * undefined is ignored.
  * Only an explicit false discards the event; any other return value keeps it. View and crash events cannot be
  * discarded.
  *

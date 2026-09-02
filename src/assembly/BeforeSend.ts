@@ -16,6 +16,8 @@ const COMMON_MODIFIABLE_FIELD_PATHS: ModifiableFieldPaths = {
   context: 'object',
 };
 
+// Keep aligned with the Browser SDK beforeSend mapping:
+// https://github.com/DataDog/browser-sdk/blob/main/packages/browser-rum-core/src/domain/assembly.ts
 const MODIFIABLE_FIELD_PATHS_BY_EVENT: Record<RumEvent['type'], ModifiableFieldPaths> = {
   view: {
     ...COMMON_MODIFIABLE_FIELD_PATHS,
@@ -37,6 +39,7 @@ const MODIFIABLE_FIELD_PATHS_BY_EVENT: Record<RumEvent['type'], ModifiableFieldP
     'resource.request.headers': 'object',
     'resource.response.headers': 'object',
     'resource.websocket.close_reason': 'string',
+    'resource.websocket.protocol': 'string',
   },
   action: {
     ...COMMON_MODIFIABLE_FIELD_PATHS,
