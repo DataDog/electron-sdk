@@ -145,7 +145,10 @@ npm view <package>@latest version
 
 ## RUM Events Schema Management
 
-Types auto-generated from [rum-events-format](https://github.com/DataDog/rum-events-format) submodule → `src/rumEvent.types.ts` (committed).
+Types auto-generated from [rum-events-format](https://github.com/DataDog/rum-events-format) submodule → `src/domain/rum/types/` (committed):
+
+- `rendererRumEvent.types.ts` (`RumEvent`) from the browser schema, for renderer-originated events.
+- `mainRumEvent.types.ts` (`MainRumEvent`) from the electron schema, for main-process-originated events.
 
 ```bash
 yarn json-schemas:sync      # Update submodule + regenerate types
@@ -154,7 +157,7 @@ yarn json-schemas:generate  # Regenerate types only
 
 **Fork dependency**: Uses `bcaudan/json-schema-to-typescript#bcaudan/add-readonly-support` (v11.0.1) for `readonly` modifier support. Built lazily when generating types (not during `yarn install`) to avoid CI rate limiting.
 
-⚠️ Never edit `src/rumEvent.types.ts` manually.
+⚠️ Never edit `rendererRumEvent.types.ts` or `mainRumEvent.types.ts` manually — they're regenerated from the schemas above. Other files in `src/domain/rum/types/` (e.g. `rawRumData.types.ts`, the raw payload shapes main-process collectors build) are hand-maintained and must be updated manually when a collector's payload changes.
 
 ## Releasing
 

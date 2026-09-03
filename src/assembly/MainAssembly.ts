@@ -13,7 +13,7 @@ import {
   type ServerEvent,
 } from '../event';
 import type { FormatHooks } from './hooks';
-import { RumEvent } from '../domain/rum';
+import { MainRumEvent } from '../domain/rum';
 import { TelemetryEvent } from '../domain/telemetry';
 
 // Raw events assembled through the standard main-process hook pipeline.
@@ -55,7 +55,7 @@ export class MainAssembly {
           kind: EventKind.SERVER,
           track: EventTrack.RUM,
           source: EventSource.MAIN,
-          data: assembleData<RumEvent>(event.data, hookResult),
+          data: assembleData<MainRumEvent>(event.data, hookResult as RecursivePartial<MainRumEvent> | undefined),
         };
       }
     }

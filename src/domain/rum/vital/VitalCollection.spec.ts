@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RawRumEvent } from '../../../event';
 import { EventFormat, EventKind, EventManager, LifecycleKind } from '../../../event';
-import type { RawRumDurationVital } from '../rawRumData.types';
+import type { RawRumDurationVital } from '../types';
 import { VitalCollection } from './VitalCollection';
 
 const UUID_REGEX = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;

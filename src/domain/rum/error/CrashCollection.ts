@@ -5,8 +5,7 @@ import { generateUUID } from '@datadog/browser-core';
 import { app, crashReporter } from 'electron';
 import { EventFormat, EventKind, EventManager } from '../../../event';
 import type { CrashReport } from '../../../wasm';
-import type { RawRumError } from '../rawRumData.types';
-import type { RumErrorEvent } from '../rumEvent.types';
+import type { RawRumError, RumErrorEvent } from '../types';
 import { display } from '../../../tools/display';
 import { addError, monitor } from '../../telemetry';
 

@@ -4,7 +4,7 @@ import { combine } from '@datadog/js-core/util';
 import type { Context, Subscription } from '@datadog/browser-core';
 import { generateUUID } from '@datadog/browser-core';
 import { EventFormat, EventKind, EventManager, LifecycleKind, type SessionRenewEvent } from '../../../event';
-import type { RawRumDurationVital } from '../rawRumData.types';
+import type { RawRumDurationVital } from '../types';
 
 /** Options accepted by duration-vital start and stop calls. */
 export interface DurationVitalOptions {
