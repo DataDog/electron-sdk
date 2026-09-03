@@ -20,6 +20,7 @@ import {
   type ServerTelemetryEvent,
 } from '../event';
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
+import type { RumBeforeSend } from '../config';
 import { createMockSender, createTestConfiguration, type MockSender } from '../mocks.specUtil';
 
 const { mockIpcMainOn, mockAddError, mockSetBridgeConfig } = vi.hoisted(() => {
@@ -255,6 +256,37 @@ describe('RendererPipeline', () => {
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
 
       expect(serverEvents[0].data.container).toMatchObject({ source: 'electron' });
+    });
+
+    it('applies beforeSendRum after enrichment with the renderer source', () => {
+      hooks.registerRum(() => ({ session: { id: 'main-session' } }));
+      let callbackSource: string | undefined;
+      let callbackSessionId: string | undefined;
+      const beforeSendRum: RumBeforeSend = (event, { source }) => {
+        callbackSource = source;
+        callbackSessionId = event.session.id;
+        event.view.name = 'redacted view';
+        return true;
+      };
+      new RendererPipeline(eventManager, hooks, createTestConfiguration({ beforeSendRum }));
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
+
+      expect(callbackSource).toBe('renderer');
+      expect(callbackSessionId).toBe('main-session');
+      expect(serverEvents[0].data.view.name).toBe('redacted view');
+    });
+
+    it('does not emit renderer events discarded by beforeSendRum', () => {
+      new RendererPipeline(
+        eventManager,
+        hooks,
+        createTestConfiguration({ beforeSendRum: (event) => event.type !== 'action' })
+      );
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_CLICK_DATA }));
+
+      expect(serverEvents).toHaveLength(0);
     });
 
     it('preserves renderer source, service, view, and ddtags', () => {

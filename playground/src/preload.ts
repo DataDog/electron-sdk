@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   generateTelemetryError: () => ipcRenderer.invoke('generateTelemetryError'),
   generateUncaughtException: () => ipcRenderer.invoke('generateUncaughtException'),
   generateUnhandledRejection: () => ipcRenderer.invoke('generateUnhandledRejection'),
+  generateBeforeSendError: (behavior: 'scrub' | 'filter') => ipcRenderer.invoke('main:before-send-error', behavior),
   crash: () => ipcRenderer.invoke('crash'),
   mainFetchApi: () => ipcRenderer.invoke('main:fetch-api'),
   addDurationVital: (

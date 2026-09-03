@@ -10,7 +10,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopSession: () => ipcRenderer.invoke('stopSession'),
   generateUncaughtException: () => ipcRenderer.invoke('generateUncaughtException'),
   generateUnhandledRejection: () => ipcRenderer.invoke('generateUnhandledRejection'),
-  generateManualError: (startTime?: number) => ipcRenderer.invoke('generateManualError', startTime),
+  generateManualError: (startTime?: number, context?: Record<string, string>) =>
+    ipcRenderer.invoke('generateManualError', startTime, context),
   addDurationVital: (name: string, options: Record<string, unknown>) =>
     ipcRenderer.invoke('addDurationVital', name, options),
   startDurationVital: (name: string, options?: Record<string, unknown>) =>

@@ -7,6 +7,7 @@ import * as fs from 'node:fs';
 import * as https from 'node:https';
 import {
   init,
+  addError,
   stopSession,
   _flushTransport,
   getInternalContext,
@@ -24,7 +25,6 @@ import {
   addAccountExtraInfo,
   getUserInfo,
   getAccountInfo,
-  addError,
   type AddDurationVitalOptions,
   type DurationVitalOptions,
   type FailureReason,
@@ -128,6 +128,12 @@ ipcMain.handle('generateUncaughtException', () => {
 // IPC handler to generate unhandled rejection
 ipcMain.handle('generateUnhandledRejection', () => {
   void Promise.reject(new Error('test unhandled rejection'));
+});
+
+ipcMain.handle('main:before-send-error', (_event, behavior: 'scrub' | 'filter') => {
+  addError(new Error('Sensitive error for beforeSendRum'), {
+    context: { beforeSend: behavior, email: 'customer@example.com' },
+  });
 });
 // --- IPC demo handlers (each one becomes a captured IPC resource) ---
 
@@ -268,6 +274,17 @@ void app.whenReady().then(async () => {
     traceSamplingRules: [{ name: 'electron.main.handle', resource: 'main:fetch-api-net-drop', sampleRate: 0 }],
     sessionReplaySampleRate: 100,
     profilingSampleRate: 100,
+    beforeSendRum: (event) => {
+      if (event.context?.beforeSend === 'filter') {
+        return false;
+      }
+      if (event.type === 'error' && event.context?.beforeSend === 'scrub') {
+        event.error.message = '[REDACTED by beforeSendRum]';
+        event.error.stack = '[REDACTED by beforeSendRum]';
+        event.context = { email: '[REDACTED]' };
+      }
+      return true;
+    },
     telemetrySampleRate: 100,
     telemetryConfigurationSampleRate: 100,
     telemetryUsageSampleRate: 100,

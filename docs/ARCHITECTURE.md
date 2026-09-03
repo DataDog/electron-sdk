@@ -60,12 +60,14 @@ More details in the [Preload injection](#preload-injection) section.
 flowchart LR
     subgraph Sources
         RUM[RUM collection]
+        RRUM[Renderer RUM bridge]
         TEL[Telemetry]
     end
 
     subgraph Assembly
         HOOKS{Format Hooks}
         COMBINE[combine]
+        BEFORE_SEND[beforeSendRum]
     end
 
     subgraph "Hook Providers"
@@ -81,12 +83,15 @@ flowchart LR
     end
 
     RUM -- RawRumEvent --> COMBINE
+    RRUM -- RumEvent --> COMBINE
     TEL -- RawTelemetryEvent --> COMBINE
     CC -. "application.id, service, ..." .-> HOOKS
     SC -. "session.id" .-> HOOKS
     VC -. "view.id, view.name, ..." .-> HOOKS
     HOOKS --> COMBINE
-    COMBINE -- ServerEvent --> BM
+    COMBINE -- RUM event --> BEFORE_SEND
+    BEFORE_SEND -- ServerEvent --> BM
+    COMBINE -- Other ServerEvent --> BM
     BM --> BP
     BM --> BC
     BP -. "write" .-> DISK[Disk]
@@ -116,6 +121,11 @@ Two handlers transform events into `ServerEvent`s:
 
 - **`MainAssembly`**: handles main-process `RawEvent`s (excluding profile events), enriches them via `triggerRum` / `triggerTelemetry` hooks, and emits `ServerEvent`s with `source: MAIN`.
 - **`RendererPipeline`**: owns the renderer IPC channel, receives pre-assembled RUM and telemetry events from the Browser SDK, enriches them via `triggerRum` / `triggerTelemetry` with `source: EventSource.RENDERER`, and emits `ServerEvent`s with `source: RENDERER` directly, bypassing the `RawEvent` pipeline entirely.
+
+`MainAssembly` and `RendererPipeline` apply the configured `beforeSendRum` callback after Electron enrichment and before
+emitting the final `ServerRumEvent`, with `source` identifying the originating process. Renderer events may already have
+passed through the Browser SDK's `beforeSend` before crossing the bridge. Telemetry, profiles, and spans are not passed to
+`beforeSendRum`.
 
 #### Format Hooks
 

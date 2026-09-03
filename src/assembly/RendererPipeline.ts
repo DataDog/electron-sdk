@@ -17,6 +17,7 @@ import { BRIDGE_CHANNEL, setBridgeConfig, type BridgeOptions } from '../common';
 import type { FormatHooks } from './hooks';
 import type { RumEvent } from '../domain/rum';
 import { Configuration } from '../config';
+import { BeforeSend } from './BeforeSend';
 import { isFiniteNumber } from '../tools/validation';
 import { RendererIpcGate } from './RendererIpcGate';
 
@@ -41,12 +42,14 @@ interface BridgeEvent {
  */
 export class RendererPipeline {
   private readonly bridgeOptions: BridgeOptions;
+  private readonly beforeSend: BeforeSend;
 
   constructor(
     private readonly eventManager: EventManager,
     private readonly hooks: FormatHooks,
     config: Configuration
   ) {
+    this.beforeSend = new BeforeSend(config.beforeSendRum);
     this.bridgeOptions = {
       defaultPrivacyLevel: config.defaultPrivacyLevel,
       allowedRendererHosts: config.allowedRendererHosts,
@@ -169,7 +172,15 @@ export class RendererPipeline {
       return;
     }
 
-    this.emitRendererEvent(data, resolveCustomerContextOverrides(data, hookResult));
+    const dataAfterBeforeSend = this.beforeSend.apply(
+      combine(data, resolveCustomerContextOverrides(data, hookResult)),
+      'renderer'
+    );
+    if (!dataAfterBeforeSend) {
+      return;
+    }
+
+    this.emitRendererEvent(dataAfterBeforeSend, undefined);
   }
 
   /**

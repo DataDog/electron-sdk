@@ -1,5 +1,5 @@
 import { app } from 'electron';
-import { MainAssembly, RendererPipeline, createFormatHooks, registerCommonContext } from './assembly';
+import { BeforeSend, MainAssembly, RendererPipeline, createFormatHooks, registerCommonContext } from './assembly';
 import { setDurationVitalApi } from './api';
 import type { AccountInfo, UserInfo } from './domain/customer-context';
 import { AccountContext, UserContext } from './domain/customer-context';
@@ -56,7 +56,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   startTelemetry(eventManager, config);
   sessionManager = await SessionManager.start(eventManager, hooks, config);
 
-  new MainAssembly(eventManager, hooks);
+  new MainAssembly(eventManager, hooks, new BeforeSend(config.beforeSendRum));
   new RendererPipeline(eventManager, hooks, config);
 
   new ProfilingCollection(eventManager, sessionManager, config, hooks);
@@ -346,12 +346,19 @@ export function getInternalContext(): InternalContext | undefined {
 
 export { addDurationVital, startDurationVital, stopDurationVital } from './api';
 export type { AccountInfo, UserInfo } from './domain/customer-context';
-export type { InitConfiguration, TraceSamplingRule } from './config';
+export type {
+  BeforeSendContext,
+  ElectronEventSource,
+  InitConfiguration,
+  RumBeforeSend,
+  TraceSamplingRule,
+} from './config';
 export type {
   AddDurationVitalOptions,
   DurationVitalOptions,
   FailureReason,
   FeatureOperationOptions,
+  RumEvent,
   RumErrorEvent,
   RumResourceEvent,
   RumViewEvent,
