@@ -16,6 +16,7 @@ const COMMON_MODIFIABLE_FIELD_PATHS: ModifiableFieldPaths = {
   context: 'object',
 };
 
+// TODO(RUM-18372): Share this mapping with the Browser SDK.
 // Keep aligned with the Browser SDK beforeSend mapping:
 // https://github.com/DataDog/browser-sdk/blob/main/packages/browser-rum-core/src/domain/assembly.ts
 const MODIFIABLE_FIELD_PATHS_BY_EVENT: Record<RumEvent['type'], ModifiableFieldPaths> = {

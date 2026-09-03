@@ -27,6 +27,10 @@ export class ViewContext {
     });
 
     hooks.registerTelemetry((params) => {
+      // A renderer telemetry event already carries the view its browser SDK reported, which is the view
+      // its RUM events are attached to. The telemetry schema has no `container` to hold the main-process
+      // view alongside it (unlike RUM events above), so the renderer's view is kept as it is.
+      if (params.source === EventSource.RENDERER) return SKIPPED;
       const id = this.history.find(params.startTime);
       if (id === undefined) return SKIPPED;
       return { view: { id } };

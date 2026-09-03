@@ -3,14 +3,22 @@ import { type TimeStamp } from '@datadog/js-core/time';
 import { combine, isIndexableObject, type RecursivePartial } from '@datadog/js-core/util';
 import { DISCARDED } from '@datadog/js-core/assembly';
 import { EventKind, EventSource, EventTrack, LifecycleKind, EventFormat } from '../event';
-import type { EventManager, ServerRumEvent, BrowserProfileEvent, BrowserProfilerTrace, RawReplayEvent } from '../event';
+import type {
+  EventManager,
+  ServerRumEvent,
+  ServerTelemetryEvent,
+  BrowserProfileEvent,
+  BrowserProfilerTrace,
+  RawReplayEvent,
+} from '../event';
 import { isEmptyObject } from '@datadog/browser-core';
-import { monitor, addError as addTelemetryError } from '../domain/telemetry';
+import { monitor, addError as addTelemetryError, type TelemetryEvent } from '../domain/telemetry';
 import { BRIDGE_CHANNEL, setBridgeConfig, type BridgeOptions } from '../common';
 import type { FormatHooks } from './hooks';
 import type { RumEvent } from '../domain/rum';
 import { Configuration } from '../config';
 import { BeforeSend } from './BeforeSend';
+import { isFiniteNumber } from '../tools/validation';
 import { RendererIpcGate } from './RendererIpcGate';
 
 type BridgeEventType = 'rum' | 'log' | 'internal_telemetry' | 'profile' | 'record';
@@ -87,7 +95,7 @@ export class RendererPipeline {
         // matching mobile: `usr.*` and `account.*`.
         break;
       case 'internal_telemetry':
-        // TODO(RUM-15253)
+        this.handleTelemetryEvent(bridgeEvent.event);
         break;
       case 'profile': {
         const payload = bridgeEvent.event as { profile?: BrowserProfileEvent; trace?: BrowserProfilerTrace };
@@ -125,11 +133,7 @@ export class RendererPipeline {
         // Segment.addRecord derives start/end from timestamp via Math.min/Math.max, so a missing
         // or non-finite value turns segment metadata into NaN (serialized as null) and makes the
         // uploaded segment unusable. Reject at the boundary instead, matching the profile validation.
-        if (
-          typeof bridgeEvent.event.timestamp !== 'number' ||
-          !Number.isFinite(bridgeEvent.event.timestamp) ||
-          typeof bridgeEvent.event.type !== 'number'
-        ) {
+        if (!isFiniteNumber(bridgeEvent.event.timestamp) || !isFiniteNumber(bridgeEvent.event.type)) {
           addTelemetryError(new Error('Received replay record with invalid timestamp or type'));
           break;
         }
@@ -168,21 +172,71 @@ export class RendererPipeline {
       return;
     }
 
-    const overrides = resolveCustomerContextOverrides(data, hookResult);
-
-    const dataAfterBeforeSend = this.beforeSend.apply(combine(data, overrides), 'renderer');
+    const dataAfterBeforeSend = this.beforeSend.apply(
+      combine(data, resolveCustomerContextOverrides(data, hookResult)),
+      'renderer'
+    );
     if (!dataAfterBeforeSend) {
       return;
     }
 
-    const serverEvent: ServerRumEvent = {
+    this.emitRendererEvent(dataAfterBeforeSend, undefined);
+  }
+
+  /**
+   * Forwards a telemetry event the renderer's browser RUM SDK has already assembled.
+   *
+   * It is not re-sampled or deduplicated because the browser SDK has already applied its telemetry
+   * configuration before sending the event over the bridge.
+   */
+  private handleTelemetryEvent(eventData: unknown): void {
+    // Validate the bridge payload without restricting renderer-owned fields or telemetry kinds,
+    // which may evolve independently in the browser SDK.
+    if (
+      !isIndexableObject(eventData) ||
+      eventData.type !== 'telemetry' ||
+      !isFiniteNumber(eventData.date) ||
+      !isIndexableObject(eventData.telemetry) ||
+      (typeof eventData.telemetry.type !== 'string' && typeof eventData.telemetry.status !== 'string')
+    ) {
+      addTelemetryError(new Error('Received malformed telemetry bridge event'));
+      return;
+    }
+
+    const data = { ...eventData } as unknown as TelemetryEvent;
+    // The browser SDK creates a stub session in bridge mode. Only keep the main-process session
+    // that the telemetry hooks add when one covers the event date.
+    delete data.session;
+
+    const hookResult = this.hooks.triggerTelemetry({
+      startTime: data.date as TimeStamp,
+      source: EventSource.RENDERER,
+    });
+
+    if (hookResult === DISCARDED) {
+      return;
+    }
+
+    this.emitRendererEvent(data, hookResult);
+  }
+
+  /**
+   * Emits an event a renderer's browser SDK already assembled, enriched with what the main process
+   * owns.
+   *
+   * Overrides are merged last, so the application and session the main process owns win over the ones
+   * the renderer reported. Everything else stays the renderer's, see `registerCommonContext`.
+   */
+  private emitRendererEvent<E extends RumEvent | TelemetryEvent>(
+    data: E,
+    overrides: RecursivePartial<E> | undefined
+  ): void {
+    this.eventManager.notify({
       kind: EventKind.SERVER,
       track: EventTrack.RUM,
       source: EventSource.RENDERER,
-      data: dataAfterBeforeSend,
-    };
-
-    this.eventManager.notify(serverEvent);
+      data: combine(data, overrides),
+    } as ServerRumEvent | ServerTelemetryEvent);
   }
 }
 

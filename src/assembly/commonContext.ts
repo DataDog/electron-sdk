@@ -37,17 +37,23 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
     }
   });
 
-  // Only reached with source MAIN today: renderer telemetry is dropped by RendererPipeline. It must
-  // become source-aware (like registerRum above) before that path is wired up in RUM-15253, since
-  // these attributes would otherwise overwrite the Browser SDK's own service/source/version/date.
-  hooks.registerTelemetry(() => ({
-    date: Date.now(),
-    source: 'electron',
-    service: 'electron-sdk',
-    version: __SDK_VERSION__,
-    application: { id: configuration.applicationId },
-    _dd: { format_version: 2 },
-  }));
+  hooks.registerTelemetry(({ source }) => {
+    switch (source) {
+      // Renderer telemetry already identifies the browser SDK that assembled it.
+      case EventSource.RENDERER:
+        return { application: { id: configuration.applicationId } };
+      case EventSource.MAIN:
+        return {
+          date: Date.now(),
+          source: 'electron',
+          service: 'electron-sdk',
+          version: __SDK_VERSION__,
+          application: { id: configuration.applicationId },
+          ddtags: buildDdtags(configuration),
+          _dd: { format_version: 2 },
+        };
+    }
+  });
 
   hooks.registerSpan(() => ({
     meta: {

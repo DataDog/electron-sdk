@@ -26,6 +26,9 @@ datadogRum.init({
   trackResources: true,
   trackLongTasks: true,
   trackUserInteractions: true,
+  telemetrySampleRate: 100,
+  telemetryConfigurationSampleRate: 100,
+  telemetryUsageSampleRate: 100,
 });
 
 // Type definition for the exposed API

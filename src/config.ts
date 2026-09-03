@@ -115,8 +115,14 @@ export interface InitConfiguration {
   uploadFrequency?: UploadFrequency;
   defaultPrivacyLevel?: DefaultPrivacyLevel;
   /**
-   * Synchronously modify supported fields on fully assembled RUM events. Only an explicit false
-   * discards an event; mutations to unsupported fields are ignored. View and crash events cannot be discarded.
+   * Synchronously modify supported fields on fully assembled RUM events.
+   *
+   * Supported string fields accept only string replacements. Assigning `null`, `undefined`, or another type is
+   * ignored, preserving the original value. Supported object and array fields can be cleared with `null` or
+   * `undefined`; they are normalized to an empty object or array, respectively.
+   *
+   * Mutations to unsupported fields are ignored. Only an explicit `false` discards an event; view and crash events
+   * cannot be discarded.
    *
    * @example
    * ```ts

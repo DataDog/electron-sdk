@@ -178,6 +178,30 @@ export class MainPage {
     await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.flushTransport());
   }
 
+  /**
+   * Runs `read` while flushing the transport repeatedly.
+   *
+   * Renderer events reach the main process asynchronously over IPC, so a single flush can run before
+   * the event has arrived and leave it batched until the next natural upload cycle — which the read's
+   * own timeout then races. Flushing throughout removes that race.
+   */
+  async whileFlushing<T>(read: () => Promise<T>, intervalMs = 200): Promise<T> {
+    let reading = true;
+    const flushing = (async () => {
+      while (reading) {
+        await this.flushTransport();
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      }
+    })();
+
+    try {
+      return await read();
+    } finally {
+      reading = false;
+      await flushing;
+    }
+  }
+
   async setUserInfo(user: UserInfo) {
     await this.page.evaluate((u) => (globalThis as unknown as ElectronAppWindow).electronAPI.setUserInfo(u), user);
   }

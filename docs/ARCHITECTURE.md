@@ -120,7 +120,7 @@ See `src/event/` and `src/domain/assembly.ts`.
 Two handlers transform events into `ServerEvent`s:
 
 - **`MainAssembly`**: handles main-process `RawEvent`s (excluding profile events), enriches them via `triggerRum` / `triggerTelemetry` hooks, and emits `ServerEvent`s with `source: MAIN`.
-- **`RendererPipeline`**: owns the renderer IPC channel, receives pre-assembled RUM events from the Browser SDK, enriches them via `triggerRum` with `source: EventSource.RENDERER`, and emits `ServerRumEvent`s with `source: RENDERER` directly, bypassing the `RawEvent` pipeline entirely.
+- **`RendererPipeline`**: owns the renderer IPC channel, receives pre-assembled RUM and telemetry events from the Browser SDK, enriches them via `triggerRum` / `triggerTelemetry` with `source: EventSource.RENDERER`, and emits `ServerEvent`s with `source: RENDERER` directly, bypassing the `RawEvent` pipeline entirely.
 
 `MainAssembly` and `RendererPipeline` apply the configured `beforeSendRum` callback after Electron enrichment and before
 emitting the final `ServerRumEvent`, with `source` identifying the originating process. Renderer events may already have
@@ -187,8 +187,15 @@ the first statement of each call so that a call rejected by argument validation 
 adoption. Only the schema's `feature` discriminator is sent, never the caller's arguments. APIs the
 schema has no feature for are reported as the closest one, with a comment at the call site.
 
-Renderer-originated telemetry (`internal_telemetry` over the bridge) is not yet consumed — see
-`RendererPipeline`.
+#### Renderer telemetry
+
+The browser SDK sends pre-assembled telemetry over the bridge as `internal_telemetry`. `RendererPipeline`
+validates the payload and forwards it on the RUM track without re-sampling or deduplicating it; the
+browser SDK has already applied its telemetry configuration and limits.
+
+Main-process context replaces the renderer's application and stub session while preserving the browser
+SDK fields that describe the event. If no tracked main-process session covers the event date, the
+optional `session` field is omitted.
 
 ## Profiling
 
