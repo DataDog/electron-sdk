@@ -364,6 +364,7 @@ export type {
   TelemetryDebugEvent,
   TelemetryErrorEvent,
   TelemetryEvent,
+  TelemetryType,
   TelemetryUsageEvent,
 } from './domain/telemetry';
 

@@ -6,6 +6,7 @@ import type {
   RumViewEvent,
   RumVitalEvent,
   TelemetryEvent,
+  TelemetryType,
 } from '@datadog/electron-sdk';
 
 /**
@@ -106,10 +107,13 @@ function splitBuffer(buf: Buffer, delimiter: Buffer): Buffer[] {
  *
  * `'log'` selects message events, which the schema splits further by `status` into `debug` and
  * `error`. The SDK only ever emits `error` (see `RawTelemetryError`), so this needs no second filter
- * today — it would if debug telemetry is ever added.
+ * today — it would if debug telemetry is ever added. Telemetry relayed from a renderer is another
+ * matter: the browser SDK does emit `debug` (its internal metrics), so whenever one is running — a
+ * bridge window, or `test.use({ rumBrowserSdk })` on the main window — reach for
+ * {@link byMainProcessTelemetryType} rather than this to assert what the Electron SDK reported.
  */
 export const byTelemetryType =
-  (type: 'log' | 'configuration' | 'usage') =>
+  (type: TelemetryType) =>
   (event: ReceivedEvent<TelemetryEvent>): boolean =>
     event.body.telemetry?.type === type;
 
@@ -122,6 +126,34 @@ export const isMainProcessView = (event: ReceivedEvent<RumViewEvent>): boolean =
 
 /** Selects views emitted by a bridge window, i.e. every view but the main process one. */
 export const isBridgeView = (event: ReceivedEvent<RumViewEvent>): boolean => !isMainProcessView(event);
+
+/**
+ * Selects telemetry the main process emitted, i.e. the Electron SDK's own.
+ *
+ * Telemetry the SDK relays from a renderer keeps the browser SDK's `source`, so a count that means
+ * "what the Electron SDK reported" has to filter on this rather than assume all telemetry is its own.
+ */
+export const isMainProcessTelemetry = (event: ReceivedEvent<TelemetryEvent>): boolean =>
+  event.body.source === 'electron';
+
+/** Selects telemetry a renderer's browser SDK assembled, which the SDK relays over the bridge. */
+export const isRendererTelemetry = (event: ReceivedEvent<TelemetryEvent>): boolean => !isMainProcessTelemetry(event);
+
+/**
+ * Selects telemetry of a given type that the main process emitted, i.e. the Electron SDK's own.
+ * The pairing {@link byTelemetryType} calls for, so an assertion about what the Electron SDK reported
+ * cannot be satisfied by an event relayed from a renderer.
+ */
+export const byMainProcessTelemetryType =
+  (type: TelemetryType) =>
+  (event: ReceivedEvent<TelemetryEvent>): boolean =>
+    isMainProcessTelemetry(event) && byTelemetryType(type)(event);
+
+/** Selects telemetry of a given type that the SDK relayed from a renderer. */
+export const byRendererTelemetryType =
+  (type: TelemetryType) =>
+  (event: ReceivedEvent<TelemetryEvent>): boolean =>
+    isRendererTelemetry(event) && byTelemetryType(type)(event);
 
 /**
  * Fake Datadog intake used to assert what the SDK sends.
