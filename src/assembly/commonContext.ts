@@ -1,3 +1,4 @@
+import { SKIPPED } from '@datadog/js-core/assembly';
 import type { Configuration } from '../config';
 import { EventSource } from '../event';
 import type { FormatHooks } from './hooks';
@@ -52,6 +53,21 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
           ddtags: buildDdtags(configuration),
           _dd: { format_version: 2 },
         };
+    }
+  });
+
+  hooks.registerLogs(({ source }) => {
+    switch (source) {
+      // A renderer log crosses the bridge already assembled by the browser Logs SDK, and it belongs to
+      // the renderer that produced it: its `service`, `ddtags` and `status` are the ones its own
+      // `DD_LOGS.init()` configured, so restamping them here would relabel the customer's own logs. The
+      // application is the only one of these the main process owns.
+      case EventSource.RENDERER:
+        return { application_id: configuration.applicationId };
+      // The SDK has no main-process logging API yet (RUM-15047); when it gains one, its identity fields
+      // belong here, next to the RUM and telemetry cases above.
+      case EventSource.MAIN:
+        return SKIPPED;
     }
   });
 

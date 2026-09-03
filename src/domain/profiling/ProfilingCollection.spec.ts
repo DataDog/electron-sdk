@@ -44,9 +44,11 @@ describe('ProfilingCollection', () => {
     hooks = {
       registerRum: vi.fn(),
       registerTelemetry: vi.fn(),
+      registerLogs: vi.fn(),
       registerSpan: vi.fn(),
       triggerRum: vi.fn(),
       triggerTelemetry: vi.fn(),
+      triggerLogs: vi.fn(),
       triggerSpan: vi.fn(),
     };
 

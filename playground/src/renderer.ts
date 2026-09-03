@@ -1,3 +1,4 @@
+import { datadogLogs } from '@datadog/browser-logs';
 import { datadogRum } from '@datadog/browser-rum';
 
 interface DurationVitalOptions {
@@ -29,6 +30,18 @@ datadogRum.init({
   telemetrySampleRate: 100,
   telemetryConfigurationSampleRate: 100,
   telemetryUsageSampleRate: 100,
+});
+
+// The Logs SDK detects the same bridge and routes every log through the main process. In bridge mode
+// it never talks to the intake itself, so a log that the main process does not relay is lost.
+datadogLogs.init({
+  clientToken: 'pub2a7307cdec74934cacb411a193f632f8',
+  site: 'datad0g.com',
+  service: 'electron-playground',
+  env: 'dev',
+  version: '1.0.0',
+  sessionSampleRate: 100,
+  forwardErrorsToLogs: true,
 });
 
 // Type definition for the exposed API
@@ -128,6 +141,12 @@ document.addEventListener('click', () => setTimeout(() => void refreshSessionDis
 const telemetryErrorButton = document.getElementById('generate-telemetry-error') as HTMLButtonElement;
 telemetryErrorButton.addEventListener('click', () => {
   void window.electronAPI.generateTelemetryError();
+});
+
+// Handle renderer log button click
+const rendererLogButton = document.getElementById('generate-renderer-log') as HTMLButtonElement;
+rendererLogButton.addEventListener('click', () => {
+  datadogLogs.logger.info('renderer log from the playground', { clicked_at: new Date().toISOString() });
 });
 
 // Handle uncaught exception button click

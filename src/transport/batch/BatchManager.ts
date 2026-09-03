@@ -16,6 +16,9 @@ import { StandardBatchProducer } from './standard/StandardBatchProducer';
 import type { StandardBatchProducerConfig } from './standard/StandardBatchProducer';
 import type { BatchConfig } from './batchConfig.types';
 
+/** Maximum array length accepted by the Logs HTTP intake. */
+const MAX_LOGS_EVENTS_PER_BATCH = 1_000;
+
 /**
  * Coordinates a {@link BatchProducer} and {@link BatchConsumer} pair for a single track type.
  * Runs a periodic upload cycle that rotates pending `.tmp` files to `.log` and
@@ -165,7 +168,11 @@ export class BatchManager {
       return { producer, consumer };
     }
 
-    const standardProducerConfig: StandardBatchProducerConfig = { trackPath, batchSize };
+    const standardProducerConfig: StandardBatchProducerConfig = {
+      trackPath,
+      batchSize,
+      ...(trackType === EventTrack.LOGS ? { maxEventsPerBatch: MAX_LOGS_EVENTS_PER_BATCH } : {}),
+    };
     const producer = await StandardBatchProducer.create(standardProducerConfig);
     const consumer = new StandardBatchConsumer(consumerConfig);
     return { producer, consumer };

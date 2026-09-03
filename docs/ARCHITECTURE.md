@@ -20,7 +20,7 @@ graph TB
     DD[(Datadog)]
 
     %% Browser SDK → Electron SDK via bridge
-    BP -->|"RUM events<br/>(IPC bridge)"| SDK
+    BP -->|"Browser SDK events<br/>(IPC bridge)"| SDK
 
     %% dd-trace → Electron SDK via diagnostic channel
     DDT -->|"HTTP spans<br/>IPC spans<br/>(diagnostics_channel)"| SDK
@@ -186,6 +186,27 @@ browser SDK has already applied its telemetry configuration and limits.
 Main-process context replaces the renderer's application and stub session while preserving the browser
 SDK fields that describe the event. If no tracked main-process session covers the event date, the
 optional `session` field is omitted.
+
+## Logs
+
+The SDK has no main-process logging API. It relays `log` events assembled by the renderer's Browser
+Logs SDK onto a separate **LOGS track** (`/api/v2/logs`). In bridge mode the Browser SDK sends only to
+the host, so failing to relay an event would lose it. Transport therefore registers the LOGS handler
+before `RendererPipeline` opens the IPC listener; the track stays active even when sampling is zero so
+persisted batches from an earlier launch can be recovered.
+
+`RendererPipeline` validates `date`, `message`, and `status`, then preserves the renderer-owned log
+fields. Main-process hooks replace the stub application and session ids and fill missing `usr` and
+`account` context. Logs without a covering main-process session are still forwarded with null session
+ids. Uploads keep `ddsource=browser`, while `DD-EVP-ORIGIN: electron` identifies the uploader.
+
+Browser Logs uses an always-tracked session stub in bridge mode, so renderer
+`DD_LOGS.init({ sessionSampleRate })` does not sample bridged logs. Electron instead follows the mobile
+WebView integrations: `logsSampleRate` defaults to 100 and is applied independently to each valid log
+before enrichment. It is separate from RUM `sessionSampleRate`, and sampled-in logs have no relay cap.
+
+LOGS batches rotate at either the configured byte threshold or 1,000 events, keeping each JSON array
+within the Logs intake request limit without dropping events.
 
 ## Profiling
 
