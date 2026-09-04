@@ -2,7 +2,7 @@
   "name": "electron-builder-vite",
   "version": "1.0.0",
   "private": true,
-  "packageManager": "yarn@4.17.1",
+  "packageManager": "yarn@4.18.0",
   "main": "dist/default-copy/main.js",
   "integration": {
     "devMain": "dist/default-copy/main.js",
@@ -31,7 +31,7 @@
     "package": "yarn build && electron-builder --dir --publish never --config electron-builder.yml && electron-builder --dir --publish never --config electron-builder.packager-copy.yml"
   },
   "dependencies": {
-    "@datadog/browser-rum": "7.5.0",
+    "@datadog/browser-rum": "7.10.0",
     "@datadog/electron-sdk": "file:../../integration-sdk.tgz"
   },
   "devDependencies": {
@@ -40,6 +40,6 @@
     "electron": "41.1.0",
     "electron-builder": "26.15.3",
     "typescript": "5.9.3",
-    "vite": "8.1.5"
+    "vite": "8.2.2"
   }
 }
