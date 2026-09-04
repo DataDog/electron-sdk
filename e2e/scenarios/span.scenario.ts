@@ -146,6 +146,52 @@ test.describe('trace sampling rules', () => {
   });
 });
 
+test.describe('trace sample rate fallback', () => {
+  test.use({
+    sdkConfigOverrides: {
+      traceSampleRate: 0,
+      traceSamplingRules: [{ name: 'electron.main.handle', resource: 'mainNetRequest', sampleRate: 100 }],
+    },
+  });
+
+  test('uses a matching rule before the fallback sample rate', async ({ intake, mainPage, testServer }) => {
+    const url = testServer.urlFor(202);
+
+    await mainPage.mainNetRequest(url);
+    await mainPage.flushTransport();
+
+    const [received] = await intake.waitForEventCount('resource', 1, {
+      predicate: (event) => event.body.resource.url === url,
+    });
+    expect(received.body._dd.trace_id).toBeDefined();
+    expect(received.body._dd.span_id).toBeDefined();
+    expect(testServer.headersFor(202)['x-datadog-trace-id']).toBeDefined();
+    await intake.waitForSpan((span) => span.name === 'electron.main.handle' && span.resource === 'mainNetRequest');
+  });
+
+  test('uses the fallback sample rate when no rule matches', async ({ intake, mainPage, testServer }) => {
+    const url = testServer.urlFor(203);
+
+    await mainPage.mainNetFetch(url);
+    await mainPage.flushTransport();
+
+    const [received] = await intake.waitForEventCount('resource', 1, {
+      predicate: (event) => event.body.resource.url === url,
+    });
+    expect(received.body._dd.trace_id).toBeUndefined();
+    expect(received.body._dd.span_id).toBeUndefined();
+    expect(testServer.headersFor(203)['x-datadog-trace-id']).toBeUndefined();
+    expect(testServer.headersFor(203).traceparent).toBeUndefined();
+    expect(
+      intake.getSpans(
+        (span) =>
+          (span.name === 'electron.main.handle' && span.resource === 'mainNetFetch') ||
+          (span.name === 'http.request' && span.meta['http.url'] === url)
+      )
+    ).toHaveLength(0);
+  });
+});
+
 const traceSamplingRuleCases: { description: string; rule: TraceSamplingRule }[] = [
   { description: 'name', rule: { name: 'electron.main.handle', sampleRate: 0 } },
   { description: 'resource', rule: { resource: 'mainNetRequest', sampleRate: 0 } },

@@ -43,6 +43,7 @@ describe('reportConfiguration', () => {
   it('reports the configured sample rates', () => {
     const configuration = createTestConfiguration({
       sessionSampleRate: 42,
+      traceSampleRate: 75,
       sessionReplaySampleRate: 25,
       telemetrySampleRate: 30,
       telemetryConfigurationSampleRate: 20,
@@ -52,6 +53,7 @@ describe('reportConfiguration', () => {
 
     expect(report(configuration)).toMatchObject({
       session_sample_rate: 42,
+      trace_sample_rate: 75,
       session_replay_sample_rate: 25,
       telemetry_sample_rate: 30,
       telemetry_configuration_sample_rate: 20,

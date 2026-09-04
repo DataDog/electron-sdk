@@ -21,12 +21,13 @@ function createTracerRequire() {
 }
 
 describe('Tracing', () => {
-  it('initializes dd-trace with normalized matching rules', () => {
+  it('initializes dd-trace with normalized matching rules and a fallback sample rate', () => {
     const { init, requireFn } = createTracerRequire();
 
     const tracing = new Tracing(
       createTestConfiguration({
         env: 'production',
+        traceSampleRate: 25,
         traceSamplingRules: [
           { tags: { 'http.url': '*/health' }, sampleRate: 5 },
           { name: 'electron.main.*', sampleRate: 100 },
@@ -39,6 +40,7 @@ describe('Tracing', () => {
       env: 'production',
       experimental: { exporter: 'electron' },
       rateLimit: -1,
+      sampleRate: 0.25,
       samplingRules: [
         { tags: { 'http.url': '*/health' }, sampleRate: 0.05 },
         { name: 'electron.main.*', sampleRate: 1 },
@@ -49,12 +51,16 @@ describe('Tracing', () => {
     expect(tracing.version).toBe('6.10.0');
   });
 
-  it('preserves dd-trace sampling configuration when no Electron rules are configured', () => {
+  it('uses the trace sample rate without sampling rules', () => {
     const { init, requireFn } = createTracerRequire();
 
-    new Tracing(createTestConfiguration({ traceSamplingRules: [] }), requireFn);
+    new Tracing(createTestConfiguration({ traceSampleRate: 40, traceSamplingRules: [] }), requireFn);
 
-    expect(init).toHaveBeenCalledWith({ experimental: { exporter: 'electron' } });
+    expect(init).toHaveBeenCalledWith({
+      experimental: { exporter: 'electron' },
+      rateLimit: -1,
+      sampleRate: 0.4,
+    });
   });
 
   it('flushes the dd-trace exporter', async () => {
