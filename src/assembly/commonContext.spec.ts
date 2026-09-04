@@ -133,10 +133,11 @@ describe('registerCommonContext', () => {
 
   describe('sampling rates in _dd.configuration', () => {
     it.each([EventSource.MAIN, EventSource.RENDERER])(
-      'injects the Electron SDK session, replay, and profiling sample rates for %s events',
+      'injects the Electron SDK session, trace, replay, and profiling sample rates for %s events',
       (source) => {
         const config = createTestConfiguration({
           sessionSampleRate: 42,
+          traceSampleRate: 75,
           sessionReplaySampleRate: 25,
           profilingSampleRate: 100,
         });
@@ -144,6 +145,7 @@ describe('registerCommonContext', () => {
 
         expect((result._dd as { configuration: unknown }).configuration).toEqual({
           session_sample_rate: 42,
+          trace_sample_rate: 75,
           session_replay_sample_rate: 25,
           profiling_sample_rate: 100,
         });
