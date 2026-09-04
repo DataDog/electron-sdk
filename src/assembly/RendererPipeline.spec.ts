@@ -22,6 +22,7 @@ import {
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
 import type { RumBeforeSend } from '../config';
 import { createMockSender, createTestConfiguration, type MockSender } from '../mocks.specUtil';
+import { registerCommonContext } from './commonContext';
 
 const { mockIpcMainOn, mockAddError, mockSetBridgeConfig } = vi.hoisted(() => {
   const mockIpcMainOn = vi.fn();
@@ -55,6 +56,7 @@ const RENDERER_RUM_DATA = {
   session: { id: 'renderer-session-id', type: 'user' },
   view: { id: 'renderer-view-id', name: 'My View', url: 'http://localhost' },
   ddtags: 'sdk_version:1.0.0',
+  _dd: { configuration: { trace_sample_rate: 80 } },
 };
 
 const RENDERER_CLICK_DATA = {
@@ -299,6 +301,14 @@ describe('RendererPipeline', () => {
       expect(data.service).toBe('renderer-service');
       expect(data.view.id).toBe('renderer-view-id');
       expect(data.ddtags).toBe('sdk_version:1.0.0');
+    });
+
+    it('preserves the Browser SDK trace sample rate during Electron enrichment', () => {
+      registerCommonContext(createTestConfiguration({ traceSampleRate: 20 }), hooks);
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
+
+      expect(serverEvents[0].data._dd.configuration?.trace_sample_rate).toBe(80);
     });
 
     it('passes event.data.date as startTime to triggerRum', () => {
