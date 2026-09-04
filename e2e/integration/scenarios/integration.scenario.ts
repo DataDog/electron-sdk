@@ -46,12 +46,14 @@ test.describe('electron-builder runtime dependency packaging @integration', () =
     const archiveEntries = listPackage(archivePath, { isPack: false });
 
     expect(archiveEntries).toContain('/node_modules/@datadog/electron-sdk/package.json');
-    expect(archiveEntries).toContain('/node_modules/dd-trace/package.json');
+    expect(archiveEntries).toContain('/node_modules/dd-trace-electron/package.json');
     expect(archiveEntries).toContain(`/dist/${workflow}/main.js`);
     expect(archiveEntries.includes(`/dist/${workflow}/node_modules/@datadog/electron-sdk/package.json`)).toBe(
       expectsPluginCopy
     );
-    expect(archiveEntries.includes(`/dist/${workflow}/node_modules/dd-trace/package.json`)).toBe(expectsPluginCopy);
+    expect(archiveEntries.includes(`/dist/${workflow}/node_modules/dd-trace-electron/package.json`)).toBe(
+      expectsPluginCopy
+    );
   });
 });
 
