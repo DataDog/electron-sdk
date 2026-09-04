@@ -45,9 +45,8 @@ export class Tracing {
 
   constructor(config: Configuration, requireFn: NodeRequire = _require) {
     try {
-      const tracer = (
-        requireFn('dd-trace-electron') as { default: typeof import('dd-trace-electron').default }
-      ).default;
+      const tracer = (requireFn('dd-trace-electron') as { default: typeof import('dd-trace-electron').default })
+        .default;
 
       tracer.init({
         experimental: { exporter: 'electron' as 'datadog' },
