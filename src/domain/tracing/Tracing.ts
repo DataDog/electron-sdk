@@ -49,7 +49,7 @@ export class Tracing {
       tracer.init({
         experimental: { exporter: 'electron' as 'datadog' },
         ...(config.env !== undefined ? { env: config.env } : {}),
-        sampleRate: config.traceSampleRate / 100,
+        ...(config.traceSampleRateConfigured ? { sampleRate: config.traceSampleRate / 100 } : {}),
         rateLimit: -1,
         ...(config.traceSamplingRules.length > 0
           ? {

@@ -155,6 +155,7 @@ export interface Configuration {
   proxy?: string;
   sessionSampleRate: number;
   traceSampleRate: number;
+  traceSampleRateConfigured: boolean;
   traceSamplingRules: TraceSamplingRule[];
   sessionReplaySampleRate: number;
   profilingSampleRate: number;
@@ -431,6 +432,7 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     proxy,
     sessionSampleRate,
     traceSampleRate,
+    traceSampleRateConfigured: initConfig.traceSampleRate !== undefined && initConfig.traceSampleRate !== null,
     traceSamplingRules,
     sessionReplaySampleRate,
     profilingSampleRate,

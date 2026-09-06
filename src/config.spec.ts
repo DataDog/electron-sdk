@@ -566,12 +566,21 @@ describe('buildConfiguration', () => {
   });
 
   describe('traceSampleRate validation', () => {
-    it('defaults to 100', () => {
-      expect(buildConfiguration({ ...DEFAULT_CONFIG })?.traceSampleRate).toBe(100);
+    it.each([undefined, null])('defaults to 100 without marking %s as configured', (traceSampleRate) => {
+      const configuration = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        traceSampleRate,
+      } as InitConfiguration);
+
+      expect(configuration?.traceSampleRate).toBe(100);
+      expect(configuration?.traceSampleRateConfigured).toBe(false);
     });
 
     it.each([0, 50, 100])('accepts valid value: %d', (value) => {
-      expect(buildConfiguration({ ...DEFAULT_CONFIG, traceSampleRate: value })?.traceSampleRate).toBe(value);
+      const configuration = buildConfiguration({ ...DEFAULT_CONFIG, traceSampleRate: value });
+
+      expect(configuration?.traceSampleRate).toBe(value);
+      expect(configuration?.traceSampleRateConfigured).toBe(true);
     });
 
     it.each([-1, 101, Number.NaN, Number.POSITIVE_INFINITY, '50'])('rejects invalid value: %s', (value) => {

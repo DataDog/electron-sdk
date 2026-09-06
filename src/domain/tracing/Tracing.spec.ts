@@ -63,6 +63,17 @@ describe('Tracing', () => {
     });
   });
 
+  it('preserves dd-trace sampling configuration when the trace sample rate is not configured', () => {
+    const { init, requireFn } = createTracerRequire();
+
+    new Tracing(createTestConfiguration(), requireFn);
+
+    expect(init).toHaveBeenCalledWith({
+      experimental: { exporter: 'electron' },
+      rateLimit: -1,
+    });
+  });
+
   it('flushes the dd-trace exporter', async () => {
     const { flush, requireFn } = createTracerRequire();
     const tracing = new Tracing(createTestConfiguration(), requireFn);
