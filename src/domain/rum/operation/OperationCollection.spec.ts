@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OperationCollection, type FeatureOperationOptions } from './OperationCollection';
 import { EventFormat, EventKind, EventManager, type RawRumEvent } from '../../../event';
-import type { RawRumOperationStepVital } from '../rawRumData.types';
+import type { RawRumOperationStepVital } from '../types';
 import { display } from '../../../tools/display';
 
 vi.mock('../../../tools/display', () => ({

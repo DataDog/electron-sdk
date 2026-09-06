@@ -4,7 +4,7 @@ import { type Context, generateUUID } from '@datadog/browser-core';
 import { EventFormat, EventKind, EventManager } from '../../../event';
 import { display } from '../../../tools/display';
 import { isOneOf, isValidString, VALID_VITAL_NAME_REGEX } from '../../../tools/validation';
-import type { RawRumOperationStepVital } from '../rawRumData.types';
+import type { RawRumOperationStepVital } from '../types';
 
 type OperationMethod = 'startOperation' | 'succeedOperation' | 'failOperation';
 

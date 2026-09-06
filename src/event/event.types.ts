@@ -1,6 +1,6 @@
 import { EventFormat, EventKind, EventSource, EventTrack, LifecycleKind } from './event.constants';
 import { RawTelemetryData, TelemetryEvent } from '../domain/telemetry';
-import { RawRumData, RumEvent } from '../domain/rum';
+import { MainRumEvent, RawRumData, RendererRumEvent } from '../domain/rum';
 import type { TimeStamp } from '@datadog/js-core/time';
 import { RawTraceData } from '../domain/tracing/rawTracingData.types';
 import type { BrowserProfileEvent, BrowserProfilerTrace } from '../domain/profiling';
@@ -43,12 +43,21 @@ export type ServerEvent =
  */
 export type StandardServerEvent = Exclude<ServerEvent, ServerProfileEvent | ServerReplayEvent>;
 
-export interface ServerRumEvent {
+export interface ServerRendererRumEvent {
   kind: typeof EventKind.SERVER;
   track: typeof EventTrack.RUM;
-  source: EventSource;
-  data: RumEvent;
+  source: typeof EventSource.RENDERER;
+  data: RendererRumEvent;
 }
+
+export interface ServerMainRumEvent {
+  kind: typeof EventKind.SERVER;
+  track: typeof EventTrack.RUM;
+  source: typeof EventSource.MAIN;
+  data: MainRumEvent;
+}
+
+export type ServerRumEvent = ServerRendererRumEvent | ServerMainRumEvent;
 
 export interface ServerTelemetryEvent {
   kind: typeof EventKind.SERVER;

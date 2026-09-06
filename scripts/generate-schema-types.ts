@@ -55,8 +55,13 @@ interface SchemaConfig {
 const SCHEMAS: SchemaConfig[] = [
   {
     schemaPath: 'rum-events-format/schemas/rum-events-browser-schema.json',
-    outputPath: 'src/domain/rum/rumEvent.types.ts',
+    outputPath: 'src/domain/rum/types/rendererRumEvent.types.ts',
     typeName: 'RumEvent',
+  },
+  {
+    schemaPath: 'rum-events-format/schemas/rum-events-electron-schema.json',
+    outputPath: 'src/domain/rum/types/mainRumEvent.types.ts',
+    typeName: 'MainRumEvent',
   },
   {
     schemaPath: 'rum-events-format/schemas/telemetry-events-schema.json',

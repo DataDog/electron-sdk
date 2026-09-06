@@ -13,7 +13,7 @@ import {
   type ServerEvent,
 } from '../event';
 import type { FormatHooks } from './hooks';
-import { RumEvent } from '../domain/rum';
+import { MainRumEvent } from '../domain/rum';
 import { TelemetryEvent } from '../domain/telemetry';
 import { BeforeSend } from './BeforeSend';
 
@@ -54,7 +54,10 @@ export class MainAssembly {
         source,
       });
       if (hookResult !== DISCARDED) {
-        const data = this.beforeSend.apply(assembleData<RumEvent>(event.data, hookResult), 'main');
+        const data = this.beforeSend.apply(
+          assembleData<MainRumEvent>(event.data, hookResult as RecursivePartial<MainRumEvent> | undefined),
+          'main'
+        );
         if (!data) {
           return DISCARDED;
         }

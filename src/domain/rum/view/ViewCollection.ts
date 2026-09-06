@@ -12,7 +12,7 @@ import {
 } from '../../../event';
 import type { FormatHooks } from '../../../assembly';
 import { setInterval, throttle } from '../../telemetry';
-import type { RawRumView } from '../rawRumData.types';
+import type { RawRumView } from '../types';
 import { ViewContext } from './ViewContext';
 
 export const SESSION_KEEP_ALIVE_INTERVAL = 5 * ONE_MINUTE;
@@ -33,7 +33,7 @@ interface ViewState {
  * - keep session alive by regularly send view updates
  * - on SESSION_EXPIRED, emit a final inactive view update
  * - on SESSION_RENEW, create a new view
- * - on RUM server event (action, error, resource), increment view counters (throttled)
+ * - on main-process RUM server event (error, resource), increment view counters (throttled)
  */
 export class ViewCollection {
   private currentView!: ViewState;
@@ -148,7 +148,7 @@ export class ViewCollection {
     }
 
     const type = event.data.type;
-    if (type === 'action' || type === 'error' || type === 'resource') {
+    if (type === 'error' || type === 'resource') {
       this.currentView.counters[type].count++;
       this.currentView.documentVersion++;
       this.scheduleViewUpdate();
