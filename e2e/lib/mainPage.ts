@@ -13,7 +13,7 @@ import { BridgeWindowPage } from './bridgeWindowPage';
 interface ElectronAppWindow {
   electronAPI: {
     generateTelemetryErrors: (count: number) => Promise<void>;
-    generateManualError: (startTime?: number) => Promise<void>;
+    generateManualError: (startTime?: number, context?: Record<string, string>) => Promise<void>;
     addDurationVital: (name: string, options: AddDurationVitalOptions) => Promise<void>;
     startDurationVital: (name: string, options?: DurationVitalOptions) => Promise<void>;
     stopDurationVital: (name: string, options?: DurationVitalOptions) => Promise<void>;
@@ -86,10 +86,11 @@ export class MainPage {
     await this.page.locator('#generate-unhandled-rejection').click();
   }
 
-  async generateManualError(startTime?: number) {
+  async generateManualError(startTime?: number, context?: Record<string, string>) {
     await this.page.evaluate(
-      (ts) => (globalThis as unknown as ElectronAppWindow).electronAPI.generateManualError(ts),
-      startTime
+      ({ startTime, context }) =>
+        (globalThis as unknown as ElectronAppWindow).electronAPI.generateManualError(startTime, context),
+      { startTime, context }
     );
   }
 
@@ -175,6 +176,30 @@ export class MainPage {
 
   async flushTransport() {
     await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.flushTransport());
+  }
+
+  /**
+   * Runs `read` while flushing the transport repeatedly.
+   *
+   * Renderer events reach the main process asynchronously over IPC, so a single flush can run before
+   * the event has arrived and leave it batched until the next natural upload cycle — which the read's
+   * own timeout then races. Flushing throughout removes that race.
+   */
+  async whileFlushing<T>(read: () => Promise<T>, intervalMs = 200): Promise<T> {
+    let reading = true;
+    const flushing = (async () => {
+      while (reading) {
+        await this.flushTransport();
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      }
+    })();
+
+    try {
+      return await read();
+    } finally {
+      reading = false;
+      await flushing;
+    }
   }
 
   async setUserInfo(user: UserInfo) {

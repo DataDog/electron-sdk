@@ -35,7 +35,7 @@
     "@datadog/electron-sdk": "file:../../integration-sdk.tgz"
   },
   "devDependencies": {
-    "@electron/asar": "3.4.1",
+    "@electron/asar": "4.3.0",
     "@types/node": "24.13.3",
     "electron": "41.1.0",
     "electron-builder": "26.15.3",

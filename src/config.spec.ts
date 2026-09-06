@@ -461,6 +461,28 @@ describe('buildConfiguration', () => {
     });
   });
 
+  describe('beforeSendRum validation', () => {
+    it('preserves a valid callback', () => {
+      const beforeSendRum = vi.fn(() => true);
+
+      expect(buildConfiguration({ ...DEFAULT_CONFIG, beforeSendRum })?.beforeSendRum).toBe(beforeSendRum);
+    });
+
+    it.each([undefined, null])('disables beforeSendRum without an error when set to %s', (beforeSendRum) => {
+      const config = { ...DEFAULT_CONFIG, beforeSendRum } as unknown as InitConfiguration;
+
+      expect(buildConfiguration(config)?.beforeSendRum).toBeUndefined();
+      expect(display.error).not.toHaveBeenCalled();
+    });
+
+    it.each(['not-a-function', 42, {}])('logs an error and disables beforeSendRum when set to %o', (beforeSendRum) => {
+      const config = { ...DEFAULT_CONFIG, beforeSendRum } as unknown as InitConfiguration;
+
+      expect(buildConfiguration(config)?.beforeSendRum).toBeUndefined();
+      expect(display.error).toHaveBeenCalledWith("Configuration error: 'beforeSendRum' must be a function");
+    });
+  });
+
   describe('sessionSampleRate validation', () => {
     it('defaults to 100 when not provided', () => {
       const result = buildConfiguration({ ...DEFAULT_CONFIG });

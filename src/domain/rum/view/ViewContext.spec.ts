@@ -116,6 +116,15 @@ describe('ViewContext', () => {
       expect(hooks.triggerTelemetry({ startTime: T0, source: EventSource.MAIN })).toEqual({ view: { id: VIEW_ID } });
     });
 
+    it('telemetry hook contributes no view for renderer events, which keep the view they reported', async () => {
+      const hooks = createFormatHooks();
+      const context = await ViewContext.init(hooks, EXPIRE_DELAY);
+
+      context.add(VIEW_ID);
+
+      expect(hooks.triggerTelemetry({ startTime: T0, source: EventSource.RENDERER })).toBeUndefined();
+    });
+
     it('reflects the latest add()', async () => {
       const hooks = createFormatHooks();
       const context = await ViewContext.init(hooks, EXPIRE_DELAY);

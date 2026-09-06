@@ -2,6 +2,7 @@ import { ONE_SECOND } from '@datadog/js-core/time';
 import { isIndexableObject } from '@datadog/js-core/util';
 import { ONE_KIBI_BYTE, ONE_MEBI_BYTE, DefaultPrivacyLevel } from '@datadog/browser-core';
 import { display } from './tools/display';
+import type { RumEvent } from './domain/rum';
 import { isFiniteNumber, isOneOf, isValidString } from './tools/validation';
 
 const VALID_DATADOG_SITES = [
@@ -43,6 +44,32 @@ export interface TraceSamplingRule {
 
 const DEFAULT_BATCH_SIZE: BatchSize = 'MEDIUM';
 const DEFAULT_UPLOAD_FREQUENCY: UploadFrequency = 'NORMAL';
+
+export type ElectronEventSource = 'main' | 'renderer' | 'utility';
+
+export interface BeforeSendContext {
+  source: ElectronEventSource;
+}
+
+/**
+ * Synchronous function called before a fully assembled RUM event is sent to Datadog.
+ * Keep this callback fast. Only supported field changes are applied; mutations to unsupported fields are ignored.
+ * Editable string fields must remain strings. To clear one, assign an empty string; deleting it or assigning null or
+ * undefined is ignored.
+ * Only an explicit false discards the event; any other return value keeps it. View and crash events cannot be
+ * discarded.
+ *
+ * @example
+ * ```ts
+ * beforeSendRum: (event) => {
+ *   if (event.type === 'error') {
+ *     event.error.message = '[REDACTED]';
+ *   }
+ *   return true;
+ * }
+ * ```
+ */
+export type RumBeforeSend = (event: RumEvent, context: BeforeSendContext) => boolean;
 
 export interface InitConfiguration {
   site: string;
@@ -88,6 +115,22 @@ export interface InitConfiguration {
   uploadFrequency?: UploadFrequency;
   defaultPrivacyLevel?: DefaultPrivacyLevel;
   /**
+   * Synchronously modify supported fields on fully assembled RUM events.
+   *
+   * Supported string fields accept only string replacements. Assigning `null`, `undefined`, or another type is
+   * ignored, preserving the original value. Supported object and array fields can be cleared with `null` or
+   * `undefined`; they are normalized to an empty object or array, respectively.
+   *
+   * Mutations to unsupported fields are ignored. Only an explicit `false` discards an event; view and crash events
+   * cannot be discarded.
+   *
+   * @example
+   * ```ts
+   * beforeSendRum: (event, { source }) => source !== 'main' || event.context?.internal !== true
+   * ```
+   */
+  beforeSendRum?: RumBeforeSend;
+  /**
    * Hostnames allowed to send bridge events to the main process. Supports exact hostnames,
    * subdomain suffixes, single-wildcard globs, `'file://'` for local files, and `'*'` for all.
    * @example ['app.example.com', '*.staging.example.com', 'file://', '*']
@@ -114,6 +157,7 @@ export interface Configuration {
   uploadFrequency: UploadFrequency;
   defaultPrivacyLevel: DefaultPrivacyLevel;
   allowedRendererHosts: string[];
+  beforeSendRum?: RumBeforeSend;
 }
 
 /**
@@ -312,6 +356,17 @@ function validateAllowedRendererHosts(value: unknown): string[] | undefined {
   });
 }
 
+function validateBeforeSendRum(value: unknown): RumBeforeSend | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== 'function') {
+    display.error("Configuration error: 'beforeSendRum' must be a function");
+    return undefined;
+  }
+  return value as RumBeforeSend;
+}
+
 export function buildConfiguration(initConfig: InitConfiguration): Configuration | undefined {
   const service = validateRequiredString(initConfig.service, 'service');
   const clientToken = validateRequiredString(initConfig.clientToken, 'clientToken');
@@ -385,5 +440,6 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
       DefaultPrivacyLevel.MASK
     ),
     allowedRendererHosts,
+    beforeSendRum: validateBeforeSendRum(initConfig.beforeSendRum),
   };
 }

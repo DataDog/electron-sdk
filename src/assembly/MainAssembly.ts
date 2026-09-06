@@ -15,18 +15,21 @@ import {
 import type { FormatHooks } from './hooks';
 import { MainRumEvent } from '../domain/rum';
 import { TelemetryEvent } from '../domain/telemetry';
+import { BeforeSend } from './BeforeSend';
 
 // Raw events assembled through the standard main-process hook pipeline.
 type StandardRawEvent = Exclude<RawEvent, RawProfileEvent | RawReplayEvent>;
 
 /**
  * Transforms main-process RawEvents into ServerEvents by enriching them with
- * contextual attributes (session, application, view, etc.) via format hooks.
+ * contextual attributes (session, application, view, etc.) via format hooks,
+ * then applies beforeSendRum to fully assembled RUM events.
  */
 export class MainAssembly {
   constructor(
     private eventManager: EventManager,
-    private hooks: FormatHooks
+    private hooks: FormatHooks,
+    private beforeSend: BeforeSend
   ) {
     this.eventManager.registerHandler<StandardRawEvent>({
       canHandle: (event): event is StandardRawEvent =>
@@ -51,11 +54,18 @@ export class MainAssembly {
         source,
       });
       if (hookResult !== DISCARDED) {
+        const data = this.beforeSend.apply(
+          assembleData<MainRumEvent>(event.data, hookResult as RecursivePartial<MainRumEvent> | undefined),
+          'main'
+        );
+        if (!data) {
+          return DISCARDED;
+        }
         return {
           kind: EventKind.SERVER,
           track: EventTrack.RUM,
           source: EventSource.MAIN,
-          data: assembleData<MainRumEvent>(event.data, hookResult as RecursivePartial<MainRumEvent> | undefined),
+          data,
         };
       }
     }

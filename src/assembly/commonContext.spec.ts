@@ -29,6 +29,12 @@ function parseDdtags(result: Record<string, unknown>): string[] {
   return ((result.ddtags as string) ?? '').split(',').filter(Boolean);
 }
 
+function triggerTelemetry(config: Configuration, source: EventSource) {
+  const hooks = createFormatHooks();
+  registerCommonContext(config, hooks);
+  return hooks.triggerTelemetry({ startTime: T0, source }) as Record<string, unknown>;
+}
+
 describe('registerCommonContext', () => {
   describe('MAIN RUM events — top-level fields', () => {
     it.each([
@@ -156,6 +162,31 @@ describe('registerCommonContext', () => {
       const result = triggerRendererRum(createTestConfiguration());
 
       expect(result.container).toEqual({ source: 'electron' });
+    });
+  });
+
+  describe('telemetry events', () => {
+    it('describes the Electron SDK on MAIN events', () => {
+      const result = triggerTelemetry(
+        createTestConfiguration({ applicationId: 'app-id', service: 'my-service', env: 'staging' }),
+        EventSource.MAIN
+      );
+
+      expect(result).toEqual({
+        date: expect.any(Number) as unknown,
+        source: 'electron',
+        service: 'electron-sdk',
+        version: __SDK_VERSION__,
+        application: { id: 'app-id' },
+        ddtags: `sdk_version:${__SDK_VERSION__},service:my-service,env:staging`,
+        _dd: { format_version: 2 },
+      });
+    });
+
+    it('contributes only the application on RENDERER events, leaving the browser SDK to describe itself', () => {
+      const result = triggerTelemetry(createTestConfiguration({ applicationId: 'app-id' }), EventSource.RENDERER);
+
+      expect(result).toEqual({ application: { id: 'app-id' } });
     });
   });
 });

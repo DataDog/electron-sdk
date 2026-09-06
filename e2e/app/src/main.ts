@@ -69,6 +69,18 @@ let rendererHttpServer: http.Server | null = null;
 
 const noop = () => undefined;
 
+type BeforeSendRum = NonNullable<InitConfiguration['beforeSendRum']>;
+
+const e2eControls: {
+  beforeSendRum: BeforeSendRum;
+  init?: () => Promise<void>;
+  openWindow?: () => void;
+} = {
+  beforeSendRum: () => true,
+};
+
+(globalThis as Record<string, unknown>).__ddE2E = e2eControls;
+
 function startRendererHttpServer(): Promise<number> {
   return new Promise((resolve) => {
     rendererHttpServer = http.createServer((_req, res) => {
@@ -114,12 +126,10 @@ void app.whenReady().then(async () => {
   let initialized = false;
   if (process.env.DD_E2E_DEFER_INIT === '1') {
     console.log('Deferring SDK init (DD_E2E_DEFER_INIT=1)');
-    (globalThis as Record<string, unknown>).__ddE2E = {
-      init: async () => {
-        initialized = await init(config);
-      },
-      openWindow: () => createWindow(),
+    e2eControls.init = async () => {
+      initialized = await init(config);
     };
+    e2eControls.openWindow = () => createWindow();
   } else {
     console.log('Initializing SDK with config:', config);
     initialized = await init(config);
@@ -146,8 +156,8 @@ void app.whenReady().then(async () => {
     void Promise.reject(new Error('test unhandled rejection'));
   });
 
-  ipcMain.handle('generateManualError', (_event, startTime?: number) => {
-    addError(new Error('test manual error'), { context: { foo: 'bar' }, startTime });
+  ipcMain.handle('generateManualError', (_event, startTime?: number, context?: Record<string, string>) => {
+    addError(new Error('test manual error'), { context: context ?? { foo: 'bar' }, startTime });
   });
 
   ipcMain.handle('addDurationVital', (_event, name: string, options: AddDurationVitalOptions) => {
@@ -363,7 +373,11 @@ function generateTelemetryError(discriminator: number) {
 
 function getConfiguration(): InitConfiguration {
   if (process.env.DD_ELECTRON_SDK_CONFIG) {
-    return JSON.parse(process.env.DD_ELECTRON_SDK_CONFIG) as InitConfiguration;
+    const config = JSON.parse(process.env.DD_ELECTRON_SDK_CONFIG) as InitConfiguration;
+    if (process.env.DD_E2E_BEFORE_SEND_RUM === '1') {
+      config.beforeSendRum = (event, context) => e2eControls.beforeSendRum(event, context);
+    }
+    return config;
   }
   throw new Error('DD_ELECTRON_SDK_CONFIG environment variable is not set');
 }

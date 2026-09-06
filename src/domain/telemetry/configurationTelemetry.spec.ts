@@ -165,6 +165,14 @@ describe('reportConfiguration', () => {
     });
   });
 
+  describe('use_before_send', () => {
+    it('reports whether beforeSendRum is configured', () => {
+      expect(report(createTestConfiguration({ beforeSendRum: () => true })).use_before_send).toBe(true);
+      vi.mocked(addConfiguration).mockClear();
+      expect(report(createTestConfiguration()).use_before_send).toBe(false);
+    });
+  });
+
   describe('number_of_displays', () => {
     it('reports the display count available to the device', () => {
       displayCount = 3;

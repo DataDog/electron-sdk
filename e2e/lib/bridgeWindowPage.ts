@@ -44,6 +44,18 @@ export class BridgeWindowPage {
     );
   }
 
+  /**
+   * Calls a browser SDK API that reports usage telemetry, which reaches the main process as an
+   * `internal_telemetry` bridge event. Unlike the configuration event the browser SDK sends at init,
+   * this one is emitted once its view exists, so it carries the renderer's view id.
+   */
+  async generateTelemetryUsage(): Promise<void> {
+    await this.page.evaluate(() => {
+      (globalThis as unknown as { DD_RUM: { addAction(name: string): void } }).DD_RUM.addAction('renderer-usage');
+    });
+    await this.waitForIpcPropagation();
+  }
+
   async getBridgeCapabilities(): Promise<string[]> {
     return this.page.evaluate(() => {
       const bridge = (

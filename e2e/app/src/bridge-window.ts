@@ -10,6 +10,9 @@ datadogRum.init({
   trackUserInteractions: true,
   profilingSampleRate: 100,
   sessionReplaySampleRate: 100,
+  telemetrySampleRate: 100,
+  telemetryConfigurationSampleRate: 100,
+  telemetryUsageSampleRate: 100,
 });
 
 document.getElementById('status')!.textContent = 'bridge-ready';
