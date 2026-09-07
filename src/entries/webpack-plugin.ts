@@ -15,9 +15,9 @@
  *    relocator-loader, which would otherwise break dd-trace's internal module
  *    resolution (createRequire, dynamic _require.resolve).
  *
- * 4. Copies dd-trace, @datadog/electron-sdk, and their transitive dependencies
- *    into the webpack output's node_modules so they are available at runtime
- *    in packaged apps where the project's node_modules is absent.
+ * 4. Optionally copies dd-trace, @datadog/electron-sdk, and their transitive
+ *    dependencies into the webpack output's node_modules when the application
+ *    packager does not stage them.
  *
  * Usage:
  *   const { DatadogWebpackPlugin } = require('@datadog/electron-sdk/webpack-plugin');
@@ -116,7 +116,7 @@ function copyPackageTree(pkg: string, destModules: string, visited: Set<string>)
  * Configures Datadog instrumentation for webpack.
  *
  * @example
- * plugins: [new DatadogWebpackPlugin({ copyRuntimeDependencies: false })]
+ * plugins: [new DatadogWebpackPlugin()]
  */
 export class DatadogWebpackPlugin {
   constructor(private readonly pluginOptions: DatadogBundlerPluginOptions = {}) {}
@@ -152,7 +152,7 @@ export class DatadogWebpackPlugin {
       }
     }
 
-    if (this.pluginOptions.copyRuntimeDependencies === false) return;
+    if (this.pluginOptions.copyRuntimeDependencies !== true) return;
 
     // Copy externalized packages and their transitive dependencies into the output
     compiler.hooks.afterEmit.tap('DatadogWebpackPlugin', (compilation) => {
