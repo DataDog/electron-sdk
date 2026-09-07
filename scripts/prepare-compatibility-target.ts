@@ -47,7 +47,7 @@ runMain(async () => {
   const apps = [
     { source: 'e2e/app', destination: 'e2e-app', variant: 'default', sdk: 'file:../compatibility-sdk.tgz' },
     ...integrationApps.flatMap((app) =>
-      ['default', 'packager-copy'].map((variant) => ({
+      ['default', 'plugin-copy'].map((variant) => ({
         source: `e2e/integration/apps/${app}`,
         destination: `integration-apps/${app}/${variant}`,
         variant,
@@ -60,7 +60,7 @@ runMain(async () => {
     const destination = path.join(generated, app.destination);
     await materializeApp(path.join(root, app.source), destination, target, app.sdk);
     const environment = {
-      DD_ELECTRON_COPY_RUNTIME_DEPENDENCIES: String(app.variant !== 'packager-copy'),
+      DD_ELECTRON_COPY_RUNTIME_DEPENDENCIES: String(app.variant === 'plugin-copy'),
     };
     command`yarn install --no-immutable`
       .withCurrentWorkingDirectory(destination)
