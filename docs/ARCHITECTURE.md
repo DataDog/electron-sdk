@@ -12,7 +12,7 @@ graph TB
         end
 
         subgraph Main Process
-            DDT[dd-trace]
+            DDT[dd-trace-electron]
             SDK[Electron SDK]
         end
     end
@@ -22,7 +22,7 @@ graph TB
     %% Browser SDK → Electron SDK via bridge
     BP -->|"RUM events<br/>(IPC bridge)"| SDK
 
-    %% dd-trace → Electron SDK via diagnostic channel
+    %% dd-trace-electron → Electron SDK via diagnostic channel
     DDT -->|"HTTP spans<br/>IPC spans<br/>(diagnostics_channel)"| SDK
 
     %% Electron SDK internal sources
@@ -45,7 +45,10 @@ graph TB
 
 ### Main Process
 
-The Electron SDK captures RUM sessions, collects RUM events, and forwards them to Datadog, enriching Browser SDK events and dd-trace spans with RUM and Electron context. The SDK owns Electron API instrumentation; dd-trace provides the span runtime and publishes finished spans to the SDK via `diagnostics_channel`.
+The Electron SDK captures RUM sessions, collects RUM events, and forwards them to Datadog,
+enriching Browser SDK events and dd-trace-electron spans with RUM and Electron context. The SDK owns
+Electron API instrumentation; dd-trace-electron provides the span runtime and publishes finished
+spans to the SDK via `diagnostics_channel`.
 
 More details in the [How tracing works](#how-tracing-works) section.
 
@@ -222,7 +225,7 @@ The SDK instruments the Electron main process to collect spans for outgoing HTTP
 
 ### Responsibilities
 
-Instrumentation is split between the SDK and dd-trace:
+Instrumentation is split between the SDK and dd-trace-electron:
 
 **Electron SDK** owns the patching layer, patching Electron's native APIs directly:
 
@@ -230,16 +233,21 @@ Instrumentation is split between the SDK and dd-trace:
 - `patchIpcMain` + `patchWebContents` (`src/instrument/ipc.ts`): wraps `ipcMain` handlers and `webContents.send/sendToFrame` to create IPC spans.
 - `patchNet` (`src/instrument/net.ts`): wraps `net.fetch` and `net.request` to create HTTP spans.
 
-**dd-trace** provides the span runtime and export pipeline:
+**dd-trace-electron** provides the span runtime and export pipeline:
 
 - Span creation API (`ddTrace.startSpan()`, `ddTrace.inject()`, `ddTrace.extract()`): used by the SDK's patches to create and propagate spans.
 - The `electron` exporter: collects finished spans and publishes them to a Node.js diagnostics channel (`datadog:apm:electron:export`).
 
-dd-trace's own `electron` instrumentation plugin is explicitly disabled by setting `DD_TRACE_DISABLED_INSTRUMENTATIONS=electron` in `instrument-prelude.ts`, preventing it from double-wrapping `net` and `ipcMain` alongside the SDK's patches. This will be removed once the `electron` plugin is dropped from dd-trace.
+dd-trace-electron's own `electron` instrumentation plugin is explicitly disabled by setting
+`DD_TRACE_DISABLED_INSTRUMENTATIONS=electron` in `instrument-prelude.ts`, preventing it from
+double-wrapping `net` and `ipcMain` alongside the SDK's patches. This will be removed once the
+`electron` plugin is dropped from dd-trace-electron.
 
 ### IPC span coverage
 
-IPC tracing covers the **main process**: `ipcMain` consumers and `webContents.send`/`sendToFrame` producers. Renderer-side `ipcRenderer` tracing is out of scope for now and will be added later as dd-trace’s renderer IPC instrumentation was already non-functional in practice.
+IPC tracing covers the **main process**: `ipcMain` consumers and `webContents.send`/`sendToFrame`
+producers. Renderer-side `ipcRenderer` tracing is out of scope for now and will be added later as
+dd-trace-electron's renderer IPC instrumentation was already non-functional in practice.
 
 ### Instrumentation entry point (`@datadog/electron-sdk/instrument`)
 
@@ -255,8 +263,8 @@ On load it:
 1. Loads the tracing runtime before Electron.
 2. Calls `patchBrowserWindow`, `patchIpcMain`, `patchWebContents`, and `patchNet`.
 
-The regular SDK `init()` then initializes dd-trace with the `electron` exporter and the resolved tracing
-configuration.
+The regular SDK `init()` then initializes dd-trace-electron with the `electron` exporter and the
+resolved tracing configuration.
 
 Bundlers may reorder module evaluation and break this requirement; use the bundler plugins (see [Bundler plugins](#bundler-plugins)).
 
@@ -267,7 +275,7 @@ Instrumented code (net.fetch, net.request, ipcMain.handle, webContents.send)
     ↓
 SDK patches call ddTrace.startSpan() / inject() / extract()
     ↓
-dd-trace electron exporter → diagnostics channel 'datadog:apm:electron:export'
+dd-trace-electron exporter → diagnostics channel 'datadog:apm:electron:export'
     ↓
 SpanProcessor (filters SDK-internal requests, enriches with electron context)
     ↓
@@ -279,10 +287,10 @@ All spans are enriched with `_dd.application.id`, `_dd.session.id`, and `_dd.vie
 
 ### Trace sampling rules
 
-`traceSamplingRules` are applied by dd-trace when a root trace is sampled. Rules are ordered, the first match wins,
-and child spans inherit the root decision. If no rule matches, the trace is kept. Rejected traces are not sent to the
-spans intake or propagated through Electron HTTP requests. Their HTTP spans still produce RUM resources without
-trace or span identifiers.
+`traceSamplingRules` are applied by dd-trace-electron when a root trace is sampled. Rules are
+ordered, the first match wins, and child spans inherit the root decision. If no rule matches, the
+trace is kept. Rejected traces are not sent to the spans intake or propagated through Electron HTTP
+requests. Their HTTP spans still produce RUM resources without trace or span identifiers.
 
 ### Preload injection
 
@@ -307,48 +315,61 @@ Advertised capabilities tell the Browser SDK which bridge features it may use, b
 
 The instrumentation entry point must run before `require('electron')`. Bundlers can break this ordering requirement in different ways:
 
-- **Vite** (`datadogVitePlugin` from `@datadog/electron-sdk/vite-plugin`): hoists all `require()` calls to the top of the bundle, breaking import order. The plugin externalizes dd-trace and the SDK, prepends the instrumentation banner before hoisted requires, and by default copies their runtime dependencies into the build output (set `copyRuntimeDependencies: false` to delegate copying to the packager instead).
-- **Webpack** (`DatadogWebpackPlugin` from `@datadog/electron-sdk/webpack-plugin`): preserves module execution order (lazy evaluation via `__webpack_require__`), so import order is maintained. The plugin externalizes dd-trace and the SDK, prepends the instrumentation banner, excludes them from `@vercel/webpack-asset-relocator-loader`, and by default copies their runtime dependencies into the build output (set `copyRuntimeDependencies: false` to delegate copying to the packager instead).
-- **esbuild** (`datadogEsbuildPlugin` from `@datadog/electron-sdk/esbuild-plugin`): also preserves module execution order. The plugin externalizes dd-trace and the SDK, prepends the instrumentation banner, and by default copies their runtime dependencies via an `onEnd` hook (set `copyRuntimeDependencies: false` to delegate copying to the packager instead). In ESM output the banner loads `instrument` via `createRequire`, since ES modules have no global `require`.
+- **Vite** (`datadogVitePlugin` from `@datadog/electron-sdk/vite-plugin`): hoists all `require()` calls to the top of the bundle, breaking import order. The plugin externalizes dd-trace-electron and the SDK, prepends the instrumentation banner before hoisted requires, and by default copies their runtime dependencies into the build output (set `copyRuntimeDependencies: false` to delegate copying to the packager instead).
+- **Webpack** (`DatadogWebpackPlugin` from `@datadog/electron-sdk/webpack-plugin`): preserves module execution order (lazy evaluation via `__webpack_require__`), so import order is maintained. The plugin externalizes dd-trace-electron and the SDK, prepends the instrumentation banner, excludes them from `@vercel/webpack-asset-relocator-loader`, and by default copies their runtime dependencies into the build output (set `copyRuntimeDependencies: false` to delegate copying to the packager instead).
+- **esbuild** (`datadogEsbuildPlugin` from `@datadog/electron-sdk/esbuild-plugin`): also preserves module execution order. The plugin externalizes dd-trace-electron and the SDK, prepends the instrumentation banner, and by default copies their runtime dependencies via an `onEnd` hook (set `copyRuntimeDependencies: false` to delegate copying to the packager instead). In ESM output the banner loads `instrument` via `createRequire`, since ES modules have no global `require`.
 
 See `src/entries/instrument.ts`, `src/entries/vite-plugin.ts`, `src/entries/webpack-plugin.ts`, and `src/entries/esbuild-plugin.ts`.
 
-### dd-trace as a bundled dependency
+### dd-trace-electron as a bundled dependency
 
-dd-trace is declared as a **direct runtime dependency** in `package.json`, not as an optional or peer dependency. When customers install `@datadog/electron-sdk`, they get dd-trace automatically.
+The SDK depends on [`dd-trace-electron`](https://www.npmjs.com/package/dd-trace-electron), an
+internal-use build published from the dd-trace-js repository specifically for the Electron SDK. It
+is declared as a **direct runtime dependency** in `package.json`, not as an optional or peer
+dependency, so customers get dd-trace-electron automatically.
+
+Unlike the public `dd-trace` package, dd-trace-electron does not include OpenFeature, ASM, IAST, or
+profiling native modules. It retains the runtime dependencies used by its tracing and module-loading
+paths, plus optional OpenTelemetry API packages.
 
 #### Why bundle it
 
-The SDK is tightly coupled to a specific dd-trace build:
+The SDK is tightly coupled to a specific dd-trace-electron build:
 
-- The SDK initializes dd-trace with the `electron` exporter, a custom exporter built specifically for the Electron SDK.
-- The `SpanProcessor` subscribes to a specific diagnostics channel (`datadog:apm:electron:export`) that dd-trace publishes to.
+- The SDK initializes dd-trace-electron with the `electron` exporter, a custom exporter built specifically for the Electron SDK.
+- The `SpanProcessor` subscribes to a specific diagnostics channel (`datadog:apm:electron:export`) that dd-trace-electron publishes to.
 
-Making it a direct dependency ensures a single, tested version is always present. The alternatives were considered:
+Making it a direct dependency ensures a single, tested version is always present. The distinct
+package name also prevents it from being deduplicated with a customer's direct `dd-trace`
+dependency, keeping the SDK-owned tracer isolated. The alternatives were considered:
 
-| Approach                                             | Pros                                                                                | Cons                                                                                                                                                                     |
-| ---------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Direct dependency** (current)                      | Guaranteed compatible version; no setup burden on customers; deterministic behavior | Larger install footprint; version locked to SDK releases                                                                                                                 |
-| **Peer dependency**                                  | Customer controls version; smaller SDK package                                      | Version mismatch risk; customer must install separately; hard to guarantee the custom `electron` exporter exists in their version                                        |
-| **Optional dependency**                              | —                                                                                   | SDK does not work without dd-trace; same mismatch risk as peer; confusing DX                                                                                             |
-| **Vendored / embedded in SDK bundle** (POC approach) | Single file, no transitive deps                                                     | Fragile: dd-trace uses dynamic requires, native module loading, and runtime path resolution that break when bundled into a single file; would need constant re-vendoring |
+| Approach                                             | Pros                                                                                | Cons                                                                                                                                                      |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Direct dependency** (current)                      | Guaranteed compatible version; no setup burden on customers; deterministic behavior | Larger install footprint; version locked to SDK releases                                                                                                  |
+| **Peer dependency**                                  | Customer controls version; smaller SDK package                                      | Version mismatch risk; customer must install separately; hard to guarantee the custom `electron` exporter exists in their version                         |
+| **Optional dependency**                              | —                                                                                   | SDK does not work without dd-trace-electron; same mismatch risk as peer; confusing DX                                                                     |
+| **Vendored / embedded in SDK bundle** (POC approach) | Single file, no transitive deps                                                     | Fragile: dd-trace-electron uses dynamic requires and runtime path resolution that break when bundled into a single file; would need constant re-vendoring |
 
-#### Optional dependencies are stripped
+#### Runtime dependency staging
 
-dd-trace declares optional dependencies (OpenTelemetry bindings, OpenFeature, ASM, IAST, etc.) that are irrelevant for Electron:
-These optional dependencies may or may not install in the customer's `node_modules` depending on platform and package manager behavior. By default, the **bundler plugins only copy `dependencies`, not `optionalDependencies`**, when populating the build output's `node_modules`. This excludes them when plugins own dependency staging; applications using `copyRuntimeDependencies: false` depend on their packager's behavior.
+The bundler plugins externalize dd-trace-electron and copy its package tree into the build output.
+By default, their `copyPackageTree` helper walks only the `dependencies` field and skips
+`optionalDependencies`. Applications using `copyRuntimeDependencies: false` instead depend on their
+packager's staging behavior.
 
 #### Dependency size
 
 | What                                                                     | Size      | Notes                                           |
 | ------------------------------------------------------------------------ | --------- | ----------------------------------------------- |
-| dd-trace (stripped, no optional deps)                                    | ~7 MB     | The core dd-trace package                       |
-| Runtime transitive deps (dc-polyfill, import-in-the-middle, acorn, etc.) | ~1 MB     | Required by dd-trace at runtime                 |
+| dd-trace-electron                                                        | ~7 MB     | The core dd-trace-electron package              |
+| Runtime transitive deps (dc-polyfill, import-in-the-middle, acorn, etc.) | ~1 MB     | Required by dd-trace-electron at runtime        |
 | **Total copied to packaged app**                                         | **~8 MB** | What bundler plugins copy via `copyPackageTree` |
 | electron-sdk own dist                                                    | ~4 MB     | SDK code + WASM chunks                          |
-| dd-trace optional deps (not copied by plugins)                           | Unknown   | Inclusion depends on managed packager behavior  |
 
-The `copyPackageTree` function in all three bundler plugins walks only the `dependencies` field of each package's `package.json`, so default plugin staging excludes ~84 MB of optional native modules. Applications whose packager stages external dependencies can disable this copy with `copyRuntimeDependencies: false`.
+The public `dd-trace` package's OpenFeature, ASM, IAST, and profiling dependencies are absent from
+dd-trace-electron. Skipping optional dependencies remains useful defense-in-depth for plugin-managed
+staging, while applications whose packager stages external dependencies can disable this copy with
+`copyRuntimeDependencies: false`.
 
 ## Two-Tier Configuration
 

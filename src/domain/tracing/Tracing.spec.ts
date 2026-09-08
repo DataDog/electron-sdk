@@ -13,15 +13,15 @@ function createTracerRequire() {
     },
   };
   const requireFn = ((id: string) => {
-    if (id === 'dd-trace') return { default: tracer };
-    if (id === 'dd-trace/package.json') return { version: '6.10.0' };
+    if (id === 'dd-trace-electron') return { default: tracer };
+    if (id === 'dd-trace-electron/package.json') return { version: '6.11.0' };
     throw new Error(`Unexpected module: ${id}`);
   }) as NodeRequire;
   return { init, flush, requireFn };
 }
 
 describe('Tracing', () => {
-  it('initializes dd-trace with normalized matching rules', () => {
+  it('initializes dd-trace-electron with normalized matching rules', () => {
     const { init, requireFn } = createTracerRequire();
 
     const tracing = new Tracing(
@@ -46,10 +46,10 @@ describe('Tracing', () => {
     });
     expect(tracing.enabled).toBe(true);
     expect(tracing.telemetryInitialized).toBe(true);
-    expect(tracing.version).toBe('6.10.0');
+    expect(tracing.version).toBe('6.11.0');
   });
 
-  it('preserves dd-trace sampling configuration when no Electron rules are configured', () => {
+  it('preserves dd-trace-electron sampling configuration when no rules are configured', () => {
     const { init, requireFn } = createTracerRequire();
 
     new Tracing(createTestConfiguration({ traceSamplingRules: [] }), requireFn);
@@ -57,7 +57,7 @@ describe('Tracing', () => {
     expect(init).toHaveBeenCalledWith({ experimental: { exporter: 'electron' } });
   });
 
-  it('flushes the dd-trace exporter', async () => {
+  it('flushes the dd-trace-electron exporter', async () => {
     const { flush, requireFn } = createTracerRequire();
     const tracing = new Tracing(createTestConfiguration(), requireFn);
 

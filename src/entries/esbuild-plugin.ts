@@ -71,9 +71,9 @@ export function datadogEsbuildPlugin(pluginOptions: DatadogBundlerPluginOptions 
         js: existingBanner ? `${existingBanner}\n${ddBanner}` : ddBanner,
       };
 
-      // Externalize dd-trace and @datadog/electron-sdk
+      // Externalize dd-trace-electron and @datadog/electron-sdk
       const external = build.initialOptions.external ?? [];
-      for (const pkg of ['dd-trace', '@datadog/electron-sdk']) {
+      for (const pkg of ['dd-trace-electron', '@datadog/electron-sdk']) {
         if (!external.includes(pkg)) {
           external.push(pkg);
         }
@@ -122,7 +122,7 @@ export function datadogEsbuildPlugin(pluginOptions: DatadogBundlerPluginOptions 
           }
         }
 
-        copyPackageTree('dd-trace');
+        copyPackageTree('dd-trace-electron');
         copyPackageTree('@datadog/electron-sdk');
       });
     },
