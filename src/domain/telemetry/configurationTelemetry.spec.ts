@@ -62,6 +62,10 @@ describe('reportConfiguration', () => {
     });
   });
 
+  it('does not report a trace sample rate when it is not configured through Electron', () => {
+    expect(report(createTestConfiguration()).trace_sample_rate).toBeUndefined();
+  });
+
   it('reports the privacy level applied to renderers', () => {
     const configuration = createTestConfiguration({ defaultPrivacyLevel: 'mask-user-input' });
 

@@ -50,7 +50,7 @@ export class Tracing {
         experimental: { exporter: 'electron' as 'datadog' },
         ...(config.env !== undefined ? { env: config.env } : {}),
         ...(config.traceSampleRateConfigured ? { sampleRate: config.traceSampleRate / 100 } : {}),
-        rateLimit: -1,
+        ...(config.traceSampleRateConfigured || config.traceSamplingRules.length > 0 ? { rateLimit: -1 } : {}),
         ...(config.traceSamplingRules.length > 0
           ? {
               samplingRules: toDdTraceSamplingRules(config.traceSamplingRules),

@@ -157,6 +157,14 @@ describe('registerCommonContext', () => {
 
       expect(result._dd).toMatchObject({ format_version: 2 });
     });
+
+    it('does not report a trace sample rate when it is not configured through Electron', () => {
+      const result = triggerMainRum(createTestConfiguration());
+
+      expect(
+        (result._dd as { configuration: Record<string, unknown> }).configuration.trace_sample_rate
+      ).toBeUndefined();
+    });
   });
 
   describe('RENDERER RUM events', () => {

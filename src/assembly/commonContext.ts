@@ -34,7 +34,10 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
           ddtags: buildDdtags(configuration),
           _dd: {
             format_version: 2,
-            configuration: { ...sharedSamplingConfiguration, trace_sample_rate: configuration.traceSampleRate },
+            configuration: {
+              ...sharedSamplingConfiguration,
+              ...(configuration.traceSampleRateConfigured ? { trace_sample_rate: configuration.traceSampleRate } : {}),
+            },
           },
         };
     }

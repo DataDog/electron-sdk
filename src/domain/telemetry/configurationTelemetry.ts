@@ -20,6 +20,8 @@ export interface ConfigurationTelemetryContext {
  * behaviour, and telemetry should describe what the SDK does. Sample rates nested under another rate
  * are the exception — they are reported as configured, matching the other SDKs, so
  * `session_replay_sample_rate` is the rate applied to sampled sessions rather than the combined one.
+ * The trace sample rate is omitted when Electron does not configure it because dd-trace may resolve it
+ * from another source.
  * Options with no schema field are omitted rather than forced into an unrelated one — see
  * {@link buildConfigurationTelemetry}.
  */
@@ -33,7 +35,7 @@ function buildConfigurationTelemetry(
 ): RawTelemetryConfigurationData {
   return {
     session_sample_rate: configuration.sessionSampleRate,
-    trace_sample_rate: configuration.traceSampleRate,
+    trace_sample_rate: configuration.traceSampleRateConfigured ? configuration.traceSampleRate : undefined,
     session_replay_sample_rate: configuration.sessionReplaySampleRate,
     telemetry_sample_rate: configuration.telemetrySampleRate,
     telemetry_configuration_sample_rate: configuration.telemetryConfigurationSampleRate,
