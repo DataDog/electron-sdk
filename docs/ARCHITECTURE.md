@@ -280,9 +280,10 @@ All spans are enriched with `_dd.application.id`, `_dd.session.id`, and `_dd.vie
 ### Trace sampling rules
 
 `traceSamplingRules` and `traceSampleRate` are applied by dd-trace when a root trace is sampled. Rules are ordered,
-the first match wins, and `traceSampleRate` is the fallback when no rule matches. Child spans inherit the root
-decision. Rejected traces are not sent to the spans intake or propagated through Electron HTTP requests. Their HTTP
-spans still produce RUM resources without trace or span identifiers.
+the first match wins, and `traceSampleRate` is the fallback when no rule matches. Within a sampled RUM session, each
+root trace is sampled independently, so the session can contain both kept and rejected traces. Child spans inherit the
+root decision. Rejected traces are not sent to the spans intake or propagated through Electron HTTP requests. Their
+HTTP spans still produce RUM resources without trace or span identifiers.
 
 ### Preload injection
 

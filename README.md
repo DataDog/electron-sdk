@@ -479,8 +479,9 @@ interface FeatureOperationOptions {
 #### `traceSamplingRules`
 
 Rules are evaluated in order when a root trace starts. The first matching rule determines the percentage of traces
-to keep; unmatched traces use `traceSampleRate`. Patterns are case-insensitive globs, child spans inherit the root
-decision, and a rejected HTTP trace still produces an unlinked RUM Resource.
+to keep; unmatched traces use `traceSampleRate`. Within a sampled RUM session, each root trace is sampled independently,
+so the session can contain both kept and rejected traces. Patterns are case-insensitive globs, child spans inherit the
+root decision, and a rejected HTTP trace still produces an unlinked RUM Resource.
 
 | Key          | Required | Purpose                                                                   |
 | ------------ | -------- | ------------------------------------------------------------------------- |

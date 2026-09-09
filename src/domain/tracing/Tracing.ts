@@ -49,8 +49,10 @@ export class Tracing {
       tracer.init({
         experimental: { exporter: 'electron' as 'datadog' },
         ...(config.env !== undefined ? { env: config.env } : {}),
-        ...(config.traceSampleRateConfigured ? { sampleRate: config.traceSampleRate / 100 } : {}),
-        ...(config.traceSampleRateConfigured || config.traceSamplingRules.length > 0 ? { rateLimit: -1 } : {}),
+        sampleRate: config.traceSampleRate / 100,
+        // dd-trace otherwise applies an additional 100-traces-per-second cap to explicit sampling.
+        // Disable it so Electron's configured percentage is the only sampling decision.
+        rateLimit: -1,
         ...(config.traceSamplingRules.length > 0
           ? {
               samplingRules: toDdTraceSamplingRules(config.traceSamplingRules),

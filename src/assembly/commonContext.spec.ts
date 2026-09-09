@@ -158,12 +158,10 @@ describe('registerCommonContext', () => {
       expect(result._dd).toMatchObject({ format_version: 2 });
     });
 
-    it('does not report a trace sample rate when it is not configured through Electron', () => {
+    it('reports the default trace sample rate on MAIN events', () => {
       const result = triggerMainRum(createTestConfiguration());
 
-      expect(
-        (result._dd as { configuration: Record<string, unknown> }).configuration.trace_sample_rate
-      ).toBeUndefined();
+      expect((result._dd as { configuration: Record<string, unknown> }).configuration.trace_sample_rate).toBe(100);
     });
   });
 

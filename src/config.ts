@@ -82,7 +82,7 @@ export interface InitConfiguration {
   sessionSampleRate?: number;
   /**
    * Percentage of main-process traces to keep when no {@link InitConfiguration.traceSamplingRules}
-   * rule matches.
+   * rule matches. Applied independently to each root trace within a sampled RUM session.
    * @example 20
    */
   traceSampleRate?: number;
@@ -155,7 +155,6 @@ export interface Configuration {
   proxy?: string;
   sessionSampleRate: number;
   traceSampleRate: number;
-  traceSampleRateConfigured: boolean;
   traceSamplingRules: TraceSamplingRule[];
   sessionReplaySampleRate: number;
   profilingSampleRate: number;
@@ -432,7 +431,6 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     proxy,
     sessionSampleRate,
     traceSampleRate,
-    traceSampleRateConfigured: initConfig.traceSampleRate !== undefined && initConfig.traceSampleRate !== null,
     traceSamplingRules,
     sessionReplaySampleRate,
     profilingSampleRate,

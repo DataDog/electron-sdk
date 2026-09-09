@@ -63,7 +63,7 @@ describe('Tracing', () => {
     });
   });
 
-  it('uses sampling rules without an explicitly configured fallback sample rate', () => {
+  it('uses the default sample rate with sampling rules', () => {
     const { init, requireFn } = createTracerRequire();
 
     new Tracing(
@@ -76,17 +76,20 @@ describe('Tracing', () => {
     expect(init).toHaveBeenCalledWith({
       experimental: { exporter: 'electron' },
       rateLimit: -1,
+      sampleRate: 1,
       samplingRules: [{ name: 'electron.main.*', sampleRate: 0.5 }],
     });
   });
 
-  it('preserves dd-trace sampling configuration when the trace sample rate is not configured', () => {
+  it('uses the default trace sample rate when none is configured', () => {
     const { init, requireFn } = createTracerRequire();
 
     new Tracing(createTestConfiguration(), requireFn);
 
     expect(init).toHaveBeenCalledWith({
       experimental: { exporter: 'electron' },
+      rateLimit: -1,
+      sampleRate: 1,
     });
   });
 

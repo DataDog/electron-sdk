@@ -36,7 +36,7 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
             format_version: 2,
             configuration: {
               ...sharedSamplingConfiguration,
-              ...(configuration.traceSampleRateConfigured ? { trace_sample_rate: configuration.traceSampleRate } : {}),
+              trace_sample_rate: configuration.traceSampleRate,
             },
           },
         };

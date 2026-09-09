@@ -71,14 +71,13 @@ export function mockFs() {
   return mocks;
 }
 export function createTestConfiguration(overrides: Partial<Configuration> = {}): Configuration {
-  const configuration: Configuration = {
+  return {
     site: 'datadoghq.com',
     service: 'test-service',
     clientToken: 'test-token',
     applicationId: 'test-app-id',
     sessionSampleRate: 100,
     traceSampleRate: 100,
-    traceSampleRateConfigured: false,
     traceSamplingRules: [],
     sessionReplaySampleRate: 100,
     profilingSampleRate: 100,
@@ -91,10 +90,6 @@ export function createTestConfiguration(overrides: Partial<Configuration> = {}):
     allowedRendererHosts: ['*', ''],
     ...overrides,
   };
-  if (overrides.traceSampleRate !== undefined && overrides.traceSampleRateConfigured === undefined) {
-    configuration.traceSampleRateConfigured = true;
-  }
-  return configuration;
 }
 export function createRawRumView(overrides?: RecursivePartial<RawRumView>): RawRumView {
   return mergeInto(
