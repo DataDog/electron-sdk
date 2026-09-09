@@ -192,6 +192,27 @@ test.describe('trace sample rate fallback', () => {
   });
 });
 
+test.describe('RUM session sampling', () => {
+  test.use({ sdkConfigOverrides: { sessionSampleRate: 0, traceSampleRate: 100 } });
+
+  test('does not propagate trace context for an unsampled session', async ({ intake, mainPage, testServer }) => {
+    const url = testServer.urlFor(204);
+
+    await mainPage.mainNetRequest(url);
+    await mainPage.flushTransport();
+
+    expect(testServer.headersFor(204)['x-datadog-trace-id']).toBeUndefined();
+    expect(testServer.headersFor(204).traceparent).toBeUndefined();
+    expect(
+      intake.getSpans(
+        (span) =>
+          (span.name === 'electron.main.handle' && span.resource === 'mainNetRequest') ||
+          (span.name === 'http.request' && span.meta['http.url'] === url)
+      )
+    ).toHaveLength(0);
+  });
+});
+
 const traceSamplingRuleCases: { description: string; rule: TraceSamplingRule }[] = [
   { description: 'name', rule: { name: 'electron.main.handle', sampleRate: 0 } },
   { description: 'resource', rule: { resource: 'mainNetRequest', sampleRate: 0 } },

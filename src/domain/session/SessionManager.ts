@@ -8,6 +8,7 @@ import { setTimeout } from '../telemetry';
 import { SessionContext } from './SessionContext';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
 import { isSessionSampled } from '../../tools/Sampler';
+import { setCurrentSessionSampled } from '../../common';
 
 export const SESSION_EXPIRATION_DELAY = 15 * ONE_MINUTE;
 
@@ -66,6 +67,7 @@ export class SessionManager {
 
   stop(): void {
     this.clearTimers();
+    setCurrentSessionSampled(false);
     if (this.activitySubscription) {
       this.activitySubscription.unsubscribe();
       this.activitySubscription = undefined;
@@ -92,6 +94,7 @@ export class SessionManager {
     const isSampled = isSessionSampled(id, this.configuration.sessionSampleRate);
 
     this.currentSession = { id, status: 'active' };
+    setCurrentSessionSampled(isSampled);
     if (isSampled) {
       this.sessionContext.add(id);
     }
@@ -107,6 +110,7 @@ export class SessionManager {
 
     this.clearTimers();
     this.currentSession.status = 'expired';
+    setCurrentSessionSampled(false);
     this.sessionContext.close();
     this.eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
   }
