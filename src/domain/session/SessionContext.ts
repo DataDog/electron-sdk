@@ -30,8 +30,7 @@ export class SessionContext {
       const sessionId = this.history.find(params.startTime);
       // A log without a session is worth sending for a reason of its own: it reports on the customer's
       // app, not on the SDK, and Logs is a product a customer pays for whether or not RUM sampled the
-      // session. Both mobile SDKs draw the same line — Android attaches the RUM ids only
-      // `if (rumContext != null)`, iOS only `if let rum = ...`.
+      // session.
       //
       // The id is nulled rather than left alone when there is none, as in the telemetry hook above: a
       // renderer log arrives carrying the session id the browser SDK generates for itself in bridge mode,

@@ -129,7 +129,7 @@ await init({
 
 `logsSampleRate` defaults to `100` and is applied independently to each bridged log. It is separate
 from RUM `sessionSampleRate`. The Browser Logs SDK does not apply its own `sessionSampleRate` in bridge
-mode, so the Electron setting is authoritative, matching the Android and iOS WebView integrations.
+mode, so the Electron setting is authoritative.
 
 #### Bundler plugins
 

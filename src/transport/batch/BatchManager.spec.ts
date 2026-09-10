@@ -86,7 +86,7 @@ describe('BatchManager', () => {
       await BatchManager.create(config, createBatchConfig({ trackType: EventTrack.LOGS }));
 
       expect(mockProducerCreate).toHaveBeenCalledWith({
-        trackPath: '/mock/path/logs',
+        trackPath: '/mock/path/dd_logs',
         batchSize: BatchSizes.MEDIUM,
         maxEventsPerBatch: 1_000,
       });

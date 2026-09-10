@@ -82,7 +82,7 @@ export interface InitConfiguration {
   sessionSampleRate?: number;
   /**
    * Percentage of logs received from renderer processes to forward (0–100), defaults to `100`.
-   * Applied independently to each bridged log, matching the Android and iOS WebView integrations.
+   * Applied independently to each bridged log.
    * In bridge mode this is the authoritative log sampling option; the Browser Logs SDK does not
    * apply its `sessionSampleRate` before forwarding events to the host SDK.
    * @example logsSampleRate: 25

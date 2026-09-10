@@ -18,7 +18,7 @@ datadogRum.init({
 
 // The Logs SDK detects the same bridge the RUM SDK does, so every log it collects is routed over
 // IPC instead of to intake. Its sessionSampleRate is not applied in bridge mode; the Electron SDK's
-// logsSampleRate is authoritative, matching the Android and iOS WebView integrations.
+// logsSampleRate is authoritative.
 datadogLogs.init({
   clientToken: 'pub-renderer-token',
   site: 'datadoghq.com',

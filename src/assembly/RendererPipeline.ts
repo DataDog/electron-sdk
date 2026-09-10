@@ -232,8 +232,8 @@ export class RendererPipeline {
    * to intake entirely and this is the only path left.
    *
    * Browser Logs uses an always-tracked session stub in bridge mode, so its `sessionSampleRate` does
-   * not gate these events. Like the Android and iOS WebView integrations, Electron applies its own
-   * per-log `logsSampleRate` after receiving a valid payload and before enriching or uploading it.
+   * not gate these events. Electron applies its own per-log `logsSampleRate` after receiving a valid
+   * payload and before enriching or uploading it.
    */
   private handleLogEvent(eventData: unknown): void {
     // A bridge/SDK version mismatch, or a renderer sending on the channel itself, could put anything
@@ -305,9 +305,6 @@ interface CustomerContextCarrier {
  * The renderer's own user/account context takes precedence. An anonymous-only renderer user
  * is the exception: preserve its anonymous_id while enriching it with the main-process user.
  * session/application/container always come from the main process.
- *
- * Shared by RUM events and logs so both report the same user for the same renderer — the mobile SDKs
- * are narrower here, merging only the native `anonymous_id` into a webview log.
  */
 function resolveCustomerContextOverrides<E extends CustomerContextCarrier>(
   data: E,

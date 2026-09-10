@@ -151,7 +151,9 @@ export class BatchManager {
     const { clientToken } = config;
     const { path: configPath, trackType, batchSize } = batchConfig;
 
-    const trackPath = path.join(configPath, trackType);
+    // TODO(RUM-18471): revisit track path naming for rum/spans/other tracks too; logs is fine to rename now,
+    // but existing tracks already have established on-disk paths, making them harder to change later.
+    const trackPath = path.join(configPath, trackType === EventTrack.LOGS ? 'dd_logs' : trackType);
     const intakeUrl = computeIntakeUrlForTrack(config.site, trackType, { proxy: config.proxy });
 
     const consumerConfig: BatchConsumerConfig = { trackPath, intakeUrl, clientToken };
