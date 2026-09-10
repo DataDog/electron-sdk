@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module';
 import type { SamplingRule } from 'dd-trace';
+import { isCurrentSessionSampled } from '../../common';
 import { addError } from '../telemetry';
 import type { Configuration, TraceSamplingRule } from '../../config';
 
@@ -59,6 +60,15 @@ export class Tracing {
               samplingRules: toDdTraceSamplingRules(config.traceSamplingRules),
             }
           : {}),
+      });
+
+      // dd-trace owns global fetch and node:http instrumentation. Prevent those integrations from
+      // propagating trace context for rejected RUM sessions while keeping their local HTTP spans,
+      // which SpanProcessor uses to produce RUM resources.
+      const blockPropagationForUnsampledSession = () => !isCurrentSessionSampled();
+      tracer.use('fetch', { propagationBlocklist: blockPropagationForUnsampledSession });
+      tracer.use('http', {
+        client: { propagationBlocklist: blockPropagationForUnsampledSession },
       });
 
       // Service/env/version are set per-span by SpanProcessor.

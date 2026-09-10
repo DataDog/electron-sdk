@@ -1,12 +1,15 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { setCurrentSessionSampled } from '../../common';
 import { createTestConfiguration } from '../../mocks.specUtil';
 import { Tracing } from './Tracing';
 
 function createTracerRequire() {
   const init = vi.fn();
+  const use = vi.fn();
   const flush = vi.fn((done: () => void) => done());
   const tracer = {
     init,
+    use,
     _tracingInitialized: true,
     _tracer: {
       _exporter: { flush },
@@ -17,10 +20,12 @@ function createTracerRequire() {
     if (id === 'dd-trace/package.json') return { version: '6.10.0' };
     throw new Error(`Unexpected module: ${id}`);
   }) as NodeRequire;
-  return { init, flush, requireFn };
+  return { init, use, flush, requireFn };
 }
 
 describe('Tracing', () => {
+  afterEach(() => setCurrentSessionSampled(true));
+
   it('initializes dd-trace with normalized matching rules and a fallback sample rate', () => {
     const { init, requireFn } = createTracerRequire();
 
@@ -91,6 +96,24 @@ describe('Tracing', () => {
       rateLimit: -1,
       sampleRate: 1,
     });
+  });
+
+  it('gates dd-trace HTTP propagation on the current RUM session', () => {
+    const { requireFn, use } = createTracerRequire();
+
+    new Tracing(createTestConfiguration(), requireFn);
+
+    expect(use).toHaveBeenCalledWith('fetch', {
+      propagationBlocklist: expect.any(Function),
+    });
+    expect(use).toHaveBeenCalledWith('http', {
+      client: { propagationBlocklist: expect.any(Function) },
+    });
+
+    const propagationBlocklist = use.mock.calls[0][1].propagationBlocklist as () => boolean;
+    expect(propagationBlocklist()).toBe(false);
+    setCurrentSessionSampled(false);
+    expect(propagationBlocklist()).toBe(true);
   });
 
   it('flushes the dd-trace exporter', async () => {

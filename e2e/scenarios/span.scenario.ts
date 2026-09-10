@@ -211,6 +211,16 @@ test.describe('RUM session sampling', () => {
       )
     ).toHaveLength(0);
   });
+
+  test('does not propagate trace context through dd-trace HTTP integrations', async ({ mainPage, testServer }) => {
+    await mainPage.mainFetch(testServer.urlFor(205));
+    await mainPage.mainHttpRequest(testServer.urlFor(206));
+
+    expect(testServer.headersFor(205)['x-datadog-trace-id']).toBeUndefined();
+    expect(testServer.headersFor(205).traceparent).toBeUndefined();
+    expect(testServer.headersFor(206)['x-datadog-trace-id']).toBeUndefined();
+    expect(testServer.headersFor(206).traceparent).toBeUndefined();
+  });
 });
 
 const traceSamplingRuleCases: { description: string; rule: TraceSamplingRule }[] = [
