@@ -513,7 +513,6 @@ interface FeatureOperationOptions {
 | `version`                 | `string`                                 | No       | —          | Application version                                                                                                                                                                  |
 | `sessionSampleRate`       | `number`                                 | No       | `100`      | Percentage of sessions to collect (0–100). `0` collects no sessions; `100` collects all sessions.                                                                                    |
 | `logsSampleRate`          | `number`                                 | No       | `100`      | Percentage of bridged renderer logs to forward (0–100), sampled independently per log. In bridge mode this replaces the Browser Logs `sessionSampleRate`.                            |
-| `traceSamplingRules`      | `TraceSamplingRule[]`                    | No       | `[]`       | Ordered sampling rules for main-process traces. The first matching rule determines the percentage of traces to keep; unmatched traces are kept.                                      |
 | `traceSampleRate`         | `number`                                 | No       | `100`      | Percentage of main-process traces to keep when no `traceSamplingRules` rule matches (0–100).                                                                                         |
 | `traceSamplingRules`      | `TraceSamplingRule[]`                    | No       | `[]`       | Ordered sampling rules for main-process traces. The first matching rule determines the percentage of traces to keep; unmatched traces use `traceSampleRate`.                         |
 | `sessionReplaySampleRate` | `number`                                 | No       | `0`        | Percentage of sampled sessions that record session replay (0–100). `0` disables renderer session replay. Applied as a child of `sessionSampleRate`.                                  |
@@ -529,8 +528,9 @@ interface FeatureOperationOptions {
 Rules are evaluated in order when a root trace starts. The first matching rule determines the percentage of traces
 to keep; unmatched traces use `traceSampleRate`. Within a sampled RUM session, each root trace is sampled independently,
 so the session can contain both kept and rejected traces. Patterns are case-insensitive globs, child spans inherit the
-root decision, and trace headers are propagated only when both the RUM session and trace are sampled. A rejected HTTP
-trace still produces an unlinked RUM Resource.
+root decision, and trace context is never propagated from an unsampled RUM session. For rejected traces in a sampled
+session, Electron `net` requests omit trace headers, while global `fetch` and `node:http` propagate the rejected sampling
+decision so downstream spans inherit it. A rejected HTTP trace still produces an unlinked RUM Resource.
 
 | Key          | Required | Purpose                                                                   |
 | ------------ | -------- | ------------------------------------------------------------------------- |
