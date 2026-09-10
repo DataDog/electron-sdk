@@ -52,6 +52,7 @@ export class Tracing {
         sampleRate: config.traceSampleRate / 100,
         // dd-trace otherwise applies an additional 100-traces-per-second cap to explicit sampling.
         // Disable it so Electron's configured percentage is the only sampling decision.
+        // TODO(RUM-18475): consider exposing this limit as an Electron SDK configuration option.
         rateLimit: -1,
         ...(config.traceSamplingRules.length > 0
           ? {
