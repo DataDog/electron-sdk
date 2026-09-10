@@ -46,6 +46,11 @@ export class UserContext extends ContextManager<UserInfo> {
       if (isEmptyObject(context)) return SKIPPED;
       return { usr: context };
     });
+    hooks.registerLogs(({ startTime }) => {
+      const context = this.getContext(startTime);
+      if (isEmptyObject(context)) return SKIPPED;
+      return { usr: context };
+    });
     hooks.registerSpan(({ startTime }) => {
       const context = this.getContext(startTime);
       if (isEmptyObject(context)) return SKIPPED;

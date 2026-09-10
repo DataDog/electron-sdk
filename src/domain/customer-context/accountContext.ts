@@ -39,6 +39,11 @@ export class AccountContext extends ContextManager<AccountInfo> {
       if (isEmptyObject(context)) return SKIPPED;
       return { account: context };
     });
+    hooks.registerLogs(({ startTime }) => {
+      const context = this.getContext(startTime);
+      if (isEmptyObject(context)) return SKIPPED;
+      return { account: context };
+    });
     hooks.registerSpan(({ startTime }) => {
       const context = this.getContext(startTime);
       if (isEmptyObject(context)) return SKIPPED;
