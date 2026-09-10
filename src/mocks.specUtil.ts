@@ -77,6 +77,7 @@ export function createTestConfiguration(overrides: Partial<Configuration> = {}):
     clientToken: 'test-token',
     applicationId: 'test-app-id',
     sessionSampleRate: 100,
+    logsSampleRate: 100,
     traceSampleRate: 100,
     traceSamplingRules: [],
     sessionReplaySampleRate: 100,

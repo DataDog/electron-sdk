@@ -85,6 +85,52 @@ await init({
 
 In order to monitor the renderer process, you must [set up the Browser SDK](https://docs.datadoghq.com/real_user_monitoring/application_monitoring/browser/setup/) in pages loaded by the renderer.
 
+#### Renderer log collection
+
+Logs assembled by the Browser Logs SDK are forwarded through the Electron bridge and uploaded by the
+main process. Install the Browser Logs SDK in your renderer bundle:
+
+```bash
+yarn add @datadog/browser-logs
+# or
+npm install @datadog/browser-logs
+```
+
+Initialize it in each renderer page where you want to collect logs:
+
+```ts
+import { datadogLogs } from '@datadog/browser-logs';
+
+datadogLogs.init({
+  clientToken: '<CLIENT_TOKEN>',
+  site: 'datadoghq.com',
+  service: 'my-electron-app',
+  forwardErrorsToLogs: true,
+});
+```
+
+The Browser Logs SDK detects the bridge exposed by the Electron SDK and sends its logs to the main
+process instead of uploading them directly. See the
+[Browser Logs setup guide](https://docs.datadoghq.com/logs/log_collection/javascript/) for additional
+renderer configuration options.
+
+Configure renderer-log sampling on the Electron SDK in the main process:
+
+```ts
+await init({
+  clientToken: '<CLIENT_TOKEN>',
+  applicationId: '<APPLICATION_ID>',
+  service: 'my-electron-app',
+  site: 'datadoghq.com',
+  allowedRendererHosts: ['*'],
+  logsSampleRate: 25, // forwards 25% of renderer logs
+});
+```
+
+`logsSampleRate` defaults to `100` and is applied independently to each bridged log. It is separate
+from RUM `sessionSampleRate`. The Browser Logs SDK does not apply its own `sessionSampleRate` in bridge
+mode, so the Electron setting is authoritative.
+
 #### Bundler plugins
 
 The SDK instruments Electron as it is loaded, which requires correct module loading order. The SDK provides bundler plugins to ensure this works in all environments:
@@ -466,6 +512,8 @@ interface FeatureOperationOptions {
 | `env`                     | `string`                                 | No       | —          | Application environment                                                                                                                                                              |
 | `version`                 | `string`                                 | No       | —          | Application version                                                                                                                                                                  |
 | `sessionSampleRate`       | `number`                                 | No       | `100`      | Percentage of sessions to collect (0–100). `0` collects no sessions; `100` collects all sessions.                                                                                    |
+| `logsSampleRate`          | `number`                                 | No       | `100`      | Percentage of bridged renderer logs to forward (0–100), sampled independently per log. In bridge mode this replaces the Browser Logs `sessionSampleRate`.                            |
+| `traceSamplingRules`      | `TraceSamplingRule[]`                    | No       | `[]`       | Ordered sampling rules for main-process traces. The first matching rule determines the percentage of traces to keep; unmatched traces are kept.                                      |
 | `traceSampleRate`         | `number`                                 | No       | `100`      | Percentage of main-process traces to keep when no `traceSamplingRules` rule matches (0–100).                                                                                         |
 | `traceSamplingRules`      | `TraceSamplingRule[]`                    | No       | `[]`       | Ordered sampling rules for main-process traces. The first matching rule determines the percentage of traces to keep; unmatched traces use `traceSampleRate`.                         |
 | `sessionReplaySampleRate` | `number`                                 | No       | `0`        | Percentage of sampled sessions that record session replay (0–100). `0` disables renderer session replay. Applied as a child of `sessionSampleRate`.                                  |

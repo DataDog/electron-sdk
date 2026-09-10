@@ -195,6 +195,27 @@ describe('StandardBatchProducer', () => {
       expect(fsMocks.rename).toHaveBeenCalledWith(tmp2, log2);
     });
 
+    it('rotates before exceeding the configured event limit', async () => {
+      const capped = makeConfig({ maxEventsPerBatch: 2 });
+      const producer = await StandardBatchProducer.create(capped);
+
+      const { dateNow } = await import('@datadog/js-core/time');
+      vi.mocked(dateNow).mockReturnValueOnce(111).mockReturnValueOnce(222);
+
+      producer.post({ data: { order: 1 } });
+      producer.post({ data: { order: 2 } });
+      producer.post({ data: { order: 3 } });
+      await producer.flush();
+
+      const firstBatch = path.join(capped.trackPath, 'batch-111-1.tmp');
+      const secondBatch = path.join(capped.trackPath, 'batch-222-2.tmp');
+      expect(fsMocks.appendFile).toHaveBeenNthCalledWith(1, firstBatch, `{"order":1}\n`, 'utf8');
+      expect(fsMocks.appendFile).toHaveBeenNthCalledWith(2, firstBatch, `{"order":2}\n`, 'utf8');
+      expect(fsMocks.appendFile).toHaveBeenNthCalledWith(3, secondBatch, `{"order":3}\n`, 'utf8');
+      expect(fsMocks.rename).toHaveBeenCalledWith(firstBatch, firstBatch.replace(/\.tmp$/, '.log'));
+      expect(fsMocks.rename).toHaveBeenCalledWith(secondBatch, secondBatch.replace(/\.tmp$/, '.log'));
+    });
+
     it('swallows rename/access errors during rotation and still resets state (new batch file is created after)', async () => {
       const { dateNow } = await import('@datadog/js-core/time');
       vi.mocked(dateNow).mockReturnValueOnce(1000).mockReturnValueOnce(2000);

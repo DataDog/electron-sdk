@@ -5,6 +5,7 @@ import type { TimeStamp } from '@datadog/js-core/time';
 import { RawTraceData } from '../domain/tracing/rawTracingData.types';
 import type { BrowserProfileEvent, BrowserProfilerTrace } from '../domain/profiling';
 import type { ReplaySegmentPayload, BrowserRecord } from '../domain/replay';
+import type { LogsEvent } from '../domain/logs';
 
 export type { BrowserProfileEvent, BrowserProfilerTrace };
 
@@ -61,7 +62,7 @@ export interface ServerLogsEvent {
   kind: typeof EventKind.SERVER;
   track: typeof EventTrack.LOGS;
   source: EventSource;
-  data: unknown;
+  data: LogsEvent;
 }
 
 export interface ServerSpansEvent {
