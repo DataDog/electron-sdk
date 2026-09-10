@@ -5,7 +5,7 @@ import { Tracing } from './Tracing';
 
 function createTracerRequire() {
   const init = vi.fn();
-  const use = vi.fn();
+  const use = vi.fn<(plugin: string, config: unknown) => void>();
   const flush = vi.fn((done: () => void) => done());
   const tracer = {
     init,
@@ -104,10 +104,10 @@ describe('Tracing', () => {
     new Tracing(createTestConfiguration(), requireFn);
 
     expect(use).toHaveBeenCalledWith('fetch', {
-      propagationBlocklist: expect.any(Function),
+      propagationBlocklist: expect.any(Function) as unknown,
     });
     expect(use).toHaveBeenCalledWith('http', {
-      client: { propagationBlocklist: expect.any(Function) },
+      client: { propagationBlocklist: expect.any(Function) as unknown },
     });
 
     const propagationBlocklist = use.mock.calls[0][1].propagationBlocklist as () => boolean;
