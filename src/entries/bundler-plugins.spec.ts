@@ -5,40 +5,40 @@ import { datadogVitePlugin } from './vite-plugin';
 import { DatadogWebpackPlugin } from './webpack-plugin';
 
 describe('runtime dependency copying', () => {
-  it('can be delegated to the packager for Vite', () => {
-    expect(datadogVitePlugin().writeBundle).toBeTypeOf('function');
-    expect(datadogVitePlugin({ copyRuntimeDependencies: false }).writeBundle).toBeUndefined();
+  it('is delegated to the packager by default for Vite', () => {
+    expect(datadogVitePlugin().writeBundle).toBeUndefined();
+    expect(datadogVitePlugin({ copyRuntimeDependencies: true }).writeBundle).toBeTypeOf('function');
   });
 
-  it('can be delegated to the packager for esbuild', () => {
+  it('is delegated to the packager by default for esbuild', () => {
     const defaultOnEnd = vi.fn();
     datadogEsbuildPlugin().setup({ initialOptions: {}, onEnd: defaultOnEnd });
-    expect(defaultOnEnd).toHaveBeenCalledOnce();
+    expect(defaultOnEnd).not.toHaveBeenCalled();
 
-    const managedOnEnd = vi.fn();
-    datadogEsbuildPlugin({ copyRuntimeDependencies: false }).setup({
+    const pluginCopyOnEnd = vi.fn();
+    datadogEsbuildPlugin({ copyRuntimeDependencies: true }).setup({
       initialOptions: {},
-      onEnd: managedOnEnd,
+      onEnd: pluginCopyOnEnd,
     });
-    expect(managedOnEnd).not.toHaveBeenCalled();
+    expect(pluginCopyOnEnd).toHaveBeenCalledOnce();
   });
 
-  it('can be delegated to the packager for webpack', () => {
+  it('is delegated to the packager by default for webpack', () => {
     let defaultAfterEmitCalls = 0;
     new DatadogWebpackPlugin().apply(
       createWebpackCompiler(() => {
         defaultAfterEmitCalls += 1;
       })
     );
-    expect(defaultAfterEmitCalls).toBe(1);
+    expect(defaultAfterEmitCalls).toBe(0);
 
-    let managedAfterEmitCalls = 0;
-    new DatadogWebpackPlugin({ copyRuntimeDependencies: false }).apply(
+    let pluginCopyAfterEmitCalls = 0;
+    new DatadogWebpackPlugin({ copyRuntimeDependencies: true }).apply(
       createWebpackCompiler(() => {
-        managedAfterEmitCalls += 1;
+        pluginCopyAfterEmitCalls += 1;
       })
     );
-    expect(managedAfterEmitCalls).toBe(0);
+    expect(pluginCopyAfterEmitCalls).toBe(1);
   });
 });
 

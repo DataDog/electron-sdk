@@ -32,8 +32,8 @@ test.describe('electron-builder runtime dependency packaging @integration', () =
     test.skip(app !== 'electron-builder-vite' || mode !== 'packaged', 'electron-builder-vite packaged only');
 
     const appDir = join(__dirname, '../apps', app);
-    const workflow = variant === 'packager-copy' ? 'packager-copy' : 'default-copy';
-    const expectsPluginCopy = workflow === 'default-copy';
+    const workflow = variant === 'plugin-copy' ? 'plugin-copy' : 'default-copy';
+    const expectsPluginCopy = workflow === 'plugin-copy';
     expect(existsSync(join(appDir, 'dist', workflow, 'node_modules'))).toBe(expectsPluginCopy);
 
     const archivePath = getElectronBuilderViteArchivePath(appDir, variant);

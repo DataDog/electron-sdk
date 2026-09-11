@@ -34,7 +34,7 @@ Run a specific combination locally:
 yarn test:integration --project=forge-webpack-dev
 yarn test:integration --project=forge-webpack-packaged
 yarn test:integration --project=electron-builder-vite-packaged
-yarn test:integration --project=electron-builder-vite-packager-copy-packaged
+yarn test:integration --project=electron-builder-vite-plugin-copy-packaged
 ```
 
 ## Supported Toolchains
@@ -52,8 +52,11 @@ All apps use `import '@datadog/electron-sdk/instrument'` before importing `elect
 This loads the SDK's instrumentation and injects the SDK's preload script into every renderer process via `patchBrowserWindow`. The regular SDK `init()` initializes dd-trace afterward.
 Vite-based apps use `datadogVitePlugin`, webpack-based apps use `DatadogWebpackPlugin`, and esbuild-based apps use `datadogEsbuildPlugin` to ensure correct module loading order and preload availability in packaged builds.
 The `forge-esbuild-esm` app additionally exercises the plugin's ESM path, where the banner loads `instrument` via `createRequire` because ES modules have no global `require`.
-The `electron-builder-vite` app packages two isolated variants: the default plugin-owned runtime dependency copy
-and `copyRuntimeDependencies: false`, where electron-builder owns dependency staging.
+The Forge Vite and Webpack apps override `packagerConfig.ignore` so Forge packages both the bundler
+output and root `node_modules`; Electron Packager then stages the production dependency tree. Both
+Forge bundler apps leave `copyRuntimeDependencies` at its default value of `false`.
+The `electron-builder-vite` app packages two isolated variants: the default packager-owned runtime dependency copy
+and `copyRuntimeDependencies: true`, where the plugin owns dependency staging.
 
 ## Key design points
 
