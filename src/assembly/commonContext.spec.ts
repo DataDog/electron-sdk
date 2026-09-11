@@ -143,6 +143,7 @@ describe('registerCommonContext', () => {
       (source) => {
         const config = createTestConfiguration({
           sessionSampleRate: 42,
+          traceSampleRate: 75,
           sessionReplaySampleRate: 25,
           profilingSampleRate: 100,
         });
@@ -152,6 +153,7 @@ describe('registerCommonContext', () => {
           session_sample_rate: 42,
           session_replay_sample_rate: 25,
           profiling_sample_rate: 100,
+          ...(source === EventSource.MAIN ? { trace_sample_rate: 75 } : {}),
         });
       }
     );
@@ -160,6 +162,12 @@ describe('registerCommonContext', () => {
       const result = triggerMainRum(createTestConfiguration());
 
       expect(result._dd).toMatchObject({ format_version: 2 });
+    });
+
+    it('reports the default trace sample rate on MAIN events', () => {
+      const result = triggerMainRum(createTestConfiguration());
+
+      expect((result._dd as { configuration: Record<string, unknown> }).configuration.trace_sample_rate).toBe(100);
     });
   });
 

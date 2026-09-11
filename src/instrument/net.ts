@@ -1,6 +1,7 @@
 import ddTrace from '../entries/instrument-prelude';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { callMonitored, monitorInstrumentation, monitor } from '../domain/telemetry';
+import { isCurrentSessionSampled } from '../common';
 
 interface PatchableNet {
   fetch?: (input: string | Request, init?: RequestInit) => Promise<Response>;
@@ -48,20 +49,22 @@ export function patchNet(net: Electron.Net): void {
             },
           });
 
-          const carrier: Record<string, string> = {};
-          ddTrace.inject(span, 'http_headers', carrier);
+          if (isCurrentSessionSampled()) {
+            const carrier: Record<string, string> = {};
+            ddTrace.inject(span, 'http_headers', carrier);
 
-          if (shouldPropagateTrace(carrier)) {
-            // Match fetch semantics: init.headers replaces the Request's headers when provided,
-            // otherwise the Request's own headers apply. Reading input.headers here is what prevents
-            // tracing from silently dropping headers set on a Request object (e.g. Authorization).
-            const originalHeaders =
-              init?.headers !== undefined
-                ? toRecord(init.headers)
-                : typeof input !== 'string'
-                  ? toRecord(input.headers)
-                  : {};
-            patchedInit = { ...init, headers: { ...carrier, ...originalHeaders } };
+            if (shouldPropagateTrace(carrier)) {
+              // Match fetch semantics: init.headers replaces the Request's headers when provided,
+              // otherwise the Request's own headers apply. Reading input.headers here is what prevents
+              // tracing from silently dropping headers set on a Request object (e.g. Authorization).
+              const originalHeaders =
+                init?.headers !== undefined
+                  ? toRecord(init.headers)
+                  : typeof input !== 'string'
+                    ? toRecord(input.headers)
+                    : {};
+              patchedInit = { ...init, headers: { ...carrier, ...originalHeaders } };
+            }
           }
 
           // A synchronous throw from originalFetch (before it returns a promise) is finished here.
@@ -141,10 +144,12 @@ export function patchNet(net: Electron.Net): void {
           },
         });
 
-        const carrier: Record<string, string> = {};
-        ddTrace.inject(span, 'http_headers', carrier);
-        if (shouldPropagateTrace(carrier)) {
-          opts.headers = mergeHeaders(carrier, opts.headers ?? {});
+        if (isCurrentSessionSampled()) {
+          const carrier: Record<string, string> = {};
+          ddTrace.inject(span, 'http_headers', carrier);
+          if (shouldPropagateTrace(carrier)) {
+            opts.headers = mergeHeaders(carrier, opts.headers ?? {});
+          }
         }
 
         // net.request validates options and can throw synchronously. The finish() closures are only

@@ -89,8 +89,15 @@ export interface InitConfiguration {
    */
   logsSampleRate?: number;
   /**
+   * Percentage of main-process traces to keep when no {@link InitConfiguration.traceSamplingRules}
+   * rule matches. Applied independently to each root trace within a sampled RUM session.
+   * @example 20
+   */
+  traceSampleRate?: number;
+  /**
    * Ordered sampling rules for main-process traces. The first matching rule
-   * determines the percentage of traces to keep. Traces that do not match a rule are kept.
+   * determines the percentage of traces to keep. Traces that do not match a rule use
+   * {@link InitConfiguration.traceSampleRate}.
    * @example [{ tags: { 'http.url': '*health' }, sampleRate: 0 }]
    */
   traceSamplingRules?: TraceSamplingRule[];
@@ -156,6 +163,7 @@ export interface Configuration {
   proxy?: string;
   sessionSampleRate: number;
   logsSampleRate: number;
+  traceSampleRate: number;
   traceSamplingRules: TraceSamplingRule[];
   sessionReplaySampleRate: number;
   profilingSampleRate: number;
@@ -389,6 +397,7 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
   const proxy = validateOptionalString(initConfig.proxy);
   const sessionSampleRate = validateSampleRate(initConfig.sessionSampleRate, 'sessionSampleRate', 100);
   const logsSampleRate = validateSampleRate(initConfig.logsSampleRate, 'logsSampleRate', 100);
+  const traceSampleRate = validateSampleRate(initConfig.traceSampleRate, 'traceSampleRate', 100);
   const traceSamplingRules = validateTraceSamplingRules(initConfig.traceSamplingRules);
   const sessionReplaySampleRate = validateSampleRate(initConfig.sessionReplaySampleRate, 'sessionReplaySampleRate', 0);
   const profilingSampleRate = validateSampleRate(initConfig.profilingSampleRate, 'profilingSampleRate', 0);
@@ -407,6 +416,7 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
   if (
     sessionSampleRate === undefined ||
     logsSampleRate === undefined ||
+    traceSampleRate === undefined ||
     traceSamplingRules === undefined ||
     sessionReplaySampleRate === undefined ||
     profilingSampleRate === undefined ||
@@ -432,6 +442,7 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     proxy,
     sessionSampleRate,
     logsSampleRate,
+    traceSampleRate,
     traceSamplingRules,
     sessionReplaySampleRate,
     profilingSampleRate,

@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module';
 import type { SamplingRule } from 'dd-trace';
+import { isCurrentSessionSampled } from '../../common';
 import { addError } from '../telemetry';
 import type { Configuration, TraceSamplingRule } from '../../config';
 
@@ -49,12 +50,25 @@ export class Tracing {
       tracer.init({
         experimental: { exporter: 'electron' as 'datadog' },
         ...(config.env !== undefined ? { env: config.env } : {}),
+        sampleRate: config.traceSampleRate / 100,
+        // dd-trace otherwise applies an additional 100-traces-per-second cap to explicit sampling.
+        // Disable it so Electron's configured percentage is the only sampling decision.
+        // TODO(RUM-18475): consider exposing this limit as an Electron SDK configuration option.
+        rateLimit: -1,
         ...(config.traceSamplingRules.length > 0
           ? {
               samplingRules: toDdTraceSamplingRules(config.traceSamplingRules),
-              rateLimit: -1,
             }
           : {}),
+      });
+
+      // dd-trace owns global fetch and node:http instrumentation. Prevent those integrations from
+      // propagating trace context for rejected RUM sessions while keeping their local HTTP spans,
+      // which SpanProcessor uses to produce RUM resources.
+      const blockPropagationForUnsampledSession = () => !isCurrentSessionSampled();
+      tracer.use('fetch', { propagationBlocklist: blockPropagationForUnsampledSession });
+      tracer.use('http', {
+        client: { propagationBlocklist: blockPropagationForUnsampledSession },
       });
 
       // Service/env/version are set per-span by SpanProcessor.
