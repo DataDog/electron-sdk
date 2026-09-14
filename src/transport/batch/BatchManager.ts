@@ -16,6 +16,9 @@ import { StandardBatchProducer } from './standard/StandardBatchProducer';
 import type { StandardBatchProducerConfig } from './standard/StandardBatchProducer';
 import type { BatchConfig } from './batchConfig.types';
 
+/** Maximum array length accepted by the Logs HTTP intake. */
+const MAX_LOGS_EVENTS_PER_BATCH = 1_000;
+
 /**
  * Coordinates a {@link BatchProducer} and {@link BatchConsumer} pair for a single track type.
  * Runs a periodic upload cycle that rotates pending `.tmp` files to `.log` and
@@ -148,7 +151,9 @@ export class BatchManager {
     const { clientToken } = config;
     const { path: configPath, trackType, batchSize } = batchConfig;
 
-    const trackPath = path.join(configPath, trackType);
+    // TODO(RUM-18471): revisit track path naming for rum/spans/other tracks too; logs is fine to rename now,
+    // but existing tracks already have established on-disk paths, making them harder to change later.
+    const trackPath = path.join(configPath, trackType === EventTrack.LOGS ? 'dd_logs' : trackType);
     const intakeUrl = computeIntakeUrlForTrack(config.site, trackType, { proxy: config.proxy });
 
     const consumerConfig: BatchConsumerConfig = { trackPath, intakeUrl, clientToken };
@@ -165,7 +170,11 @@ export class BatchManager {
       return { producer, consumer };
     }
 
-    const standardProducerConfig: StandardBatchProducerConfig = { trackPath, batchSize };
+    const standardProducerConfig: StandardBatchProducerConfig = {
+      trackPath,
+      batchSize,
+      ...(trackType === EventTrack.LOGS ? { maxEventsPerBatch: MAX_LOGS_EVENTS_PER_BATCH } : {}),
+    };
     const producer = await StandardBatchProducer.create(standardProducerConfig);
     const consumer = new StandardBatchConsumer(consumerConfig);
     return { producer, consumer };

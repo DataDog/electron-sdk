@@ -1,3 +1,4 @@
+import { datadogLogs } from '@datadog/browser-logs';
 import { datadogRum } from '@datadog/browser-rum';
 
 interface DurationVitalOptions {
@@ -26,6 +27,21 @@ datadogRum.init({
   trackResources: true,
   trackLongTasks: true,
   trackUserInteractions: true,
+  telemetrySampleRate: 100,
+  telemetryConfigurationSampleRate: 100,
+  telemetryUsageSampleRate: 100,
+});
+
+// The Logs SDK detects the same bridge and routes every log through the main process. In bridge mode
+// it never talks to the intake itself, so a log that the main process does not relay is lost.
+datadogLogs.init({
+  clientToken: 'pub2a7307cdec74934cacb411a193f632f8',
+  site: 'datad0g.com',
+  service: 'electron-playground',
+  env: 'dev',
+  version: '1.0.0',
+  sessionSampleRate: 100,
+  forwardErrorsToLogs: true,
 });
 
 // Type definition for the exposed API
@@ -35,6 +51,7 @@ interface ElectronAPI {
   generateTelemetryError: () => Promise<void>;
   generateUncaughtException: () => Promise<void>;
   generateUnhandledRejection: () => Promise<void>;
+  generateBeforeSendError: (behavior: 'scrub' | 'filter') => Promise<void>;
   crash: () => Promise<void>;
   mainFetchApi: () => Promise<unknown>;
   addDurationVital: (name: string, options: AddDurationVitalOptions) => Promise<void>;
@@ -129,6 +146,12 @@ document.addEventListener('click', () => setTimeout(() => void refreshSessionDis
 const telemetryErrorButton = document.getElementById('generate-telemetry-error') as HTMLButtonElement;
 telemetryErrorButton.addEventListener('click', () => {
   void window.electronAPI.generateTelemetryError();
+});
+
+// Handle renderer log button click
+const rendererLogButton = document.getElementById('generate-renderer-log') as HTMLButtonElement;
+rendererLogButton.addEventListener('click', () => {
+  datadogLogs.logger.info('renderer log from the playground', { clicked_at: new Date().toISOString() });
 });
 
 // Handle uncaught exception button click
@@ -304,6 +327,13 @@ setupDemoButton('vital-stop', 'main:stop-duration-vital(document.open)', () =>
     vitalKey: 'playground-document',
     context: { result: 'success' },
   })
+);
+
+// --- beforeSendRum demo buttons ---
+
+setupDemoButton('before-send-scrub', 'beforeSendRum(scrub)', () => window.electronAPI.generateBeforeSendError('scrub'));
+setupDemoButton('before-send-filter', 'beforeSendRum(filter)', () =>
+  window.electronAPI.generateBeforeSendError('filter')
 );
 
 // --- Operation Monitoring demo buttons ---

@@ -10,7 +10,7 @@ declare global {
       stopSession: () => Promise<void>;
       generateUncaughtException: () => Promise<void>;
       generateUnhandledRejection: () => Promise<void>;
-      generateManualError: (startTime?: number) => Promise<void>;
+      generateManualError: (startTime?: number, context?: Record<string, string>) => Promise<void>;
       crash: () => Promise<void>;
       ping: () => Promise<string>;
       openBridgeFileWindow: () => Promise<void>;

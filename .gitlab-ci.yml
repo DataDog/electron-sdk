@@ -10,10 +10,21 @@ stages:
 default:
   tags: ['arch:amd64']
   image: $CI_IMAGE
+  interruptible: true
+
+workflow:
+  rules:
+    - if: "$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != 'main'"
+      auto_cancel:
+        on_new_commit: interruptible # short-lived branches cancel on new commits
+    - when: always # main, tags: never auto-canceled
+      auto_cancel:
+        on_new_commit: none
 
 build-container-image:
   stage: docker
   image: 'registry.ddbuild.io/images/docker:27.3.1'
+  interruptible: false
   when: manual
   id_tokens:
     DDSIGN_ID_TOKEN:

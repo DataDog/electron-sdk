@@ -1,3 +1,4 @@
+import { SKIPPED } from '@datadog/js-core/assembly';
 import type { Configuration } from '../config';
 import { EventSource } from '../event';
 import type { FormatHooks } from './hooks';
@@ -7,9 +8,9 @@ import { display } from '../tools/display';
  * Define the common attributes for the events of each format
  */
 export function registerCommonContext(configuration: Configuration, hooks: FormatHooks) {
-  // The Electron SDK owns the sampling decisions (including for renderer bridge events in bridge mode),
-  // so it is authoritative for the rates reported on every RUM event.
-  const ddConfiguration = {
+  // Electron owns RUM session, replay, and profiling sampling for bridge events. Renderer tracing
+  // remains controlled by the Browser SDK, so its trace sample rate must be preserved.
+  const sharedSamplingConfiguration = {
     session_sample_rate: configuration.sessionSampleRate,
     session_replay_sample_rate: configuration.sessionReplaySampleRate,
     profiling_sample_rate: configuration.profilingSampleRate,
@@ -21,7 +22,7 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
         return {
           application: { id: configuration.applicationId },
           container: { source: 'electron' },
-          _dd: { configuration: ddConfiguration },
+          _dd: { configuration: sharedSamplingConfiguration },
         };
       case EventSource.MAIN:
         return {
@@ -32,22 +33,49 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
           application: { id: configuration.applicationId },
           session: { type: 'user' },
           ddtags: buildDdtags(configuration),
-          _dd: { format_version: 2, configuration: ddConfiguration },
+          _dd: {
+            format_version: 2,
+            configuration: {
+              ...sharedSamplingConfiguration,
+              trace_sample_rate: configuration.traceSampleRate,
+            },
+          },
         };
     }
   });
 
-  // Only reached with source MAIN today: renderer telemetry is dropped by RendererPipeline. It must
-  // become source-aware (like registerRum above) before that path is wired up in RUM-15253, since
-  // these attributes would otherwise overwrite the Browser SDK's own service/source/version/date.
-  hooks.registerTelemetry(() => ({
-    date: Date.now(),
-    source: 'electron',
-    service: 'electron-sdk',
-    version: __SDK_VERSION__,
-    application: { id: configuration.applicationId },
-    _dd: { format_version: 2 },
-  }));
+  hooks.registerTelemetry(({ source }) => {
+    switch (source) {
+      // Renderer telemetry already identifies the browser SDK that assembled it.
+      case EventSource.RENDERER:
+        return { application: { id: configuration.applicationId } };
+      case EventSource.MAIN:
+        return {
+          date: Date.now(),
+          source: 'electron',
+          service: 'electron-sdk',
+          version: __SDK_VERSION__,
+          application: { id: configuration.applicationId },
+          ddtags: buildDdtags(configuration),
+          _dd: { format_version: 2 },
+        };
+    }
+  });
+
+  hooks.registerLogs(({ source }) => {
+    switch (source) {
+      // A renderer log crosses the bridge already assembled by the browser Logs SDK, and it belongs to
+      // the renderer that produced it: its `service`, `ddtags` and `status` are the ones its own
+      // `DD_LOGS.init()` configured, so restamping them here would relabel the customer's own logs. The
+      // application is the only one of these the main process owns.
+      case EventSource.RENDERER:
+        return { application_id: configuration.applicationId };
+      // The SDK has no main-process logging API yet (RUM-15047); when it gains one, its identity fields
+      // belong here, next to the RUM and telemetry cases above.
+      case EventSource.MAIN:
+        return SKIPPED;
+    }
+  });
 
   hooks.registerSpan(() => ({
     meta: {

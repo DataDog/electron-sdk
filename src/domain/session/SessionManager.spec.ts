@@ -15,6 +15,7 @@ import { EventKind, EventManager, EventSource, LifecycleKind, type LifecycleEven
 import * as Sampler from '../../tools/Sampler';
 import { SESSION_EXPIRATION_DELAY, SessionManager } from './SessionManager';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
+import { isCurrentSessionSampled } from '../../common';
 
 const T0 = 0 as TimeStamp;
 
@@ -95,6 +96,7 @@ describe('sessionManager', () => {
       await vi.advanceTimersByTimeAsync(SESSION_EXPIRATION_DELAY);
 
       expect(sessionManager.getSession().status).toBe('expired');
+      expect(isCurrentSessionSampled()).toBe(false);
       expect(lifecycleEvents).toContain(LifecycleKind.SESSION_EXPIRED);
     });
 
@@ -227,6 +229,7 @@ describe('sessionManager', () => {
     it('session is sampled when sampleRate is 100', async () => {
       sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
 
+      expect(isCurrentSessionSampled()).toBe(true);
       // A sampled session is tracked, so getInternalContext()/correlation can resolve its id.
       expect(sessionManager.getTrackedSessionId()).toBe(sessionManager.getSession().id);
       expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).not.toBe(DISCARDED);
@@ -235,6 +238,7 @@ describe('sessionManager', () => {
     it('session is not sampled when sampleRate is 0', async () => {
       sessionManager = await SessionManager.start(eventManager, hooks, makeConfig({ sessionSampleRate: 0 }));
 
+      expect(isCurrentSessionSampled()).toBe(false);
       // A non-sampled session is not tracked, so getInternalContext() resolves to undefined —
       // no session id leaks for a session that produces no RUM.
       expect(sessionManager.getTrackedSessionId()).toBeUndefined();

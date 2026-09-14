@@ -40,6 +40,7 @@ export interface TestFixtures {
   rumBrowserSdk: Record<string, unknown> | null;
   initialIntakeQuotaDecision: 'quota_ok' | 'quota_ko';
   sdkConfigOverrides: Partial<InitConfiguration> | null;
+  beforeSendRumEnabled: boolean;
 }
 
 /**
@@ -71,9 +72,11 @@ export const test = base.extend<TestFixtures>({
     { option: true },
   ],
 
-  electronApp: async ({ intake, rumBrowserSdk, sdkConfigOverrides }, use) => {
+  electronApp: async ({ intake, rumBrowserSdk, sdkConfigOverrides, beforeSendRumEnabled }, use) => {
     const userDataDir = await createUserDataDir();
-    const electronApp = await launchApp(intake, userDataDir, rumBrowserSdk, sdkConfigOverrides);
+    const electronApp = await launchApp(intake, userDataDir, rumBrowserSdk, sdkConfigOverrides, {
+      ...(beforeSendRumEnabled && { DD_E2E_BEFORE_SEND_RUM: '1' }),
+    });
     await use(electronApp);
     await electronApp.close();
     await cleanupUserDataDir(userDataDir);
@@ -94,6 +97,8 @@ export const test = base.extend<TestFixtures>({
   rumBrowserSdk: [null, { option: true }],
 
   sdkConfigOverrides: [null, { option: true }],
+
+  beforeSendRumEnabled: [false, { option: true }],
 });
 
 async function launchApp(

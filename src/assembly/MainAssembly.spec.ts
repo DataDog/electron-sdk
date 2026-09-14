@@ -1,7 +1,8 @@
-import { beforeEach, describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED } from '@datadog/js-core/assembly';
 import { MainAssembly } from './MainAssembly';
+import { BeforeSend } from './BeforeSend';
 import { createFormatHooks, type FormatHooks } from './hooks';
 import {
   EventFormat,
@@ -30,6 +31,7 @@ const RAW_TELEMETRY_DATA: RawTelemetryData = {
 describe('MainAssembly', () => {
   let eventManager: EventManager;
   let hooks: FormatHooks;
+  let beforeSend: BeforeSend;
   let serverEvents: ServerEvent[];
 
   function notifyRawRumEvent(overrides?: Partial<RawRumEvent>) {
@@ -53,6 +55,7 @@ describe('MainAssembly', () => {
   beforeEach(() => {
     eventManager = new EventManager();
     hooks = createFormatHooks();
+    beforeSend = new BeforeSend();
     serverEvents = [];
 
     eventManager.registerHandler<ServerEvent>({
@@ -60,7 +63,7 @@ describe('MainAssembly', () => {
       handle: (event) => serverEvents.push(event),
     });
 
-    new MainAssembly(eventManager, hooks);
+    new MainAssembly(eventManager, hooks, beforeSend);
   });
 
   it('favors raw event attributes over hook attributes', () => {
@@ -111,14 +114,41 @@ describe('MainAssembly', () => {
     expect((serverEvents[0] as ServerRumEvent).source).toBe(EventSource.MAIN);
   });
 
+  it('applies beforeSendRum to fully assembled RUM events after hooks', () => {
+    hooks.registerRum(() => ({ session: { id: 'hook-session' } }));
+    const applySpy = vi.spyOn(beforeSend, 'apply').mockImplementation((event) => {
+      expect(event.session.id).toBe('hook-session');
+      if (event.type === 'error') {
+        event.error.message = 'modified';
+      }
+      return event;
+    });
+
+    notifyRawRumEvent();
+
+    expect(applySpy).toHaveBeenCalledWith(expect.any(Object), 'main');
+    expect(serverEvents[0].data).toMatchObject({ error: { message: 'modified' } });
+  });
+
+  it('does not emit RUM events discarded by beforeSendRum', () => {
+    hooks.registerRum(() => ({}));
+    vi.spyOn(beforeSend, 'apply').mockReturnValue(undefined);
+
+    notifyRawRumEvent();
+
+    expect(serverEvents).toHaveLength(0);
+  });
+
   describe('TELEMETRY events', () => {
     it('emits ServerTelemetryEvent with source MAIN', () => {
       hooks.registerTelemetry(() => ({}));
+      const applySpy = vi.spyOn(beforeSend, 'apply');
 
       notifyRawTelemetryEvent();
 
       expect(serverEvents).toHaveLength(1);
       expect((serverEvents[0] as ServerTelemetryEvent).source).toBe(EventSource.MAIN);
+      expect(applySpy).not.toHaveBeenCalled();
     });
 
     it('discards telemetry events when hook returns DISCARDED', () => {

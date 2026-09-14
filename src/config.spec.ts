@@ -461,6 +461,28 @@ describe('buildConfiguration', () => {
     });
   });
 
+  describe('beforeSendRum validation', () => {
+    it('preserves a valid callback', () => {
+      const beforeSendRum = vi.fn(() => true);
+
+      expect(buildConfiguration({ ...DEFAULT_CONFIG, beforeSendRum })?.beforeSendRum).toBe(beforeSendRum);
+    });
+
+    it.each([undefined, null])('disables beforeSendRum without an error when set to %s', (beforeSendRum) => {
+      const config = { ...DEFAULT_CONFIG, beforeSendRum } as unknown as InitConfiguration;
+
+      expect(buildConfiguration(config)?.beforeSendRum).toBeUndefined();
+      expect(display.error).not.toHaveBeenCalled();
+    });
+
+    it.each(['not-a-function', 42, {}])('logs an error and disables beforeSendRum when set to %o', (beforeSendRum) => {
+      const config = { ...DEFAULT_CONFIG, beforeSendRum } as unknown as InitConfiguration;
+
+      expect(buildConfiguration(config)?.beforeSendRum).toBeUndefined();
+      expect(display.error).toHaveBeenCalledWith("Configuration error: 'beforeSendRum' must be a function");
+    });
+  });
+
   describe('sessionSampleRate validation', () => {
     it('defaults to 100 when not provided', () => {
       const result = buildConfiguration({ ...DEFAULT_CONFIG });
@@ -504,6 +526,25 @@ describe('buildConfiguration', () => {
     });
   });
 
+  describe('logsSampleRate validation', () => {
+    it('defaults to 100 when not provided', () => {
+      expect(buildConfiguration({ ...DEFAULT_CONFIG })?.logsSampleRate).toBe(100);
+    });
+
+    it.each([0, 50, 100])('accepts valid value: %d', (value) => {
+      expect(buildConfiguration({ ...DEFAULT_CONFIG, logsSampleRate: value })?.logsSampleRate).toBe(value);
+    });
+
+    it.each([-1, 101, 'fifty', {}, NaN])('rejects invalid value: %s', (value) => {
+      const config = { ...DEFAULT_CONFIG, logsSampleRate: value } as unknown as InitConfiguration;
+
+      expect(buildConfiguration(config)).toBeUndefined();
+      expect(display.error).toHaveBeenCalledWith(
+        "Configuration error: 'logsSampleRate' must be a number between 0 and 100"
+      );
+    });
+  });
+
   describe('traceSamplingRules validation', () => {
     it('defaults to an empty list', () => {
       expect(buildConfiguration({ ...DEFAULT_CONFIG })?.traceSamplingRules).toEqual([]);
@@ -539,6 +580,32 @@ describe('buildConfiguration', () => {
       expect(result).toBeUndefined();
       expect(display.error).toHaveBeenCalledWith(
         "Configuration error: 'traceSamplingRules' must be an array of rules with a sampleRate between 0 and 100"
+      );
+    });
+  });
+
+  describe('traceSampleRate validation', () => {
+    it.each([undefined, null])('defaults %s to 100', (traceSampleRate) => {
+      const configuration = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        traceSampleRate,
+      } as InitConfiguration);
+
+      expect(configuration?.traceSampleRate).toBe(100);
+    });
+
+    it.each([0, 50, 100])('accepts valid value: %d', (value) => {
+      const configuration = buildConfiguration({ ...DEFAULT_CONFIG, traceSampleRate: value });
+
+      expect(configuration?.traceSampleRate).toBe(value);
+    });
+
+    it.each([-1, 101, Number.NaN, Number.POSITIVE_INFINITY, '50'])('rejects invalid value: %s', (value) => {
+      const result = buildConfiguration({ ...DEFAULT_CONFIG, traceSampleRate: value } as unknown as InitConfiguration);
+
+      expect(result).toBeUndefined();
+      expect(display.error).toHaveBeenCalledWith(
+        "Configuration error: 'traceSampleRate' must be a number between 0 and 100"
       );
     });
   });

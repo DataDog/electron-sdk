@@ -85,6 +85,52 @@ await init({
 
 In order to monitor the renderer process, you must [set up the Browser SDK](https://docs.datadoghq.com/real_user_monitoring/application_monitoring/browser/setup/) in pages loaded by the renderer.
 
+#### Renderer log collection
+
+Logs assembled by the Browser Logs SDK are forwarded through the Electron bridge and uploaded by the
+main process. Install the Browser Logs SDK in your renderer bundle:
+
+```bash
+yarn add @datadog/browser-logs
+# or
+npm install @datadog/browser-logs
+```
+
+Initialize it in each renderer page where you want to collect logs:
+
+```ts
+import { datadogLogs } from '@datadog/browser-logs';
+
+datadogLogs.init({
+  clientToken: '<CLIENT_TOKEN>',
+  site: 'datadoghq.com',
+  service: 'my-electron-app',
+  forwardErrorsToLogs: true,
+});
+```
+
+The Browser Logs SDK detects the bridge exposed by the Electron SDK and sends its logs to the main
+process instead of uploading them directly. See the
+[Browser Logs setup guide](https://docs.datadoghq.com/logs/log_collection/javascript/) for additional
+renderer configuration options.
+
+Configure renderer-log sampling on the Electron SDK in the main process:
+
+```ts
+await init({
+  clientToken: '<CLIENT_TOKEN>',
+  applicationId: '<APPLICATION_ID>',
+  service: 'my-electron-app',
+  site: 'datadoghq.com',
+  allowedRendererHosts: ['*'],
+  logsSampleRate: 25, // forwards 25% of renderer logs
+});
+```
+
+`logsSampleRate` defaults to `100` and is applied independently to each bridged log. It is separate
+from RUM `sessionSampleRate`. The Browser Logs SDK does not apply its own `sessionSampleRate` in bridge
+mode, so the Electron setting is authoritative.
+
 #### Bundler plugins
 
 The SDK instruments Electron as it is loaded, which requires correct module loading order. The SDK provides bundler plugins to ensure this works in all environments:
@@ -141,6 +187,44 @@ and their runtime dependencies.
 - **Global Context** — Attach custom attributes to RUM events from the main process
 - **User & Account Info** — Attach user and account identity to all RUM events and traces
 - **Operation Monitoring** _(experimental)_ — Track start / succeed / fail steps of critical user-facing workflows
+- **Event Filtering and Scrubbing** — Modify or discard RUM events with `beforeSendRum`
+
+### Event Filtering and Scrubbing
+
+Use `beforeSendRum` to inspect fully assembled main-process and renderer RUM events before they are sent to Datadog:
+
+```ts
+await init({
+  // ...
+  beforeSendRum: (event, { source }) => {
+    if (event.type === 'error') {
+      event.error.message = event.error.message.replace(/token=[^&\s]+/g, 'token=[REDACTED]');
+      event.error.stack = event.error.stack?.replace(/token=[^&\s]+/g, 'token=[REDACTED]');
+    }
+    if (source === 'main' && event.context?.internal === true) {
+      return false;
+    }
+    return true;
+  },
+});
+```
+
+Only returning `false` discards the event. View and native crash events cannot be discarded. The editable fields are:
+
+- All events: `context`, `service`, `version`, `view.name`, `view.url`, and `view.referrer`
+- Views: `view.performance.lcp.resource_url`
+- Errors: `error.message`, `error.stack`, `error.handling_stack`, `error.resource.url`, `error.fingerprint`, and `_dd.debug_ids`
+- Resources: `resource.url`, GraphQL variables, request/response headers, and WebSocket close reasons and protocols
+- Actions: `action.target.name`
+- Long tasks: script source URLs, invokers, and `_dd.debug_ids`
+
+Event identity, session, application, and other fields remain unchanged. Callback errors are logged and the event is
+still sent. Editable string fields must remain strings; use an empty string to clear one because deleting it or assigning
+`null` or `undefined` is ignored. The callback is synchronous and should remain fast. It does not automatically detect PII.
+
+Renderer events may first pass through the Browser SDK's `beforeSend`, then through Electron's `beforeSendRum` after
+main-process enrichment. Filtering them at this stage prevents upload but does not undo Browser counters, lifecycle
+effects, or Electron session activity that already occurred. Spans are not passed to this callback.
 
 ### Custom Duration Vitals
 
@@ -474,19 +558,25 @@ interface FeatureOperationOptions {
 | `env`                     | `string`                                 | No       | —          | Application environment                                                                                                                                                              |
 | `version`                 | `string`                                 | No       | —          | Application version                                                                                                                                                                  |
 | `sessionSampleRate`       | `number`                                 | No       | `100`      | Percentage of sessions to collect (0–100). `0` collects no sessions; `100` collects all sessions.                                                                                    |
-| `traceSamplingRules`      | `TraceSamplingRule[]`                    | No       | `[]`       | Ordered sampling rules for main-process traces. The first matching rule determines the percentage of traces to keep; unmatched traces are kept.                                      |
+| `logsSampleRate`          | `number`                                 | No       | `100`      | Percentage of bridged renderer logs to forward (0–100), sampled independently per log. In bridge mode this replaces the Browser Logs `sessionSampleRate`.                            |
+| `traceSampleRate`         | `number`                                 | No       | `100`      | Percentage of main-process traces to keep when no `traceSamplingRules` rule matches (0–100).                                                                                         |
+| `traceSamplingRules`      | `TraceSamplingRule[]`                    | No       | `[]`       | Ordered sampling rules for main-process traces. The first matching rule determines the percentage of traces to keep; unmatched traces use `traceSampleRate`.                         |
 | `sessionReplaySampleRate` | `number`                                 | No       | `0`        | Percentage of sampled sessions that record session replay (0–100). `0` disables renderer session replay. Applied as a child of `sessionSampleRate`.                                  |
 | `profilingSampleRate`     | `number`                                 | No       | `0`        | Percentage of sampled sessions that are profiled (0–100). `0` disables renderer profiling. Applied as a child of `sessionSampleRate`. See [Renderer Profiling](#renderer-profiling). |
 | `batchSize`               | `'SMALL' \| 'MEDIUM' \| 'LARGE'`         | No       | `'MEDIUM'` | Byte threshold that rotates a batch file early: `SMALL` 16 KiB, `MEDIUM` 512 KiB, `LARGE` 4 MiB                                                                                      |
 | `uploadFrequency`         | `'RARE' \| 'NORMAL' \| 'FREQUENT'`       | No       | `'NORMAL'` | How often pending batches are uploaded, and the window over which events accumulate: `RARE` 30s, `NORMAL` 10s, `FREQUENT` 5s                                                         |
 | `defaultPrivacyLevel`     | `'mask' \| 'allow' \| 'mask-user-input'` | No       | `'mask'`   | Default privacy level for renderer session replay                                                                                                                                    |
 | `allowedRendererHosts`    | `string[]`                               | Yes      | —          | Hostnames allowed for the renderer bridge (required; see table below)                                                                                                                |
+| `beforeSendRum`           | `RumBeforeSend`                          | No       | —          | Modify or discard fully assembled main-process and renderer RUM events                                                                                                               |
 
 #### `traceSamplingRules`
 
 Rules are evaluated in order when a root trace starts. The first matching rule determines the percentage of traces
-to keep; unmatched traces are kept. Patterns are case-insensitive globs, child spans inherit the root decision, and
-a rejected HTTP trace still produces an unlinked RUM Resource.
+to keep; unmatched traces use `traceSampleRate`. Within a sampled RUM session, each root trace is sampled independently,
+so the session can contain both kept and rejected traces. Patterns are case-insensitive globs, child spans inherit the
+root decision, and trace context is never propagated from an unsampled RUM session. For rejected traces in a sampled
+session, Electron `net` requests omit trace headers, while global `fetch` and `node:http` propagate the rejected sampling
+decision so downstream spans inherit it. A rejected HTTP trace still produces an unlinked RUM Resource.
 
 | Key          | Required | Purpose                                                                   |
 | ------------ | -------- | ------------------------------------------------------------------------- |

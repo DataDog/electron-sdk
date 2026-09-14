@@ -20,7 +20,7 @@ graph TB
     DD[(Datadog)]
 
     %% Browser SDK → Electron SDK via bridge
-    BP -->|"RUM events<br/>(IPC bridge)"| SDK
+    BP -->|"Browser SDK events<br/>(IPC bridge)"| SDK
 
     %% dd-trace → Electron SDK via diagnostic channel
     DDT -->|"HTTP spans<br/>IPC spans<br/>(diagnostics_channel)"| SDK
@@ -60,18 +60,23 @@ More details in the [Preload injection](#preload-injection) section.
 flowchart LR
     subgraph Sources
         RUM[RUM collection]
+        RRUM[Renderer RUM bridge]
+        RLOGS[Renderer Logs bridge]
         TEL[Telemetry]
     end
 
     subgraph Assembly
         HOOKS{Format Hooks}
         COMBINE[combine]
+        BEFORE_SEND[beforeSendRum]
     end
 
     subgraph "Hook Providers"
         CC[commonContext]
         SC[sessionContext]
         VC[viewContext]
+        UC[userContext]
+        AC[accountContext]
     end
 
     subgraph Transport
@@ -81,12 +86,18 @@ flowchart LR
     end
 
     RUM -- RawRumEvent --> COMBINE
+    RRUM -- RumEvent --> COMBINE
+    RLOGS -- LogsEvent --> COMBINE
     TEL -- RawTelemetryEvent --> COMBINE
     CC -. "application.id, service, ..." .-> HOOKS
     SC -. "session.id" .-> HOOKS
     VC -. "view.id, view.name, ..." .-> HOOKS
+    UC -. "usr" .-> HOOKS
+    AC -. "account" .-> HOOKS
     HOOKS --> COMBINE
-    COMBINE -- ServerEvent --> BM
+    COMBINE -- RUM event --> BEFORE_SEND
+    BEFORE_SEND -- ServerEvent --> BM
+    COMBINE -- Telemetry/logs ServerEvent --> BM
     BM --> BP
     BM --> BC
     BP -. "write" .-> DISK[Disk]
@@ -115,11 +126,16 @@ See `src/event/` and `src/domain/assembly.ts`.
 Two handlers transform events into `ServerEvent`s:
 
 - **`MainAssembly`**: handles main-process `RawEvent`s (excluding profile events), enriches them via `triggerRum` / `triggerTelemetry` hooks, and emits `ServerEvent`s with `source: MAIN`.
-- **`RendererPipeline`**: owns the renderer IPC channel, receives pre-assembled RUM events from the Browser SDK, enriches them via `triggerRum` with `source: EventSource.RENDERER`, and emits `ServerRumEvent`s with `source: RENDERER` directly, bypassing the `RawEvent` pipeline entirely.
+- **`RendererPipeline`**: owns the renderer IPC channel, receives pre-assembled RUM, telemetry, and log events from the Browser SDK, enriches them via `triggerRum` / `triggerTelemetry` / `triggerLogs` with `source: EventSource.RENDERER`, and emits `ServerEvent`s with `source: RENDERER` directly, bypassing the `RawEvent` pipeline entirely.
+
+`MainAssembly` and `RendererPipeline` apply the configured `beforeSendRum` callback after Electron enrichment and before
+emitting the final `ServerRumEvent`, with `source` identifying the originating process. Renderer events may already have
+passed through the Browser SDK's `beforeSend` before crossing the bridge. Telemetry, logs, profiles, and spans are not
+passed to `beforeSendRum`.
 
 #### Format Hooks
 
-`createFormatHooks()` creates per-format hook pairs (`registerRum`/`triggerRum`, `registerTelemetry`/`triggerTelemetry`, `registerSpan`/`triggerSpan`). Each hook callback receives a `source: EventSource` param (MAIN or RENDERER) and can return:
+`createFormatHooks()` creates per-format hook pairs (`registerRum`/`triggerRum`, `registerTelemetry`/`triggerTelemetry`, `registerLogs`/`triggerLogs`, `registerSpan`/`triggerSpan`). Each hook callback receives a `source: EventSource` param (MAIN or RENDERER) and can return:
 
 - **Partial data**: merged into the event via `combine()`
 - **`DISCARDED`**: drops the event entirely
@@ -177,8 +193,36 @@ the first statement of each call so that a call rejected by argument validation 
 adoption. Only the schema's `feature` discriminator is sent, never the caller's arguments. APIs the
 schema has no feature for are reported as the closest one, with a comment at the call site.
 
-Renderer-originated telemetry (`internal_telemetry` over the bridge) is not yet consumed — see
-`RendererPipeline`.
+#### Renderer telemetry
+
+The browser SDK sends pre-assembled telemetry over the bridge as `internal_telemetry`. `RendererPipeline`
+validates the payload and forwards it on the RUM track without re-sampling or deduplicating it; the
+browser SDK has already applied its telemetry configuration and limits.
+
+Main-process context replaces the renderer's application and stub session while preserving the browser
+SDK fields that describe the event. If no tracked main-process session covers the event date, the
+optional `session` field is omitted.
+
+## Logs
+
+The SDK has no main-process logging API. It relays `log` events assembled by the renderer's Browser
+Logs SDK onto a separate **LOGS track** (`/api/v2/logs`). In bridge mode the Browser SDK sends only to
+the host, so failing to relay an event would lose it. Transport therefore registers the LOGS handler
+before `RendererPipeline` opens the IPC listener; the track stays active even when sampling is zero so
+persisted batches from an earlier launch can be recovered.
+
+`RendererPipeline` validates `date`, `message`, and `status`, then preserves the renderer-owned log
+fields. Main-process hooks replace the stub application and session ids and fill missing `usr` and
+`account` context. Logs without a covering main-process session are still forwarded with null session
+ids. Uploads keep `ddsource=browser`, while `DD-EVP-ORIGIN: electron` identifies the uploader.
+
+Browser Logs uses an always-tracked session stub in bridge mode, so renderer
+`DD_LOGS.init({ sessionSampleRate })` does not sample bridged logs. Electron instead applies
+`logsSampleRate` independently to each valid log before enrichment; it defaults to 100. It is separate
+from RUM `sessionSampleRate`, and sampled-in logs have no relay cap.
+
+LOGS batches rotate at either the configured byte threshold or 1,000 events, keeping each JSON array
+within the Logs intake request limit without dropping events.
 
 ## Profiling
 
@@ -262,10 +306,13 @@ All spans are enriched with `_dd.application.id`, `_dd.session.id`, and `_dd.vie
 
 ### Trace sampling rules
 
-`traceSamplingRules` are applied by dd-trace when a root trace is sampled. Rules are ordered, the first match wins,
-and child spans inherit the root decision. If no rule matches, the trace is kept. Rejected traces are not sent to the
-spans intake or propagated through Electron HTTP requests. Their HTTP spans still produce RUM resources without
-trace or span identifiers.
+`traceSamplingRules` and `traceSampleRate` are applied by dd-trace when a root trace is sampled. Rules are ordered,
+the first match wins, and `traceSampleRate` is the fallback when no rule matches. Within a sampled RUM session, each
+root trace is sampled independently, so the session can contain both kept and rejected traces. Child spans inherit the
+root decision. Trace context is never propagated from an unsampled RUM session. For rejected traces in a sampled
+session, Electron `net` requests omit trace headers, while global `fetch` and `node:http` propagate the rejected sampling
+decision so downstream spans inherit it. Rejected traces are not sent to the spans intake. Their HTTP spans still
+produce RUM resources without trace or span identifiers.
 
 ### Preload injection
 

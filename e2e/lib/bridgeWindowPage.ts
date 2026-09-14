@@ -54,6 +54,53 @@ export class BridgeWindowPage {
     );
   }
 
+  /**
+   * Calls a browser SDK API that reports usage telemetry, which reaches the main process as an
+   * `internal_telemetry` bridge event. Unlike the configuration event the browser SDK sends at init,
+   * this one is emitted once its view exists, so it carries the renderer's view id.
+   */
+  async generateTelemetryUsage(): Promise<void> {
+    await this.page.evaluate(() => {
+      (globalThis as unknown as { DD_RUM: { addAction(name: string): void } }).DD_RUM.addAction('renderer-usage');
+    });
+    await this.waitForIpcPropagation();
+  }
+
+  /**
+   * Emits a log through the renderer's browser Logs SDK, which reaches the main process as a `log`
+   * bridge event. In bridge mode the Logs SDK cannot reach intake at all, so this is the only path.
+   */
+  async generateLog(message: string, context?: Record<string, unknown>): Promise<void> {
+    await this.page.evaluate(
+      ([msg, ctx]) => {
+        (
+          globalThis as unknown as {
+            DD_LOGS: { logger: { info(message: string, context?: Record<string, unknown>): void } };
+          }
+        ).DD_LOGS.logger.info(msg, ctx);
+      },
+      [message, context] as const
+    );
+    await this.waitForIpcPropagation();
+  }
+
+  /**
+   * Emits `count` logs in a single round trip, then waits once. A loop over {@link generateLog} would
+   * pay the IPC propagation wait per log and blow the test timeout.
+   */
+  async generateLogs(count: number, prefix: string): Promise<void> {
+    await this.page.evaluate(
+      ([total, messagePrefix]) => {
+        const logs = (globalThis as unknown as { DD_LOGS: { logger: { info(message: string): void } } }).DD_LOGS;
+        for (let i = 0; i < total; i++) {
+          logs.logger.info(`${messagePrefix}${i}`);
+        }
+      },
+      [count, prefix] as const
+    );
+    await this.waitForIpcPropagation();
+  }
+
   async getBridgeCapabilities(): Promise<string[]> {
     return this.page.evaluate(() => {
       const bridge = (

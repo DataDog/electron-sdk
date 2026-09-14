@@ -40,6 +40,11 @@ export class UserContext extends ContextManager<UserInfo> {
   constructor(hooks: FormatHooks, history?: ContextHistory) {
     super('user', USER_PROPERTIES, history);
     this.registerRumHook(hooks, 'usr');
+    hooks.registerLogs(({ startTime }) => {
+      const context = this.getContext(startTime);
+      if (isEmptyObject(context)) return SKIPPED;
+      return { usr: context };
+    });
     hooks.registerSpan(({ startTime }) => {
       const context = this.getContext(startTime);
       if (isEmptyObject(context)) return SKIPPED;

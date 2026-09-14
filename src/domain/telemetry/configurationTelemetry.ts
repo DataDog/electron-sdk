@@ -33,6 +33,7 @@ function buildConfigurationTelemetry(
 ): RawTelemetryConfigurationData {
   return {
     session_sample_rate: configuration.sessionSampleRate,
+    trace_sample_rate: configuration.traceSampleRate,
     session_replay_sample_rate: configuration.sessionReplaySampleRate,
     telemetry_sample_rate: configuration.telemetrySampleRate,
     telemetry_configuration_sample_rate: configuration.telemetryConfigurationSampleRate,
@@ -51,6 +52,7 @@ function buildConfigurationTelemetry(
     batch_upload_frequency: resolveUploadFrequency(configuration),
     use_tracing: useTracing,
     use_trace_sampling_rules: configuration.traceSamplingRules.length > 0,
+    use_before_send: configuration.beforeSendRum !== undefined,
     // dd-trace is the only tracer the SDK integrates with, so the API is Datadog's whenever tracing is on.
     tracer_api: useTracing ? 'Datadog' : undefined,
     tracer_api_version: useTracing ? tracerVersion : undefined,

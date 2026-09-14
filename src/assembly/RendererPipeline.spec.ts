@@ -16,10 +16,14 @@ import {
   type EndUserActivityEvent,
   type RawProfileEvent,
   type RawReplayEvent,
+  type ServerLogsEvent,
   type ServerRumEvent,
+  type ServerTelemetryEvent,
 } from '../event';
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
+import type { RumBeforeSend } from '../config';
 import { createMockSender, createTestConfiguration, type MockSender } from '../mocks.specUtil';
+import { registerCommonContext } from './commonContext';
 
 const { mockIpcMainOn, mockAddError, mockSetBridgeConfig } = vi.hoisted(() => {
   const mockIpcMainOn = vi.fn();
@@ -53,6 +57,21 @@ const RENDERER_RUM_DATA = {
   session: { id: 'renderer-session-id', type: 'user' },
   view: { id: 'renderer-view-id', name: 'My View', url: 'http://localhost' },
   ddtags: 'sdk_version:1.0.0',
+  _dd: { configuration: { trace_sample_rate: 80 } },
+};
+
+const RENDERER_LOG_DATA = {
+  date: 12345 as TimeStamp,
+  message: 'Workspace switched',
+  status: 'info',
+  service: 'renderer-service',
+  origin: 'logger',
+  logger: { name: 'workspace' },
+  application_id: 'renderer-app-id',
+  session_id: 'renderer-stub-session',
+  session: { id: 'renderer-stub-session' },
+  view: { id: 'renderer-view-id', url: 'https://app.example.com/workspace' },
+  ddtags: 'sdk_version:6.0.0,service:renderer-service,env:prod',
 };
 
 const RENDERER_CLICK_DATA = {
@@ -76,6 +95,24 @@ const RENDERER_CLICK_DATA = {
   ddtags: 'sdk_version:1.0.0',
 };
 
+/**
+ * A telemetry event as the renderer's browser RUM SDK assembles it before sending it over the bridge,
+ * already carrying its own service/source/version/date and the view it belongs to.
+ */
+const RENDERER_TELEMETRY_DATA = {
+  type: 'telemetry',
+  date: 12345 as TimeStamp,
+  source: 'browser',
+  service: 'browser-rum-sdk',
+  version: '6.0.0',
+  application: { id: 'renderer-app-id' },
+  session: { id: 'renderer-session-id' },
+  view: { id: 'renderer-view-id' },
+  ddtags: 'sdk_version:6.0.0,service:renderer-service',
+  _dd: { format_version: 2 },
+  telemetry: { type: 'log', status: 'error', message: 'renderer failure' },
+};
+
 interface IpcMessageExtra {
   /** Pass `null` to simulate a destroyed/navigated frame (senderFrame === null). */
   senderFrame?: null;
@@ -89,12 +126,16 @@ describe('RendererPipeline', () => {
   let hooks: FormatHooks;
   let simulateIpcMessage: (msg: string, origin?: string, url?: string, extra?: IpcMessageExtra) => void;
   let serverEvents: ServerRumEvent[];
+  let telemetryEvents: ServerTelemetryEvent[];
+  let logsEvents: ServerLogsEvent[];
 
   beforeEach(() => {
     vi.clearAllMocks();
     eventManager = new EventManager();
     hooks = createFormatHooks();
     serverEvents = [];
+    telemetryEvents = [];
+    logsEvents = [];
 
     mockIpcMainOn.mockImplementation(
       (
@@ -133,9 +174,24 @@ describe('RendererPipeline', () => {
       }
     );
 
+    // Telemetry shares the RUM track, so the two collectors split on the event type the way the
+    // intake does.
     eventManager.registerHandler<ServerRumEvent>({
-      canHandle: (event): event is ServerRumEvent => event.kind === EventKind.SERVER && event.track === EventTrack.RUM,
+      canHandle: (event): event is ServerRumEvent =>
+        event.kind === EventKind.SERVER && event.track === EventTrack.RUM && event.data.type !== 'telemetry',
       handle: (event) => serverEvents.push(event),
+    });
+
+    eventManager.registerHandler<ServerTelemetryEvent>({
+      canHandle: (event): event is ServerTelemetryEvent =>
+        event.kind === EventKind.SERVER && event.track === EventTrack.RUM && event.data.type === 'telemetry',
+      handle: (event) => telemetryEvents.push(event),
+    });
+
+    eventManager.registerHandler<ServerLogsEvent>({
+      canHandle: (event): event is ServerLogsEvent =>
+        event.kind === EventKind.SERVER && event.track === EventTrack.LOGS,
+      handle: (event) => logsEvents.push(event),
     });
 
     new RendererPipeline(eventManager, hooks, DEFAULT_CONFIG);
@@ -227,6 +283,37 @@ describe('RendererPipeline', () => {
       expect(serverEvents[0].data.container).toMatchObject({ source: 'electron' });
     });
 
+    it('applies beforeSendRum after enrichment with the renderer source', () => {
+      hooks.registerRum(() => ({ session: { id: 'main-session' } }));
+      let callbackSource: string | undefined;
+      let callbackSessionId: string | undefined;
+      const beforeSendRum: RumBeforeSend = (event, { source }) => {
+        callbackSource = source;
+        callbackSessionId = event.session.id;
+        event.view.name = 'redacted view';
+        return true;
+      };
+      new RendererPipeline(eventManager, hooks, createTestConfiguration({ beforeSendRum }));
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
+
+      expect(callbackSource).toBe('renderer');
+      expect(callbackSessionId).toBe('main-session');
+      expect(serverEvents[0].data.view.name).toBe('redacted view');
+    });
+
+    it('does not emit renderer events discarded by beforeSendRum', () => {
+      new RendererPipeline(
+        eventManager,
+        hooks,
+        createTestConfiguration({ beforeSendRum: (event) => event.type !== 'action' })
+      );
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_CLICK_DATA }));
+
+      expect(serverEvents).toHaveLength(0);
+    });
+
     it('preserves renderer source, service, view, and ddtags', () => {
       hooks.registerRum(() => ({ session: { id: 'main-session' }, application: { id: 'main-app' } }));
 
@@ -237,6 +324,14 @@ describe('RendererPipeline', () => {
       expect(data.service).toBe('renderer-service');
       expect(data.view.id).toBe('renderer-view-id');
       expect(data.ddtags).toBe('sdk_version:1.0.0');
+    });
+
+    it('preserves the Browser SDK trace sample rate during Electron enrichment', () => {
+      registerCommonContext(createTestConfiguration({ traceSampleRate: 20 }), hooks);
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
+
+      expect(serverEvents[0].data._dd.configuration?.trace_sample_rate).toBe(80);
     });
 
     it('passes event.data.date as startTime to triggerRum', () => {
@@ -512,17 +607,272 @@ describe('RendererPipeline', () => {
     });
   });
 
-  describe('unimplemented event types', () => {
-    it('does not emit for log events (TODO)', () => {
-      const spy = vi.spyOn(eventManager, 'notify');
-      simulateIpcMessage(JSON.stringify({ eventType: 'log', event: { message: 'hello' } }));
-      expect(spy).not.toHaveBeenCalled();
+  describe('log events', () => {
+    function simulateLog(data: Record<string, unknown> = RENDERER_LOG_DATA) {
+      simulateIpcMessage(JSON.stringify({ eventType: 'log', event: data }));
+    }
+
+    it('emits a ServerLogsEvent with source RENDERER on the LOGS track', () => {
+      simulateLog();
+
+      expect(logsEvents).toHaveLength(1);
+      expect(logsEvents[0].source).toBe(EventSource.RENDERER);
+      expect(logsEvents[0].track).toBe(EventTrack.LOGS);
+      expect(logsEvents[0].data.message).toBe(RENDERER_LOG_DATA.message);
     });
 
-    it('does not emit for internal_telemetry events (TODO)', () => {
-      const spy = vi.spyOn(eventManager, 'notify');
-      simulateIpcMessage(JSON.stringify({ eventType: 'internal_telemetry', event: {} }));
-      expect(spy).not.toHaveBeenCalled();
+    it('triggers the logs hooks with the renderer source and the log date', () => {
+      const callback = vi.fn(() => ({}));
+      hooks.registerLogs(callback);
+
+      simulateLog();
+
+      expect(callback).toHaveBeenCalledWith({ startTime: RENDERER_LOG_DATA.date, source: EventSource.RENDERER });
+    });
+
+    it('lets the main process override the application and session the renderer reported', () => {
+      hooks.registerLogs(() => ({
+        application_id: 'main-app',
+        session_id: 'main-session',
+        session: { id: 'main-session' },
+      }));
+
+      simulateLog();
+
+      expect(logsEvents[0].data).toMatchObject({
+        application_id: 'main-app',
+        session_id: 'main-session',
+        session: { id: 'main-session' },
+      });
+    });
+
+    it("keeps the renderer's own service, ddtags, status and view", () => {
+      hooks.registerLogs(() => ({ application_id: 'main-app' }));
+
+      simulateLog();
+
+      expect(logsEvents[0].data).toMatchObject({
+        date: RENDERER_LOG_DATA.date,
+        service: 'renderer-service',
+        status: 'info',
+        ddtags: 'sdk_version:6.0.0,service:renderer-service,env:prod',
+        view: { id: 'renderer-view-id' },
+        logger: { name: 'workspace' },
+      });
+    });
+
+    it('forwards a log whose stub session ids a hook nulled, rather than dropping it', () => {
+      hooks.registerLogs(() => ({ session_id: null, session: { id: null } }));
+
+      simulateLog();
+
+      expect(logsEvents).toHaveLength(1);
+      expect(logsEvents[0].data.session_id).toBeNull();
+      expect(logsEvents[0].data.session).toEqual({ id: null });
+    });
+
+    it('drops the log when a hook discards it', () => {
+      hooks.registerLogs(() => DISCARDED);
+
+      simulateLog();
+
+      expect(logsEvents).toHaveLength(0);
+    });
+
+    it('drops renderer logs before enrichment when logsSampleRate is 0', () => {
+      const callback = vi.fn(() => ({}));
+      hooks.registerLogs(callback);
+      new RendererPipeline(eventManager, hooks, createTestConfiguration({ logsSampleRate: 0 }));
+
+      simulateLog();
+
+      expect(logsEvents).toHaveLength(0);
+      expect(callback).not.toHaveBeenCalled();
+    });
+
+    it('samples each renderer log independently when logsSampleRate is between 0 and 100', () => {
+      const random = vi.spyOn(Math, 'random').mockReturnValueOnce(0.25).mockReturnValueOnce(0.75);
+      new RendererPipeline(eventManager, hooks, createTestConfiguration({ logsSampleRate: 50 }));
+
+      try {
+        simulateLog({ ...RENDERER_LOG_DATA, message: 'sampled in' });
+        simulateLog({ ...RENDERER_LOG_DATA, message: 'sampled out' });
+      } finally {
+        random.mockRestore();
+      }
+
+      expect(logsEvents).toHaveLength(1);
+      expect(logsEvents[0].data.message).toBe('sampled in');
+    });
+
+    it('does not deduplicate or relay-cap logs sampled in at logsSampleRate 100', () => {
+      for (let i = 0; i < 150; i++) simulateLog();
+
+      expect(logsEvents).toHaveLength(150);
+    });
+
+    it("prefers the renderer's own user over the main process's", () => {
+      hooks.registerLogs(() => ({ usr: { id: 'main-user' } }));
+
+      simulateLog({ ...RENDERER_LOG_DATA, usr: { id: 'renderer-user' } });
+
+      expect(logsEvents[0].data.usr).toEqual({ id: 'renderer-user' });
+    });
+
+    it('enriches an anonymous-only renderer user with the main process user', () => {
+      hooks.registerLogs(() => ({ usr: { id: 'main-user' } }));
+
+      simulateLog({ ...RENDERER_LOG_DATA, usr: { anonymous_id: 'anon-1' } });
+
+      expect(logsEvents[0].data.usr).toEqual({ id: 'main-user', anonymous_id: 'anon-1' });
+    });
+
+    it('treats null renderer customer contexts as absent instead of dropping the log', () => {
+      hooks.registerLogs(() => ({ usr: { id: 'main-user' }, account: { id: 'main-account' } }));
+
+      simulateLog({ ...RENDERER_LOG_DATA, usr: null, account: null });
+
+      expect(logsEvents).toHaveLength(1);
+      expect(logsEvents[0].data.usr).toEqual({ id: 'main-user' });
+      expect(logsEvents[0].data.account).toEqual({ id: 'main-account' });
+    });
+
+    it.each([
+      ['not an object', 'not-an-object'],
+      ['a missing date', { message: 'm', status: 'info' }],
+      ['a non-numeric date', { date: 'yesterday', message: 'm', status: 'info' }],
+      ['a missing message', { date: 1, status: 'info' }],
+      ['a missing status', { date: 1, message: 'm' }],
+    ])('reports a telemetry error and drops a log with %s', (_label, payload) => {
+      simulateLog(payload as unknown as Record<string, unknown>);
+
+      expect(logsEvents).toHaveLength(0);
+      expect(mockAddError).toHaveBeenCalledWith(new Error('Received malformed log bridge event'));
+    });
+  });
+
+  describe('internal telemetry events', () => {
+    function simulateTelemetry(data: Record<string, unknown> = RENDERER_TELEMETRY_DATA) {
+      simulateIpcMessage(JSON.stringify({ eventType: 'internal_telemetry', event: data }));
+    }
+
+    it('emits a ServerTelemetryEvent with source RENDERER on the RUM track', () => {
+      simulateTelemetry();
+
+      expect(telemetryEvents).toHaveLength(1);
+      expect(telemetryEvents[0].source).toBe(EventSource.RENDERER);
+      expect(telemetryEvents[0].track).toBe(EventTrack.RUM);
+      expect(telemetryEvents[0].data.telemetry).toEqual(RENDERER_TELEMETRY_DATA.telemetry);
+    });
+
+    it('triggers the telemetry hooks with the renderer source and the event date', () => {
+      const callback = vi.fn(() => ({}));
+      hooks.registerTelemetry(callback);
+
+      simulateTelemetry();
+
+      expect(callback).toHaveBeenCalledWith({ startTime: RENDERER_TELEMETRY_DATA.date, source: EventSource.RENDERER });
+    });
+
+    it('lets the main process context override the application and session the renderer reported', () => {
+      hooks.registerTelemetry(() => ({ application: { id: 'main-app' }, session: { id: 'main-session' } }));
+
+      simulateTelemetry();
+
+      expect(telemetryEvents[0].data.application?.id).toBe('main-app');
+      expect(telemetryEvents[0].data.session?.id).toBe('main-session');
+    });
+
+    it("keeps the browser SDK's own attributes, so the event still reports on the SDK that raised it", () => {
+      hooks.registerTelemetry(() => ({ application: { id: 'main-app' } }));
+
+      simulateTelemetry();
+
+      expect(telemetryEvents[0].data).toMatchObject({
+        date: RENDERER_TELEMETRY_DATA.date,
+        source: 'browser',
+        service: 'browser-rum-sdk',
+        version: '6.0.0',
+        view: { id: 'renderer-view-id' },
+        ddtags: 'sdk_version:6.0.0,service:renderer-service',
+      });
+    });
+
+    it('drops the event when a hook discards it', () => {
+      hooks.registerTelemetry(() => DISCARDED);
+
+      simulateTelemetry();
+
+      expect(telemetryEvents).toHaveLength(0);
+    });
+
+    it('emits without sampling, deduplicating, or applying another limit', () => {
+      for (let i = 0; i < 120; i++) simulateTelemetry();
+
+      expect(telemetryEvents).toHaveLength(120);
+    });
+
+    it("removes the browser SDK's stub session when the main process has no matching session", () => {
+      simulateTelemetry();
+
+      expect(telemetryEvents[0].data.session).toBeUndefined();
+    });
+
+    it("relays telemetry whatever the host app's own telemetrySampleRate is, including 0", () => {
+      const optedOutManager = new EventManager();
+      const relayed: ServerTelemetryEvent[] = [];
+      optedOutManager.registerHandler<ServerTelemetryEvent>({
+        canHandle: (event): event is ServerTelemetryEvent =>
+          event.kind === EventKind.SERVER && event.track === EventTrack.RUM,
+        handle: (event) => relayed.push(event),
+      });
+      new RendererPipeline(optedOutManager, createFormatHooks(), createTestConfiguration({ telemetrySampleRate: 0 }));
+
+      simulateTelemetry();
+
+      // The renderer's own rate already decided this event should be sent, and the main process's
+      // rate governs only what the Electron SDK reports about itself. Pinned so the crossover is not
+      // reintroduced as a "fix".
+      expect(relayed).toHaveLength(1);
+      expect(mockAddError).not.toHaveBeenCalled();
+    });
+
+    it('relays a kind the schema does not define, which the browser SDK can add before we sync', () => {
+      simulateTelemetry({ ...RENDERER_TELEMETRY_DATA, telemetry: { type: 'a-kind-added-later' } });
+
+      expect(telemetryEvents).toHaveLength(1);
+      expect(telemetryEvents[0].data.telemetry).toEqual({ type: 'a-kind-added-later' });
+      expect(mockAddError).not.toHaveBeenCalled();
+    });
+
+    it('relays log-shaped telemetry with no kind, which the schema makes optional for error/debug', () => {
+      // `status` is the discriminator here: the schema requires it on the two variants that make
+      // `type` optional, so a payload carrying one is well-formed telemetry, not an empty shell.
+      // Pinned so requiring `type` outright is not reintroduced as a "fix" — it would silently drop
+      // the renderer's error telemetry, the stream we would need to notice anything else breaking.
+      const telemetry = { status: 'error', message: 'no type' };
+      simulateTelemetry({ ...RENDERER_TELEMETRY_DATA, telemetry });
+
+      expect(telemetryEvents).toHaveLength(1);
+      expect(telemetryEvents[0].data.telemetry).toEqual(telemetry);
+      expect(mockAddError).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['a payload that is not an object', 'a string'],
+      ['a null payload', null],
+      ['an event that is not telemetry', { type: 'view', date: 12345 }],
+      ['an event with no date, which resolves the session and view', { type: 'telemetry' }],
+      ['an event with a non-numeric date', { type: 'telemetry', date: '12345' }],
+      ['an event with no telemetry payload, i.e. an empty shell', { type: 'telemetry', date: 12345 }],
+      ['an event whose telemetry payload is empty', { type: 'telemetry', date: 12345, telemetry: {} }],
+      ['an event whose telemetry payload is an array', { type: 'telemetry', date: 12345, telemetry: [] }],
+    ])('reports a telemetry error and drops %s', (_label, event) => {
+      simulateIpcMessage(JSON.stringify({ eventType: 'internal_telemetry', event }));
+
+      expect(telemetryEvents).toHaveLength(0);
+      expect(mockAddError).toHaveBeenCalledOnce();
+      expect((mockAddError.mock.calls[0][0] as Error).message).toContain('malformed telemetry');
     });
   });
 

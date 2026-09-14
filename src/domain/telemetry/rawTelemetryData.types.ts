@@ -1,14 +1,27 @@
-import type { TelemetryConfigurationEvent, TelemetryErrorEvent, TelemetryUsageEvent } from './telemetryEvent.types';
+import type {
+  TelemetryConfigurationEvent,
+  TelemetryErrorEvent,
+  TelemetryEvent,
+  TelemetryUsageEvent,
+} from './telemetryEvent.types';
 import { type RecursivePartial } from '@datadog/js-core/util';
 
 export type RawTelemetryData = RawTelemetryError | RawTelemetryConfiguration | RawTelemetryUsage;
 
 /**
- * Discriminator shared by every raw telemetry event, used to sample and rate-limit per type.
+ * The kinds of telemetry a {@link TelemetryEvent} can report, i.e. its `telemetry.type` discriminator.
  *
- * Note that `'log'` is the schema's bucket for both `status: 'error'` and `status: 'debug'`. The SDK
- * only emits errors, so one bucket is one type today; adding debug telemetry would make the two share
- * a sample rate and a dedup namespace unless this is split.
+ * Note that `'log'` is the schema's bucket for both `status: 'error'` and `status: 'debug'`.
+ */
+export type TelemetryType = NonNullable<TelemetryEvent['telemetry']['type']>;
+
+/**
+ * The {@link TelemetryType}s the SDK itself emits, used to sample and rate-limit per type.
+ *
+ * The SDK only emits errors, not debug logs, so the shared `'log'` bucket is one type today; adding
+ * debug telemetry would make the two share a sample rate and a dedup namespace unless this is split.
+ * Derived from the raw shapes rather than from {@link TelemetryType} so it stays the set the SDK
+ * emits, which the schema can widen beyond.
  */
 export type RawTelemetryType = RawTelemetryData['telemetry']['type'];
 
