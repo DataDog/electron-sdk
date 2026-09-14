@@ -364,20 +364,25 @@ Making it a direct dependency ensures a single, tested version is always present
 | **Optional dependency**                              | —                                                                                   | SDK does not work without dd-trace; same mismatch risk as peer; confusing DX                                                                                             |
 | **Vendored / embedded in SDK bundle** (POC approach) | Single file, no transitive deps                                                     | Fragile: dd-trace uses dynamic requires, native module loading, and runtime path resolution that break when bundled into a single file; would need constant re-vendoring |
 
-#### Optional dependencies are stripped
+#### Optional dependencies in plugin-owned staging
 
-dd-trace declares optional dependencies (OpenTelemetry bindings, OpenFeature, ASM, IAST, etc.) that are irrelevant for Electron:
-These optional dependencies may or may not install in the customer's `node_modules` depending on platform and package manager behavior. When `copyRuntimeDependencies: true` is set, the **bundler plugins only copy `dependencies`, not `optionalDependencies`**, when populating the build output's `node_modules`. Applications using the default packager-owned staging depend on their packager's behavior.
+dd-trace declares optional dependencies (OpenTelemetry bindings, OpenFeature, ASM, IAST, etc.) that
+are irrelevant for Electron. These optional dependencies may or may not install in the customer's
+`node_modules` depending on platform and package manager behavior. When
+`copyRuntimeDependencies: true` is set, the **bundler plugins only copy `dependencies`, not
+`optionalDependencies`**, when populating the build output's `node_modules`. Applications using the
+default packager-owned staging depend on their packager's behavior and may retain installed optional
+dependencies.
 
 #### Dependency size
 
-| What                                                                     | Size      | Notes                                           |
-| ------------------------------------------------------------------------ | --------- | ----------------------------------------------- |
-| dd-trace (stripped, no optional deps)                                    | ~7 MB     | The core dd-trace package                       |
-| Runtime transitive deps (dc-polyfill, import-in-the-middle, acorn, etc.) | ~1 MB     | Required by dd-trace at runtime                 |
-| **Total copied to packaged app**                                         | **~8 MB** | What bundler plugins copy via `copyPackageTree` |
-| electron-sdk own dist                                                    | ~4 MB     | SDK code + WASM chunks                          |
-| dd-trace optional deps (not copied by plugins)                           | Unknown   | Inclusion depends on managed packager behavior  |
+| What                                                                     | Size      | Notes                                          |
+| ------------------------------------------------------------------------ | --------- | ---------------------------------------------- |
+| dd-trace (plugin-copied, no optional deps)                               | ~7 MB     | The core dd-trace package                      |
+| Runtime transitive deps (dc-polyfill, import-in-the-middle, acorn, etc.) | ~1 MB     | Required by dd-trace at runtime                |
+| **Total copied by bundler plugins**                                      | **~8 MB** | What `copyPackageTree` stages                  |
+| electron-sdk own dist                                                    | ~4 MB     | SDK code + WASM chunks                         |
+| dd-trace optional deps (not copied by plugins)                           | Unknown   | Inclusion depends on managed packager behavior |
 
 The `copyPackageTree` function in all three bundler plugins walks only the `dependencies` field of each package's `package.json`, so plugin-owned staging excludes ~84 MB of optional native modules. Applications whose packager does not stage external dependencies can enable this copy with `copyRuntimeDependencies: true`.
 

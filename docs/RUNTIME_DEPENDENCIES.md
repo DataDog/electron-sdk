@@ -100,4 +100,7 @@ hoisted `node_modules`, and modern Yarn must use the `node-modules` linker. See 
 
 Keep `copyRuntimeDependencies` disabled and configure the packager to stage production dependencies.
 electron-builder and plain Electron Forge already do this by default when packaging the application
-source.
+source. The main-process bundler configuration must still register the corresponding
+[`datadogVitePlugin()`](../src/entries/vite-plugin.ts) or
+[`DatadogWebpackPlugin`](../src/entries/webpack-plugin.ts); see the
+[bundler plugin examples](../README.md#bundler-plugins).

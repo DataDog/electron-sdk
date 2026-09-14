@@ -171,7 +171,32 @@ manager requirements.
 `copyRuntimeDependencies` defaults to `false` for every Datadog bundler plugin. Keep the default and
 configure the application packager to stage production dependencies.
 
-For example, with esbuild:
+Add the corresponding Datadog plugin to the main-process bundler configuration.
+
+**Vite** (including electron-vite and standalone Vite):
+
+```ts
+// vite config
+import { defineConfig } from 'vite';
+import { datadogVitePlugin } from '@datadog/electron-sdk/vite-plugin';
+
+export default defineConfig({
+  plugins: [datadogVitePlugin()],
+});
+```
+
+**Webpack:**
+
+```ts
+// webpack config
+const { DatadogWebpackPlugin } = require('@datadog/electron-sdk/webpack-plugin');
+
+module.exports = {
+  plugins: [new DatadogWebpackPlugin()],
+};
+```
+
+**esbuild:**
 
 ```ts
 // esbuild config

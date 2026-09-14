@@ -13,7 +13,7 @@ When making changes that impact development workflows or architecture, update th
 | `docs/DEVELOPMENT.md`          | Workflow, build system, dependencies                        |
 | `docs/CONVENTIONS.md`          | Coding conventions and style guidelines                     |
 | `docs/ARCHITECTURE.md`         | SDK design patterns and event pipeline                      |
-| `docs/RUNTIME_DEPENDENCIES.md` | Electron Forge Vite and Webpack setup                       |
+| `docs/RUNTIME_DEPENDENCIES.md` | Runtime dependency setup for Forge and other packagers      |
 | `docs/TESTING.md`              | Unit and E2E testing strategy and infrastructure            |
 | `docs/REVIEW.md`               | Code review guide for agents                                |
 | `scripts/README.md`            | Script placement and CLI conventions                        |
