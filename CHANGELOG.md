@@ -2,6 +2,32 @@
 
 All notable changes to `@datadog/electron-sdk` are documented here.
 
+## [0.9.0] - 2026-09-14
+
+### ✨ Features
+
+- ✨ forward logs from the renderer process (#212)
+- ✨ add beforeSend event filtering and scrubbing (#180)
+- ✨ support telemetry from the renderer process (#205)
+- ✨ add trace sampling rules (#199)
+- ✨ add the `traceSampleRate` fallback configuration option (#193)
+- ✨ [RUM-17988] tag main-process errors with error.source_type: nodejs (#206)
+- ✨ report configuration and usage telemetry (#195)
+
+### 🐛 Bug Fixes
+
+- 🐛 carry `batchSize` and `uploadFrequency` into the resolved configuration (#198)
+
+### Internal
+
+- 👷 Update dependency eslint-plugin-unicorn to v74 (#214)
+- 👷 Update dependency jsdom to v30 (#215)
+- Migrate SAST config to code-security.datadog.yaml (#210)
+- 🚀 Cancel stale CI pipelines (#211)
+- 👷 Update dependency eslint-plugin-unicorn to v73 (#201)
+- 👷 Update dependency @electron/asar to v4 (#200)
+- ♻️ type intake event bodies by their event type (#202)
+
 ## [0.8.1] - 2026-08-11
 
 ### Internal
