@@ -7,6 +7,10 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     name: 'forge-webpack',
+    ignore: (file) => {
+      if (!file) return false;
+      return !/^[/\\](?:\.webpack|node_modules)(?:[/\\]|$)/.test(file);
+    },
   },
   rebuildConfig: {},
   makers: [],
