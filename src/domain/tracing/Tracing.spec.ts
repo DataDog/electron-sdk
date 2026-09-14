@@ -110,7 +110,7 @@ describe('Tracing', () => {
       client: { propagationBlocklist: expect.any(Function) as unknown },
     });
 
-    const propagationBlocklist = use.mock.calls[0][1].propagationBlocklist as () => boolean;
+    const propagationBlocklist = (use.mock.calls[0][1] as { propagationBlocklist: () => boolean }).propagationBlocklist;
     expect(propagationBlocklist()).toBe(false);
     setCurrentSessionSampled(false);
     expect(propagationBlocklist()).toBe(true);

@@ -10,7 +10,7 @@ interface Info {
 }
 
 type Label = 'user' | 'account';
-type EventKey = 'usr' | 'account';
+type EventKey = 'usr' | 'account' | 'context';
 
 interface Scenario {
   label: Label;
@@ -128,4 +128,33 @@ test('enriches spans with account.* tags when account context is set', async ({ 
   const span = await intake.waitForSpan((s) => s.name === 'electron.main.handle' && s.resource === 'ping');
   expect(span.meta['account.id']).toBe('account-1');
   expect(span.meta['account.name']).toBe('Acme Corp');
+});
+
+test('attaches the global context to subsequent events', async ({ mainPage, intake }) => {
+  await mainPage.setGlobalContext({ team: 'checkout' });
+  await mainPage.setGlobalContextProperty('build', '1.2.3');
+
+  const context = await getContext(mainPage, intake, 'context');
+
+  expect(context).toMatchObject({ team: 'checkout', build: '1.2.3' });
+});
+
+test('merges the global context into renderer events, renderer keys winning', async ({
+  electronApp,
+  mainPage,
+  intake,
+}) => {
+  await mainPage.setGlobalContext({ team: 'checkout', build: '1.2.3' });
+
+  const bridgeWindow = await mainPage.openBridgeHttpWindow(electronApp);
+  await bridgeWindow.setRendererGlobalContext({ team: 'renderer-owned' });
+  await bridgeWindow.generateError('renderer error');
+  await mainPage.flushTransport();
+
+  const errors = await intake.getEventsByType('error', {
+    predicate: (event) => event.body.error.message === 'renderer error',
+  });
+  expect(errors[0].body).toMatchObject({
+    context: { team: 'renderer-owned', build: '1.2.3' },
+  });
 });
