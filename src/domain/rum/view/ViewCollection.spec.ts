@@ -24,7 +24,7 @@ import {
 } from '../../../event';
 import { createFormatHooks, type FormatHooks } from '../../../assembly';
 import { createServerRumEvent, createServerRumView } from '../../../mocks.specUtil';
-import { RawRumView } from '../rawRumData.types';
+import { RawRumView, MainRumEvent } from '../types';
 
 vi.mock('node:fs/promises');
 const mfs = mockFs();
@@ -199,22 +199,19 @@ describe('ViewCollection', () => {
   });
 
   describe('event counters', () => {
-    it.each(['action', 'error', 'resource'] as const)(
-      'increments %s counter on corresponding ServerRumEvent',
-      (type) => {
-        eventManager.notify({
-          kind: EventKind.SERVER,
-          track: EventTrack.RUM,
-          source: EventSource.MAIN,
-          data: createServerRumEvent(type),
-        });
+    it.each(['error', 'resource'] as const)('increments %s counter on corresponding ServerRumEvent', (type) => {
+      eventManager.notify({
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        source: EventSource.MAIN,
+        data: createServerRumEvent<MainRumEvent>(type),
+      });
 
-        expect(rawRumEvents).toHaveLength(2);
-        const data = rawRumEvents[1].data as RawRumView;
-        expect(data.view[type].count).toBe(1);
-        expect(data._dd.document_version).toBe(2);
-      }
-    );
+      expect(rawRumEvents).toHaveLength(2);
+      const data = rawRumEvents[1].data as RawRumView;
+      expect(data.view[type].count).toBe(1);
+      expect(data._dd.document_version).toBe(2);
+    });
 
     it('does not count view type ServerEvents', () => {
       eventManager.notify({
@@ -254,12 +251,12 @@ describe('ViewCollection', () => {
   });
 
   describe('throttled view updates', () => {
-    function notifyServerRumEvent(type: 'action' | 'error' | 'resource') {
+    function notifyServerRumEvent(type: 'error' | 'resource') {
       eventManager.notify({
         kind: EventKind.SERVER,
         track: EventTrack.RUM,
         source: EventSource.MAIN,
-        data: createServerRumEvent(type),
+        data: createServerRumEvent<MainRumEvent>(type),
       });
     }
 
@@ -280,15 +277,15 @@ describe('ViewCollection', () => {
     it('trailing update contains final accumulated counters and document_version', () => {
       notifyServerRumEvent('resource');
       notifyServerRumEvent('error');
-      notifyServerRumEvent('action');
+      notifyServerRumEvent('resource');
 
       vi.advanceTimersByTime(VIEW_UPDATE_THROTTLE_DELAY);
 
       const trailing = rawRumEvents[rawRumEvents.length - 1].data as RawRumView;
-      expect(trailing.view.resource.count).toBe(1);
+      expect(trailing.view.resource.count).toBe(2);
       expect(trailing.view.error.count).toBe(1);
-      expect(trailing.view.action.count).toBe(1);
-      // initial=1, leading=2 (first resource), trailing=4 (after error+action increments)
+      expect(trailing.view.action.count).toBe(0);
+      // initial=1, leading=2 (first resource), trailing=4 (after error+resource increments)
       expect(trailing._dd.document_version).toBe(4);
     });
 

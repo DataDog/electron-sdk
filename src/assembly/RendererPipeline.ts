@@ -16,7 +16,7 @@ import { isEmptyObject, performDraw } from '@datadog/browser-core';
 import { monitor, addError as addTelemetryError, type TelemetryEvent } from '../domain/telemetry';
 import { BRIDGE_CHANNEL, setBridgeConfig, type BridgeOptions } from '../common';
 import type { FormatHooks } from './hooks';
-import type { RumEvent } from '../domain/rum';
+import type { RendererRumEvent } from '../domain/rum';
 import type { LogsEvent } from '../domain/logs';
 import { Configuration } from '../config';
 import { BeforeSend } from './BeforeSend';
@@ -155,7 +155,7 @@ export class RendererPipeline {
   }
 
   private handleRumEvent(eventData: unknown): void {
-    const data = eventData as RumEvent;
+    const data = eventData as RendererRumEvent;
 
     // Emit activity before the session check: a click after session expiry must still
     // create a new session even though triggerRum will return DISCARDED
@@ -281,7 +281,7 @@ export class RendererPipeline {
    * Overrides are merged last, so the application and session the main process owns win over the ones
    * the renderer reported. Everything else stays the renderer's, see `registerCommonContext`.
    */
-  private emitRendererEvent<E extends RumEvent | TelemetryEvent | LogsEvent>(
+  private emitRendererEvent<E extends RendererRumEvent | TelemetryEvent | LogsEvent>(
     track: typeof EventTrack.RUM | typeof EventTrack.LOGS,
     data: E,
     overrides: RecursivePartial<E> | undefined

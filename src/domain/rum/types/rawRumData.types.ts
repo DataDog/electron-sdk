@@ -6,7 +6,7 @@ import {
   RumViewEvent,
   RumVitalDurationEvent,
   RumVitalOperationStepEvent,
-} from './rumEvent.types';
+} from './rendererRumEvent.types';
 
 export type RawRumData = RawRumView | RawRumError | RawRumOperationStepVital | RawRumDurationVital | RawRumResource;
 
