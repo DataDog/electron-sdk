@@ -138,7 +138,7 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
    * account.
    */
   protected setProperty(key: string, value: unknown): void {
-    this.standardFields = pickNonNullish({ ...this.standardFields, [key]: value });
+    this.standardFields = pickNonNullish({ ...this.standardFields, [key]: deepClone(value) });
     this.recordCurrentContext();
   }
 

@@ -77,6 +77,15 @@ describe('GlobalContext', () => {
       expect(triggerRum()).toEqual({ context: { team: 'checkout' } });
     });
 
+    it('stores a copy of the property value', () => {
+      const feature = { owner: 'checkout' };
+      globalContext.setProperty('feature', feature);
+
+      feature.owner = 'payments';
+
+      expect(triggerRum()).toEqual({ context: { feature: { owner: 'checkout' } } });
+    });
+
     it.each([null, undefined])('removes the property when the value is %j', (value) => {
       globalContext.setContext({ team: 'checkout', build: '1.2.3' });
       globalContext.setProperty('build', value);

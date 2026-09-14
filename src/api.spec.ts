@@ -184,6 +184,13 @@ describe.sequential('global context public API', () => {
       expect(globalContextApi.setContext).toHaveBeenCalledWith({ team: 'checkout' });
     });
 
+    it('drops invalid top-level keys while preserving the rest of the context', () => {
+      setGlobalContext({ team: 'checkout', '  ': 'blank', ' padded ': 'value' });
+
+      expect(globalContextApi.setContext).toHaveBeenCalledWith({ team: 'checkout' });
+      expect(display.error).toHaveBeenCalledTimes(2);
+    });
+
     it('is rejected when the context is not an object', () => {
       setGlobalContext('nope' as never);
 
@@ -210,7 +217,7 @@ describe.sequential('global context public API', () => {
       expect(globalContextApi.setProperty).toHaveBeenCalledWith('build', '1.2.3');
     });
 
-    it.each(['', '   '])('is rejected for a blank key %j', (key) => {
+    it.each(['', '   ', ' build '])('is rejected for an invalid key %j', (key) => {
       setGlobalContextProperty(key, 'v');
 
       expect(globalContextApi.setProperty).not.toHaveBeenCalled();
@@ -225,8 +232,8 @@ describe.sequential('global context public API', () => {
       expect(globalContextApi.removeProperty).toHaveBeenCalledWith('build');
     });
 
-    it('is rejected for a blank key', () => {
-      removeGlobalContextProperty('  ');
+    it.each(['  ', ' build '])('is rejected for an invalid key %j', (key) => {
+      removeGlobalContextProperty(key);
 
       expect(globalContextApi.removeProperty).not.toHaveBeenCalled();
       expect(display.error).toHaveBeenCalledOnce();

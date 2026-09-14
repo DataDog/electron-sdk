@@ -454,6 +454,15 @@ describe('RendererPipeline', () => {
 
       expect(serverEvents[0].data.context).toEqual({ team: 'payments', build: '1.2.3' });
     });
+
+    it('replaces a conflicting nested value instead of deep-merging both contexts', () => {
+      hooks.registerRum(() => ({ context: { feature: { owner: 'main', enabled: true } } }));
+      const event = { ...RENDERER_RUM_DATA, context: { feature: { owner: 'renderer' } } };
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event }));
+
+      expect(serverEvents[0].data.context).toEqual({ feature: { owner: 'renderer' } });
+    });
   });
 
   describe('user activity tracking', () => {

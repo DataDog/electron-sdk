@@ -10,7 +10,7 @@ interface Info {
 }
 
 type Label = 'user' | 'account';
-type EventKey = 'usr' | 'account';
+type EventKey = 'usr' | 'account' | 'context';
 
 interface Scenario {
   label: Label;
@@ -134,11 +134,9 @@ test('attaches the global context to subsequent events', async ({ mainPage, inta
   await mainPage.setGlobalContext({ team: 'checkout' });
   await mainPage.setGlobalContextProperty('build', '1.2.3');
 
-  await mainPage.generateManualError();
-  await mainPage.flushTransport();
+  const context = await getContext(mainPage, intake, 'context');
 
-  const error = (await intake.getEventsByType('error'))[0].body;
-  expect(error.context).toMatchObject({ team: 'checkout', build: '1.2.3' });
+  expect(context).toMatchObject({ team: 'checkout', build: '1.2.3' });
 });
 
 test('merges the global context into renderer events, renderer keys winning', async ({

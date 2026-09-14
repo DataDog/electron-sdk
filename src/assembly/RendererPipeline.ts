@@ -305,9 +305,8 @@ interface CustomerContextCarrier {
 /**
  * The renderer's own user/account context takes precedence. An anonymous-only renderer user
  * is the exception: preserve its anonymous_id while enriching it with the main-process user.
- * Global context is not replaced wholesale: both processes contribute free-form attributes and
- * neither owns the whole object, so only the precedence is set here and the renderer wins on
- * conflicting keys (`combine` already merges the rest).
+ * Both processes contribute global context attributes, with renderer values replacing main-process
+ * values at the top level when a key exists in both contexts.
  * session/application/container always come from the main process.
  */
 function resolveCustomerContextOverrides<E extends CustomerContextCarrier>(
@@ -324,7 +323,7 @@ function resolveCustomerContextOverrides<E extends CustomerContextCarrier>(
   }
   if (hasContext(data.account)) delete overrides.account;
   if (hasContext(data.context) && hasContext(overrides.context)) {
-    overrides.context = combine(overrides.context, data.context);
+    overrides.context = { ...overrides.context, ...data.context };
   }
   return overrides as RecursivePartial<E>;
 }

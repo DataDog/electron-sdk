@@ -1,4 +1,4 @@
-import { sanitize } from '@datadog/browser-core';
+import { objectEntries, sanitize } from '@datadog/browser-core';
 import { isIndexableObject } from '@datadog/js-core/util';
 import type { Context, GlobalContext } from './domain/customer-context';
 import type { AddDurationVitalOptions, DurationVitalOptions, RumCollection } from './domain/rum';
@@ -47,7 +47,13 @@ export function setGlobalContext(context: Record<string, unknown>): void {
       display.error('setGlobalContext: context must be an object. The context will not be updated.');
       return;
     }
-    globalContextApi?.setContext(sanitize(context) as Context);
+    const validContext: Context = {};
+    for (const [key, value] of objectEntries(context)) {
+      if (validateContextKey('setGlobalContext', key)) {
+        validContext[key] = value;
+      }
+    }
+    globalContextApi?.setContext(sanitize(validContext) as Context);
   });
 }
 
@@ -121,8 +127,10 @@ export function clearGlobalContext(): void {
 }
 
 function validateContextKey(method: GlobalContextMethod, key: unknown): key is string {
-  if (!isValidString(key)) {
-    display.error(`${method}: key cannot be empty or blank. The context will not be updated.`);
+  if (!isValidString(key) || key !== key.trim()) {
+    display.error(
+      `${method}: key cannot be empty, blank, or have leading or trailing whitespace. The context will not be updated.`
+    );
     return false;
   }
   return true;
