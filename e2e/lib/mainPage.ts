@@ -228,7 +228,7 @@ export class MainPage {
     } finally {
       reading = false;
       await flushing;
-  }
+    }
   }
 
   async setUserInfo(user: UserInfo) {
