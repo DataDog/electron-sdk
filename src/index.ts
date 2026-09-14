@@ -57,8 +57,6 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   sessionManager = await SessionManager.start(eventManager, hooks, config);
 
   new MainAssembly(eventManager, hooks, new BeforeSend(config.beforeSendRum));
-  new RendererPipeline(eventManager, hooks, config);
-
   new ProfilingCollection(eventManager, sessionManager, config, hooks);
   replayCollection = new ReplayCollection(eventManager, config, sessionManager, hooks);
 
@@ -66,7 +64,13 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
     new SpanProcessor(eventManager, hooks, config);
   }
 
+  // EventManager does not queue events that have no matching handler. Finish registering every
+  // transport track before opening the renderer IPC listener, so an event received during init
+  // cannot fall into the gap between RendererPipeline and Transport initialization.
   transport = await Transport.create(config, eventManager);
+
+  new RendererPipeline(eventManager, hooks, config);
+
   const rum = await RumCollection.start(eventManager, hooks);
   rumApi = rum.getApi();
   setDurationVitalApi(rumApi);
@@ -366,6 +370,7 @@ export type {
   RumVitalDurationEvent,
   RumVitalOperationStepEvent,
 } from './domain/rum';
+export type { LogsEvent } from './domain/logs';
 export type {
   TelemetryConfigurationEvent,
   TelemetryDebugEvent,

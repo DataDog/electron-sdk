@@ -6,6 +6,7 @@ export { registerCommonContext } from './commonContext';
 export { createFormatHooks } from './hooks';
 export type {
   FormatHooks,
+  LogsAssembleParams,
   RumAssembleParams,
   RumEventType,
   SpanAssembleParams,

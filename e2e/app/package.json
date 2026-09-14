@@ -11,6 +11,7 @@
     "build:bridge-window": "esbuild src/bridge-window.ts --bundle --format=esm --outfile=dist/bridge-window.js --sourcemap && cp src/bridge-window.html dist/"
   },
   "dependencies": {
+    "@datadog/browser-logs": "7.5.0",
     "@datadog/browser-rum": "7.5.0",
     "@datadog/electron-sdk": "portal:../.."
   },

@@ -33,6 +33,7 @@ function buildConfigurationTelemetry(
 ): RawTelemetryConfigurationData {
   return {
     session_sample_rate: configuration.sessionSampleRate,
+    trace_sample_rate: configuration.traceSampleRate,
     session_replay_sample_rate: configuration.sessionReplaySampleRate,
     telemetry_sample_rate: configuration.telemetrySampleRate,
     telemetry_configuration_sample_rate: configuration.telemetryConfigurationSampleRate,

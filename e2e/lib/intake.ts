@@ -1,6 +1,7 @@
 import * as http from 'node:http';
 import zlib from 'node:zlib';
 import type {
+  LogsEvent,
   RumErrorEvent,
   RumResourceEvent,
   RumViewEvent,
@@ -166,6 +167,8 @@ export const byRendererTelemetryType =
 export class Intake {
   private server: http.Server | null = null;
   private rumEvents: ReceivedEvent[] = [];
+  private logs: ReceivedEvent<LogsEvent>[] = [];
+  private logRequestSizes: number[] = [];
   private replaySegments: ReplaySegment[] = [];
   private traces: Trace[] = [];
   private profilingRequests: ProfilingRequest[] = [];
@@ -237,6 +240,18 @@ export class Intake {
     }
 
     this.replaySegments.push(segment);
+  }
+
+  /**
+   * Logs live in their own store rather than in `rumEvents`: they arrive on a different track and
+   * carry no `type` discriminator, so the `EventBodyByType` reads cannot select them.
+   */
+  private storeLogs(parsedBody: unknown, headers: Record<string, string>, ddforward: string) {
+    const items = Array.isArray(parsedBody) ? (parsedBody as LogsEvent[]) : [parsedBody as LogsEvent];
+    this.logRequestSizes.push(items.length);
+    for (const item of items) {
+      this.logs.push({ timestamp: Date.now(), body: item, headers, ddforward });
+    }
   }
 
   private storeTraces(parsedBody: unknown) {
@@ -323,6 +338,8 @@ export class Intake {
             const parsedBody: unknown = JSON.parse(rawBody.toString());
             if (ddforward.startsWith('/api/v2/spans')) {
               this.storeTraces(parsedBody);
+            } else if (ddforward.startsWith('/api/v2/logs')) {
+              this.storeLogs(parsedBody, headers, ddforward);
             } else {
               // Default: treat as RUM events (covers /api/v2/rum and any other path)
               this.storeRumEvents(parsedBody, headers, ddforward);
@@ -529,12 +546,45 @@ export class Intake {
     throw new Error(`Timed out waiting for a replay segment after ${timeout}ms.`);
   }
 
+  /**
+   * Waits for at least `count` logs, optionally filtered, and returns everything matching.
+   * Separate from {@link waitForEventCount} because logs are their own track and carry no `type`.
+   */
+  async waitForLogCount(
+    count: number,
+    options?: { timeout?: number; predicate?: (log: ReceivedEvent<LogsEvent>) => boolean }
+  ): Promise<ReceivedEvent<LogsEvent>[]> {
+    const timeout = options?.timeout ?? 10000;
+    const predicate = options?.predicate ?? (() => true);
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeout) {
+      const matching = this.logs.filter(predicate);
+      if (matching.length >= count) return matching;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    throw new Error(
+      `Timed out waiting for ${count} log(s) after ${timeout}ms. Received ${this.logs.filter(predicate).length}.`
+    );
+  }
+
+  getLogs(): ReceivedEvent<LogsEvent>[] {
+    return [...this.logs];
+  }
+
+  getLogRequestSizes(): number[] {
+    return [...this.logRequestSizes];
+  }
+
   getReplaySegments(): ReplaySegment[] {
     return [...this.replaySegments];
   }
 
   clear(): void {
     this.rumEvents = [];
+    this.logs = [];
+    this.logRequestSizes = [];
     this.replaySegments = [];
     this.traces = [];
     this.profilingRequests = [];

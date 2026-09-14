@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BatchSizes, BatchUploadFrequencies } from '../config';
 import type { RawEvent, ServerEvent, ServerProfileEvent } from '../event';
-import { EventKind, EventSource, EventTrack, EventManager } from '../event';
+import { EventKind, EventTrack, EventManager } from '../event';
 import { createTestConfiguration } from '../mocks.specUtil';
 import { Transport } from './Transport';
 
@@ -66,7 +66,15 @@ describe('Transport', () => {
 
       const tracks = mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType);
       expect(tracks).not.toContain(EventTrack.PROFILE);
-      expect(tracks).toEqual([EventTrack.RUM, EventTrack.SPANS, EventTrack.REPLAY]);
+      expect(tracks).toEqual([EventTrack.RUM, EventTrack.SPANS, EventTrack.LOGS, EventTrack.REPLAY]);
+    });
+
+    it('should always setup the LOGS track', async () => {
+      const minimalConfig = createTestConfiguration({ profilingSampleRate: 0, sessionReplaySampleRate: 0 });
+      await Transport.create(minimalConfig, eventManager);
+
+      const tracks = mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType);
+      expect(tracks).toContain(EventTrack.LOGS);
     });
 
     it('should skip the REPLAY track when replay is disabled', async () => {
@@ -108,14 +116,15 @@ describe('Transport', () => {
     });
 
     it('should not handle SERVER events with different track type', async () => {
-      await Transport.create(config, eventManager);
+      // A track this configuration does not set up, so no handler claims the event.
+      const configWithoutReplay = createTestConfiguration({ sessionReplaySampleRate: 0 });
+      await Transport.create(configWithoutReplay, eventManager);
 
       eventManager.notify({
         kind: EventKind.SERVER,
-        track: EventTrack.LOGS,
-        source: EventSource.MAIN,
+        track: EventTrack.REPLAY,
         data: { test: 'data' },
-      });
+      } as unknown as ServerEvent);
 
       expect(mockBatchPost).not.toHaveBeenCalled();
     });
@@ -144,8 +153,8 @@ describe('Transport', () => {
       const transport = await Transport.create(config, eventManager);
       await transport.flush();
 
-      // RUM + SPANS + PROFILE + REPLAY
-      expect(mockBatchFlush).toHaveBeenCalledTimes(4);
+      // RUM + SPANS + LOGS + PROFILE + REPLAY
+      expect(mockBatchFlush).toHaveBeenCalledTimes(5);
     });
   });
 

@@ -36,6 +36,16 @@ export class ViewContext {
       return { view: { id } };
     });
 
+    hooks.registerLogs((params) => {
+      // A renderer log already carries the view its browser SDK reported, which is the view its RUM
+      // events are attached to. Logs have no `container` to hold the main-process view alongside it,
+      // so the renderer's view is kept as it is — same reasoning as telemetry above.
+      if (params.source === EventSource.RENDERER) return SKIPPED;
+      const id = this.history.find(params.startTime);
+      if (id === undefined) return SKIPPED;
+      return { view: { id } };
+    });
+
     hooks.registerSpan((params) => {
       const id = this.history.find(params.startTime);
       if (id === undefined) return DISCARDED;
