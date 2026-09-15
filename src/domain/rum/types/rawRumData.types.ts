@@ -1,4 +1,4 @@
-import { type TimeStamp, type ServerDuration } from '@datadog/js-core/time';
+import { type ServerDuration, type TimeStamp } from '@datadog/js-core/time';
 import { type RecursivePartial } from '@datadog/js-core/util';
 import {
   RumErrorEvent,
@@ -7,8 +7,10 @@ import {
   RumVitalDurationEvent,
   RumVitalOperationStepEvent,
 } from './rendererRumEvent.types';
+import type { RumExecutionContextEvent } from './mainRumEvent.types';
 
-export type RawRumData = RawRumView | RawRumError | RawRumOperationStepVital | RawRumDurationVital | RawRumResource;
+export type RawRumData =
+  RawRumView | RawRumError | RawRumOperationStepVital | RawRumDurationVital | RawRumResource | RawRumExecutionContext;
 
 export interface RawRumView extends RecursivePartial<RumViewEvent> {
   type: 'view';
@@ -19,6 +21,7 @@ export interface RawRumView extends RecursivePartial<RumViewEvent> {
     action: { count: number };
     error: { count: number };
     resource: { count: number };
+    is_fake?: boolean;
   };
   _dd: { document_version: number };
 }
@@ -107,4 +110,18 @@ export interface RawRumResource extends RecursivePartial<RumResourceEvent> {
     span_id?: string;
     format_version: 2;
   };
+}
+
+export interface RawRumExecutionContext extends RecursivePartial<RumExecutionContextEvent> {
+  type: 'execution_context';
+  date: TimeStamp;
+  execution_context: {
+    id: string;
+    type: RumExecutionContextEvent['execution_context']['type'];
+    instance_id: string;
+    parent_instance_id?: string;
+    duration?: ServerDuration;
+    exit_reason?: RumExecutionContextEvent['execution_context']['exit_reason'];
+  };
+  _dd: { document_version: number };
 }

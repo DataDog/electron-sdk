@@ -55,6 +55,7 @@ const MODIFIABLE_FIELD_PATHS_BY_EVENT: Record<RumEvent['type'], ModifiableFieldP
   vital: COMMON_MODIFIABLE_FIELD_PATHS,
   transition: COMMON_MODIFIABLE_FIELD_PATHS,
   view_update: COMMON_MODIFIABLE_FIELD_PATHS,
+  execution_context: COMMON_MODIFIABLE_FIELD_PATHS,
 };
 
 /** Applies beforeSendRum filtering and supported field changes to fully assembled RUM events. */

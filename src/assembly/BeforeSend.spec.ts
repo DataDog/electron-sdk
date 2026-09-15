@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { RumEvent, RumLongTaskEvent, RumVitalDurationEvent } from '../domain/rum';
+import type { RendererRumEvent, RumLongTaskEvent, RumVitalDurationEvent } from '../domain/rum';
 import {
   createServerRumAction,
   createServerRumError,
@@ -28,7 +28,7 @@ describe('beforeSendRum', () => {
     const event = {
       ...createServerRumError({ service: 'original-service' }),
       type: 'future_event',
-    } as unknown as RumEvent;
+    } as unknown as RendererRumEvent;
     const beforeSend = new BeforeSend((modifiableEvent) => {
       modifiableEvent.service = 'modified-service';
       modifiableEvent.context = { scrubbed: true };
@@ -136,7 +136,8 @@ describe('beforeSendRum', () => {
         request: { headers: { authorization: 'secret' } },
       },
     });
-    const beforeSend = new BeforeSend((event) => {
+    const beforeSend = new BeforeSend((evt) => {
+      const event = evt as RendererRumEvent;
       event.view.referrer = 'redacted referrer';
       if (event.type === 'error') {
         event.error.handling_stack = 'redacted handling stack';
