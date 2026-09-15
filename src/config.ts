@@ -151,6 +151,12 @@ export interface InitConfiguration {
    * @example ['app.example.com', '*.staging.example.com', 'file://', '*']
    */
   allowedRendererHosts: string[];
+  /**
+   * Enables execution-context tracking (main + renderer process lifecycle RUM events) and
+   * switches the main-process view to a lightweight "fake view" (no action/error/resource
+   * counters). Defaults to `false`. Internal flag, not part of the public configuration surface.
+   */
+  enableExecutionContext?: boolean;
 }
 
 export interface Configuration {
@@ -175,6 +181,7 @@ export interface Configuration {
   defaultPrivacyLevel: DefaultPrivacyLevel;
   allowedRendererHosts: string[];
   beforeSendRum?: RumBeforeSend;
+  enableExecutionContext: boolean;
 }
 
 /**
@@ -464,5 +471,6 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     ),
     allowedRendererHosts,
     beforeSendRum: validateBeforeSendRum(initConfig.beforeSendRum),
+    enableExecutionContext: initConfig.enableExecutionContext === true,
   };
 }

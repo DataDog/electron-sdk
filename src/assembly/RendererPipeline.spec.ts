@@ -24,6 +24,7 @@ import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
 import type { RumBeforeSend } from '../config';
 import { createMockSender, createTestConfiguration, type MockSender } from '../mocks.specUtil';
 import { registerCommonContext } from './commonContext';
+import type { RendererRumEvent } from '../domain/rum';
 
 const { mockIpcMainOn, mockAddError, mockSetBridgeConfig } = vi.hoisted(() => {
   const mockIpcMainOn = vi.fn();
@@ -287,7 +288,8 @@ describe('RendererPipeline', () => {
       hooks.registerRum(() => ({ session: { id: 'main-session' } }));
       let callbackSource: string | undefined;
       let callbackSessionId: string | undefined;
-      const beforeSendRum: RumBeforeSend = (event, { source }) => {
+      const beforeSendRum: RumBeforeSend = (evt, { source }) => {
+        const event = evt as RendererRumEvent;
         callbackSource = source;
         callbackSessionId = event.session.id;
         event.view.name = 'redacted view';
@@ -299,7 +301,7 @@ describe('RendererPipeline', () => {
 
       expect(callbackSource).toBe('renderer');
       expect(callbackSessionId).toBe('main-session');
-      expect(serverEvents[0].data.view.name).toBe('redacted view');
+      expect((serverEvents[0].data as RendererRumEvent).view.name).toBe('redacted view');
     });
 
     it('does not emit renderer events discarded by beforeSendRum', () => {
@@ -319,7 +321,7 @@ describe('RendererPipeline', () => {
 
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
 
-      const data = serverEvents[0].data;
+      const data = serverEvents[0].data as RendererRumEvent;
       expect(data.source).toBe('browser');
       expect(data.service).toBe('renderer-service');
       expect(data.view.id).toBe('renderer-view-id');
