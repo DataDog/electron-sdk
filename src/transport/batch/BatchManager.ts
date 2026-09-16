@@ -17,7 +17,11 @@ import { StandardBatchConsumer } from './standard/StandardBatchConsumer';
 import { StandardBatchProducer } from './standard/StandardBatchProducer';
 import type { StandardBatchProducerConfig } from './standard/StandardBatchProducer';
 import type { BatchConfig } from './batchConfig.types';
-import { authorizePendingBatches, clearBatchDirectory } from './trackingConsentStorage';
+import {
+  authorizePendingBatches,
+  clearBatchDirectory,
+  recoverAuthorizedPendingBatches,
+} from './trackingConsentStorage';
 
 /** Maximum array length accepted by the Logs HTTP intake. */
 const MAX_LOGS_EVENTS_PER_BATCH = 1_000;
@@ -87,11 +91,15 @@ export class BatchManager {
 
   /** Enqueues a server event to be written to the current batch file. */
   post(event: ServerEvent) {
-    const captureTime = event.consentTime ?? getServerEventCaptureTime(event);
+    const startTime = getServerEventCaptureTime(event);
+    const routingTime = startTime ?? event.consentTime;
     const consent =
-      captureTime === undefined
+      event.storageConsent ??
+      (routingTime === undefined
         ? (this.trackingConsentState?.get() ?? 'granted')
-        : (this.trackingConsentState?.resolveForStorage(captureTime) ?? 'not-granted');
+        : event.consentTime === undefined || startTime === undefined
+          ? (this.trackingConsentState?.resolveForStorage(routingTime) ?? 'not-granted')
+          : (this.trackingConsentState?.resolveForStorageInterval(startTime, event.consentTime) ?? 'not-granted'));
     if (consent === 'granted') {
       this.authorizedProducer.post(event);
     } else if (consent === 'pending') {
@@ -187,6 +195,7 @@ export class BatchManager {
       } else {
         await this.pendingProducer.flush();
       }
+      await recoverAuthorizedPendingBatches(this.authorizedPath);
       // Previously authorized data remains uploadable after consent changes, matching iOS and Android.
       await this.consumer.upload();
     } finally {

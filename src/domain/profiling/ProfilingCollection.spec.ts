@@ -17,7 +17,12 @@ function makeRawProfileEvent(overrides: Partial<RawProfileEvent> = {}): RawProfi
     kind: EventKind.RAW,
     source: EventSource.RENDERER,
     format: EventFormat.PROFILE,
-    data: { application: { id: 'browser-dummy-app-id' }, date: 1234567890, start: '2024-06-01T00:00:00.000Z' },
+    data: {
+      application: { id: 'browser-dummy-app-id' },
+      date: 1234567890,
+      start: '2024-06-01T00:00:00.000Z',
+      end: '2024-06-01T00:00:05.000Z',
+    },
     trace: { resources: [], frames: [], stacks: [], samples: [] },
     ...overrides,
   } as RawProfileEvent;
@@ -75,7 +80,13 @@ describe('ProfilingCollection', () => {
   it('preserves all other event fields unchanged', () => {
     new ProfilingCollection(eventManager, makeSessionManager(), config, hooks);
     const raw = makeRawProfileEvent({
-      data: { application: { id: 'dummy' }, date: 9999, custom_field: 'preserved' } as never,
+      data: {
+        application: { id: 'dummy' },
+        date: 9999,
+        start: '2024-06-01T00:00:00.000Z',
+        end: '2024-06-01T00:00:05.000Z',
+        custom_field: 'preserved',
+      } as never,
     });
 
     eventManager.notify(raw);
@@ -116,6 +127,21 @@ describe('ProfilingCollection', () => {
   });
 
   describe('capture-time attribution', () => {
+    it('routes the whole profile by every consent state crossed before its end', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2024-06-01T00:00:02.000Z'));
+      const state = createTrackingConsentState('granted');
+      const cfg = createTestConfiguration({ sessionSampleRate: 100, profilingSampleRate: 100 });
+      new ProfilingCollection(eventManager, makeSessionManager(), cfg, hooks, state);
+
+      vi.setSystemTime(new Date('2024-06-01T00:00:03.000Z'));
+      state.update('pending');
+      eventManager.notify(makeRawProfileEvent());
+
+      expect(serverEvents[0].storageConsent).toBe('pending');
+      vi.useRealTimers();
+    });
+
     it('attributes the profile to the session covering its capture time, not the current one', () => {
       const sessionManager = {
         getSession: () => ({ id: 'current-session', status: 'active' as const }),

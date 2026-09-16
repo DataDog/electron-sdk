@@ -139,6 +139,26 @@ describe('MainAssembly', () => {
     vi.useRealTimers();
   });
 
+  it('marks completed duration vitals with their stop time for consent routing', () => {
+    hooks.registerRum(() => ({ session: { id: 'session' } }));
+
+    notifyRawRumEvent({
+      startTime: 10 as TimeStamp,
+      data: {
+        type: 'vital',
+        date: 10 as TimeStamp,
+        vital: {
+          id: 'vital',
+          name: 'startup',
+          type: 'duration',
+          duration: toServerDuration(20 as Duration),
+        },
+      },
+    });
+
+    expect(serverEvents[0].consentTime).toBe(30);
+  });
+
   it('applies beforeSendRum to fully assembled RUM events after hooks', () => {
     hooks.registerRum(() => ({ session: { id: 'hook-session' } }));
     const applySpy = vi.spyOn(beforeSend, 'apply').mockImplementation((event) => {

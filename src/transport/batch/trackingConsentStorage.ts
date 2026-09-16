@@ -1,5 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+
+const AUTHORIZED_PENDING_PREFIX = '.authorized-pending-';
 
 /** Remove storage left by a previous process. Pending consent itself is intentionally not persisted. */
 export async function clearBatchDirectory(directory: string): Promise<void> {
@@ -11,12 +14,51 @@ export async function clearBatchDirectory(directory: string): Promise<void> {
  * authorized batch when independent producers happened to generate the same timestamp/sequence name.
  */
 export async function authorizePendingBatches(pendingPath: string, authorizedPath: string): Promise<void> {
-  const files = (await fs.readdir(pendingPath)).filter((file) => file.endsWith('.log'));
-
   await fs.mkdir(authorizedPath, { recursive: true });
-  const migrationId = Date.now();
+  const stagingPath = path.join(authorizedPath, `${AUTHORIZED_PENDING_PREFIX}${randomUUID()}`);
+  try {
+    // Detach the granted interval atomically before moving individual files. A later pending clear can
+    // now safely reuse `pendingPath` without deleting files that were already authorized.
+    await fs.rename(pendingPath, stagingPath);
+  } catch (error) {
+    if (!isMissingPath(error)) {
+      throw error;
+    }
+  }
+  await recoverAuthorizedPendingBatches(authorizedPath);
+}
+
+/** Retry files from granted intervals that were detached before a partial migration failure or crash. */
+export async function recoverAuthorizedPendingBatches(authorizedPath: string): Promise<void> {
+  let entries;
+  try {
+    entries = await fs.readdir(authorizedPath, { withFileTypes: true });
+  } catch (error) {
+    if (isMissingPath(error)) {
+      return;
+    }
+    throw error;
+  }
+
+  for (const entry of entries) {
+    if (entry.isDirectory() && entry.name.startsWith(AUTHORIZED_PENDING_PREFIX)) {
+      await migrateAuthorizedDirectory(
+        path.join(authorizedPath, entry.name),
+        authorizedPath,
+        entry.name.slice(AUTHORIZED_PENDING_PREFIX.length)
+      );
+    }
+  }
+}
+
+async function migrateAuthorizedDirectory(
+  stagingPath: string,
+  authorizedPath: string,
+  migrationId: string
+): Promise<void> {
+  const files = (await fs.readdir(stagingPath)).filter((file) => file.endsWith('.log'));
   for (const [index, file] of files.entries()) {
-    const source = path.join(pendingPath, file);
+    const source = path.join(stagingPath, file);
     // Pending and authorized producers have independent filename sequences. Always move into a
     // namespace the authorized producer cannot generate: checking whether the original destination
     // exists before renaming would be racy and POSIX rename() can silently overwrite a file created
@@ -27,4 +69,9 @@ export async function authorizePendingBatches(pendingPath: string, authorizedPat
     // Let the failure propagate so the SDK reports it instead of silently stranding authorized data.
     await fs.rename(source, destination);
   }
+  await fs.rm(stagingPath, { recursive: true, force: true });
+}
+
+function isMissingPath(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }

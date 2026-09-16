@@ -6,6 +6,7 @@ import type { Event, RawRumEvent, ServerSpansEvent } from '../../event';
 import { createFormatHooks, type FormatHooks } from '../../assembly';
 import type { Configuration } from '../../config';
 import { ExportedSpan, SpanProcessor } from './SpanProcessor';
+import { createTrackingConsentState } from '../tracking-consent';
 
 vi.mock('../telemetry', () => ({
   monitor:
@@ -288,6 +289,29 @@ describe('SpanProcessor', () => {
   });
 
   describe('span envelope', () => {
+    it('routes spans and resources by every consent state crossed before completion', () => {
+      processor.stop();
+      vi.useFakeTimers();
+      vi.setSystemTime(1_025);
+      const state = createTrackingConsentState('granted');
+      vi.setSystemTime(1_030);
+      state.update('pending');
+      processor = new SpanProcessor(
+        eventManager,
+        hooks,
+        { env: 'test', service: 'test-service', site: 'datadoghq.com' } as Configuration,
+        state
+      );
+
+      publish([[createSpan()]]);
+
+      const rawEvent = collected.find((event) => event.kind === EventKind.RAW) as RawRumEvent;
+      const serverEvent = collected.find((event) => event.kind === EventKind.SERVER) as ServerSpansEvent;
+      expect(rawEvent.consentTime).toBe(1_050);
+      expect(serverEvent.storageConsent).toBe('pending');
+      vi.useRealTimers();
+    });
+
     it('should include the env in the envelope', () => {
       publish([[createSpan()]]);
 

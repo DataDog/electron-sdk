@@ -147,20 +147,23 @@ Hooks are used by different parts of the SDK to attach their context (e.g., `reg
 
 Tracking consent supports the mobile SDKs' three states. `granted` collects into authorized storage and uploads it;
 `pending` collects into a separate per-track directory that the consumer never reads; `not-granted` has no active session
-and collects or persists nothing. A `pending → granted` transition drains pending writes and moves complete batches into
-authorized storage before upload. `pending → not-granted` drains concurrent writes and deletes the pending directory.
+and collects or persists nothing. A `pending → granted` transition drains pending writes, atomically detaches that interval
+from the reusable pending directory, and moves complete batches into authorized storage before upload. A partially failed
+migration remains detached and is retried without being exposed to a later pending clear. `pending → not-granted` drains concurrent writes and deletes the pending directory.
 Entering `pending` also clears that destination first, and stale pending data is deleted at startup because consent is not
 persisted across processes. The pending and authorized producers each apply the normal disk cap independently.
 
 Sessions remain continuous across `pending ↔ granted`. Entering `not-granted` expires the session; leaving it for either
-collecting state creates a fresh one. Capture-time lookup deliberately keeps events produced during an active collecting
-session eligible while they finish asynchronous processing after a transition. View updates use their update time for this
-lookup because their schema date remains the view's original start time. Previously authorized batches remain eligible for
-upload after any consent change, matching iOS and Android.
+collecting state creates a fresh one. Instantaneous events use their capture-time consent so asynchronous processing after a
+transition does not change their decision. Events representing an interval (views, profiles, spans/resources, duration
+vitals, and renderer duration events) resolve every consent state crossed before completion; any rejected part drops the
+whole event, while an unresolved part keeps it pending. Views emit a boundary snapshot so an authorized or pending portion
+is not lost when the next interval is rejected. Previously authorized batches remain eligible for upload after any consent
+change, matching iOS and Android.
 
-Disk-backed session, user, and account histories are paused while consent is pending. Granting commits the pending interval;
-denying restores the last authorized checkpoint. Customer-context API calls made while consent is denied remain in memory,
-and a later grant starts their persisted history at the grant boundary.
+Disk-backed session, view, user, and account histories are paused while consent is pending. Granting commits the pending
+interval; denying restores the last authorized checkpoint. Customer-context API calls made while consent is denied remain
+in memory, and a later grant starts their persisted history at the grant boundary.
 
 See `src/assembly/` and `src/assembly/commonContext.ts`.
 

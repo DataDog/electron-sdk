@@ -6,6 +6,7 @@ import { RawTraceData } from '../domain/tracing/rawTracingData.types';
 import type { BrowserProfileEvent, BrowserProfilerTrace } from '../domain/profiling';
 import type { ReplaySegmentPayload, BrowserRecord } from '../domain/replay';
 import type { LogsEvent } from '../domain/logs';
+import type { TrackingConsent } from '../config';
 
 export type { BrowserProfileEvent, BrowserProfilerTrace };
 
@@ -16,6 +17,8 @@ export interface RawRumEvent {
   format: typeof EventFormat.RUM;
   data: RawRumData;
   startTime?: TimeStamp;
+  /** Completion timestamp for events that describe an interval. */
+  consentTime?: number;
 }
 
 export interface RawTelemetryEvent {
@@ -44,48 +47,48 @@ export type ServerEvent =
  */
 export type StandardServerEvent = Exclude<ServerEvent, ServerProfileEvent | ServerReplayEvent>;
 
-export interface ServerRendererRumEvent {
+interface ConsentRouting {
+  /** Completion timestamp for an event that covers an interval. Never serialized. */
+  consentTime?: TimeStamp;
+  /** Precomputed decision for a payload containing multiple intervals. Never serialized. */
+  storageConsent?: TrackingConsent;
+}
+
+export interface ServerRendererRumEvent extends ConsentRouting {
   kind: typeof EventKind.SERVER;
   track: typeof EventTrack.RUM;
   source: typeof EventSource.RENDERER;
   data: RendererRumEvent;
-  /** Internal timestamp used only to resolve tracking consent; never serialized. */
-  consentTime?: TimeStamp;
 }
 
-export interface ServerMainRumEvent {
+export interface ServerMainRumEvent extends ConsentRouting {
   kind: typeof EventKind.SERVER;
   track: typeof EventTrack.RUM;
   source: typeof EventSource.MAIN;
   data: MainRumEvent;
-  /** Internal timestamp used only to resolve tracking consent; never serialized. */
-  consentTime?: TimeStamp;
 }
 
 export type ServerRumEvent = ServerRendererRumEvent | ServerMainRumEvent;
 
-export interface ServerTelemetryEvent {
+export interface ServerTelemetryEvent extends ConsentRouting {
   kind: typeof EventKind.SERVER;
   track: typeof EventTrack.RUM;
   source: EventSource;
   data: TelemetryEvent;
-  consentTime?: TimeStamp;
 }
 
-export interface ServerLogsEvent {
+export interface ServerLogsEvent extends ConsentRouting {
   kind: typeof EventKind.SERVER;
   track: typeof EventTrack.LOGS;
   source: EventSource;
   data: LogsEvent;
-  consentTime?: TimeStamp;
 }
 
-export interface ServerSpansEvent {
+export interface ServerSpansEvent extends ConsentRouting {
   kind: typeof EventKind.SERVER;
   track: typeof EventTrack.SPANS;
   source: EventSource;
   data: RawTraceData;
-  consentTime?: TimeStamp;
 }
 
 export interface RawProfileEvent {
@@ -96,19 +99,17 @@ export interface RawProfileEvent {
   trace: BrowserProfilerTrace;
 }
 
-export interface ServerProfileEvent {
+export interface ServerProfileEvent extends ConsentRouting {
   kind: typeof EventKind.SERVER;
   track: typeof EventTrack.PROFILE;
   data: BrowserProfileEvent;
   trace: BrowserProfilerTrace;
-  consentTime?: TimeStamp;
 }
 
-export interface ServerReplayEvent {
+export interface ServerReplayEvent extends ConsentRouting {
   kind: typeof EventKind.SERVER;
   track: typeof EventTrack.REPLAY;
   data: ReplaySegmentPayload;
-  consentTime?: TimeStamp;
 }
 
 export interface EndUserActivityEvent {

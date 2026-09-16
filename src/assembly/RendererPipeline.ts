@@ -22,6 +22,7 @@ import { Configuration } from '../config';
 import { BeforeSend } from './BeforeSend';
 import { isFiniteNumber } from '../tools/validation';
 import { RendererIpcGate } from './RendererIpcGate';
+import { getRumConsentTime } from './rumConsentTime';
 
 type BridgeEventType = 'rum' | 'log' | 'internal_telemetry' | 'profile' | 'record';
 
@@ -187,7 +188,7 @@ export class RendererPipeline {
       EventTrack.RUM,
       dataAfterBeforeSend,
       undefined,
-      data.type === 'view' ? timeStampNow() : undefined
+      getRumConsentTime(dataAfterBeforeSend, timeStampNow())
     );
   }
 

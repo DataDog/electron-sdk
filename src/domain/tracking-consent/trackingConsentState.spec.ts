@@ -57,6 +57,17 @@ describe('createTrackingConsentState', () => {
     expect(calls).toEqual(['storage', 'lifecycle']);
   });
 
+  it('notifies boundary observers while the previous consent is still active', () => {
+    const state = createTrackingConsentState('granted');
+    const observedStates: (string | undefined)[] = [];
+    state.boundaryObservable.subscribe(() => observedStates.push(state.get()));
+
+    state.update('pending');
+
+    expect(observedStates).toEqual(['granted']);
+    expect(state.get()).toBe('pending');
+  });
+
   it('resolves pending capture intervals from the decision that followed them', () => {
     vi.useFakeTimers();
     vi.setSystemTime(10);
@@ -69,6 +80,25 @@ describe('createTrackingConsentState', () => {
 
     expect(grantedState.resolveForStorage(15 as TimeStamp)).toBe('granted');
     expect(rejectedState.resolveForStorage(15 as TimeStamp)).toBe('not-granted');
+    vi.useRealTimers();
+  });
+
+  it('resolves every consent state crossed by a completed interval', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10);
+    const state = createTrackingConsentState('granted');
+
+    vi.setSystemTime(20);
+    state.update('pending');
+    expect(state.resolveForStorageInterval(15 as TimeStamp, 25 as TimeStamp)).toBe('pending');
+
+    vi.setSystemTime(30);
+    state.update('not-granted');
+    vi.setSystemTime(40);
+    state.update('granted');
+
+    expect(state.resolveForStorageInterval(15 as TimeStamp, 45 as TimeStamp)).toBe('not-granted');
+    expect(state.resolveForStorageInterval(40 as TimeStamp, 45 as TimeStamp)).toBe('granted');
     vi.useRealTimers();
   });
 });

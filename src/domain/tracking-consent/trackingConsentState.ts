@@ -16,6 +16,9 @@ export interface TrackingConsentState {
   isCollectionEnabled(): boolean;
   getAt(at: TimeStamp): TrackingConsent | undefined;
   resolveForStorage(at: TimeStamp): TrackingConsent | undefined;
+  resolveForStorageInterval(start: TimeStamp, end: TimeStamp): TrackingConsent | undefined;
+  /** Notified synchronously while the previous consent is still active. */
+  boundaryObservable: Observable<TrackingConsentChange>;
   beforeObservable: Observable<TrackingConsentChange>;
   observable: Observable<TrackingConsentChange>;
   onCollectionAuthorizedOnce(callback: () => void): void;
@@ -28,6 +31,7 @@ export interface TrackingConsentState {
 export function createTrackingConsentState(initialConsent?: TrackingConsent): TrackingConsentState {
   let currentConsent = initialConsent;
   const history: ConsentHistoryEntry[] = [];
+  const boundaryObservable = new Observable<TrackingConsentChange>();
   const beforeObservable = new Observable<TrackingConsentChange>();
   const observable = new Observable<TrackingConsentChange>();
 
@@ -56,6 +60,11 @@ export function createTrackingConsentState(initialConsent?: TrackingConsent): Tr
       }
       const previous = currentConsent;
       const transitionTime = timeStampNow();
+      if (previous !== undefined) {
+        // Give cumulative collectors a chance to snapshot the interval that is ending. Keeping the
+        // previous state active during this notification also routes that snapshot to the right store.
+        boundaryObservable.notify({ previous, current: trackingConsent });
+      }
       const activeEntry = history[0];
       if (activeEntry) {
         activeEntry.endTime = transitionTime;
@@ -75,18 +84,38 @@ export function createTrackingConsentState(initialConsent?: TrackingConsent): Tr
     isCollectionEnabled,
     getAt: (at) => findConsentEntry(history, at)?.consent,
     resolveForStorage(at) {
-      const index = history.findIndex((entry) => entry.startTime <= at && at < entry.endTime);
-      if (index === -1) {
+      return resolveEntryForStorage(
+        history,
+        history.findIndex((entry) => entry.startTime <= at && at < entry.endTime)
+      );
+    },
+    resolveForStorageInterval(start, end) {
+      if (!Number.isFinite(start) || !Number.isFinite(end)) {
         return undefined;
       }
-      const entry = history[index];
-      if (entry.consent !== 'pending' || entry.endTime === Infinity) {
-        return entry.consent;
+      const intervalStart = Math.min(start, end) as TimeStamp;
+      const intervalEnd = Math.max(start, end) as TimeStamp;
+      let result: TrackingConsent | undefined;
+
+      for (const [index, entry] of history.entries()) {
+        // Include the state active at the completion instant as well as every state crossed by the interval.
+        if (entry.startTime > intervalEnd || entry.endTime <= intervalStart) {
+          continue;
+        }
+        const consent = resolveEntryForStorage(history, index);
+        if (consent === 'not-granted') {
+          return consent;
+        }
+        if (consent === 'pending') {
+          result = consent;
+        } else if (result === undefined) {
+          result = consent;
+        }
       }
-      // Entries are newest-first. The entry immediately before this one is the state that resolved
-      // the pending interval and determines whether its data was authorized or rejected.
-      return history[index - 1]?.consent === 'granted' ? 'granted' : 'not-granted';
+
+      return result;
     },
+    boundaryObservable,
     beforeObservable,
     observable,
     onCollectionAuthorizedOnce(callback) {
@@ -127,4 +156,17 @@ interface ConsentHistoryEntry {
 
 function findConsentEntry(history: ConsentHistoryEntry[], at: TimeStamp): ConsentHistoryEntry | undefined {
   return history.find((entry) => entry.startTime <= at && at < entry.endTime);
+}
+
+function resolveEntryForStorage(history: ConsentHistoryEntry[], index: number): TrackingConsent | undefined {
+  if (index === -1) {
+    return undefined;
+  }
+  const entry = history[index];
+  if (entry.consent !== 'pending' || entry.endTime === Infinity) {
+    return entry.consent;
+  }
+  // Entries are newest-first. The entry immediately before this one is the state that resolved
+  // the pending interval and determines whether its data was authorized or rejected.
+  return history[index - 1]?.consent === 'granted' ? 'granted' : 'not-granted';
 }

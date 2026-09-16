@@ -4,6 +4,7 @@ import { ErrorCollection, CrashCollection } from './error';
 import { VitalCollection } from './vital';
 import { OperationCollection } from './operation';
 import { ViewCollection } from './view';
+import type { TrackingConsentState } from '../tracking-consent';
 
 export class RumCollection {
   private constructor(
@@ -13,8 +14,12 @@ export class RumCollection {
     private readonly operationCollection: OperationCollection
   ) {}
 
-  static async start(eventManager: EventManager, hooks: FormatHooks): Promise<RumCollection> {
-    const viewCollection = await ViewCollection.start(eventManager, hooks);
+  static async start(
+    eventManager: EventManager,
+    hooks: FormatHooks,
+    trackingConsentState?: TrackingConsentState
+  ): Promise<RumCollection> {
+    const viewCollection = await ViewCollection.start(eventManager, hooks, trackingConsentState);
     const errorCollection = new ErrorCollection(eventManager);
     const vitalCollection = new VitalCollection(eventManager);
     const operationCollection = new OperationCollection(eventManager);

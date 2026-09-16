@@ -87,6 +87,7 @@ vi.mock('../utils', () => ({
 vi.mock('./trackingConsentStorage', () => ({
   clearBatchDirectory: vi.fn().mockResolvedValue(undefined),
   authorizePendingBatches: vi.fn().mockResolvedValue(undefined),
+  recoverAuthorizedPendingBatches: vi.fn().mockResolvedValue(undefined),
 }));
 
 function createBatchConfig(overrides?: Partial<BatchConfig>): BatchConfig {
@@ -290,6 +291,45 @@ describe('BatchManager', () => {
 
       expect(mockAuthorizedProducerPost).not.toHaveBeenCalled();
       expect(mockPendingProducerPost).not.toHaveBeenCalled();
+    });
+
+    it('drops a completed interval that crossed rejected consent', async () => {
+      vi.setSystemTime(0);
+      const state = createTrackingConsentState('granted');
+      const manager = await BatchManager.create(config, batchConfig, state);
+      vi.setSystemTime(10);
+      state.update('pending');
+      vi.setSystemTime(20);
+      state.update('not-granted');
+      vi.setSystemTime(30);
+      state.update('granted');
+      const event = {
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        data: { type: 'vital', date: 5 },
+        consentTime: 35,
+      } as unknown as ServerEvent;
+
+      manager.post(event);
+
+      expect(mockAuthorizedProducerPost).not.toHaveBeenCalled();
+      expect(mockPendingProducerPost).not.toHaveBeenCalled();
+    });
+
+    it('honors an explicit storage decision for grouped interval events', async () => {
+      const state = createTrackingConsentState('granted');
+      const manager = await BatchManager.create(config, batchConfig, state);
+      const event = {
+        kind: EventKind.SERVER,
+        track: EventTrack.SPANS,
+        data: { spans: [] },
+        storageConsent: 'pending',
+      } as unknown as ServerEvent;
+
+      manager.post(event);
+
+      expect(mockPendingProducerPost).toHaveBeenCalledWith(event);
+      expect(mockAuthorizedProducerPost).not.toHaveBeenCalled();
     });
   });
 

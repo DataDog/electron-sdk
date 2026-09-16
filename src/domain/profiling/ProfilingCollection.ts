@@ -145,6 +145,12 @@ export class ProfilingCollection {
     // profile if none covered it (window expired, or the session was not sampled). Sampling and the quota
     // decision are then evaluated for that session so they match the one that captured the profile.
     const captureTime = new Date(rawEvent.data.start).getTime() as TimeStamp;
+    const endTimeValue = new Date(rawEvent.data.end).getTime();
+    const endTime = (Number.isFinite(endTimeValue) ? endTimeValue : captureTime) as TimeStamp;
+    const storageConsent = this.trackingConsentState.resolveForStorageInterval(captureTime, endTime);
+    if (storageConsent !== 'granted' && storageConsent !== 'pending') {
+      return null;
+    }
     const sessionId = this.sessionManager.getTrackedSessionId(captureTime);
     if (sessionId === undefined || !this.isProfilingSampled(sessionId)) {
       return null;
@@ -152,7 +158,7 @@ export class ProfilingCollection {
     if (this.quotaDeniedSessions.has(sessionId)) {
       return null;
     }
-    if (this.trackingConsentState.getAt(captureTime) === 'pending') {
+    if (storageConsent === 'pending') {
       this.pendingQuotaSessions.add(sessionId);
     }
 
@@ -164,6 +170,7 @@ export class ProfilingCollection {
         application: { id: this.config.applicationId },
       }),
       trace: rawEvent.trace,
+      storageConsent,
     };
   }
 }
