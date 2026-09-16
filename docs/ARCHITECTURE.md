@@ -154,8 +154,13 @@ persisted across processes. The pending and authorized producers each apply the 
 
 Sessions remain continuous across `pending ↔ granted`. Entering `not-granted` expires the session; leaving it for either
 collecting state creates a fresh one. Capture-time lookup deliberately keeps events produced during an active collecting
-session eligible while they finish asynchronous processing after a transition. Previously authorized batches remain
-eligible for upload after any consent change, matching iOS and Android.
+session eligible while they finish asynchronous processing after a transition. View updates use their update time for this
+lookup because their schema date remains the view's original start time. Previously authorized batches remain eligible for
+upload after any consent change, matching iOS and Android.
+
+Disk-backed session, user, and account histories are paused while consent is pending. Granting commits the pending interval;
+denying restores the last authorized checkpoint. Customer-context API calls made while consent is denied remain in memory,
+and a later grant starts their persisted history at the grant boundary.
 
 See `src/assembly/` and `src/assembly/commonContext.ts`.
 
@@ -342,11 +347,11 @@ The SDK injects a preload script (`@datadog/electron-sdk/preload`) into every re
 
 The preload fetches bridge configuration from the main process synchronously at load time via a `datadog:bridge-config` IPC request. This config drives renderer behavior: `defaultPrivacyLevel`, `allowedRendererHosts`, and the advertised `capabilities` (the bridge features the Browser SDK may use, e.g. profiling or session replay).
 
-The responder is registered at **instrument time** (when `@datadog/electron-sdk/instrument` loads), backed by a process-global holder keyed with `Symbol.for('@datadog/electron-sdk:bridgeConfig')`. The holder is seeded with fallback values (`defaultPrivacyLevel: 'mask'`, `allowedRendererHosts: ['*', '']`, and capabilities advertising the SDK's supported features) so the bridge works immediately, even before `init()` runs. When `init()` executes, `RendererPipeline` calls `setBridgeConfig` to replace the holder's value with the real configuration.
+The responder is registered at **instrument time** (when `@datadog/electron-sdk/instrument` loads), backed by a process-global holder keyed with `Symbol.for('@datadog/electron-sdk:bridgeConfig')`. The holder is seeded with fail-closed fallback values (`defaultPrivacyLevel: 'mask'`, `allowedRendererHosts: []`, and capabilities advertising the SDK's supported features). Call `init()` before creating renderer windows, using `trackingConsent: 'pending'` while the user's decision is unknown. When `init()` executes, `RendererPipeline` calls `setBridgeConfig` to replace the holder's value with the real configuration.
 
 The process-global (`Symbol.for`) is required because `instrument` and the `init()` bundle are separate CommonJS module instances: a module-level variable would not be shared between them, so they would always read the fallback.
 
-Advertised capabilities tell the Browser SDK which bridge features it may use, but the Electron SDK configuration stays authoritative for what is actually sent to Datadog: the main process gates delivery regardless of what a renderer advertised. Narrowing the advertised capabilities from config (for example when a feature is disabled) is therefore an opportunistic optimization to avoid unnecessary renderer-side work, not a data-control mechanism. Combined with the read-once behavior, a window opened before `init()` keeps the fallback capabilities until it reloads, so it may briefly do work for a capability the config would have narrowed; delivery is still gated by the main process.
+Advertised capabilities tell the Browser SDK which bridge features it may use, but the Electron SDK configuration stays authoritative for what is actually sent to Datadog: the main process gates delivery regardless of what a renderer advertised. Narrowing the advertised capabilities from config (for example when a feature is disabled) is therefore an opportunistic optimization to avoid unnecessary renderer-side work, not a data-control mechanism. Combined with the read-once behavior, a window opened before `init()` keeps the fail-closed host allowlist and fallback capabilities until it reloads. It cannot send bridge events before that reload; after initialization, delivery is still gated by the main process.
 
 ### Bundler plugins
 

@@ -1,5 +1,5 @@
 import { ipcMain, type IpcMainEvent } from 'electron';
-import { type TimeStamp } from '@datadog/js-core/time';
+import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
 import { combine, isIndexableObject, type RecursivePartial } from '@datadog/js-core/util';
 import { DISCARDED } from '@datadog/js-core/assembly';
 import { EventKind, EventSource, EventTrack, LifecycleKind, EventFormat } from '../event';
@@ -183,7 +183,12 @@ export class RendererPipeline {
       return;
     }
 
-    this.emitRendererEvent(EventTrack.RUM, dataAfterBeforeSend, undefined);
+    this.emitRendererEvent(
+      EventTrack.RUM,
+      dataAfterBeforeSend,
+      undefined,
+      data.type === 'view' ? timeStampNow() : undefined
+    );
   }
 
   /**
@@ -284,13 +289,15 @@ export class RendererPipeline {
   private emitRendererEvent<E extends RendererRumEvent | TelemetryEvent | LogsEvent>(
     track: typeof EventTrack.RUM | typeof EventTrack.LOGS,
     data: E,
-    overrides: RecursivePartial<E> | undefined
+    overrides: RecursivePartial<E> | undefined,
+    consentTime?: TimeStamp
   ): void {
     this.eventManager.notify({
       kind: EventKind.SERVER,
       track,
       source: EventSource.RENDERER,
       data: combine(data, overrides),
+      ...(consentTime === undefined ? {} : { consentTime }),
     } as ServerRumEvent | ServerTelemetryEvent | ServerLogsEvent);
   }
 }

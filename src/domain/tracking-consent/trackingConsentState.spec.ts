@@ -24,12 +24,23 @@ describe('createTrackingConsentState', () => {
     expect(observer).toHaveBeenCalledWith({ previous: 'pending', current: 'granted' });
   });
 
-  it('runs collection-enabled callbacks for pending as well as granted', () => {
+  it('keeps authorization callbacks armed when a reported pending interval is rejected', () => {
     const state = createTrackingConsentState('not-granted');
     const callback = vi.fn();
-    state.onCollectionEnabledOnce(callback);
+    state.onCollectionAuthorizedOnce(callback);
 
     state.update('pending');
+    state.update('not-granted');
+    state.update('granted');
+
+    expect(callback).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not report again when the pending interval is granted', () => {
+    const state = createTrackingConsentState('pending');
+    const callback = vi.fn();
+    state.onCollectionAuthorizedOnce(callback);
+
     state.update('granted');
 
     expect(callback).toHaveBeenCalledOnce();

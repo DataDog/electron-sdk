@@ -3,6 +3,7 @@ import type { SamplingRule } from 'dd-trace';
 import { isCurrentSessionSampled } from '../../common';
 import { addError } from '../telemetry';
 import type { Configuration, TraceSamplingRule } from '../../config';
+import type { TrackingConsentState } from '../tracking-consent';
 
 const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
 
@@ -43,7 +44,7 @@ export class Tracing {
   version: string | undefined;
   private exporter: ExporterWithFlush | undefined;
 
-  constructor(config: Configuration, requireFn: NodeRequire = _require) {
+  constructor(config: Configuration, requireFn: NodeRequire = _require, trackingConsentState?: TrackingConsentState) {
     try {
       const tracer = (requireFn('dd-trace') as { default: typeof import('dd-trace').default }).default;
 
@@ -63,9 +64,10 @@ export class Tracing {
       });
 
       // dd-trace owns global fetch and node:http instrumentation. Prevent those integrations from
-      // propagating trace context for rejected RUM sessions while keeping their local HTTP spans,
-      // which SpanProcessor uses to produce RUM resources.
-      const blockPropagationForUnsampledSession = () => !isCurrentSessionSampled();
+      // propagating trace context without granted consent or for rejected RUM sessions, while keeping
+      // their local HTTP spans, which SpanProcessor uses to produce RUM resources.
+      const blockPropagationForUnsampledSession = () =>
+        !isCurrentSessionSampled() || (trackingConsentState !== undefined && !trackingConsentState.isGranted());
       tracer.use('fetch', { propagationBlocklist: blockPropagationForUnsampledSession });
       tracer.use('http', {
         client: { propagationBlocklist: blockPropagationForUnsampledSession },

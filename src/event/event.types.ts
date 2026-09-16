@@ -49,6 +49,8 @@ export interface ServerRendererRumEvent {
   track: typeof EventTrack.RUM;
   source: typeof EventSource.RENDERER;
   data: RendererRumEvent;
+  /** Internal timestamp used only to resolve tracking consent; never serialized. */
+  consentTime?: TimeStamp;
 }
 
 export interface ServerMainRumEvent {
@@ -56,6 +58,8 @@ export interface ServerMainRumEvent {
   track: typeof EventTrack.RUM;
   source: typeof EventSource.MAIN;
   data: MainRumEvent;
+  /** Internal timestamp used only to resolve tracking consent; never serialized. */
+  consentTime?: TimeStamp;
 }
 
 export type ServerRumEvent = ServerRendererRumEvent | ServerMainRumEvent;
@@ -65,6 +69,7 @@ export interface ServerTelemetryEvent {
   track: typeof EventTrack.RUM;
   source: EventSource;
   data: TelemetryEvent;
+  consentTime?: TimeStamp;
 }
 
 export interface ServerLogsEvent {
@@ -72,6 +77,7 @@ export interface ServerLogsEvent {
   track: typeof EventTrack.LOGS;
   source: EventSource;
   data: LogsEvent;
+  consentTime?: TimeStamp;
 }
 
 export interface ServerSpansEvent {
@@ -79,6 +85,7 @@ export interface ServerSpansEvent {
   track: typeof EventTrack.SPANS;
   source: EventSource;
   data: RawTraceData;
+  consentTime?: TimeStamp;
 }
 
 export interface RawProfileEvent {
@@ -94,12 +101,14 @@ export interface ServerProfileEvent {
   track: typeof EventTrack.PROFILE;
   data: BrowserProfileEvent;
   trace: BrowserProfilerTrace;
+  consentTime?: TimeStamp;
 }
 
 export interface ServerReplayEvent {
   kind: typeof EventKind.SERVER;
   track: typeof EventTrack.REPLAY;
   data: ReplaySegmentPayload;
+  consentTime?: TimeStamp;
 }
 
 export interface EndUserActivityEvent {

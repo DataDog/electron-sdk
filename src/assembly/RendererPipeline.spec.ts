@@ -256,6 +256,17 @@ describe('RendererPipeline', () => {
       expect(serverEvents[0].track).toBe(EventTrack.RUM);
     });
 
+    it('marks renderer view updates with their IPC processing time for consent routing', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(54321);
+      hooks.registerRum(() => ({ session: { id: 'main-session' } }));
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
+
+      expect(serverEvents[0].consentTime).toBe(54321);
+      vi.useRealTimers();
+    });
+
     it('overrides session.id and application.id from hook result', () => {
       hooks.registerRum(() => ({ session: { id: 'main-session' }, application: { id: 'main-app' } }));
 

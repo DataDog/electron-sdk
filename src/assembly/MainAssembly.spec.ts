@@ -1,5 +1,5 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest';
-import { type TimeStamp } from '@datadog/js-core/time';
+import { toServerDuration, type Duration, type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED } from '@datadog/js-core/assembly';
 import { MainAssembly } from './MainAssembly';
 import { BeforeSend } from './BeforeSend';
@@ -112,6 +112,31 @@ describe('MainAssembly', () => {
     notifyRawRumEvent();
 
     expect((serverEvents[0] as ServerRumEvent).source).toBe(EventSource.MAIN);
+  });
+
+  it('marks view updates with their assembly time for consent routing', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(100);
+    hooks.registerRum(() => ({ session: { id: 'session' } }));
+
+    notifyRawRumEvent({
+      startTime: 10 as TimeStamp,
+      data: {
+        type: 'view',
+        view: {
+          id: 'view',
+          time_spent: toServerDuration(1 as Duration),
+          is_active: true,
+          action: { count: 0 },
+          error: { count: 0 },
+          resource: { count: 0 },
+        },
+        _dd: { document_version: 1 },
+      },
+    });
+
+    expect(serverEvents[0].consentTime).toBe(100);
+    vi.useRealTimers();
   });
 
   it('applies beforeSendRum to fully assembled RUM events after hooks', () => {

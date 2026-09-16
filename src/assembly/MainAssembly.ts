@@ -44,7 +44,8 @@ export class MainAssembly {
   }
 
   private assembleMainProcessEvent(event: StandardRawEvent): ServerEvent | DISCARDED {
-    const startTime = event.startTime ?? timeStampNow();
+    const processingTime = timeStampNow();
+    const startTime = event.startTime ?? processingTime;
     const source = EventSource.MAIN;
 
     if (event.format === EventFormat.RUM) {
@@ -66,6 +67,7 @@ export class MainAssembly {
           track: EventTrack.RUM,
           source: EventSource.MAIN,
           data,
+          ...(event.data.type === 'view' ? { consentTime: processingTime } : {}),
         };
       }
     }

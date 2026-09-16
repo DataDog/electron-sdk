@@ -18,7 +18,7 @@ export interface TrackingConsentState {
   resolveForStorage(at: TimeStamp): TrackingConsent | undefined;
   beforeObservable: Observable<TrackingConsentChange>;
   observable: Observable<TrackingConsentChange>;
-  onCollectionEnabledOnce(callback: () => void): void;
+  onCollectionAuthorizedOnce(callback: () => void): void;
 }
 
 /**
@@ -89,17 +89,32 @@ export function createTrackingConsentState(initialConsent?: TrackingConsent): Tr
     },
     beforeObservable,
     observable,
-    onCollectionEnabledOnce(callback) {
-      if (isCollectionEnabled()) {
-        callback();
-        return;
-      }
-      const subscription = observable.subscribe(() => {
-        if (isCollectionEnabled()) {
+    onCollectionAuthorizedOnce(callback) {
+      let reportedInPending = false;
+      const subscription = observable.subscribe((change) => {
+        if (change.previous === 'pending' && change.current === 'granted' && reportedInPending) {
+          subscription.unsubscribe();
+          return;
+        }
+        if (change.previous === 'pending' && change.current === 'not-granted') {
+          reportedInPending = false;
+        }
+        if (change.current === 'granted') {
           callback();
           subscription.unsubscribe();
+        } else if (change.current === 'pending' && !reportedInPending) {
+          callback();
+          reportedInPending = true;
         }
       });
+
+      if (isGranted()) {
+        callback();
+        subscription.unsubscribe();
+      } else if (isPending()) {
+        callback();
+        reportedInPending = true;
+      }
     },
   };
 }

@@ -236,6 +236,25 @@ describe('BatchManager', () => {
       expect(mockPendingProducerPost).not.toHaveBeenCalled();
     });
 
+    it('routes view updates using their update-time consent instead of the view start date', async () => {
+      vi.setSystemTime(0);
+      const state = createTrackingConsentState('granted');
+      const manager = await BatchManager.create(config, batchConfig, state);
+      vi.setSystemTime(1);
+      state.update('pending');
+      const event = {
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        data: { type: 'view', date: 0 },
+        consentTime: 1,
+      } as unknown as ServerEvent;
+
+      manager.post(event);
+
+      expect(mockAuthorizedProducerPost).not.toHaveBeenCalled();
+      expect(mockPendingProducerPost).toHaveBeenCalledWith(event);
+    });
+
     it('authorizes a delayed pending event only when that pending interval was granted', async () => {
       vi.setSystemTime(0);
       const state = createTrackingConsentState('pending');
@@ -388,6 +407,23 @@ describe('BatchManager', () => {
 
       state.update('not-granted');
       await manager.flush();
+      state.update('granted');
+      await manager.flush();
+
+      expect(authorizePendingBatches).not.toHaveBeenCalled();
+    });
+
+    it('does not authorize a pending interval whose quarantine clear failed', async () => {
+      const { authorizePendingBatches } = await import('./trackingConsentStorage');
+      const state = createTrackingConsentState('pending');
+      const manager = await BatchManager.create(config, batchConfig, state);
+      mockPendingProducerClear.mockRejectedValueOnce(new Error('denial clear failed'));
+
+      state.update('not-granted');
+      await manager.flush();
+
+      mockPendingProducerClear.mockRejectedValueOnce(new Error('quarantine clear failed'));
+      state.update('pending');
       state.update('granted');
       await manager.flush();
 

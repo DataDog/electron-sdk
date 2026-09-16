@@ -35,9 +35,10 @@ export class BatchManager {
   private queuedCycle: Promise<void> | null = null;
   // Consent transitions are reserved synchronously on the pending producer queue in notification order.
   private transitionQueue: Promise<void> = Promise.resolve();
-  // True only for a pending interval that was explicitly granted. A rejected directory is never
-  // migrated, even if deleting it failed and consent is granted during a later interval.
-  private pendingAuthorizationRequested = false;
+  // Readiness belongs to one pending interval. If its initial clear fails, that interval stays
+  // quarantined and can never be authorized by a later grant.
+  private pendingStoreReadiness: Promise<boolean> = Promise.resolve(true);
+  private pendingAuthorizationReadiness: Promise<boolean> | undefined;
   private trackingConsentSubscription: Subscription | undefined;
 
   private constructor(
@@ -86,7 +87,7 @@ export class BatchManager {
 
   /** Enqueues a server event to be written to the current batch file. */
   post(event: ServerEvent) {
-    const captureTime = getServerEventCaptureTime(event);
+    const captureTime = event.consentTime ?? getServerEventCaptureTime(event);
     const consent =
       captureTime === undefined
         ? (this.trackingConsentState?.get() ?? 'granted')
@@ -177,9 +178,12 @@ export class BatchManager {
     try {
       await transitionsBeforeCycle;
       await this.authorizedProducer.flush();
-      if (this.pendingAuthorizationRequested) {
-        await this.pendingProducer.runAfterFlush(() => authorizePendingBatches(this.pendingPath, this.authorizedPath));
-        this.pendingAuthorizationRequested = false;
+      const authorizationReadiness = this.pendingAuthorizationReadiness;
+      if (authorizationReadiness) {
+        await this.pendingProducer.runAfterFlush(() => this.authorizePendingStore(authorizationReadiness));
+        if (this.pendingAuthorizationReadiness === authorizationReadiness) {
+          this.pendingAuthorizationReadiness = undefined;
+        }
       } else {
         await this.pendingProducer.flush();
       }
@@ -194,20 +198,27 @@ export class BatchManager {
     let reservedStorageOperation: Promise<void> | undefined;
 
     if (change.previous === 'pending' && change.current === 'granted') {
-      this.pendingAuthorizationRequested = true;
+      const authorizationReadiness = this.pendingStoreReadiness;
+      this.pendingAuthorizationReadiness = authorizationReadiness;
       // Reserve rotation + migration immediately. A subsequent transition back to pending queues its
       // clear behind this operation, so accepted events cannot be deleted before being authorized.
       reservedStorageOperation = this.pendingProducer
-        .runAfterFlush(() => authorizePendingBatches(this.pendingPath, this.authorizedPath))
+        .runAfterFlush(() => this.authorizePendingStore(authorizationReadiness))
         .then(() => {
-          this.pendingAuthorizationRequested = false;
+          if (this.pendingAuthorizationReadiness === authorizationReadiness) {
+            this.pendingAuthorizationReadiness = undefined;
+          }
         });
     } else if (change.current === 'pending') {
-      this.pendingAuthorizationRequested = false;
+      this.pendingAuthorizationReadiness = undefined;
       // Reserve deletion immediately; posts following the synchronous state notification queue behind it.
       reservedStorageOperation = this.pendingProducer.clear();
+      this.pendingStoreReadiness = reservedStorageOperation.then(
+        () => true,
+        () => false
+      );
     } else if (change.previous === 'pending' && change.current === 'not-granted') {
-      this.pendingAuthorizationRequested = false;
+      this.pendingAuthorizationReadiness = undefined;
       reservedStorageOperation = this.pendingProducer.clear();
     }
 
@@ -221,6 +232,12 @@ export class BatchManager {
     this.transitionQueue = transition.catch((error) => {
       addError(error);
     });
+  }
+
+  private async authorizePendingStore(readiness: Promise<boolean>): Promise<void> {
+    if (await readiness) {
+      await authorizePendingBatches(this.pendingPath, this.authorizedPath);
+    }
   }
 
   /**

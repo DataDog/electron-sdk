@@ -58,15 +58,15 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   trackingConsentState.tryToInit(config.trackingConsent);
   config.trackingConsent = trackingConsentState.get() ?? config.trackingConsent;
 
-  tracing = new Tracing(config);
+  tracing = new Tracing(config, undefined, trackingConsentState);
 
   eventManager = new EventManager();
   const hooks = createFormatHooks();
 
   registerCommonContext(config, hooks);
   registerTrackingConsentContext(hooks, trackingConsentState);
-  userContext = await UserContext.init(hooks);
-  accountContext = await AccountContext.init(hooks);
+  userContext = await UserContext.init(hooks, trackingConsentState);
+  accountContext = await AccountContext.init(hooks, trackingConsentState);
   startTelemetry(eventManager, config, trackingConsentState);
   sessionManager = await SessionManager.start(eventManager, hooks, config, trackingConsentState);
 
@@ -96,7 +96,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   // component whose state it describes must be constructed. Monitored so a failure anywhere in the
   // telemetry pipeline degrades telemetry rather than rejecting `init()`.
   const { telemetryInitialized: useTracing, version: tracerVersion } = tracing;
-  trackingConsentState.onCollectionEnabledOnce(() => {
+  trackingConsentState.onCollectionAuthorizedOnce(() => {
     callMonitored(() => reportConfiguration(config, { useTracing, tracerVersion }));
   });
 

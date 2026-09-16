@@ -107,6 +107,10 @@ from `not-granted` to either collecting state starts a fresh session. Consent is
 stale pending data is deleted on the next SDK initialization. A `setTrackingConsent()` call made before `init()` takes
 precedence over the initial option.
 
+The pre-init bridge allows no renderer hosts. Call `init()` before creating renderer windows, using `pending` while the
+user's decision is unknown. A window loaded before `init()` keeps the fail-closed bridge configuration and must be reloaded
+after initialization before it can send events.
+
 #### Renderer process setup
 
 In order to monitor the renderer process, you must [set up the Browser SDK](https://docs.datadoghq.com/real_user_monitoring/application_monitoring/browser/setup/) in pages loaded by the renderer.
