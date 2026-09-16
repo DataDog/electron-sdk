@@ -4,6 +4,7 @@ import type { RawEvent, ServerEvent, ServerProfileEvent } from '../event';
 import { EventKind, EventTrack, EventManager } from '../event';
 import { createTestConfiguration } from '../mocks.specUtil';
 import { Transport } from './Transport';
+import { createTrackingConsentState } from '../domain/tracking-consent';
 
 vi.mock('electron', () => ({
   app: {
@@ -167,7 +168,8 @@ describe('Transport', () => {
         configWithBatchSize,
         expect.objectContaining({
           batchSize: BatchSizes.SMALL,
-        })
+        }),
+        undefined
       );
     });
 
@@ -179,8 +181,19 @@ describe('Transport', () => {
         configWithFrequency,
         expect.objectContaining({
           uploadFrequency: BatchUploadFrequencies.FREQUENT,
-        })
+        }),
+        undefined
       );
+    });
+
+    it('passes the tracking consent state to every batch manager', async () => {
+      const state = createTrackingConsentState('not-granted');
+      await Transport.create(config, eventManager, state);
+
+      expect(mockBatchCreate.mock.calls).toHaveLength(5);
+      for (const call of mockBatchCreate.mock.calls) {
+        expect(call[2]).toBe(state);
+      }
     });
   });
 });

@@ -1,6 +1,7 @@
 import path from 'node:path';
-import { setTimeout } from '@datadog/browser-core';
+import { setTimeout, type Subscription } from '@datadog/browser-core';
 import type { Configuration } from '../../config';
+import type { TrackingConsentChange, TrackingConsentState } from '../../domain/tracking-consent';
 import { addError } from '../../domain/telemetry';
 import { EventTrack } from '../../event';
 import type { ServerEvent } from '../../event';
@@ -15,6 +16,7 @@ import { StandardBatchConsumer } from './standard/StandardBatchConsumer';
 import { StandardBatchProducer } from './standard/StandardBatchProducer';
 import type { StandardBatchProducerConfig } from './standard/StandardBatchProducer';
 import type { BatchConfig } from './batchConfig.types';
+import { authorizePendingBatches, clearBatchDirectory } from './trackingConsentStorage';
 
 /** Maximum array length accepted by the Logs HTTP intake. */
 const MAX_LOGS_EVENTS_PER_BATCH = 1_000;
@@ -25,27 +27,54 @@ const MAX_LOGS_EVENTS_PER_BATCH = 1_000;
  * delivers them to the intake endpoint.
  */
 export class BatchManager {
-  private producer: BatchProducer;
-  private consumer: BatchConsumer;
-  private uploadFrequency: number;
   private timeoutId: ReturnType<typeof setTimeout> | null = null;
   // The upload cycle currently running (rotate + upload), or null when idle.
   private activeCycle: Promise<void> | null = null;
   // A cycle queued to run after the active one. Concurrent flush() callers coalesce onto it.
   private queuedCycle: Promise<void> | null = null;
+  // Consent transitions are reserved synchronously on the pending producer queue in notification order.
+  private transitionQueue: Promise<void> = Promise.resolve();
+  private trackingConsentSubscription: Subscription | undefined;
 
-  private constructor(producer: BatchProducer, consumer: BatchConsumer, uploadFrequency: number) {
-    this.producer = producer;
-    this.consumer = consumer;
-    this.uploadFrequency = uploadFrequency;
+  private constructor(
+    private readonly authorizedProducer: BatchProducer,
+    private readonly pendingProducer: BatchProducer,
+    private readonly consumer: BatchConsumer,
+    private readonly authorizedPath: string,
+    private readonly pendingPath: string,
+    private readonly uploadFrequency: number,
+    private readonly trackingConsentState?: TrackingConsentState
+  ) {
+    this.trackingConsentSubscription = trackingConsentState?.observable.subscribe((change) => {
+      this.queueConsentTransition(change);
+    });
   }
 
   /** Creates and fully initializes a BatchManager instance. */
-  static async create(config: Configuration, batchConfig: BatchConfig) {
+  static async create(config: Configuration, batchConfig: BatchConfig, trackingConsentState?: TrackingConsentState) {
     const { uploadFrequency } = batchConfig;
+    const { path: basePath, trackType } = batchConfig;
+    // Keep the established authorized paths backward-compatible so batches from older SDK versions
+    // are still recovered and uploaded.
+    const authorizedPath = path.join(basePath, trackType === EventTrack.LOGS ? 'dd_logs' : trackType);
+    const pendingPath = path.join(authorizedPath, 'pending');
 
-    const { producer, consumer } = await BatchManager.createProducerConsumerPair(config, batchConfig);
-    const manager = new BatchManager(producer, consumer, uploadFrequency);
+    // Like the mobile SDKs, consent is process-local: pending data from a process that ended before a
+    // decision is discarded rather than silently authorized by a future launch.
+    await clearBatchDirectory(pendingPath);
+
+    const authorizedProducer = await BatchManager.createProducer(batchConfig, authorizedPath);
+    const pendingProducer = await BatchManager.createProducer(batchConfig, pendingPath);
+    const consumer = BatchManager.createConsumer(config, batchConfig, authorizedPath);
+    const manager = new BatchManager(
+      authorizedProducer,
+      pendingProducer,
+      consumer,
+      authorizedPath,
+      pendingPath,
+      uploadFrequency,
+      trackingConsentState
+    );
     manager.start();
 
     return manager;
@@ -53,7 +82,12 @@ export class BatchManager {
 
   /** Enqueues a server event to be written to the current batch file. */
   post(event: ServerEvent) {
-    this.producer.post(event);
+    const consent = this.trackingConsentState?.get() ?? 'granted';
+    if (consent === 'granted') {
+      this.authorizedProducer.post(event);
+    } else if (consent === 'pending') {
+      this.pendingProducer.post(event);
+    }
   }
 
   /**
@@ -74,6 +108,8 @@ export class BatchManager {
       clearTimeout(this.timeoutId);
       this.timeoutId = null;
     }
+    this.trackingConsentSubscription?.unsubscribe();
+    this.trackingConsentSubscription = undefined;
   }
 
   /** Kicks off the first scheduled cycle. */
@@ -125,16 +161,52 @@ export class BatchManager {
     return cycle;
   }
 
-  /** Flushes the producer to rotate pending files, then uploads all ready batches. */
+  /** Flushes both isolated producers, authorizes granted pending files, then uploads authorized batches. */
   private async runUploadCycle() {
+    // Capture the queue at cycle start. A transition arriving during this cycle is already ordered on the
+    // pending producer; the next requested cycle will await it too.
+    const transitionsBeforeCycle = this.transitionQueue;
     try {
-      // Flush producer first to rotate any pending .tmp files to .log
-      await this.producer.flush();
-      // Then upload all .log files
+      await transitionsBeforeCycle;
+      await this.authorizedProducer.flush();
+      if (this.trackingConsentState?.isGranted() ?? true) {
+        await this.pendingProducer.runAfterFlush(() => authorizePendingBatches(this.pendingPath, this.authorizedPath));
+      } else {
+        await this.pendingProducer.flush();
+      }
+      // Previously authorized data remains uploadable after consent changes, matching iOS and Android.
       await this.consumer.upload();
     } finally {
       this.activeCycle = null;
     }
+  }
+
+  private queueConsentTransition(change: TrackingConsentChange): void {
+    let reservedStorageOperation: Promise<void> | undefined;
+
+    if (change.previous === 'pending' && change.current === 'granted') {
+      // Reserve rotation + migration immediately. A subsequent transition back to pending queues its
+      // clear behind this operation, so accepted events cannot be deleted before being authorized.
+      reservedStorageOperation = this.pendingProducer.runAfterFlush(() =>
+        authorizePendingBatches(this.pendingPath, this.authorizedPath)
+      );
+    } else if (change.current === 'pending') {
+      // Reserve deletion immediately; posts following the synchronous state notification queue behind it.
+      reservedStorageOperation = this.pendingProducer.clear();
+    } else if (change.previous === 'pending' && change.current === 'not-granted') {
+      reservedStorageOperation = this.pendingProducer.clear();
+    }
+
+    const previousTransition = this.transitionQueue;
+    const transition = previousTransition
+      .catch(() => undefined)
+      .then(async () => {
+        await reservedStorageOperation;
+      });
+
+    this.transitionQueue = transition.catch((error) => {
+      addError(error);
+    });
   }
 
   /**
@@ -144,30 +216,14 @@ export class BatchManager {
    * Each producer narrows `writeData()` to its track's event shape, so a mismatched pairing
    * fails only at runtime. Keep each branch in sync with `Transport.setupTrackBatching`.
    */
-  private static async createProducerConsumerPair(
-    config: Configuration,
-    batchConfig: BatchConfig
-  ): Promise<{ producer: BatchProducer; consumer: BatchConsumer }> {
-    const { clientToken } = config;
-    const { path: configPath, trackType, batchSize } = batchConfig;
-
-    // TODO(RUM-18471): revisit track path naming for rum/spans/other tracks too; logs is fine to rename now,
-    // but existing tracks already have established on-disk paths, making them harder to change later.
-    const trackPath = path.join(configPath, trackType === EventTrack.LOGS ? 'dd_logs' : trackType);
-    const intakeUrl = computeIntakeUrlForTrack(config.site, trackType, { proxy: config.proxy });
-
-    const consumerConfig: BatchConsumerConfig = { trackPath, intakeUrl, clientToken };
-
+  private static async createProducer(batchConfig: BatchConfig, trackPath: string): Promise<BatchProducer> {
+    const { trackType, batchSize } = batchConfig;
     if (trackType === EventTrack.REPLAY) {
-      const producer = await ReplayBatchProducer.create({ trackPath });
-      const consumer = new ReplayBatchConsumer(consumerConfig);
-      return { producer, consumer };
+      return ReplayBatchProducer.create({ trackPath });
     }
 
     if (trackType === EventTrack.PROFILE) {
-      const producer = await ProfileBatchProducer.create({ trackPath });
-      const consumer = new ProfileBatchConsumer(consumerConfig);
-      return { producer, consumer };
+      return ProfileBatchProducer.create({ trackPath });
     }
 
     const standardProducerConfig: StandardBatchProducerConfig = {
@@ -175,8 +231,21 @@ export class BatchManager {
       batchSize,
       ...(trackType === EventTrack.LOGS ? { maxEventsPerBatch: MAX_LOGS_EVENTS_PER_BATCH } : {}),
     };
-    const producer = await StandardBatchProducer.create(standardProducerConfig);
-    const consumer = new StandardBatchConsumer(consumerConfig);
-    return { producer, consumer };
+    return StandardBatchProducer.create(standardProducerConfig);
+  }
+
+  private static createConsumer(config: Configuration, batchConfig: BatchConfig, trackPath: string): BatchConsumer {
+    const { clientToken } = config;
+    const { trackType } = batchConfig;
+    const intakeUrl = computeIntakeUrlForTrack(config.site, trackType, { proxy: config.proxy });
+    const consumerConfig: BatchConsumerConfig = { trackPath, intakeUrl, clientToken };
+
+    if (trackType === EventTrack.REPLAY) {
+      return new ReplayBatchConsumer(consumerConfig);
+    }
+    if (trackType === EventTrack.PROFILE) {
+      return new ProfileBatchConsumer(consumerConfig);
+    }
+    return new StandardBatchConsumer(consumerConfig);
   }
 }
