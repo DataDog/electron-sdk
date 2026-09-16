@@ -9,6 +9,7 @@ import type { SessionManager } from '../session';
 import { addError, clearTimeout, monitor, setTimeout } from '../telemetry';
 import { registerReplayContext } from './replayContext';
 import { byteSizeOf, CreationReason, Segment, type BrowserRecord, type SegmentContext } from './Segment';
+import { createTrackingConsentState, type TrackingConsentState } from '../tracking-consent';
 
 // Matches the browser SDK flush cadence.
 const SEGMENT_DURATION_LIMIT = 5 * ONE_SECOND;
@@ -54,7 +55,8 @@ export class ReplayCollection {
     private readonly eventManager: EventManager,
     private readonly config: Configuration,
     private readonly sessionManager: SessionManager,
-    hooks: FormatHooks
+    hooks: FormatHooks,
+    trackingConsentState: TrackingConsentState = createTrackingConsentState(config.trackingConsent ?? 'granted')
   ) {
     // Enrich renderer view events with this session's replay stats. Registered here (rather than by the
     // caller) so all replay-specific assembly logic lives with the collection, mirroring ProfilingCollection.
@@ -88,6 +90,14 @@ export class ReplayCollection {
         }
       }),
     });
+
+    trackingConsentState.observable.subscribe(
+      monitor(() => {
+        // A segment must never mix granted and pending records: its start time selects the storage
+        // decision for the whole payload. Keep the deflate stream, since the session itself continues.
+        this.flush(CreationReason.SEGMENT_DURATION_LIMIT);
+      })
+    );
   }
 
   private isReplaySampled(sessionId: string): boolean {

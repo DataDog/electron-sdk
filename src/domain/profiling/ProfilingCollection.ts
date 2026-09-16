@@ -10,6 +10,7 @@ import { correctedChildSampleRate, isSessionSampled } from '../../tools/Sampler'
 import { monitor } from '../telemetry';
 import type { QuotaReason, QuotaResult } from './quotaCheck';
 import { checkProfilingQuota } from './quotaCheck';
+import { createTrackingConsentState, type TrackingConsentState } from '../tracking-consent';
 
 // The browser SDK attaches its profiling context only to these event types (see the browser SDK's
 // profilingContext assemble hook), so electron scopes its contribution the same way to stay consistent.
@@ -21,12 +22,17 @@ export class ProfilingCollection {
   // after a renewal is still dropped if its own session was denied. Absence means "not denied" (allowed or
   // still pending the async check, i.e. optimistic).
   private readonly quotaDeniedSessions = new Map<string, QuotaReason>();
+  private readonly quotaCheckedSessions = new Set<string>();
+  private readonly pendingQuotaSessions = new Set<string>();
 
   constructor(
     eventManager: EventManager,
     private readonly sessionManager: Pick<SessionManager, 'getSession' | 'getTrackedSessionId'>,
     private readonly config: Configuration,
-    hooks: FormatHooks
+    hooks: FormatHooks,
+    private readonly trackingConsentState: TrackingConsentState = createTrackingConsentState(
+      config.trackingConsent ?? 'granted'
+    )
   ) {
     this.maybeCheckQuota();
 
@@ -78,11 +84,31 @@ export class ProfilingCollection {
         this.maybeCheckQuota();
       },
     });
+
+    this.trackingConsentState.observable.subscribe(
+      monitor((change) => {
+        if (change.current === 'not-granted') {
+          this.pendingQuotaSessions.clear();
+          return;
+        }
+        if (change.current !== 'granted') {
+          return;
+        }
+        for (const sessionId of this.pendingQuotaSessions) {
+          this.triggerQuotaCheck(sessionId);
+        }
+        this.pendingQuotaSessions.clear();
+        this.maybeCheckQuota();
+      })
+    );
   }
 
   // Trigger a quota check for the current session, but only when it is profiling-sampled (an unsampled
   // session never produces profiles, so its quota is irrelevant).
   private maybeCheckQuota(): void {
+    if (!this.trackingConsentState.isGranted()) {
+      return;
+    }
     const session = this.sessionManager.getSession();
     if (session.status === 'active' && this.isProfilingSampled(session.id)) {
       this.triggerQuotaCheck(session.id);
@@ -97,6 +123,10 @@ export class ProfilingCollection {
   }
 
   private triggerQuotaCheck(sessionId: string): void {
+    if (this.quotaCheckedSessions.has(sessionId)) {
+      return;
+    }
+    this.quotaCheckedSessions.add(sessionId);
     void checkProfilingQuota(this.config, sessionId).then(
       monitor((result: QuotaResult) => {
         if (result.decision === 'quota_ko') {
@@ -121,6 +151,9 @@ export class ProfilingCollection {
     }
     if (this.quotaDeniedSessions.has(sessionId)) {
       return null;
+    }
+    if (this.trackingConsentState.getAt(captureTime) === 'pending') {
+      this.pendingQuotaSessions.add(sessionId);
     }
 
     return {

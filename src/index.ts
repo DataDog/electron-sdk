@@ -4,7 +4,7 @@ import { setDurationVitalApi } from './api';
 import type { AccountInfo, UserInfo } from './domain/customer-context';
 import { AccountContext, UserContext } from './domain/customer-context';
 import type { InitConfiguration, TrackingConsent } from './config';
-import { buildConfiguration } from './config';
+import { buildConfiguration, isTrackingConsent } from './config';
 import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './domain/rum';
 import { RumCollection } from './domain/rum';
 import { ReplayCollection } from './domain/replay';
@@ -22,6 +22,7 @@ import { ProfilingCollection } from './domain/profiling';
 import { createTrackingConsentState, registerTrackingConsentContext } from './domain/tracking-consent';
 import { EventManager } from './event';
 import { BeforeQuitHandler } from './tools/BeforeQuitHandler';
+import { display } from './tools/display';
 import { Transport } from './transport';
 
 let sessionManager: SessionManager | undefined;
@@ -70,11 +71,11 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   sessionManager = await SessionManager.start(eventManager, hooks, config, trackingConsentState);
 
   new MainAssembly(eventManager, hooks, new BeforeSend(config.beforeSendRum));
-  new ProfilingCollection(eventManager, sessionManager, config, hooks);
-  replayCollection = new ReplayCollection(eventManager, config, sessionManager, hooks);
+  new ProfilingCollection(eventManager, sessionManager, config, hooks, trackingConsentState);
+  replayCollection = new ReplayCollection(eventManager, config, sessionManager, hooks, trackingConsentState);
 
   if (tracing.enabled) {
-    new SpanProcessor(eventManager, hooks, config);
+    new SpanProcessor(eventManager, hooks, config, trackingConsentState);
   }
 
   // EventManager does not queue events that have no matching handler. Finish registering every
@@ -115,6 +116,10 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
  */
 export function setTrackingConsent(trackingConsent: TrackingConsent): void {
   callMonitored(() => {
+    if (!isTrackingConsent(trackingConsent)) {
+      display.error("'setTrackingConsent' must be called with one of: granted, not-granted, pending");
+      return;
+    }
     trackingConsentState.update(trackingConsent);
     addUsage({ feature: 'set-tracking-consent', tracking_consent: trackingConsent });
     if (trackingConsentState.isGranted()) {

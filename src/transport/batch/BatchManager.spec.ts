@@ -217,6 +217,61 @@ describe('BatchManager', () => {
       expect(mockAuthorizedProducerPost).not.toHaveBeenCalled();
       expect(mockPendingProducerPost).not.toHaveBeenCalled();
     });
+
+    it('routes delayed events using the consent in effect when they were captured', async () => {
+      vi.setSystemTime(0);
+      const state = createTrackingConsentState('granted');
+      const manager = await BatchManager.create(config, batchConfig, state);
+      const event = {
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        data: { date: 0 },
+      } as unknown as ServerEvent;
+
+      vi.setSystemTime(1);
+      state.update('pending');
+      manager.post(event);
+
+      expect(mockAuthorizedProducerPost).toHaveBeenCalledWith(event);
+      expect(mockPendingProducerPost).not.toHaveBeenCalled();
+    });
+
+    it('authorizes a delayed pending event only when that pending interval was granted', async () => {
+      vi.setSystemTime(0);
+      const state = createTrackingConsentState('pending');
+      const manager = await BatchManager.create(config, batchConfig, state);
+      const event = {
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        data: { date: 0 },
+      } as unknown as ServerEvent;
+
+      vi.setSystemTime(1);
+      state.update('granted');
+      manager.post(event);
+
+      expect(mockAuthorizedProducerPost).toHaveBeenCalledWith(event);
+    });
+
+    it('never revives a delayed event from a rejected pending interval', async () => {
+      vi.setSystemTime(0);
+      const state = createTrackingConsentState('pending');
+      const manager = await BatchManager.create(config, batchConfig, state);
+      const event = {
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        data: { date: 0 },
+      } as unknown as ServerEvent;
+
+      vi.setSystemTime(1);
+      state.update('not-granted');
+      vi.setSystemTime(2);
+      state.update('granted');
+      manager.post(event);
+
+      expect(mockAuthorizedProducerPost).not.toHaveBeenCalled();
+      expect(mockPendingProducerPost).not.toHaveBeenCalled();
+    });
   });
 
   describe('flush', () => {
@@ -309,6 +364,34 @@ describe('BatchManager', () => {
       await manager.flush();
 
       expect(mockPendingProducerClear).toHaveBeenCalledOnce();
+    });
+
+    it('reserves the pending clear before lifecycle observers can post new events', async () => {
+      const state = createTrackingConsentState('not-granted');
+      const manager = await BatchManager.create(config, batchConfig, state);
+      state.observable.subscribe(() => {
+        manager.post({ kind: EventKind.SERVER, track: EventTrack.RUM, data: {} } as unknown as ServerEvent);
+      });
+
+      state.update('pending');
+
+      expect(mockPendingProducerClear.mock.invocationCallOrder[0]).toBeLessThan(
+        mockPendingProducerPost.mock.invocationCallOrder[0]
+      );
+    });
+
+    it('does not authorize rejected files after a failed clear and a later grant', async () => {
+      const { authorizePendingBatches } = await import('./trackingConsentStorage');
+      const state = createTrackingConsentState('pending');
+      const manager = await BatchManager.create(config, batchConfig, state);
+      mockPendingProducerClear.mockRejectedValueOnce(new Error('clear failed'));
+
+      state.update('not-granted');
+      await manager.flush();
+      state.update('granted');
+      await manager.flush();
+
+      expect(authorizePendingBatches).not.toHaveBeenCalled();
     });
   });
 

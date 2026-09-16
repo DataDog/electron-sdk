@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { setTimeout, type Subscription } from '@datadog/browser-core';
+import type { TimeStamp } from '@datadog/js-core/time';
 import type { Configuration } from '../../config';
 import type { TrackingConsentChange, TrackingConsentState } from '../../domain/tracking-consent';
 import { addError } from '../../domain/telemetry';
@@ -34,6 +35,9 @@ export class BatchManager {
   private queuedCycle: Promise<void> | null = null;
   // Consent transitions are reserved synchronously on the pending producer queue in notification order.
   private transitionQueue: Promise<void> = Promise.resolve();
+  // True only for a pending interval that was explicitly granted. A rejected directory is never
+  // migrated, even if deleting it failed and consent is granted during a later interval.
+  private pendingAuthorizationRequested = false;
   private trackingConsentSubscription: Subscription | undefined;
 
   private constructor(
@@ -45,7 +49,7 @@ export class BatchManager {
     private readonly uploadFrequency: number,
     private readonly trackingConsentState?: TrackingConsentState
   ) {
-    this.trackingConsentSubscription = trackingConsentState?.observable.subscribe((change) => {
+    this.trackingConsentSubscription = trackingConsentState?.beforeObservable.subscribe((change) => {
       this.queueConsentTransition(change);
     });
   }
@@ -82,7 +86,11 @@ export class BatchManager {
 
   /** Enqueues a server event to be written to the current batch file. */
   post(event: ServerEvent) {
-    const consent = this.trackingConsentState?.get() ?? 'granted';
+    const captureTime = getServerEventCaptureTime(event);
+    const consent =
+      captureTime === undefined
+        ? (this.trackingConsentState?.get() ?? 'granted')
+        : (this.trackingConsentState?.resolveForStorage(captureTime) ?? 'not-granted');
     if (consent === 'granted') {
       this.authorizedProducer.post(event);
     } else if (consent === 'pending') {
@@ -161,7 +169,7 @@ export class BatchManager {
     return cycle;
   }
 
-  /** Flushes both isolated producers, authorizes granted pending files, then uploads authorized batches. */
+  /** Flushes both isolated producers, authorizes explicitly granted pending files, then uploads authorized batches. */
   private async runUploadCycle() {
     // Capture the queue at cycle start. A transition arriving during this cycle is already ordered on the
     // pending producer; the next requested cycle will await it too.
@@ -169,8 +177,9 @@ export class BatchManager {
     try {
       await transitionsBeforeCycle;
       await this.authorizedProducer.flush();
-      if (this.trackingConsentState?.isGranted() ?? true) {
+      if (this.pendingAuthorizationRequested) {
         await this.pendingProducer.runAfterFlush(() => authorizePendingBatches(this.pendingPath, this.authorizedPath));
+        this.pendingAuthorizationRequested = false;
       } else {
         await this.pendingProducer.flush();
       }
@@ -185,15 +194,20 @@ export class BatchManager {
     let reservedStorageOperation: Promise<void> | undefined;
 
     if (change.previous === 'pending' && change.current === 'granted') {
+      this.pendingAuthorizationRequested = true;
       // Reserve rotation + migration immediately. A subsequent transition back to pending queues its
       // clear behind this operation, so accepted events cannot be deleted before being authorized.
-      reservedStorageOperation = this.pendingProducer.runAfterFlush(() =>
-        authorizePendingBatches(this.pendingPath, this.authorizedPath)
-      );
+      reservedStorageOperation = this.pendingProducer
+        .runAfterFlush(() => authorizePendingBatches(this.pendingPath, this.authorizedPath))
+        .then(() => {
+          this.pendingAuthorizationRequested = false;
+        });
     } else if (change.current === 'pending') {
+      this.pendingAuthorizationRequested = false;
       // Reserve deletion immediately; posts following the synchronous state notification queue behind it.
       reservedStorageOperation = this.pendingProducer.clear();
     } else if (change.previous === 'pending' && change.current === 'not-granted') {
+      this.pendingAuthorizationRequested = false;
       reservedStorageOperation = this.pendingProducer.clear();
     }
 
@@ -247,5 +261,29 @@ export class BatchManager {
       return new ProfileBatchConsumer(consumerConfig);
     }
     return new StandardBatchConsumer(consumerConfig);
+  }
+}
+
+function getServerEventCaptureTime(event: ServerEvent): TimeStamp | undefined {
+  switch (event.track) {
+    case EventTrack.RUM:
+    case EventTrack.LOGS: {
+      const date = (event.data as { date?: unknown }).date;
+      return typeof date === 'number' && Number.isFinite(date) ? (date as TimeStamp) : undefined;
+    }
+    case EventTrack.SPANS: {
+      const starts = Array.isArray(event.data.spans)
+        ? event.data.spans.map((span) => span.start / 1e6).filter(Number.isFinite)
+        : [];
+      return starts.length > 0 ? (Math.min(...starts) as TimeStamp) : undefined;
+    }
+    case EventTrack.PROFILE: {
+      const start = new Date(event.data.start).getTime();
+      return Number.isFinite(start) ? (start as TimeStamp) : undefined;
+    }
+    case EventTrack.REPLAY: {
+      const start = event.data.metadata.start;
+      return Number.isFinite(start) ? (start as TimeStamp) : undefined;
+    }
   }
 }

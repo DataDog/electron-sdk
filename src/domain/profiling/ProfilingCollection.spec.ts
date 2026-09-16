@@ -6,6 +6,7 @@ import type { RawProfileEvent, ServerProfileEvent, SessionRenewEvent } from '../
 import { createTestConfiguration } from '../../mocks.specUtil';
 import type { FormatHooks } from '../../assembly';
 import * as quotaCheckModule from './quotaCheck';
+import { createTrackingConsentState } from '../tracking-consent';
 
 vi.mock('./quotaCheck');
 
@@ -211,6 +212,45 @@ describe('ProfilingCollection', () => {
     const LOW_HASH_UUID = '29a4b5e3-9859-4290-99fa-4bc4a1a348b9'; // passes sampling at rate 50
     const FIRST_UUID = '11111111-1111-4111-8111-111111111111';
     const SECOND_UUID = '22222222-2222-4222-8222-222222222222';
+
+    it('does not contact the quota endpoint while consent is pending', () => {
+      const state = createTrackingConsentState('pending');
+      const cfg = createTestConfiguration({
+        trackingConsent: 'pending',
+        sessionSampleRate: 100,
+        profilingSampleRate: 100,
+      });
+      new ProfilingCollection(eventManager, makeSessionManager('active', LOW_HASH_UUID), cfg, hooks, state);
+
+      eventManager.notify(makeRawProfileEvent());
+      expect(quotaCheckModule.checkProfilingQuota).not.toHaveBeenCalled();
+
+      state.update('granted');
+      expect(quotaCheckModule.checkProfilingQuota).toHaveBeenCalledOnce();
+      expect(quotaCheckModule.checkProfilingQuota).toHaveBeenCalledWith(cfg, LOW_HASH_UUID);
+    });
+
+    it('forgets rejected pending sessions before a later grant', () => {
+      const state = createTrackingConsentState('pending');
+      const newSessionId = '33333333-3333-4333-8333-333333333333';
+      const cfg = createTestConfiguration({
+        trackingConsent: 'pending',
+        sessionSampleRate: 100,
+        profilingSampleRate: 100,
+      });
+      const sessionManager = {
+        getSession: () => ({ id: newSessionId, status: 'active' as const }),
+        getTrackedSessionId: () => LOW_HASH_UUID,
+      };
+      new ProfilingCollection(eventManager, sessionManager, cfg, hooks, state);
+
+      eventManager.notify(makeRawProfileEvent());
+      state.update('not-granted');
+      state.update('granted');
+
+      expect(quotaCheckModule.checkProfilingQuota).toHaveBeenCalledOnce();
+      expect(quotaCheckModule.checkProfilingQuota).toHaveBeenCalledWith(cfg, newSessionId);
+    });
 
     it('forwards events while quota check is pending (optimistic)', () => {
       // eslint-disable-next-line @typescript-eslint/no-empty-function

@@ -122,6 +122,36 @@ describe('sessionManager', () => {
       expect(sessionManager.getTrackedSessionId()).toBe(sessionManager.getSession().id);
     });
 
+    it('keeps a pending session id out of the shared session history until consent is granted', async () => {
+      const state = createTrackingConsentState('pending');
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), state);
+      const pendingSessionId = sessionManager.getSession().id;
+
+      await vi.waitFor(() => {
+        const persisted = mfs.writeFile.mock.calls.map((call) => String(call[1])).join('\n');
+        expect(persisted).not.toContain(pendingSessionId);
+      });
+
+      state.update('granted');
+
+      await vi.waitFor(() => {
+        const persisted = mfs.writeFile.mock.calls.map((call) => String(call[1])).join('\n');
+        expect(persisted).toContain(pendingSessionId);
+      });
+    });
+
+    it('discards pending session history when consent is rejected', async () => {
+      const state = createTrackingConsentState('pending');
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), state);
+      const pendingSessionId = sessionManager.getSession().id;
+
+      state.update('not-granted');
+      await vi.runAllTimersAsync();
+
+      const persisted = mfs.writeFile.mock.calls.map((call) => String(call[1])).join('\n');
+      expect(persisted).not.toContain(pendingSessionId);
+    });
+
     it('keeps the same session when pending consent is granted', async () => {
       const state = createTrackingConsentState('pending');
       sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), state);

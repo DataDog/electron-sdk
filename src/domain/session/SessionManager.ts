@@ -9,7 +9,7 @@ import { SessionContext } from './SessionContext';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
 import { isSessionSampled } from '../../tools/Sampler';
 import { setCurrentSessionSampled } from '../../common';
-import { createTrackingConsentState, type TrackingConsentState } from '../tracking-consent';
+import { createTrackingConsentState, type TrackingConsentChange, type TrackingConsentState } from '../tracking-consent';
 
 export const SESSION_EXPIRATION_DELAY = 15 * ONE_MINUTE;
 
@@ -83,6 +83,9 @@ export class SessionManager {
   private async init(): Promise<void> {
     this.sessionContext = await SessionContext.init(this.hooks);
     this.sessionContext.close();
+    if (this.trackingConsentState.isPending()) {
+      this.sessionContext.startPending();
+    }
     if (this.trackingConsentState.isCollectionEnabled()) {
       this.createNewSession();
     } else {
@@ -99,8 +102,8 @@ export class SessionManager {
       },
     });
 
-    this.trackingConsentSubscription = this.trackingConsentState.observable.subscribe(() => {
-      this.updateTrackingConsent();
+    this.trackingConsentSubscription = this.trackingConsentState.observable.subscribe((change) => {
+      this.updateTrackingConsent(change);
     });
   }
 
@@ -145,9 +148,20 @@ export class SessionManager {
     this.scheduleInactivityTimeout();
   }
 
-  private updateTrackingConsent(): void {
+  private updateTrackingConsent(change: TrackingConsentChange): void {
+    if (change.current === 'pending') {
+      const trackedSessionId =
+        this.currentSession.status === 'active' ? this.sessionContext.getTrackedSessionId() : undefined;
+      this.sessionContext.startPending(trackedSessionId);
+    } else if (change.previous === 'pending' && change.current === 'granted') {
+      this.sessionContext.grantPending();
+    }
+
     if (!this.trackingConsentState.isCollectionEnabled()) {
       this.expireSession();
+      if (change.previous === 'pending') {
+        this.sessionContext.rejectPending();
+      }
       return;
     }
 

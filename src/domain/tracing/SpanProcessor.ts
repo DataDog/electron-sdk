@@ -11,6 +11,7 @@ import { RawRumResource } from '../rum';
 import { monitor } from '../telemetry';
 import { NsTimeStamp, RawSpanData, RawTraceData } from './rawTracingData.types';
 import { Tracing } from './Tracing';
+import { createTrackingConsentState, type TrackingConsentState } from '../tracking-consent';
 
 /**
  * Structure of spans exported by dd-trace electron exporter.
@@ -51,7 +52,10 @@ export class SpanProcessor {
   constructor(
     private eventManager: EventManager,
     private hooks: FormatHooks,
-    config: Configuration
+    config: Configuration,
+    private readonly trackingConsentState: TrackingConsentState = createTrackingConsentState(
+      config.trackingConsent ?? 'granted'
+    )
   ) {
     this.env = config.env ?? '';
     this.service = config.service;
@@ -72,7 +76,7 @@ export class SpanProcessor {
   }
 
   private processTrace(trace: ExportedSpan[]): void {
-    const processedSpans: RawSpanData[] = [];
+    const processedSpans = new Map<'granted' | 'pending', RawSpanData[]>();
     const traceSampled = Tracing.isTraceSampled(trace);
 
     for (const exportedSpan of trace) {
@@ -90,12 +94,18 @@ export class SpanProcessor {
       }
 
       if (traceSampled) {
-        processedSpans.push(combine(span, hookResult));
+        const consent = this.trackingConsentState.resolveForStorage(toTimeStamp(span.start));
+        if (consent === 'granted' || consent === 'pending') {
+          const spans = processedSpans.get(consent) ?? [];
+          spans.push(combine(span, hookResult));
+          processedSpans.set(consent, spans);
+        }
       }
     }
 
-    const processedTrace = { env: this.env, spans: processedSpans };
-    this.emitServerSpansEvent(processedTrace);
+    for (const spans of processedSpans.values()) {
+      this.emitServerSpansEvent({ env: this.env, spans });
+    }
   }
 
   private isIntakeRequest(span: ExportedSpan): boolean {

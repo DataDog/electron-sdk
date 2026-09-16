@@ -276,7 +276,7 @@ function validateTrackingConsent(value: unknown): TrackingConsent | undefined {
   if (value === undefined || value === null) {
     return TrackingConsentValues.GRANTED;
   }
-  if (!isOneOf(value, VALID_TRACKING_CONSENTS)) {
+  if (!isTrackingConsent(value)) {
     display.error(`Configuration error: 'trackingConsent' must be one of: ${VALID_TRACKING_CONSENTS.join(', ')}`);
     return undefined;
   }
@@ -342,6 +342,10 @@ const VALID_TRACKING_CONSENTS: readonly TrackingConsent[] = [
   TrackingConsentValues.NOT_GRANTED,
   TrackingConsentValues.PENDING,
 ];
+
+export function isTrackingConsent(value: unknown): value is TrackingConsent {
+  return isOneOf(value, VALID_TRACKING_CONSENTS);
+}
 
 function validateAllowedRendererHosts(value: unknown): string[] | undefined {
   if (

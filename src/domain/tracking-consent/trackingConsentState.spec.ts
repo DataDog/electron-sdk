@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { TimeStamp } from '@datadog/js-core/time';
 import { createTrackingConsentState } from './trackingConsentState';
 
 describe('createTrackingConsentState', () => {
@@ -32,5 +33,31 @@ describe('createTrackingConsentState', () => {
     state.update('granted');
 
     expect(callback).toHaveBeenCalledOnce();
+  });
+
+  it('notifies storage observers before lifecycle observers', () => {
+    const state = createTrackingConsentState('not-granted');
+    const calls: string[] = [];
+    state.beforeObservable.subscribe(() => calls.push('storage'));
+    state.observable.subscribe(() => calls.push('lifecycle'));
+
+    state.update('pending');
+
+    expect(calls).toEqual(['storage', 'lifecycle']);
+  });
+
+  it('resolves pending capture intervals from the decision that followed them', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10);
+    const grantedState = createTrackingConsentState('pending');
+    const rejectedState = createTrackingConsentState('pending');
+
+    vi.setSystemTime(20);
+    grantedState.update('granted');
+    rejectedState.update('not-granted');
+
+    expect(grantedState.resolveForStorage(15 as TimeStamp)).toBe('granted');
+    expect(rejectedState.resolveForStorage(15 as TimeStamp)).toBe('not-granted');
+    vi.useRealTimers();
   });
 });
