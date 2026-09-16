@@ -9,6 +9,7 @@ import { SessionContext } from './SessionContext';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
 import { isSessionSampled } from '../../tools/Sampler';
 import { setCurrentSessionSampled } from '../../common';
+import { createTrackingConsentState, type TrackingConsentState } from '../tracking-consent';
 
 export const SESSION_EXPIRATION_DELAY = 15 * ONE_MINUTE;
 
@@ -32,19 +33,22 @@ export class SessionManager {
   private inactivityTimeoutId: ReturnType<typeof setTimeout> | undefined;
   private sessionTimeoutId: ReturnType<typeof setTimeout> | undefined;
   private activitySubscription: Subscription | undefined;
+  private trackingConsentSubscription: Subscription | undefined;
 
   private constructor(
     private readonly eventManager: EventManager,
     private readonly hooks: FormatHooks,
-    private readonly configuration: Configuration
+    private readonly configuration: Configuration,
+    private readonly trackingConsentState: TrackingConsentState
   ) {}
 
   static async start(
     eventManager: EventManager,
     hooks: FormatHooks,
-    configuration: Configuration
+    configuration: Configuration,
+    trackingConsentState: TrackingConsentState = createTrackingConsentState(configuration.trackingConsent ?? 'granted')
   ): Promise<SessionManager> {
-    const manager = new SessionManager(eventManager, hooks, configuration);
+    const manager = new SessionManager(eventManager, hooks, configuration, trackingConsentState);
     await manager.init();
     return manager;
   }
@@ -72,12 +76,20 @@ export class SessionManager {
       this.activitySubscription.unsubscribe();
       this.activitySubscription = undefined;
     }
+    this.trackingConsentSubscription?.unsubscribe();
+    this.trackingConsentSubscription = undefined;
   }
 
   private async init(): Promise<void> {
     this.sessionContext = await SessionContext.init(this.hooks);
     this.sessionContext.close();
-    this.createNewSession();
+    if (this.trackingConsentState.isCollectionEnabled()) {
+      this.createNewSession();
+    } else {
+      // Keep the public session shape stable while ensuring no sampled session or timer exists before consent.
+      this.currentSession = { id: generateUUID(), status: 'expired' };
+      setCurrentSessionSampled(false);
+    }
 
     this.activitySubscription = this.eventManager.registerHandler<EndUserActivityEvent>({
       canHandle: (event): event is EndUserActivityEvent =>
@@ -85,6 +97,10 @@ export class SessionManager {
       handle: () => {
         this.updateActivity();
       },
+    });
+
+    this.trackingConsentSubscription = this.trackingConsentState.observable.subscribe(() => {
+      this.updateTrackingConsent();
     });
   }
 
@@ -116,6 +132,10 @@ export class SessionManager {
   }
 
   private updateActivity(): void {
+    if (!this.trackingConsentState.isCollectionEnabled()) {
+      return;
+    }
+
     if (this.currentSession.status === 'expired') {
       this.createNewSession();
       this.eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
@@ -123,6 +143,18 @@ export class SessionManager {
     }
 
     this.scheduleInactivityTimeout();
+  }
+
+  private updateTrackingConsent(): void {
+    if (!this.trackingConsentState.isCollectionEnabled()) {
+      this.expireSession();
+      return;
+    }
+
+    if (this.currentSession.status === 'expired') {
+      this.createNewSession();
+      this.eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+    }
   }
 
   private scheduleInactivityTimeout(): void {

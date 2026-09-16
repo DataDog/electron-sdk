@@ -16,6 +16,7 @@ import * as Sampler from '../../tools/Sampler';
 import { SESSION_EXPIRATION_DELAY, SessionManager } from './SessionManager';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
 import { isCurrentSessionSampled } from '../../common';
+import { createTrackingConsentState } from '../tracking-consent';
 
 const T0 = 0 as TimeStamp;
 
@@ -84,6 +85,86 @@ describe('sessionManager', () => {
       expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toMatchObject({
         session: { id: 'previous-session-id' },
       });
+    });
+  });
+
+  describe('tracking consent', () => {
+    it('starts without an active or tracked session when consent is not granted', async () => {
+      const state = createTrackingConsentState('not-granted');
+
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), state);
+
+      expect(sessionManager.getSession().status).toBe('expired');
+      expect(sessionManager.getTrackedSessionId()).toBeUndefined();
+      expect(isCurrentSessionSampled()).toBe(false);
+      expect(lifecycleEvents).toEqual([]);
+    });
+
+    it('starts a fresh session when consent is granted', async () => {
+      const state = createTrackingConsentState('not-granted');
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), state);
+      const placeholderId = sessionManager.getSession().id;
+
+      state.update('granted');
+
+      expect(sessionManager.getSession()).toMatchObject({ status: 'active' });
+      expect(sessionManager.getSession().id).not.toBe(placeholderId);
+      expect(sessionManager.getTrackedSessionId()).toBe(sessionManager.getSession().id);
+      expect(lifecycleEvents).toContain(LifecycleKind.SESSION_RENEW);
+    });
+
+    it('starts an active session while consent is pending', async () => {
+      const state = createTrackingConsentState('pending');
+
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), state);
+
+      expect(sessionManager.getSession().status).toBe('active');
+      expect(sessionManager.getTrackedSessionId()).toBe(sessionManager.getSession().id);
+    });
+
+    it('keeps the same session when pending consent is granted', async () => {
+      const state = createTrackingConsentState('pending');
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), state);
+      const pendingSessionId = sessionManager.getSession().id;
+
+      state.update('granted');
+
+      expect(sessionManager.getSession()).toEqual({ id: pendingSessionId, status: 'active' });
+      expect(lifecycleEvents).not.toContain(LifecycleKind.SESSION_RENEW);
+    });
+
+    it('expires on revocation and ignores activity until consent is granted again', async () => {
+      const state = createTrackingConsentState('granted');
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), state);
+      const firstSessionId = sessionManager.getSession().id;
+
+      state.update('not-granted');
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.END_USER_ACTIVITY });
+
+      expect(sessionManager.getSession()).toEqual({ id: firstSessionId, status: 'expired' });
+      expect(lifecycleEvents.filter((event) => event === LifecycleKind.SESSION_EXPIRED)).toHaveLength(1);
+
+      state.update('granted');
+
+      expect(sessionManager.getSession().status).toBe('active');
+      expect(sessionManager.getSession().id).not.toBe(firstSessionId);
+    });
+
+    it('does not discard an event captured before consent was revoked', async () => {
+      const state = createTrackingConsentState('granted');
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), state);
+      const sessionId = sessionManager.getSession().id;
+
+      vi.setSystemTime(1);
+      state.update('not-granted');
+
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toMatchObject({
+        session: { id: sessionId },
+      });
+      vi.setSystemTime(2);
+      expect(hooks.triggerRum({ eventType: 'view', startTime: timeStampNow(), source: EventSource.MAIN })).toBe(
+        DISCARDED
+      );
     });
   });
 

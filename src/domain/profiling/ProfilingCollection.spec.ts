@@ -258,6 +258,12 @@ describe('ProfilingCollection', () => {
       expect(quotaCheckModule.checkProfilingQuota).not.toHaveBeenCalled();
     });
 
+    it('does not trigger a quota check without an active session', () => {
+      new ProfilingCollection(eventManager, makeSessionManager('expired', LOW_HASH_UUID), config, hooks);
+
+      expect(quotaCheckModule.checkProfilingQuota).not.toHaveBeenCalled();
+    });
+
     it('re-triggers the quota check for the renewed session', async () => {
       // First session is denied; the renewed session is allowed.
       vi.mocked(quotaCheckModule.checkProfilingQuota)

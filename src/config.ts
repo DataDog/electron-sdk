@@ -30,6 +30,12 @@ export const BatchUploadFrequencies = {
 
 export type BatchSize = keyof typeof BatchSizes;
 export type UploadFrequency = keyof typeof BatchUploadFrequencies;
+const TrackingConsentValues = {
+  GRANTED: 'granted',
+  NOT_GRANTED: 'not-granted',
+  PENDING: 'pending',
+} as const;
+export type TrackingConsent = 'granted' | 'not-granted' | 'pending';
 
 export interface TraceSamplingRule {
   /** Percentage of matching traces to keep, between 0 and 100. */
@@ -80,6 +86,15 @@ export interface InitConfiguration {
   env?: string;
   version?: string;
   sessionSampleRate?: number;
+  /**
+   * Whether the SDK may collect monitoring data. Defaults to `'granted'`.
+   *
+   * Use `'pending'` while waiting for the user's decision: data is collected in an isolated on-disk
+   * buffer and is uploaded only if consent later becomes `'granted'`. Moving from `'pending'` to
+   * `'not-granted'` deletes that buffer. With `'not-granted'`, data is not collected or persisted.
+   * @example trackingConsent: 'not-granted'
+   */
+  trackingConsent?: TrackingConsent;
   /**
    * Percentage of logs received from renderer processes to forward (0–100), defaults to `100`.
    * Applied independently to each bridged log.
@@ -162,6 +177,7 @@ export interface Configuration {
   version?: string;
   proxy?: string;
   sessionSampleRate: number;
+  trackingConsent: TrackingConsent;
   logsSampleRate: number;
   traceSampleRate: number;
   traceSamplingRules: TraceSamplingRule[];
@@ -256,6 +272,17 @@ function validateTraceSamplingRules(value: unknown): TraceSamplingRule[] | undef
   return value;
 }
 
+function validateTrackingConsent(value: unknown): TrackingConsent | undefined {
+  if (value === undefined || value === null) {
+    return TrackingConsentValues.GRANTED;
+  }
+  if (!isOneOf(value, VALID_TRACKING_CONSENTS)) {
+    display.error(`Configuration error: 'trackingConsent' must be one of: ${VALID_TRACKING_CONSENTS.join(', ')}`);
+    return undefined;
+  }
+  return value;
+}
+
 function isValidTraceSamplingRule(value: unknown): value is TraceSamplingRule {
   if (!isIndexableObject(value)) {
     return false;
@@ -308,6 +335,12 @@ const VALID_PRIVACY_LEVELS: readonly DefaultPrivacyLevel[] = [
   DefaultPrivacyLevel.MASK,
   DefaultPrivacyLevel.ALLOW,
   DefaultPrivacyLevel.MASK_USER_INPUT,
+];
+
+const VALID_TRACKING_CONSENTS: readonly TrackingConsent[] = [
+  TrackingConsentValues.GRANTED,
+  TrackingConsentValues.NOT_GRANTED,
+  TrackingConsentValues.PENDING,
 ];
 
 function validateAllowedRendererHosts(value: unknown): string[] | undefined {
@@ -396,6 +429,7 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
 
   const proxy = validateOptionalString(initConfig.proxy);
   const sessionSampleRate = validateSampleRate(initConfig.sessionSampleRate, 'sessionSampleRate', 100);
+  const trackingConsent = validateTrackingConsent(initConfig.trackingConsent);
   const logsSampleRate = validateSampleRate(initConfig.logsSampleRate, 'logsSampleRate', 100);
   const traceSampleRate = validateSampleRate(initConfig.traceSampleRate, 'traceSampleRate', 100);
   const traceSamplingRules = validateTraceSamplingRules(initConfig.traceSamplingRules);
@@ -415,6 +449,7 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
 
   if (
     sessionSampleRate === undefined ||
+    trackingConsent === undefined ||
     logsSampleRate === undefined ||
     traceSampleRate === undefined ||
     traceSamplingRules === undefined ||
@@ -441,6 +476,7 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     version: validateOptionalString(initConfig.version),
     proxy,
     sessionSampleRate,
+    trackingConsent,
     logsSampleRate,
     traceSampleRate,
     traceSamplingRules,
