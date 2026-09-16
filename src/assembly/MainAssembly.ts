@@ -1,4 +1,4 @@
-import { timeStampNow } from '@datadog/js-core/time';
+import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
 import { combine, type RecursivePartial } from '@datadog/js-core/util';
 import { DISCARDED } from '@datadog/js-core/assembly';
 import {
@@ -16,6 +16,7 @@ import type { FormatHooks } from './hooks';
 import { MainRumEvent } from '../domain/rum';
 import { TelemetryEvent } from '../domain/telemetry';
 import { BeforeSend } from './BeforeSend';
+import { getRumConsentTime } from './rumConsentTime';
 
 // Raw events assembled through the standard main-process hook pipeline.
 type StandardRawEvent = Exclude<RawEvent, RawProfileEvent | RawReplayEvent>;
@@ -44,7 +45,8 @@ export class MainAssembly {
   }
 
   private assembleMainProcessEvent(event: StandardRawEvent): ServerEvent | DISCARDED {
-    const startTime = event.startTime ?? timeStampNow();
+    const processingTime = timeStampNow();
+    const startTime = event.startTime ?? processingTime;
     const source = EventSource.MAIN;
 
     if (event.format === EventFormat.RUM) {
@@ -61,11 +63,13 @@ export class MainAssembly {
         if (!data) {
           return DISCARDED;
         }
+        const consentTime = (event.consentTime as TimeStamp | undefined) ?? getRumConsentTime(data, processingTime);
         return {
           kind: EventKind.SERVER,
           track: EventTrack.RUM,
           source: EventSource.MAIN,
           data,
+          ...(consentTime === undefined ? {} : { consentTime }),
         };
       }
     }

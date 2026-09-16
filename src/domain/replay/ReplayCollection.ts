@@ -1,7 +1,7 @@
 import { ONE_SECOND, type TimeStamp } from '@datadog/js-core/time';
 import { EventFormat, EventKind, EventTrack, LifecycleKind } from '../../event';
 import type { EventManager, RawReplayEvent, LifecycleEvent } from '../../event';
-import type { Configuration } from '../../config';
+import type { Configuration, TrackingConsent } from '../../config';
 import type { FormatHooks } from '../../assembly';
 import { correctedChildSampleRate, isSessionSampled } from '../../tools/Sampler';
 import { StreamingDeflate } from '../../tools/StreamingDeflate';
@@ -9,6 +9,7 @@ import type { SessionManager } from '../session';
 import { addError, clearTimeout, monitor, setTimeout } from '../telemetry';
 import { registerReplayContext } from './replayContext';
 import { byteSizeOf, CreationReason, Segment, type BrowserRecord, type SegmentContext } from './Segment';
+import { createTrackingConsentState, type TrackingConsentState } from '../tracking-consent';
 
 // Matches the browser SDK flush cadence.
 const SEGMENT_DURATION_LIMIT = 5 * ONE_SECOND;
@@ -39,6 +40,7 @@ export interface ViewReplayStats {
 
 export class ReplayCollection {
   private segment: Segment | null = null;
+  private segmentStorageConsent: TrackingConsent | undefined;
   private currentViewId: string | undefined;
   private nextCreationReason: CreationReason = CreationReason.INIT;
   private segmentIndexPerView = new Map<string, number>();
@@ -54,7 +56,10 @@ export class ReplayCollection {
     private readonly eventManager: EventManager,
     private readonly config: Configuration,
     private readonly sessionManager: SessionManager,
-    hooks: FormatHooks
+    hooks: FormatHooks,
+    private readonly trackingConsentState: TrackingConsentState = createTrackingConsentState(
+      config.trackingConsent ?? 'granted'
+    )
   ) {
     // Enrich renderer view events with this session's replay stats. Registered here (rather than by the
     // caller) so all replay-specific assembly logic lives with the collection, mirroring ProfilingCollection.
@@ -88,6 +93,14 @@ export class ReplayCollection {
         }
       }),
     });
+
+    trackingConsentState.observable.subscribe(
+      monitor(() => {
+        // A segment must never mix granted and pending records: its start time selects the storage
+        // decision for the whole payload. Keep the deflate stream, since the session itself continues.
+        this.flush(CreationReason.SEGMENT_DURATION_LIMIT);
+      })
+    );
   }
 
   private isReplaySampled(sessionId: string): boolean {
@@ -130,6 +143,14 @@ export class ReplayCollection {
       return;
     }
 
+    const recordStorageConsent = this.trackingConsentState.resolveForStorage(record.timestamp as TimeStamp);
+    if (recordStorageConsent === undefined || recordStorageConsent === 'not-granted') {
+      return;
+    }
+    if (this.segment && this.segmentStorageConsent !== recordStorageConsent) {
+      this.flush(CreationReason.SEGMENT_DURATION_LIMIT);
+    }
+
     // Detect view change
     if (viewId && this.currentViewId && viewId !== this.currentViewId) {
       this.flush(CreationReason.VIEW_CHANGE);
@@ -139,7 +160,7 @@ export class ReplayCollection {
       this.currentViewId = viewId;
     }
 
-    let segment = this.ensureSegment();
+    let segment = this.ensureSegment(recordStorageConsent);
     if (!segment) {
       return;
     }
@@ -150,7 +171,7 @@ export class ReplayCollection {
     const recordByteSize = byteSizeOf(record);
     if (!segment.isEmpty && segment.estimatedSize + recordByteSize > SEGMENT_BYTES_LIMIT) {
       this.flush(CreationReason.SEGMENT_BYTES_LIMIT);
-      segment = this.ensureSegment();
+      segment = this.ensureSegment(recordStorageConsent);
       if (!segment) {
         return;
       }
@@ -160,7 +181,7 @@ export class ReplayCollection {
   }
 
   /** Returns the current segment, creating one if needed. Null when there is no valid context. */
-  private ensureSegment(): Segment | null {
+  private ensureSegment(storageConsent: TrackingConsent): Segment | null {
     if (this.segment) {
       return this.segment;
     }
@@ -172,6 +193,7 @@ export class ReplayCollection {
 
     const indexInView = this.getNextSegmentIndex(context.view.id);
     this.segment = new Segment(context, this.nextCreationReason, indexInView);
+    this.segmentStorageConsent = storageConsent;
     this.nextCreationReason = CreationReason.INIT;
     this.scheduleFlush();
     return this.segment;
@@ -234,6 +256,7 @@ export class ReplayCollection {
     }
 
     this.segment = null;
+    this.segmentStorageConsent = undefined;
     this.nextCreationReason = reason;
   }
 

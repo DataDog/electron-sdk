@@ -6,6 +6,7 @@ import type { RawProfileEvent, ServerProfileEvent, SessionRenewEvent } from '../
 import { createTestConfiguration } from '../../mocks.specUtil';
 import type { FormatHooks } from '../../assembly';
 import * as quotaCheckModule from './quotaCheck';
+import { createTrackingConsentState } from '../tracking-consent';
 
 vi.mock('./quotaCheck');
 
@@ -16,7 +17,12 @@ function makeRawProfileEvent(overrides: Partial<RawProfileEvent> = {}): RawProfi
     kind: EventKind.RAW,
     source: EventSource.RENDERER,
     format: EventFormat.PROFILE,
-    data: { application: { id: 'browser-dummy-app-id' }, date: 1234567890, start: '2024-06-01T00:00:00.000Z' },
+    data: {
+      application: { id: 'browser-dummy-app-id' },
+      date: 1234567890,
+      start: '2024-06-01T00:00:00.000Z',
+      end: '2024-06-01T00:00:05.000Z',
+    },
     trace: { resources: [], frames: [], stacks: [], samples: [] },
     ...overrides,
   } as RawProfileEvent;
@@ -74,7 +80,13 @@ describe('ProfilingCollection', () => {
   it('preserves all other event fields unchanged', () => {
     new ProfilingCollection(eventManager, makeSessionManager(), config, hooks);
     const raw = makeRawProfileEvent({
-      data: { application: { id: 'dummy' }, date: 9999, custom_field: 'preserved' } as never,
+      data: {
+        application: { id: 'dummy' },
+        date: 9999,
+        start: '2024-06-01T00:00:00.000Z',
+        end: '2024-06-01T00:00:05.000Z',
+        custom_field: 'preserved',
+      } as never,
     });
 
     eventManager.notify(raw);
@@ -115,6 +127,21 @@ describe('ProfilingCollection', () => {
   });
 
   describe('capture-time attribution', () => {
+    it('routes the whole profile by every consent state crossed before its end', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2024-06-01T00:00:02.000Z'));
+      const state = createTrackingConsentState('granted');
+      const cfg = createTestConfiguration({ sessionSampleRate: 100, profilingSampleRate: 100 });
+      new ProfilingCollection(eventManager, makeSessionManager(), cfg, hooks, state);
+
+      vi.setSystemTime(new Date('2024-06-01T00:00:03.000Z'));
+      state.update('pending');
+      eventManager.notify(makeRawProfileEvent());
+
+      expect(serverEvents[0].storageConsent).toBe('pending');
+      vi.useRealTimers();
+    });
+
     it('attributes the profile to the session covering its capture time, not the current one', () => {
       const sessionManager = {
         getSession: () => ({ id: 'current-session', status: 'active' as const }),
@@ -212,6 +239,45 @@ describe('ProfilingCollection', () => {
     const FIRST_UUID = '11111111-1111-4111-8111-111111111111';
     const SECOND_UUID = '22222222-2222-4222-8222-222222222222';
 
+    it('does not contact the quota endpoint while consent is pending', () => {
+      const state = createTrackingConsentState('pending');
+      const cfg = createTestConfiguration({
+        trackingConsent: 'pending',
+        sessionSampleRate: 100,
+        profilingSampleRate: 100,
+      });
+      new ProfilingCollection(eventManager, makeSessionManager('active', LOW_HASH_UUID), cfg, hooks, state);
+
+      eventManager.notify(makeRawProfileEvent());
+      expect(quotaCheckModule.checkProfilingQuota).not.toHaveBeenCalled();
+
+      state.update('granted');
+      expect(quotaCheckModule.checkProfilingQuota).toHaveBeenCalledOnce();
+      expect(quotaCheckModule.checkProfilingQuota).toHaveBeenCalledWith(cfg, LOW_HASH_UUID);
+    });
+
+    it('forgets rejected pending sessions before a later grant', () => {
+      const state = createTrackingConsentState('pending');
+      const newSessionId = '33333333-3333-4333-8333-333333333333';
+      const cfg = createTestConfiguration({
+        trackingConsent: 'pending',
+        sessionSampleRate: 100,
+        profilingSampleRate: 100,
+      });
+      const sessionManager = {
+        getSession: () => ({ id: newSessionId, status: 'active' as const }),
+        getTrackedSessionId: () => LOW_HASH_UUID,
+      };
+      new ProfilingCollection(eventManager, sessionManager, cfg, hooks, state);
+
+      eventManager.notify(makeRawProfileEvent());
+      state.update('not-granted');
+      state.update('granted');
+
+      expect(quotaCheckModule.checkProfilingQuota).toHaveBeenCalledOnce();
+      expect(quotaCheckModule.checkProfilingQuota).toHaveBeenCalledWith(cfg, newSessionId);
+    });
+
     it('forwards events while quota check is pending (optimistic)', () => {
       // eslint-disable-next-line @typescript-eslint/no-empty-function
       vi.mocked(quotaCheckModule.checkProfilingQuota).mockReturnValue(new Promise(() => {})); // never resolves
@@ -254,6 +320,12 @@ describe('ProfilingCollection', () => {
       vi.mocked(quotaCheckModule.checkProfilingQuota).mockResolvedValue({ decision: 'quota_ok', reason: 'quota_ok' });
       const cfg = createTestConfiguration({ sessionSampleRate: 100, profilingSampleRate: 0 });
       new ProfilingCollection(eventManager, makeSessionManager('active', LOW_HASH_UUID), cfg, hooks);
+
+      expect(quotaCheckModule.checkProfilingQuota).not.toHaveBeenCalled();
+    });
+
+    it('does not trigger a quota check without an active session', () => {
+      new ProfilingCollection(eventManager, makeSessionManager('expired', LOW_HASH_UUID), config, hooks);
 
       expect(quotaCheckModule.checkProfilingQuota).not.toHaveBeenCalled();
     });

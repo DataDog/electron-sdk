@@ -323,5 +323,8 @@ function createHistory(find: ContextHistory['find']): ContextHistory {
     closeAndAdd: vi.fn(),
     pruneAndPersist: vi.fn(),
     find,
+    pausePersistence: vi.fn(),
+    commitPausedChanges: vi.fn(),
+    discardPausedChanges: vi.fn(),
   };
 }

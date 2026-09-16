@@ -11,6 +11,8 @@ import { RawRumResource } from '../rum';
 import { monitor } from '../telemetry';
 import { NsTimeStamp, RawSpanData, RawTraceData } from './rawTracingData.types';
 import { Tracing } from './Tracing';
+import { createTrackingConsentState, type TrackingConsentState } from '../tracking-consent';
+import type { TrackingConsent } from '../../config';
 
 /**
  * Structure of spans exported by dd-trace electron exporter.
@@ -51,7 +53,10 @@ export class SpanProcessor {
   constructor(
     private eventManager: EventManager,
     private hooks: FormatHooks,
-    config: Configuration
+    config: Configuration,
+    private readonly trackingConsentState: TrackingConsentState = createTrackingConsentState(
+      config.trackingConsent ?? 'granted'
+    )
   ) {
     this.env = config.env ?? '';
     this.service = config.service;
@@ -72,7 +77,7 @@ export class SpanProcessor {
   }
 
   private processTrace(trace: ExportedSpan[]): void {
-    const processedSpans: RawSpanData[] = [];
+    const processedSpans = new Map<'granted' | 'pending', RawSpanData[]>();
     const traceSampled = Tracing.isTraceSampled(trace);
 
     for (const exportedSpan of trace) {
@@ -80,7 +85,13 @@ export class SpanProcessor {
         continue;
       }
       const span = toRawSpan(exportedSpan, this.service);
-      const hookResult = this.hooks.triggerSpan({ startTime: toTimeStamp(span.start), source: EventSource.MAIN });
+      const startTime = toTimeStamp(span.start);
+      const endTime = (startTime + span.duration / 1e6) as TimeStamp;
+      const storageConsent = this.trackingConsentState.resolveForStorageInterval(startTime, endTime);
+      if (storageConsent !== 'granted' && storageConsent !== 'pending') {
+        continue;
+      }
+      const hookResult = this.hooks.triggerSpan({ startTime, source: EventSource.MAIN });
       if (hookResult === DISCARDED) {
         continue;
       }
@@ -90,12 +101,15 @@ export class SpanProcessor {
       }
 
       if (traceSampled) {
-        processedSpans.push(combine(span, hookResult));
+        const spans = processedSpans.get(storageConsent) ?? [];
+        spans.push(combine(span, hookResult));
+        processedSpans.set(storageConsent, spans);
       }
     }
 
-    const processedTrace = { env: this.env, spans: processedSpans };
-    this.emitServerSpansEvent(processedTrace);
+    for (const [storageConsent, spans] of processedSpans) {
+      this.emitServerSpansEvent({ env: this.env, spans }, storageConsent);
+    }
   }
 
   private isIntakeRequest(span: ExportedSpan): boolean {
@@ -124,16 +138,18 @@ export class SpanProcessor {
       format: EventFormat.RUM,
       data: resource,
       startTime: resource.date,
+      consentTime: resource.date + resource.resource.duration / 1e6,
     });
   }
 
-  private emitServerSpansEvent(trace: RawTraceData): void {
+  private emitServerSpansEvent(trace: RawTraceData, storageConsent: TrackingConsent): void {
     if (trace.spans.length === 0) return;
     this.eventManager.notify({
       kind: EventKind.SERVER,
       track: EventTrack.SPANS,
       source: EventSource.MAIN,
       data: trace,
+      storageConsent,
     });
   }
 

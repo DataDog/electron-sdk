@@ -42,6 +42,7 @@ import {
   addError,
   _flushTransport,
   stopSession,
+  setTrackingConsent,
   addDurationVital,
   startDurationVital,
   stopDurationVital,
@@ -61,6 +62,7 @@ import {
   type UserInfo,
   type AccountInfo,
   type InitConfiguration,
+  type TrackingConsent,
 } from '@datadog/electron-sdk';
 
 const isDebugMode = process.env.PWDEBUG === '1';
@@ -144,6 +146,10 @@ void app.whenReady().then(async () => {
 
   ipcMain.handle('stopSession', () => {
     stopSession();
+  });
+
+  ipcMain.handle('setTrackingConsent', (_event, consent: TrackingConsent) => {
+    setTrackingConsent(consent);
   });
 
   ipcMain.handle('generateUncaughtException', () => {
