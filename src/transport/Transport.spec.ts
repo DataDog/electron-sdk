@@ -12,7 +12,7 @@ vi.mock('electron', () => ({
   },
 }));
 
-const { mockBatchPost, mockBatchFlush, mockBatchCreate } = vi.hoisted(() => {
+const { mockBatchPost, mockBatchFlush, mockBatchCreate, mockClearStalePendingData } = vi.hoisted(() => {
   const mockBatchPost = vi.fn();
   const mockBatchFlush = vi.fn().mockResolvedValue(undefined);
   const mockBatchCreate = vi.fn().mockResolvedValue({
@@ -21,12 +21,15 @@ const { mockBatchPost, mockBatchFlush, mockBatchCreate } = vi.hoisted(() => {
     stop: vi.fn(),
   });
 
-  return { mockBatchPost, mockBatchFlush, mockBatchCreate };
+  const mockClearStalePendingData = vi.fn().mockResolvedValue(undefined);
+
+  return { mockBatchPost, mockBatchFlush, mockBatchCreate, mockClearStalePendingData };
 });
 
 vi.mock('./batch', () => ({
   BatchManager: {
     create: mockBatchCreate,
+    clearStalePendingData: mockClearStalePendingData,
   },
 }));
 
@@ -52,6 +55,17 @@ describe('Transport', () => {
       await Transport.create(config, eventManager);
 
       expect(mockBatchCreate).toHaveBeenCalled();
+    });
+
+    it('clears stale pending data before applying track sampling configuration', async () => {
+      const configWithDisabledTracks = createTestConfiguration({
+        profilingSampleRate: 0,
+        sessionReplaySampleRate: 0,
+      });
+
+      await Transport.create(configWithDisabledTracks, eventManager);
+
+      expect(mockClearStalePendingData).toHaveBeenCalledWith('/mock/user/data');
     });
 
     it('should setup the PROFILE track when profiling is enabled', async () => {

@@ -34,6 +34,8 @@ export function createTrackingConsentState(initialConsent?: TrackingConsent): Tr
   const boundaryObservable = new Observable<TrackingConsentChange>();
   const beforeObservable = new Observable<TrackingConsentChange>();
   const observable = new Observable<TrackingConsentChange>();
+  const queuedUpdates: TrackingConsent[] = [];
+  let isUpdating = false;
 
   if (initialConsent !== undefined) {
     history.unshift({ consent: initialConsent, startTime: -Infinity as TimeStamp, endTime: Infinity as TimeStamp });
@@ -42,6 +44,44 @@ export function createTrackingConsentState(initialConsent?: TrackingConsent): Tr
   const isGranted = () => currentConsent === 'granted';
   const isPending = () => currentConsent === 'pending';
   const isCollectionEnabled = () => isGranted() || isPending();
+
+  const update = (trackingConsent: TrackingConsent) => {
+    queuedUpdates.push(trackingConsent);
+    if (isUpdating) {
+      return;
+    }
+
+    isUpdating = true;
+    try {
+      let nextConsent: TrackingConsent | undefined;
+      while ((nextConsent = queuedUpdates.shift()) !== undefined) {
+        if (nextConsent === currentConsent) {
+          continue;
+        }
+        const previous = currentConsent;
+        const transitionTime = timeStampNow();
+        if (previous !== undefined) {
+          // Give cumulative collectors a chance to snapshot the interval that is ending. Keeping the
+          // previous state active during this notification also routes that snapshot to the right store.
+          boundaryObservable.notify({ previous, current: nextConsent });
+        }
+        const activeEntry = history[0];
+        if (activeEntry) {
+          activeEntry.endTime = transitionTime;
+        }
+        history.unshift({ consent: nextConsent, startTime: transitionTime, endTime: Infinity as TimeStamp });
+        currentConsent = nextConsent;
+        if (previous !== undefined) {
+          const change = { previous, current: nextConsent };
+          // Storage must reserve its clear/migration before lifecycle observers can synchronously emit events.
+          beforeObservable.notify(change);
+          observable.notify(change);
+        }
+      }
+    } finally {
+      isUpdating = false;
+    }
+  };
 
   return {
     tryToInit(trackingConsent) {
@@ -54,30 +94,7 @@ export function createTrackingConsentState(initialConsent?: TrackingConsent): Tr
         });
       }
     },
-    update(trackingConsent) {
-      if (trackingConsent === currentConsent) {
-        return;
-      }
-      const previous = currentConsent;
-      const transitionTime = timeStampNow();
-      if (previous !== undefined) {
-        // Give cumulative collectors a chance to snapshot the interval that is ending. Keeping the
-        // previous state active during this notification also routes that snapshot to the right store.
-        boundaryObservable.notify({ previous, current: trackingConsent });
-      }
-      const activeEntry = history[0];
-      if (activeEntry) {
-        activeEntry.endTime = transitionTime;
-      }
-      history.unshift({ consent: trackingConsent, startTime: transitionTime, endTime: Infinity as TimeStamp });
-      currentConsent = trackingConsent;
-      if (previous !== undefined) {
-        const change = { previous, current: trackingConsent };
-        // Storage must reserve its clear/migration before lifecycle observers can synchronously emit events.
-        beforeObservable.notify(change);
-        observable.notify(change);
-      }
-    },
+    update,
     get: () => currentConsent,
     isGranted,
     isPending,

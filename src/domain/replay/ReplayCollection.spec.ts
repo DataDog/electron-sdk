@@ -168,6 +168,35 @@ describe('ReplayCollection', () => {
       expect(captured[0].metadata).toMatchObject({ start: 100, end: 100, records_count: 1 });
       expect(captured[1].metadata).toMatchObject({ start: 200, end: 200, records_count: 1 });
     });
+
+    it('splits delayed records according to their capture-time consent', async () => {
+      vi.setSystemTime(1_000);
+      const captured = captureReplayEvents(eventManager);
+      const state = createTrackingConsentState('granted');
+      const collection = new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks(), state);
+      state.update('pending');
+
+      sendRecord(eventManager, { type: 2, timestamp: 900 });
+      sendRecord(eventManager, { type: 3, timestamp: 1_100 });
+      await collection.stop();
+
+      expect(captured).toHaveLength(2);
+      expect(captured[0].metadata).toMatchObject({ start: 900, end: 900, records_count: 1 });
+      expect(captured[1].metadata).toMatchObject({ start: 1_100, end: 1_100, records_count: 1 });
+    });
+
+    it('drops delayed records from a rejected pending interval', async () => {
+      vi.setSystemTime(1_000);
+      const captured = captureReplayEvents(eventManager);
+      const state = createTrackingConsentState('pending');
+      const collection = new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks(), state);
+      state.update('not-granted');
+
+      sendRecord(eventManager, { type: 2, timestamp: 900 });
+      await collection.stop();
+
+      expect(captured).toHaveLength(0);
+    });
   });
 
   describe('view-change flush', () => {

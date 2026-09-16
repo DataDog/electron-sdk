@@ -24,6 +24,9 @@ export class Transport {
   /** Creates and fully initializes a Transport instance. */
   static async create(config: Configuration, eventManager: EventManager, trackingConsentState?: TrackingConsentState) {
     const transport = new Transport(config, eventManager, trackingConsentState);
+    // Pending consent is process-local. Clear every known track before applying this launch's sampling
+    // configuration so disabled profile or replay tracks cannot retain stale sensitive data.
+    await BatchManager.clearStalePendingData(transport.basePath);
     for (const track of transport.getTracks()) {
       await transport.setupTrackBatching(track);
     }

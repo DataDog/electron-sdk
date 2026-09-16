@@ -182,13 +182,18 @@ describe('BatchManager tracking consent storage', () => {
     expect(await logFiles(path.join(basePath, 'rum'))).toEqual([]);
   });
 
-  it('deletes pending storage left by a previous process at startup', async () => {
-    const pendingPath = path.join(basePath, 'rum', 'pending');
-    await fs.mkdir(pendingPath, { recursive: true });
-    await fs.writeFile(path.join(pendingPath, 'stale.log'), 'stale');
+  it('deletes pending storage for every known track before managers are selected', async () => {
+    const trackDirectories = ['rum', 'spans', 'dd_logs', 'profile', 'replay'];
+    for (const directory of trackDirectories) {
+      const pendingPath = path.join(basePath, directory, 'pending');
+      await fs.mkdir(pendingPath, { recursive: true });
+      await fs.writeFile(path.join(pendingPath, 'stale.log'), 'stale');
+    }
 
-    manager = await BatchManager.create(config, createBatchConfig(), createTrackingConsentState('pending'));
+    await BatchManager.clearStalePendingData(basePath);
 
-    expect(await logFiles(pendingPath)).toEqual([]);
+    for (const directory of trackDirectories) {
+      expect(await logFiles(path.join(basePath, directory, 'pending'))).toEqual([]);
+    }
   });
 });

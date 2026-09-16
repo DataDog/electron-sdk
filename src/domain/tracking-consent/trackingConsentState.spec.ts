@@ -68,6 +68,34 @@ describe('createTrackingConsentState', () => {
     expect(state.get()).toBe('pending');
   });
 
+  it('serializes consent updates triggered by boundary observers', () => {
+    const state = createTrackingConsentState('granted');
+    const transitions: string[] = [];
+    state.boundaryObservable.subscribe((change) => {
+      if (change.current === 'pending') {
+        state.update('not-granted');
+      }
+    });
+    state.observable.subscribe(({ current }) => transitions.push(current));
+
+    state.update('pending');
+
+    expect(transitions).toEqual(['pending', 'not-granted']);
+    expect(state.get()).toBe('not-granted');
+  });
+
+  it('ignores a reentrant request for the transition already in progress', () => {
+    const state = createTrackingConsentState('granted');
+    const observer = vi.fn();
+    state.boundaryObservable.subscribe(({ current }) => state.update(current));
+    state.observable.subscribe(observer);
+
+    state.update('pending');
+
+    expect(observer).toHaveBeenCalledOnce();
+    expect(state.get()).toBe('pending');
+  });
+
   it('resolves pending capture intervals from the decision that followed them', () => {
     vi.useFakeTimers();
     vi.setSystemTime(10);

@@ -25,6 +25,13 @@ import {
 
 /** Maximum array length accepted by the Logs HTTP intake. */
 const MAX_LOGS_EVENTS_PER_BATCH = 1_000;
+const ALL_EVENT_TRACKS: EventTrack[] = [
+  EventTrack.RUM,
+  EventTrack.SPANS,
+  EventTrack.LOGS,
+  EventTrack.PROFILE,
+  EventTrack.REPLAY,
+];
 
 /**
  * Coordinates a {@link BatchProducer} and {@link BatchConsumer} pair for a single track type.
@@ -59,18 +66,20 @@ export class BatchManager {
     });
   }
 
+  /** Clears process-local pending data for every track, including tracks disabled in this launch. */
+  static async clearStalePendingData(basePath: string): Promise<void> {
+    await Promise.all(
+      ALL_EVENT_TRACKS.map((trackType) => clearBatchDirectory(getBatchPaths(basePath, trackType).pendingPath))
+    );
+  }
+
   /** Creates and fully initializes a BatchManager instance. */
   static async create(config: Configuration, batchConfig: BatchConfig, trackingConsentState?: TrackingConsentState) {
     const { uploadFrequency } = batchConfig;
     const { path: basePath, trackType } = batchConfig;
     // Keep the established authorized paths backward-compatible so batches from older SDK versions
     // are still recovered and uploaded.
-    const authorizedPath = path.join(basePath, trackType === EventTrack.LOGS ? 'dd_logs' : trackType);
-    const pendingPath = path.join(authorizedPath, 'pending');
-
-    // Like the mobile SDKs, consent is process-local: pending data from a process that ended before a
-    // decision is discarded rather than silently authorized by a future launch.
-    await clearBatchDirectory(pendingPath);
+    const { authorizedPath, pendingPath } = getBatchPaths(basePath, trackType);
 
     const authorizedProducer = await BatchManager.createProducer(batchConfig, authorizedPath);
     const pendingProducer = await BatchManager.createProducer(batchConfig, pendingPath);
@@ -288,6 +297,11 @@ export class BatchManager {
     }
     return new StandardBatchConsumer(consumerConfig);
   }
+}
+
+function getBatchPaths(basePath: string, trackType: EventTrack): { authorizedPath: string; pendingPath: string } {
+  const authorizedPath = path.join(basePath, trackType === EventTrack.LOGS ? 'dd_logs' : trackType);
+  return { authorizedPath, pendingPath: path.join(authorizedPath, 'pending') };
 }
 
 function getServerEventCaptureTime(event: ServerEvent): TimeStamp | undefined {
