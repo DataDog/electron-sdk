@@ -6,6 +6,9 @@ vi.mock('electron', () => ({
     on: vi.fn(),
     removeListener: vi.fn(),
   },
+  webContents: {
+    getAllWebContents: vi.fn(() => []),
+  },
 }));
 
 vi.mock('../../../tools/display', () => ({
@@ -76,6 +79,7 @@ describe('ExecutionContextCollection', () => {
       {
         id: 1,
         on: vi.fn(),
+        removeListener: vi.fn(),
       }
     );
     const rendererEvent = rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext;
@@ -93,6 +97,7 @@ describe('ExecutionContextCollection', () => {
       {
         id: 1,
         on: vi.fn(),
+        removeListener: vi.fn(),
       }
     );
     const countAfterStart = rawRumEvents.length;

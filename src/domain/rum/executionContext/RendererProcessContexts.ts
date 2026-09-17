@@ -1,4 +1,4 @@
-import { app } from 'electron';
+import { app, webContents as webContentsModule } from 'electron';
 import { elapsed, timeStampNow, toServerDuration, type TimeStamp } from '@datadog/js-core/time';
 import { generateUUID, type Subscription } from '@datadog/browser-core';
 import { SKIPPED } from '@datadog/js-core/assembly';
@@ -34,15 +34,37 @@ interface RendererProcessState {
 
 /**
  * Tracks renderer-process lifecycle — one execution context per webContents, created at
- * 'web-contents-created', rotated on every SESSION_EXPIRED (closed, no exit_reason — the process
- * is still alive) / SESSION_RENEW (reopened, new id, same instance_id) pair, and ended at
- * 'destroyed' ('clean-exit') / 'render-process-gone' (the real crash/kill/OOM reason). Registers
- * its own format hook that tags renderer-sourced RUM events straight from its own rendererStates
- * map — main-process tagging is MainProcessContext's own, separate hook. Composed alongside
- * MainProcessContext by ExecutionContextCollection, which owns neither's internals.
+ * 'web-contents-created' (plus a backfill at start for any webContents already existing, e.g. a
+ * deferred init() called after a window opened), rotated on every SESSION_EXPIRED (closed, no
+ * exit_reason — the process is still alive) / SESSION_RENEW (reopened, new id, same instance_id)
+ * pair, and ended at 'destroyed' ('clean-exit') / 'render-process-gone' (the real crash/kill/OOM
+ * reason). Registers its own format hook that tags renderer-sourced RUM events straight from its
+ * own rendererStates map — main-process tagging is MainProcessContext's own, separate hook.
+ * Composed alongside MainProcessContext by ExecutionContextCollection, which owns neither's
+ * internals.
  */
+interface AttachedListeners {
+  webContents: Electron.WebContents;
+  destroyed: () => void;
+  processGone: (event: Electron.Event, details: Electron.RenderProcessGoneDetails) => void;
+}
+
 export class RendererProcessContexts {
   private readonly rendererStates = new Map<number, RendererProcessState>();
+  // Tracks the exact listener functions currently attached per webContents, so a revival (see
+  // registerWebContents) can remove the previous cycle's listeners before attaching fresh ones,
+  // instead of leaking a pair of stale (but harmless, since endRenderer is idempotent) listeners
+  // on every crash/reload cycle a long-running renderer window goes through.
+  private readonly attachedListeners = new Map<number, AttachedListeners>();
+  // Tracks the pending 'did-start-navigation' revival callback per webContents, so a second crash
+  // before the first pending reload ever starts navigating replaces it instead of stacking another
+  // one — otherwise both would eventually fire, registering the same webContents twice and
+  // orphaning the first call's timer (its map entry gets overwritten by the second before it's ever
+  // cleared).
+  private readonly pendingRevivals = new Map<
+    number,
+    (details: Electron.Event<Electron.WebContentsDidStartNavigationEventParams>) => void
+  >();
   private lifecycleSubscription!: Subscription;
 
   private constructor(private readonly eventManager: EventManager) {}
@@ -62,20 +84,43 @@ export class RendererProcessContexts {
   }
 
   private readonly onWebContentsCreated = monitor((_event: Electron.Event, webContents: Electron.WebContents) => {
+    this.registerWebContents(webContents);
+  });
+
+  /**
+   * Registers a fresh execution context for a webContents — called once at 'web-contents-created'
+   * for a genuinely new one, and again after a crash/reload cycle: when a renderer crashes and the
+   * app reloads the SAME WebContents object, Electron spawns a new OS process for it without ever
+   * re-firing 'web-contents-created' (that event is tied to the WebContents object, not the process
+   * living behind it). 'did-start-navigation' on that reload is the signal used here to detect the
+   * replacement renderer and give it its own fresh execution context — as early as possible, before
+   * any of the reloaded page's own scripts (and whatever RUM activity they generate) can run, rather
+   * than leaving that webContents untagged for the whole reload.
+   */
+  private registerWebContents(webContents: Electron.WebContents): void {
     const webContentsId = webContents.id;
     const id = generateUUID();
+
+    const previousListeners = this.attachedListeners.get(webContentsId);
+    if (previousListeners) {
+      webContents.removeListener('destroyed', previousListeners.destroyed);
+      webContents.removeListener('render-process-gone', previousListeners.processGone);
+    }
+    this.pendingRevivals.delete(webContentsId);
 
     const state: RendererProcessState = {
       id,
       type: 'renderer-process',
       startTime: timeStampNow(),
       documentVersion: 1,
-      // webContentsId rather than a process id: execution_context is really about which
-      // webContents an event came from, not which OS process. webContentsId is assigned once, is
-      // always available synchronously, and never changes for this webContents' lifetime — unlike
-      // a process id, which Electron can share across multiple webContents in one pooled renderer
-      // process. The schema's own instance_id doc comment allows exactly this
-      // ("e.g. OS PID, thread ID, tab ID").
+      // webContentsId rather than a process id (getProcessId()/getOSProcessId()): execution_context
+      // is really about which webContents an event came from, not which OS process — and a process
+      // id can't cleanly answer that anyway, since Electron can place multiple webContents in one
+      // shared renderer process, and a real page navigation can move the same webContents to a
+      // provisional, then a different final, process id before it settles. webContentsId has none
+      // of that: it's assigned once, is always available synchronously, and never changes for this
+      // webContents' lifetime — including across the crash+reload revival below. The schema's own
+      // instance_id doc comment allows exactly this ("e.g. OS PID, thread ID, tab ID").
       instanceId: String(webContentsId),
       parentInstanceId: String(process.pid),
       timerId: setInterval(() => {
@@ -92,41 +137,90 @@ export class RendererProcessContexts {
     this.emitExecutionContextEvent(state);
 
     const endRenderer = (exitReason?: ExecutionContextExitReason) => {
-      const state = this.rendererStates.get(webContentsId);
-      if (!state) {
+      const current = this.rendererStates.get(webContentsId);
+      if (!current) {
         return;
       }
-      clearInterval(state.timerId);
+      clearInterval(current.timerId);
       this.rendererStates.delete(webContentsId);
-      if (state.closedForSessionExpiry) {
+      if (current.closedForSessionExpiry) {
         // Already emitted this context's terminal update at the session boundary — a destroy
         // arriving during the sessionless gap must stop tagging but not mutate that already-closed
         // record with a bumped document_version/duration/exit_reason.
         return;
       }
-      state.documentVersion++;
-      this.emitExecutionContextEvent(state, exitReason);
+      current.documentVersion++;
+      this.emitExecutionContextEvent(current, exitReason);
     };
 
-    webContents.on(
-      'destroyed',
-      monitor(() => endRenderer('clean-exit'))
-    );
-    webContents.on(
-      'render-process-gone',
-      monitor((_e, details) => endRenderer(details.reason))
-    );
-  });
+    const destroyed = monitor(() => {
+      this.attachedListeners.delete(webContentsId);
+      const pendingRevival = this.pendingRevivals.get(webContentsId);
+      if (pendingRevival) {
+        webContents.removeListener('did-start-navigation', pendingRevival);
+        this.pendingRevivals.delete(webContentsId);
+      }
+      endRenderer('clean-exit');
+    });
+    const processGone = monitor((_e: Electron.Event, details: Electron.RenderProcessGoneDetails) => {
+      endRenderer(details.reason);
+      // Await the reload the app may perform on this same webContents (Electron reuses the object
+      // across a crash, spawning a new process for it) — re-register on the reload's own navigation
+      // start rather than its completion, so the replacement renderer is tagged before any of the
+      // reloaded page's scripts run, not just once it finishes loading. If the app closes the window
+      // instead, this listener simply never fires and is garbage collected along with the webContents.
+      const previousRevival = this.pendingRevivals.get(webContentsId);
+      if (previousRevival) {
+        // The replacement renderer crashed again before its own navigation ever started — drop the
+        // stale pending callback so it doesn't also fire once a navigation eventually starts, which
+        // would register this webContents twice and orphan the earlier call's timer.
+        webContents.removeListener('did-start-navigation', previousRevival);
+      }
+      const onRevival = monitor((details: Electron.Event<Electron.WebContentsDidStartNavigationEventParams>) => {
+        // A crashed page can only be revived by navigating its main frame — ignore a subframe
+        // navigation and keep waiting for that one.
+        if (!details.isMainFrame) {
+          return;
+        }
+        webContents.removeListener('did-start-navigation', onRevival);
+        this.pendingRevivals.delete(webContentsId);
+        this.registerWebContents(webContents);
+      });
+      webContents.on('did-start-navigation', onRevival);
+      this.pendingRevivals.set(webContentsId, onRevival);
+    });
+    webContents.on('destroyed', destroyed);
+    webContents.on('render-process-gone', processGone);
+    this.attachedListeners.set(webContentsId, { webContents, destroyed, processGone });
+  }
 
   stop(): void {
     app.removeListener('web-contents-created', this.onWebContentsCreated);
     for (const state of this.rendererStates.values()) {
       clearInterval(state.timerId);
     }
+    this.rendererStates.clear();
+    for (const { webContents, destroyed, processGone } of this.attachedListeners.values()) {
+      webContents.removeListener('destroyed', destroyed);
+      webContents.removeListener('render-process-gone', processGone);
+    }
+    for (const [webContentsId, pendingRevival] of this.pendingRevivals) {
+      this.attachedListeners.get(webContentsId)?.webContents.removeListener('did-start-navigation', pendingRevival);
+    }
+    this.attachedListeners.clear();
+    this.pendingRevivals.clear();
     this.lifecycleSubscription.unsubscribe();
   }
 
   private initRendererTracking(): void {
+    // Backfill webContents that already exist at this point — e.g. init() called after a window
+    // opened, a supported deferred-init flow (see README's "Deferred init caveat"). Only future ones
+    // would otherwise be seen: 'web-contents-created' fires once, at creation, so anything created
+    // before this listener is attached would never get an execution context.
+    for (const existing of webContentsModule.getAllWebContents()) {
+      this.registerWebContents(existing);
+    }
+
     app.on('web-contents-created', this.onWebContentsCreated);
 
     this.lifecycleSubscription = this.eventManager.registerHandler<LifecycleEvent>({
@@ -153,6 +247,13 @@ export class RendererProcessContexts {
   private reopenAllRenderersForSessionRenewal(): void {
     for (const [webContentsId, previousState] of this.rendererStates) {
       const id = generateUUID();
+
+      // A state registered during the sessionless gap (after SESSION_EXPIRED, before this renewal)
+      // never went through closeAllRenderersForSessionExpiry, so its heartbeat is still ticking —
+      // clear it before replacing the state, or it orphans: nothing keeps a reference to it once
+      // this map entry is overwritten below, so it would otherwise tick forever, emitting a
+      // duplicate heartbeat every interval alongside the new one.
+      clearInterval(previousState.timerId);
 
       const timerId = setInterval(() => {
         const current = this.rendererStates.get(webContentsId);
