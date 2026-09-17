@@ -55,6 +55,7 @@ const MODIFIABLE_FIELD_PATHS_BY_EVENT: Record<RumEvent['type'], ModifiableFieldP
   vital: COMMON_MODIFIABLE_FIELD_PATHS,
   transition: COMMON_MODIFIABLE_FIELD_PATHS,
   view_update: COMMON_MODIFIABLE_FIELD_PATHS,
+  execution_context: COMMON_MODIFIABLE_FIELD_PATHS,
 };
 
 /** Applies beforeSendRum filtering and supported field changes to fully assembled RUM events. */
@@ -87,6 +88,12 @@ export class BeforeSend {
     }
     if (event.type === 'view') {
       display.warn("Can't dismiss view events using beforeSendRum!");
+      return event;
+    }
+    // Every other RUM event references execution_context.id; discarding this event would leave
+    // those references without the instance_id/duration/exit info it carries.
+    if (event.type === 'execution_context') {
+      display.warn("Can't dismiss execution_context events using beforeSendRum!");
       return event;
     }
     // Match mobile SDKs: native crashes may be scrubbed, but are never discarded to preserve the fatal report.

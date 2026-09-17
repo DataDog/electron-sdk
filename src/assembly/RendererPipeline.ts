@@ -175,10 +175,15 @@ export class RendererPipeline {
       return;
     }
 
-    const dataAfterBeforeSend = this.beforeSend.apply(
-      combine(data, resolveCustomerContextOverrides(data, hookResult)),
-      'renderer'
+    // hookResult is typed against RumEvent (main + renderer), since triggerRum() doesn't correlate
+    // its return type with the source passed in — but a hook triggered with source: RENDERER can
+    // never actually produce the execution_context-only member of that union.
+    const overrides = resolveCustomerContextOverrides(
+      data,
+      hookResult as RecursivePartial<RendererRumEvent> | undefined
     );
+
+    const dataAfterBeforeSend = this.beforeSend.apply(combine(data, overrides), 'renderer');
     if (!dataAfterBeforeSend) {
       return;
     }
