@@ -6,9 +6,10 @@
   "description": "Playground for testing @datadog/electron-sdk",
   "main": "./dist/main.js",
   "scripts": {
-    "build": "tsc && yarn build:renderer && cp src/index.html dist/index.html",
+    "build": "tsc && yarn build:renderer && yarn build:secondary-renderer && cp src/index.html dist/index.html && cp src/secondary.html dist/secondary.html",
     "build:renderer": "esbuild src/renderer.ts --bundle --format=esm --outfile=dist/renderer.js --sourcemap",
-    "build:watch": "concurrently \"tsc --watch\" \"yarn build:renderer --watch\"",
+    "build:secondary-renderer": "esbuild src/secondary-renderer.ts --bundle --format=esm --outfile=dist/secondary-renderer.js --sourcemap",
+    "build:watch": "concurrently \"tsc --watch\" \"yarn build:renderer --watch\" \"yarn build:secondary-renderer --watch\"",
     "start": "yarn build && electron .",
     "dev": "yarn build && concurrently \"yarn build:watch\" \"electron .\"",
     "test": "yarn build && playwright test -c test/playwright.config.ts"

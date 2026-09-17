@@ -2,7 +2,9 @@ import * as http from 'node:http';
 import zlib from 'node:zlib';
 import type {
   LogsEvent,
+  RumActionEvent,
   RumErrorEvent,
+  RumExecutionContextEvent,
   RumResourceEvent,
   RumViewEvent,
   RumVitalEvent,
@@ -27,6 +29,8 @@ export interface EventBodyByType {
   resource: RumResourceEvent;
   vital: RumVitalEvent;
   telemetry: TelemetryEvent;
+  execution_context: RumExecutionContextEvent;
+  action: RumActionEvent;
 }
 
 export type EventType = keyof EventBodyByType;

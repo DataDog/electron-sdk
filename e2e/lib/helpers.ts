@@ -177,14 +177,19 @@ async function waitForWindowLoaded(electronApp: ElectronApplication): Promise<{ 
 
 export async function launchAppManually(
   intake: Intake,
-  userDataDir: string
+  userDataDir: string,
+  sdkConfigOverrides: Partial<InitConfiguration> | null = null
 ): Promise<{ electronApp: ElectronApplication; window: Page; mainPage: MainPage }> {
-  const electronApp = await launchApp(intake, userDataDir);
+  const electronApp = await launchApp(intake, userDataDir, null, sdkConfigOverrides);
   const { window } = await waitForWindowLoaded(electronApp);
   return { electronApp, window, mainPage: new MainPage(window) };
 }
 
-export async function launchDeferredInitApp(intake: Intake, userDataDir: string): Promise<ElectronApplication> {
+export async function launchDeferredInitApp(
+  intake: Intake,
+  userDataDir: string,
+  sdkConfigOverrides: Partial<InitConfiguration> = {}
+): Promise<ElectronApplication> {
   return launchApp(
     intake,
     userDataDir,
@@ -192,6 +197,7 @@ export async function launchDeferredInitApp(intake: Intake, userDataDir: string)
     {
       allowedRendererHosts: ['deferred-init.example.com'],
       defaultPrivacyLevel: 'allow',
+      ...sdkConfigOverrides,
     },
     { DD_E2E_DEFER_INIT: '1' }
   );

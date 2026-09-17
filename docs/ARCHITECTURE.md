@@ -145,6 +145,13 @@ Hooks are used by different parts of the SDK to attach their context (e.g., `reg
 
 See `src/assembly/` and `src/assembly/commonContext.ts`.
 
+#### Execution Context
+
+When `enableExecutionContext` is set, `ExecutionContextCollection` (`src/domain/rum/executionContext/`) replaces `ViewCollection` and composes the lifecycle of two independent trackers:
+
+- **`MainProcessContext`** owns a session-scoped fake view and main execution context for the main process: both are created together on init and on every session renewal, and closed together on session expiry, sharing one `instance_id` (the OS process pid) across every session the process lives through. It registers its own format hooks, tagging main-process RUM events with `execution_context.id`/`type` and spans with `_dd.execution_context.id`, backed by a disk-persisted history so a crash replayed at the next launch (see Error Reporting) still resolves to the execution context of the process that actually crashed.
+- **`RendererProcessContexts`** tracks one execution context per renderer webContents, created at `web-contents-created` — plus a backfill from `webContents.getAllWebContents()` at start, for any webContents already open when tracking begins (e.g. a deferred `init()` called after a window opened) — rotated on the same session expiry/renewal boundaries, and ended on real process destruction: `destroyed` (`exit_reason: 'clean-exit'`) or `render-process-gone` (the real crash/kill/OOM reason). A crashed webContents that the app reloads is re-registered from the reload's own `did-start-navigation` (on its main frame), before any of the reloaded page's scripts run, since Electron reuses the same webContents object across a crash and never re-fires `web-contents-created` for it. It tags renderer RUM events from its own in-memory state via a separate format hook.
+
 ## Error Reporting
 
 Failures are routed by _who can act on them_:
