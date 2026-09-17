@@ -39,6 +39,9 @@ interface ElectronAppWindow {
     openBridgeFileWindowNoIsolation: () => Promise<void>;
     openBridgeHttpWindow: () => Promise<void>;
     openBridgeAppProtocolWindow: () => Promise<void>;
+    openRendererProcess: () => Promise<void>;
+    closeRendererProcess: () => Promise<void>;
+    crashAndReloadRendererProcess: () => Promise<void>;
   };
 }
 
@@ -266,5 +269,22 @@ export class MainPage {
       (globalThis as unknown as ElectronAppWindow).electronAPI.openBridgeAppProtocolWindow()
     );
     return await BridgeWindowPage.waitForReady(electronApp);
+  }
+
+  async openRendererProcess(): Promise<void> {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.openRendererProcess());
+    await this.waitForIpcPropagation();
+  }
+
+  async closeRendererProcess(): Promise<void> {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.closeRendererProcess());
+    await this.waitForIpcPropagation();
+  }
+
+  async crashAndReloadRendererProcess(): Promise<void> {
+    await this.page.evaluate(() =>
+      (globalThis as unknown as ElectronAppWindow).electronAPI.crashAndReloadRendererProcess()
+    );
+    await this.waitForIpcPropagation();
   }
 }

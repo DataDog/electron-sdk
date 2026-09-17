@@ -24,7 +24,7 @@ import {
 } from '../../../event';
 import { createFormatHooks, type FormatHooks } from '../../../assembly';
 import { createServerRumEvent, createServerRumView } from '../../../mocks.specUtil';
-import { RawRumView, MainRumEvent } from '../types';
+import { RawRumView, MainRumEvent, RumErrorEvent } from '../types';
 
 vi.mock('node:fs/promises');
 const mfs = mockFs();
@@ -230,7 +230,7 @@ describe('ViewCollection', () => {
         kind: EventKind.SERVER,
         track: EventTrack.RUM,
         source: EventSource.RENDERER,
-        data: createServerRumEvent('error'),
+        data: createServerRumEvent<RumErrorEvent>('error'),
       });
 
       // Only the initial event, no update
