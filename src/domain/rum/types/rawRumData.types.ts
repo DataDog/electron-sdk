@@ -118,6 +118,7 @@ export interface RawRumExecutionContext extends RecursivePartial<RumExecutionCon
   execution_context: {
     id: string;
     type: RumExecutionContextEvent['execution_context']['type'];
+    name?: string;
     instance_id: string;
     parent_instance_id?: string;
     duration?: ServerDuration;
