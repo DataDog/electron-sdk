@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   generateTelemetryErrors: (count: number) => ipcRenderer.invoke('generateTelemetryErrors', count),
   stopSession: () => ipcRenderer.invoke('stopSession'),
   setTrackingConsent: (consent: string) => ipcRenderer.invoke('setTrackingConsent', consent),
+  exportTestSpan: (url: string, startedBeforeMs: number) => ipcRenderer.invoke('exportTestSpan', url, startedBeforeMs),
   generateUncaughtException: () => ipcRenderer.invoke('generateUncaughtException'),
   generateUnhandledRejection: () => ipcRenderer.invoke('generateUnhandledRejection'),
   generateManualError: (startTime?: number, context?: Record<string, string>) =>

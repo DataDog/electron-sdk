@@ -37,6 +37,7 @@ interface ElectronAppWindow {
     ping: () => Promise<string>;
     stopSession: () => Promise<void>;
     setTrackingConsent: (consent: TrackingConsent) => Promise<void>;
+    exportTestSpan: (url: string, startedBeforeMs: number) => Promise<void>;
     openBridgeFileWindow: () => Promise<void>;
     openBridgeFileWindowNoIsolation: () => Promise<void>;
     openBridgeHttpWindow: () => Promise<void>;
@@ -63,6 +64,14 @@ export class MainPage {
     await this.page.evaluate(
       (value) => (globalThis as unknown as ElectronAppWindow).electronAPI.setTrackingConsent(value),
       consent
+    );
+  }
+
+  async exportTestSpan(url: string, startedBeforeMs: number) {
+    await this.page.evaluate(
+      ({ url, startedBeforeMs }) =>
+        (globalThis as unknown as ElectronAppWindow).electronAPI.exportTestSpan(url, startedBeforeMs),
+      { url, startedBeforeMs }
     );
   }
 

@@ -2,6 +2,7 @@ import '@datadog/electron-sdk/instrument';
 import { app, BrowserWindow, ipcMain, net, protocol } from 'electron';
 import * as http from 'node:http';
 import * as fs from 'node:fs';
+import * as DiagnosticsChannel from 'node:diagnostics_channel';
 import { join } from 'node:path';
 
 // A custom scheme must be registered as privileged (standard + secure) before app ready so that pages
@@ -75,10 +76,12 @@ type BeforeSendRum = NonNullable<InitConfiguration['beforeSendRum']>;
 
 const e2eControls: {
   beforeSendRum: BeforeSendRum;
+  setTrackingConsent: typeof setTrackingConsent;
   init?: () => Promise<void>;
   openWindow?: () => void;
 } = {
   beforeSendRum: () => true,
+  setTrackingConsent,
 };
 
 (globalThis as Record<string, unknown>).__ddE2E = e2eControls;
@@ -150,6 +153,28 @@ void app.whenReady().then(async () => {
 
   ipcMain.handle('setTrackingConsent', (_event, consent: TrackingConsent) => {
     setTrackingConsent(consent);
+  });
+
+  ipcMain.handle('exportTestSpan', (_event, url: string, startedBeforeMs: number) => {
+    const startTime = Date.now() - startedBeforeMs;
+    DiagnosticsChannel.channel('datadog:apm:electron:export').publish([
+      [
+        {
+          trace_id: 123n,
+          span_id: 456n,
+          parent_id: 0n,
+          name: 'http.request',
+          service: 'test',
+          resource: 'GET /deferred-resource',
+          type: 'http',
+          error: 0,
+          meta: { 'http.url': url, 'http.method': 'GET', 'http.status_code': '200' },
+          metrics: { _sampling_priority_v1: 1 },
+          start: startTime * 1e6,
+          duration: 10e6,
+        },
+      ],
+    ]);
   });
 
   ipcMain.handle('generateUncaughtException', () => {
