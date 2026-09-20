@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED } from '@datadog/js-core/assembly';
 import { RendererPipeline } from './RendererPipeline';
@@ -24,6 +24,7 @@ import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
 import type { RumBeforeSend } from '../config';
 import { createMockSender, createTestConfiguration, type MockSender } from '../mocks.specUtil';
 import { registerCommonContext } from './commonContext';
+import { createTrackingConsentState } from '../domain/tracking-consent';
 
 const { mockIpcMainOn, mockAddError, mockSetBridgeConfig } = vi.hoisted(() => {
   const mockIpcMainOn = vi.fn();
@@ -197,6 +198,8 @@ describe('RendererPipeline', () => {
     new RendererPipeline(eventManager, hooks, DEFAULT_CONFIG);
   });
 
+  afterEach(() => vi.useRealTimers());
+
   it('registers a listener on BRIDGE_CHANNEL', () => {
     expect(mockIpcMainOn).toHaveBeenCalledWith(BRIDGE_CHANNEL, expect.any(Function));
   });
@@ -245,6 +248,28 @@ describe('RendererPipeline', () => {
     });
   });
 
+  it('drops all bridge formats before callbacks or activity while consent is denied', () => {
+    const beforeSendRum = vi.fn(() => true);
+    new RendererPipeline(
+      eventManager,
+      hooks,
+      createTestConfiguration({ beforeSendRum }),
+      createTrackingConsentState('not-granted')
+    );
+    const notify = vi.spyOn(eventManager, 'notify');
+    for (const [eventType, event] of [
+      ['rum', RENDERER_CLICK_DATA],
+      ['log', RENDERER_LOG_DATA],
+      ['internal_telemetry', RENDERER_TELEMETRY_DATA],
+      ['profile', { profile: {}, trace: {} }],
+      ['record', { type: 2, timestamp: Date.now() }],
+    ]) {
+      simulateIpcMessage(JSON.stringify({ eventType, event, view: { id: 'browser-view' } }));
+    }
+    expect(notify).not.toHaveBeenCalled();
+    expect(beforeSendRum).not.toHaveBeenCalled();
+  });
+
   describe('rum events', () => {
     it('emits a ServerRumEvent with source RENDERER', () => {
       hooks.registerRum(() => ({ session: { id: 'main-session' }, application: { id: 'main-app' } }));
@@ -256,14 +281,15 @@ describe('RendererPipeline', () => {
       expect(serverEvents[0].track).toBe(EventTrack.RUM);
     });
 
-    it('marks renderer view updates with their IPC processing time for consent routing', () => {
+    it('routes renderer view updates by their admission consent without changing the Browser date', () => {
       vi.useFakeTimers();
       vi.setSystemTime(54321);
       hooks.registerRum(() => ({ session: { id: 'main-session' } }));
 
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
 
-      expect(serverEvents[0].consentTime).toBe(54321);
+      expect(serverEvents[0].storageConsent).toBe('granted');
+      expect(serverEvents[0].data.date).toBe(RENDERER_RUM_DATA.date);
       vi.useRealTimers();
     });
 
@@ -345,7 +371,9 @@ describe('RendererPipeline', () => {
       expect(serverEvents[0].data._dd.configuration?.trace_sample_rate).toBe(80);
     });
 
-    it('passes event.data.date as startTime to triggerRum', () => {
+    it('enriches at receipt time while preserving the Browser date', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(54321);
       let capturedStartTime: TimeStamp | undefined;
       hooks.registerRum(({ startTime }) => {
         capturedStartTime = startTime;
@@ -354,7 +382,22 @@ describe('RendererPipeline', () => {
 
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
 
-      expect(capturedStartTime).toBe(12345);
+      expect(capturedStartTime).toBe(54321);
+      expect(serverEvents[0].data.date).toBe(12345);
+    });
+
+    it('uses the renewed session when processing a click crosses a millisecond boundary', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(10);
+      eventManager.registerHandler<EndUserActivityEvent>({
+        canHandle: (event): event is EndUserActivityEvent =>
+          event.kind === EventKind.LIFECYCLE && event.lifecycle === LifecycleKind.END_USER_ACTIVITY,
+        handle: () => vi.setSystemTime(20),
+      });
+      hooks.registerRum(({ startTime }) => (startTime < 20 ? DISCARDED : { session: { id: 'renewed-session' } }));
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_CLICK_DATA }));
+      expect(serverEvents).toHaveLength(1);
+      expect(serverEvents[0].data.session.id).toBe('renewed-session');
     });
 
     it('discards the event when triggerRum returns DISCARDED', () => {
@@ -363,6 +406,84 @@ describe('RendererPipeline', () => {
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
 
       expect(serverEvents).toHaveLength(0);
+    });
+
+    it('preserves Browser views, counters and customer context after consent is granted', () => {
+      const state = createTrackingConsentState('not-granted');
+      hooks.registerRum(({ startTime }) =>
+        state.getAt(startTime) === 'not-granted' ? DISCARDED : { session: { id: 'main-session' } }
+      );
+      new RendererPipeline(eventManager, hooks, DEFAULT_CONFIG, state);
+      const browserView = {
+        ...RENDERER_RUM_DATA,
+        view: { ...RENDERER_RUM_DATA.view, error: { count: 5 }, time_spent: 20_000_000 },
+        _dd: { ...RENDERER_RUM_DATA._dd, document_version: 17 },
+        usr: { id: 'renderer-user' },
+        account: { id: 'renderer-account' },
+        context: { workspace: 'renderer-workspace' },
+      };
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: browserView }));
+      expect(serverEvents).toEqual([]);
+
+      state.update('granted');
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: browserView }));
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_CLICK_DATA }));
+
+      expect(serverEvents).toHaveLength(2);
+      expect(serverEvents[0].data).toEqual({ ...browserView, session: { id: 'main-session', type: 'user' } });
+      expect(serverEvents[1].data.view.id).toBe(browserView.view.id);
+    });
+
+    it.each(['pending', 'granted', 'not-granted'] as const)(
+      'resolves an admitted pending event when beforeSend changes consent to %s',
+      (decision) => {
+        vi.useFakeTimers();
+        vi.setSystemTime(54321);
+        const state = createTrackingConsentState('pending');
+        new RendererPipeline(
+          eventManager,
+          hooks,
+          createTestConfiguration({
+            beforeSendRum: () => {
+              state.update(decision);
+              // A later grant must not resurrect a rejected pending admission, even in the same millisecond.
+              if (decision === 'not-granted') state.update('granted');
+              return true;
+            },
+          }),
+          state
+        );
+
+        simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
+
+        expect(serverEvents).toHaveLength(decision === 'not-granted' ? 0 : 1);
+        if (decision !== 'not-granted') expect(serverEvents[0].storageConsent).toBe(decision);
+      }
+    );
+
+    it('keeps Browser counters when beforeSend discards a renderer action', () => {
+      const state = createTrackingConsentState('not-granted');
+      new RendererPipeline(
+        eventManager,
+        hooks,
+        createTestConfiguration({
+          beforeSendRum: (event) => event.type !== 'action',
+        }),
+        state
+      );
+      state.update('granted');
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_CLICK_DATA }));
+      simulateIpcMessage(
+        JSON.stringify({
+          eventType: 'rum',
+          event: {
+            ...RENDERER_RUM_DATA,
+            view: { ...RENDERER_RUM_DATA.view, action: { count: 1 } },
+          },
+        })
+      );
+      expect(serverEvents).toHaveLength(1);
+      expect(serverEvents[0].data.view).toMatchObject({ action: { count: 1 } });
     });
   });
 
@@ -549,6 +670,29 @@ describe('RendererPipeline', () => {
       expect(received[0].source).toBe(EventSource.RENDERER);
     });
 
+    it('forwards authorized records with the original Browser view id without synthesizing a RUM view', () => {
+      const state = createTrackingConsentState('not-granted');
+      new RendererPipeline(eventManager, hooks, DEFAULT_CONFIG, state);
+      const received: RawReplayEvent[] = [];
+      eventManager.registerHandler<RawReplayEvent>({
+        canHandle: (event): event is RawReplayEvent =>
+          event.kind === EventKind.RAW && event.format === EventFormat.REPLAY,
+        handle: (event) => received.push(event),
+      });
+      const message = JSON.stringify({
+        eventType: 'record',
+        event: { type: 2, timestamp: Date.now() },
+        view: { id: 'browser-view' },
+      });
+      simulateIpcMessage(message);
+      expect(received).toEqual([]);
+      state.update('granted');
+      simulateIpcMessage(message);
+      expect(received).toHaveLength(1);
+      expect(received[0].view.id).toBe('browser-view');
+      expect(serverEvents).toEqual([]);
+    });
+
     it('reports telemetry error and drops records missing view', () => {
       const spy = vi.spyOn(eventManager, 'notify');
 
@@ -613,13 +757,44 @@ describe('RendererPipeline', () => {
       expect(logsEvents[0].data.message).toBe(RENDERER_LOG_DATA.message);
     });
 
-    it('triggers the logs hooks with the renderer source and the log date', () => {
+    it('preserves the Browser log view and context after consent is granted', () => {
+      const trackingConsentState = createTrackingConsentState('not-granted');
+      hooks.registerRum(({ startTime }) =>
+        trackingConsentState.getAt(startTime) === 'not-granted'
+          ? DISCARDED
+          : { session: { id: 'main-session' }, application: { id: 'main-app' } }
+      );
+      hooks.registerLogs(() => ({ application_id: 'main-app', session_id: 'main-session' }));
+      new RendererPipeline(eventManager, hooks, DEFAULT_CONFIG, trackingConsentState);
+
+      trackingConsentState.update('granted');
+      simulateLog({
+        ...RENDERER_LOG_DATA,
+        date: Date.now(),
+        usr: { id: 'renderer-user' },
+        account: { id: 'renderer-account' },
+        context: { workspace: 'renderer-workspace' },
+      });
+
+      expect(serverEvents).toHaveLength(0);
+      expect(logsEvents).toHaveLength(1);
+      expect(logsEvents[0].data.view?.id).toBe(RENDERER_LOG_DATA.view.id);
+      expect(logsEvents[0].data).toMatchObject({
+        usr: { id: 'renderer-user' },
+        account: { id: 'renderer-account' },
+        context: { workspace: 'renderer-workspace' },
+      });
+    });
+
+    it('triggers the logs hooks with the renderer source at receipt time', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(54321);
       const callback = vi.fn(() => ({}));
       hooks.registerLogs(callback);
 
       simulateLog();
 
-      expect(callback).toHaveBeenCalledWith({ startTime: RENDERER_LOG_DATA.date, source: EventSource.RENDERER });
+      expect(callback).toHaveBeenCalledWith({ startTime: 54321, source: EventSource.RENDERER });
     });
 
     it('lets the main process override the application and session the renderer reported', () => {
@@ -757,13 +932,15 @@ describe('RendererPipeline', () => {
       expect(telemetryEvents[0].data.telemetry).toEqual(RENDERER_TELEMETRY_DATA.telemetry);
     });
 
-    it('triggers the telemetry hooks with the renderer source and the event date', () => {
+    it('triggers the telemetry hooks with the renderer source at receipt time', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(54321);
       const callback = vi.fn(() => ({}));
       hooks.registerTelemetry(callback);
 
       simulateTelemetry();
 
-      expect(callback).toHaveBeenCalledWith({ startTime: RENDERER_TELEMETRY_DATA.date, source: EventSource.RENDERER });
+      expect(callback).toHaveBeenCalledWith({ startTime: 54321, source: EventSource.RENDERER });
     });
 
     it('lets the main process context override the application and session the renderer reported', () => {

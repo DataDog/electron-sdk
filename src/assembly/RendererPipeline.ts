@@ -18,11 +18,11 @@ import { BRIDGE_CHANNEL, setBridgeConfig, type BridgeOptions } from '../common';
 import type { FormatHooks } from './hooks';
 import type { RendererRumEvent } from '../domain/rum';
 import type { LogsEvent } from '../domain/logs';
-import { Configuration } from '../config';
+import { Configuration, type TrackingConsent } from '../config';
 import { BeforeSend } from './BeforeSend';
 import { isFiniteNumber } from '../tools/validation';
 import { RendererIpcGate } from './RendererIpcGate';
-import { getRumConsentTime } from './rumConsentTime';
+import { createTrackingConsentState, type TrackingConsentState } from '../domain/tracking-consent';
 
 type BridgeEventType = 'rum' | 'log' | 'internal_telemetry' | 'profile' | 'record';
 
@@ -30,6 +30,11 @@ interface BridgeEvent {
   eventType: BridgeEventType;
   event: unknown;
   view?: { id: string };
+}
+
+interface BridgeWriteContext {
+  time: TimeStamp;
+  resolveConsent: () => TrackingConsent | undefined;
 }
 
 /**
@@ -40,8 +45,7 @@ interface BridgeEvent {
  * triggerRum with source RENDERER, and emits ServerEvents directly.
  *
  * Also emits END_USER_ACTIVITY for click actions before the session check, so a click
- * after session inactivity expiry can create a new session even though the event itself
- * would be discarded (its timestamp falls outside the closed session window).
+ * after session inactivity expiry can renew the native session before enrichment.
  */
 export class RendererPipeline {
   private readonly bridgeOptions: BridgeOptions;
@@ -51,7 +55,10 @@ export class RendererPipeline {
   constructor(
     private readonly eventManager: EventManager,
     private readonly hooks: FormatHooks,
-    config: Configuration
+    config: Configuration,
+    private readonly trackingConsentState: TrackingConsentState = createTrackingConsentState(
+      config.trackingConsent ?? 'granted'
+    )
   ) {
     this.beforeSend = new BeforeSend(config.beforeSendRum);
     this.logsSampleRate = config.logsSampleRate;
@@ -83,6 +90,14 @@ export class RendererPipeline {
   }
 
   private onBridgeMessage(msg: string): void {
+    if (!this.trackingConsentState.isCollectionEnabled()) return;
+
+    // Like the mobile bridges, enrich RUM/logs/telemetry at receipt without rewriting Browser
+    // dates, identities or cumulative metrics. Retain the admission interval across callbacks.
+    const context: BridgeWriteContext = {
+      time: timeStampNow(),
+      resolveConsent: this.trackingConsentState.captureStorageConsent(),
+    };
     let bridgeEvent: BridgeEvent;
     try {
       bridgeEvent = JSON.parse(msg) as BridgeEvent;
@@ -93,13 +108,13 @@ export class RendererPipeline {
 
     switch (bridgeEvent.eventType) {
       case 'rum':
-        this.handleRumEvent(bridgeEvent.event);
+        this.handleRumEvent(bridgeEvent.event, context);
         break;
       case 'log':
-        this.handleLogEvent(bridgeEvent.event);
+        this.handleLogEvent(bridgeEvent.event, context);
         break;
       case 'internal_telemetry':
-        this.handleTelemetryEvent(bridgeEvent.event);
+        this.handleTelemetryEvent(bridgeEvent.event, context);
         break;
       case 'profile': {
         const payload = bridgeEvent.event as { profile?: BrowserProfileEvent; trace?: BrowserProfilerTrace };
@@ -155,19 +170,16 @@ export class RendererPipeline {
     }
   }
 
-  private handleRumEvent(eventData: unknown): void {
+  private handleRumEvent(eventData: unknown, context: BridgeWriteContext): void {
     const data = eventData as RendererRumEvent;
-
-    // Emit activity before the session check: a click after session expiry must still
-    // create a new session even though triggerRum will return DISCARDED
-    // (the event timestamp falls outside the now-closed session window).
+    // A renderer click can renew the native session before its event is enriched.
     if (data.type === 'action' && data.action.type === 'click') {
       this.eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.END_USER_ACTIVITY });
     }
 
     const hookResult = this.hooks.triggerRum({
       eventType: data.type,
-      startTime: data.date as TimeStamp,
+      startTime: timeStampNow(),
       source: EventSource.RENDERER,
       rendererViewId: (data as { view?: { id?: string } }).view?.id,
     });
@@ -184,12 +196,7 @@ export class RendererPipeline {
       return;
     }
 
-    this.emitRendererEvent(
-      EventTrack.RUM,
-      dataAfterBeforeSend,
-      undefined,
-      getRumConsentTime(dataAfterBeforeSend, timeStampNow())
-    );
+    this.emitRendererEvent(EventTrack.RUM, dataAfterBeforeSend, undefined, context.resolveConsent());
   }
 
   /**
@@ -198,7 +205,7 @@ export class RendererPipeline {
    * It is not re-sampled or deduplicated because the browser SDK has already applied its telemetry
    * configuration before sending the event over the bridge.
    */
-  private handleTelemetryEvent(eventData: unknown): void {
+  private handleTelemetryEvent(eventData: unknown, context: BridgeWriteContext): void {
     // Validate the bridge payload without restricting renderer-owned fields or telemetry kinds,
     // which may evolve independently in the browser SDK.
     if (
@@ -214,11 +221,11 @@ export class RendererPipeline {
 
     const data = { ...eventData } as unknown as TelemetryEvent;
     // The browser SDK creates a stub session in bridge mode. Only keep the main-process session
-    // that the telemetry hooks add when one covers the event date.
+    // that the telemetry hooks add at receipt.
     delete data.session;
 
     const hookResult = this.hooks.triggerTelemetry({
-      startTime: data.date as TimeStamp,
+      startTime: context.time,
       source: EventSource.RENDERER,
     });
 
@@ -226,7 +233,7 @@ export class RendererPipeline {
       return;
     }
 
-    this.emitRendererEvent(EventTrack.RUM, data, hookResult);
+    this.emitRendererEvent(EventTrack.RUM, data, hookResult, context.resolveConsent());
   }
 
   /**
@@ -241,12 +248,12 @@ export class RendererPipeline {
    * not gate these events. Electron applies its own per-log `logsSampleRate` after receiving a valid
    * payload and before enriching or uploading it.
    */
-  private handleLogEvent(eventData: unknown): void {
+  private handleLogEvent(eventData: unknown, context: BridgeWriteContext): void {
     // A bridge/SDK version mismatch, or a renderer sending on the channel itself, could put anything
     // here. The payload is forwarded to intake untouched apart from the hook result, so reject it at
     // the boundary, as the telemetry/profile/record cases do.
     //
-    // `date` resolves the session the log is attributed to, and `message`/`status` are what the logs
+    // `date` is the recorded timestamp, and `message`/`status` are what the logs
     // intake maps to the body and severity of the log — a payload missing them would land as an
     // unreadable blob. It has to be *finite* for the same reason it does for telemetry, and it matters
     // more here: logs have no relay cap, so an `Infinity` date that `JSON.stringify` writes as `null`
@@ -269,7 +276,7 @@ export class RendererPipeline {
     const data = eventData as unknown as LogsEvent;
 
     const hookResult = this.hooks.triggerLogs({
-      startTime: data.date as TimeStamp,
+      startTime: context.time,
       source: EventSource.RENDERER,
     });
 
@@ -277,7 +284,12 @@ export class RendererPipeline {
       return;
     }
 
-    this.emitRendererEvent(EventTrack.LOGS, data, resolveCustomerContextOverrides(data, hookResult));
+    this.emitRendererEvent(
+      EventTrack.LOGS,
+      data,
+      resolveCustomerContextOverrides(data, hookResult),
+      context.resolveConsent()
+    );
   }
 
   /**
@@ -291,14 +303,15 @@ export class RendererPipeline {
     track: typeof EventTrack.RUM | typeof EventTrack.LOGS,
     data: E,
     overrides: RecursivePartial<E> | undefined,
-    consentTime?: TimeStamp
+    storageConsent: TrackingConsent | undefined
   ): void {
+    if (storageConsent !== 'granted' && storageConsent !== 'pending') return;
     this.eventManager.notify({
       kind: EventKind.SERVER,
       track,
       source: EventSource.RENDERER,
       data: combine(data, overrides),
-      ...(consentTime === undefined ? {} : { consentTime }),
+      storageConsent,
     } as ServerRumEvent | ServerTelemetryEvent | ServerLogsEvent);
   }
 }

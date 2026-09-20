@@ -117,15 +117,29 @@ describe('ViewCollection', () => {
   });
 
   describe('tracking consent boundaries', () => {
-    it('snapshots the collecting interval before consent changes', () => {
+    it('closes the current view and starts a new one when storage changes', () => {
+      const originalViewId = (rawRumEvents[0].data as RawRumView).view.id;
       vi.advanceTimersByTime(10);
 
       trackingConsentState.update('pending');
 
+      expect(rawRumEvents).toHaveLength(3);
+      const closedView = rawRumEvents[1].data as RawRumView;
+      expect(closedView._dd.document_version).toBe(2);
+      expect(closedView.view.time_spent).toBe(10 * 1e6);
+      expect(closedView.view.is_active).toBe(false);
+
+      const pendingView = rawRumEvents[2].data as RawRumView;
+      expect(pendingView.view.id).not.toBe(originalViewId);
+      expect(pendingView.view.is_active).toBe(true);
+      expect(pendingView._dd.document_version).toBe(1);
+    });
+
+    it('closes the last uploaded view before consent is revoked', () => {
+      trackingConsentState.update('not-granted');
+
       expect(rawRumEvents).toHaveLength(2);
-      const snapshot = rawRumEvents[1].data as RawRumView;
-      expect(snapshot._dd.document_version).toBe(2);
-      expect(snapshot.view.time_spent).toBe(10 * 1e6);
+      expect((rawRumEvents[1].data as RawRumView).view.is_active).toBe(false);
     });
 
     it('does not create an initial view while consent is not granted', async () => {

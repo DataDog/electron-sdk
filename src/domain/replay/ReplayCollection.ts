@@ -40,6 +40,9 @@ export interface ViewReplayStats {
 
 export class ReplayCollection {
   private segment: Segment | null = null;
+  private requiresFullSnapshot: boolean;
+  private readonly readyViews = new Set<string>();
+  private readonly bootstrapRecords = new Map<string, BrowserRecord[]>();
   private segmentStorageConsent: TrackingConsent | undefined;
   private currentViewId: string | undefined;
   private nextCreationReason: CreationReason = CreationReason.INIT;
@@ -61,6 +64,7 @@ export class ReplayCollection {
       config.trackingConsent ?? 'granted'
     )
   ) {
+    this.requiresFullSnapshot = trackingConsentState.get() === 'not-granted';
     // Enrich renderer view events with this session's replay stats. Registered here (rather than by the
     // caller) so all replay-specific assembly logic lives with the collection, mirroring ProfilingCollection.
     registerReplayContext(
@@ -90,12 +94,19 @@ export class ReplayCollection {
           // unbounded growth across long-lived sessions.
           this.segmentIndexPerView.clear();
           this.viewReplayStats.clear();
+          this.readyViews.clear();
+          this.bootstrapRecords.clear();
         }
       }),
     });
 
     trackingConsentState.observable.subscribe(
-      monitor(() => {
+      monitor((change) => {
+        if (change.current === 'not-granted') {
+          this.requiresFullSnapshot = true;
+          this.readyViews.clear();
+          this.bootstrapRecords.clear();
+        }
         // A segment must never mix granted and pending records: its start time selects the storage
         // decision for the whole payload. Keep the deflate stream, since the session itself continues.
         this.flush(CreationReason.SEGMENT_DURATION_LIMIT);
@@ -137,6 +148,7 @@ export class ReplayCollection {
     // Only a genuine *mismatch* is reported: when both resolve to undefined (session not sampled /
     // not tracked) the record falls through to the normal silent drop in getSegmentContext, so we
     // don't emit telemetry for every record of an unsampled session.
+    if (!this.trackingConsentState.isCollectionEnabled()) return;
     const owningSessionId = this.sessionManager.getTrackedSessionId(record.timestamp as TimeStamp);
     if (owningSessionId !== this.sessionManager.getTrackedSessionId()) {
       addError(new Error('Dropping replay record captured outside the current session'));
@@ -146,6 +158,21 @@ export class ReplayCollection {
     const recordStorageConsent = this.trackingConsentState.resolveForStorage(record.timestamp as TimeStamp);
     if (recordStorageConsent === undefined || recordStorageConsent === 'not-granted') {
       return;
+    }
+    if (this.requiresFullSnapshot && viewId && !this.readyViews.has(viewId)) {
+      if (record.type === 4 || record.type === 6) {
+        // Browser emits Meta/Focus immediately before a FullSnapshot. Buffer at most one of each
+        // until the snapshot arrives; neither a lone bootstrap record nor a mutation is playable.
+        const records = this.bootstrapRecords.get(viewId) ?? [];
+        this.bootstrapRecords.set(viewId, [...records.filter((item) => item.type !== record.type), record]);
+        return;
+      }
+      if (record.type !== 2) return;
+      this.readyViews.add(viewId);
+      for (const bootstrap of this.bootstrapRecords.get(viewId) ?? []) {
+        this.onRecord(bootstrap, viewId);
+      }
+      this.bootstrapRecords.delete(viewId);
     }
     if (this.segment && this.segmentStorageConsent !== recordStorageConsent) {
       this.flush(CreationReason.SEGMENT_DURATION_LIMIT);

@@ -70,7 +70,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   startTelemetry(eventManager, config, trackingConsentState);
   sessionManager = await SessionManager.start(eventManager, hooks, config, trackingConsentState);
 
-  new MainAssembly(eventManager, hooks, new BeforeSend(config.beforeSendRum));
+  new MainAssembly(eventManager, hooks, new BeforeSend(config.beforeSendRum), trackingConsentState);
   new ProfilingCollection(eventManager, sessionManager, config, hooks, trackingConsentState);
   replayCollection = new ReplayCollection(eventManager, config, sessionManager, hooks, trackingConsentState);
 
@@ -83,7 +83,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   // cannot fall into the gap between RendererPipeline and Transport initialization.
   transport = await Transport.create(config, eventManager, trackingConsentState);
 
-  new RendererPipeline(eventManager, hooks, config);
+  new RendererPipeline(eventManager, hooks, config, trackingConsentState);
 
   const rum = await RumCollection.start(eventManager, hooks, trackingConsentState);
   rumApi = rum.getApi();

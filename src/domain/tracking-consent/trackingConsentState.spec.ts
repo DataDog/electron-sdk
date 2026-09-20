@@ -111,6 +111,30 @@ describe('createTrackingConsentState', () => {
     vi.useRealTimers();
   });
 
+  it('keeps admission decisions distinct across transitions within the same millisecond', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10);
+    const state = createTrackingConsentState();
+    const uninitialized = state.captureStorageConsent();
+    state.tryToInit('pending');
+    const rejected = state.captureStorageConsent();
+    state.update('not-granted');
+    const denied = state.captureStorageConsent();
+    state.update('pending');
+    const authorized = state.captureStorageConsent();
+    expect(authorized()).toBe('pending');
+    state.update('granted');
+    const granted = state.captureStorageConsent();
+    state.update('not-granted');
+
+    expect(uninitialized()).toBeUndefined();
+    expect(rejected()).toBe('not-granted');
+    expect(denied()).toBe('not-granted');
+    expect(authorized()).toBe('granted');
+    expect(granted()).toBe('granted');
+    vi.useRealTimers();
+  });
+
   it('resolves every consent state crossed by a completed interval', () => {
     vi.useFakeTimers();
     vi.setSystemTime(10);

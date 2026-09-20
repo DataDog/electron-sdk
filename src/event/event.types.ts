@@ -19,6 +19,8 @@ export interface RawRumEvent {
   startTime?: TimeStamp;
   /** Completion timestamp for events that describe an interval. */
   consentTime?: number;
+  /** Capture-time decision for events exported after their capture interval. */
+  storageConsent?: TrackingConsent;
 }
 
 export interface RawTelemetryEvent {

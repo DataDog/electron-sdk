@@ -77,7 +77,11 @@ export class SpanProcessor {
   }
 
   private processTrace(trace: ExportedSpan[]): void {
-    const processedSpans = new Map<'granted' | 'pending', RawSpanData[]>();
+    const processedSpans: {
+      span: RawSpanData;
+      startTime: TimeStamp;
+      endTime: TimeStamp;
+    }[] = [];
     const traceSampled = Tracing.isTraceSampled(trace);
 
     for (const exportedSpan of trace) {
@@ -87,8 +91,8 @@ export class SpanProcessor {
       const span = toRawSpan(exportedSpan, this.service);
       const startTime = toTimeStamp(span.start);
       const endTime = (startTime + span.duration / 1e6) as TimeStamp;
-      const storageConsent = this.trackingConsentState.resolveForStorageInterval(startTime, endTime);
-      if (storageConsent !== 'granted' && storageConsent !== 'pending') {
+      const initialStorageConsent = this.trackingConsentState.resolveForStorageInterval(startTime, endTime);
+      if (initialStorageConsent !== 'granted' && initialStorageConsent !== 'pending') {
         continue;
       }
       const hookResult = this.hooks.triggerSpan({ startTime, source: EventSource.MAIN });
@@ -97,17 +101,37 @@ export class SpanProcessor {
       }
 
       if (isHttpSpan(exportedSpan)) {
-        this.emitResource(spanToResource(exportedSpan, traceSampled));
+        this.emitResource(spanToResource(exportedSpan, traceSampled), initialStorageConsent);
       }
 
       if (traceSampled) {
-        const spans = processedSpans.get(storageConsent) ?? [];
-        spans.push(combine(span, hookResult));
-        processedSpans.set(storageConsent, spans);
+        // Emitting the RUM resource runs customer beforeSend callbacks synchronously. Re-resolve after
+        // those callbacks so a consent revocation cannot persist the span with the stale decision.
+        const storageConsent = this.trackingConsentState.resolveForStorageInterval(startTime, endTime);
+        if (storageConsent !== 'granted' && storageConsent !== 'pending') {
+          continue;
+        }
+        processedSpans.push({ span: combine(span, hookResult), startTime, endTime });
       }
     }
 
-    for (const [storageConsent, spans] of processedSpans) {
+    const spansByConsent = new Map<'granted' | 'pending', RawSpanData[]>();
+    for (const processedSpan of processedSpans) {
+      // A later span in the same trace may have synchronously changed consent. Resolve every interval
+      // again only after all callbacks have completed so earlier spans cannot retain a stale decision.
+      const storageConsent = this.trackingConsentState.resolveForStorageInterval(
+        processedSpan.startTime,
+        processedSpan.endTime
+      );
+      if (storageConsent !== 'granted' && storageConsent !== 'pending') {
+        continue;
+      }
+      const spans = spansByConsent.get(storageConsent) ?? [];
+      spans.push(processedSpan.span);
+      spansByConsent.set(storageConsent, spans);
+    }
+
+    for (const [storageConsent, spans] of spansByConsent) {
       this.emitServerSpansEvent({ env: this.env, spans }, storageConsent);
     }
   }
@@ -132,13 +156,14 @@ export class SpanProcessor {
     }
   }
 
-  private emitResource(resource: RawRumResource): void {
+  private emitResource(resource: RawRumResource, storageConsent: TrackingConsent): void {
     this.eventManager.notify({
       kind: EventKind.RAW,
       format: EventFormat.RUM,
       data: resource,
       startTime: resource.date,
       consentTime: resource.date + resource.resource.duration / 1e6,
+      storageConsent,
     });
   }
 

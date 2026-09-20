@@ -16,6 +16,8 @@ export interface TrackingConsentState {
   isCollectionEnabled(): boolean;
   getAt(at: TimeStamp): TrackingConsent | undefined;
   resolveForStorage(at: TimeStamp): TrackingConsent | undefined;
+  /** Capture the admission interval before callbacks can change consent, even within one millisecond. */
+  captureStorageConsent(): () => TrackingConsent | undefined;
   resolveForStorageInterval(start: TimeStamp, end: TimeStamp): TrackingConsent | undefined;
   /** Notified synchronously while the previous consent is still active. */
   boundaryObservable: Observable<TrackingConsentChange>;
@@ -105,6 +107,10 @@ export function createTrackingConsentState(initialConsent?: TrackingConsent): Tr
         history,
         history.findIndex((entry) => entry.startTime <= at && at < entry.endTime)
       );
+    },
+    captureStorageConsent() {
+      const entry = history[0];
+      return () => resolveEntryForStorage(history, history.indexOf(entry));
     },
     resolveForStorageInterval(start, end) {
       if (!Number.isFinite(start) || !Number.isFinite(end)) {

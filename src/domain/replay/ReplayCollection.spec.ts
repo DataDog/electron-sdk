@@ -199,6 +199,53 @@ describe('ReplayCollection', () => {
     });
   });
 
+  describe('replay after denied consent', () => {
+    it('waits for a fresh full snapshot per Browser view, preserving Meta and Focus records', async () => {
+      vi.setSystemTime(1000);
+      const state = createTrackingConsentState('not-granted');
+      const captured = captureReplayEvents(eventManager);
+      const collection = new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks(), state);
+      sendRecord(eventManager, { type: 2, timestamp: 1000 });
+      vi.setSystemTime(2000);
+      state.update('granted');
+      sendRecord(eventManager, { type: 2, timestamp: 1000 });
+      sendRecord(eventManager, { type: 3, timestamp: 2000 });
+      sendRecord(eventManager, { type: 12, timestamp: 2000 });
+      sendRecord(eventManager, { type: 4, timestamp: 2000 });
+      sendRecord(eventManager, { type: 6, timestamp: 2000 });
+      await collection.stop();
+      expect(captured).toEqual([]);
+
+      sendRecord(eventManager, { type: 2, timestamp: 2001 });
+      sendRecord(eventManager, { type: 3, timestamp: 2002 });
+      sendRecord(eventManager, { type: 3, timestamp: 2002 }, 'other-view');
+      await collection.stop();
+      expect(captured).toHaveLength(1);
+      expect(captured[0].metadata).toMatchObject({ view: { id: 'view-1' }, records_count: 4, has_full_snapshot: true });
+    });
+
+    it('requires another full snapshot after revocation even for an already recorded view', async () => {
+      vi.setSystemTime(1000);
+      const state = createTrackingConsentState('not-granted');
+      const captured = captureReplayEvents(eventManager);
+      const collection = new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks(), state);
+      state.update('granted');
+      sendRecord(eventManager, { type: 2, timestamp: 1000 });
+      await collection.stop();
+      vi.setSystemTime(2000);
+      state.update('not-granted');
+      sendRecord(eventManager, { type: 2, timestamp: 2000 });
+      vi.setSystemTime(3000);
+      state.update('granted');
+      sendRecord(eventManager, { type: 3, timestamp: 3000 });
+      await collection.stop();
+      expect(captured).toHaveLength(1);
+      sendRecord(eventManager, { type: 2, timestamp: 3001 });
+      await collection.stop();
+      expect(captured).toHaveLength(2);
+    });
+  });
+
   describe('view-change flush', () => {
     it('flushes when the view ID changes', async () => {
       const captured = captureReplayEvents(eventManager);

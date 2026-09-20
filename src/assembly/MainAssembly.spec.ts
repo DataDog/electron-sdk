@@ -17,6 +17,7 @@ import {
 } from '../event';
 import type { RumEvent, RawRumData } from '../domain/rum';
 import type { RawTelemetryData } from '../domain/telemetry';
+import { createTrackingConsentState, type TrackingConsentState } from '../domain/tracking-consent';
 
 const RAW_ERROR_DATA: RawRumData = {
   type: 'error',
@@ -32,6 +33,7 @@ describe('MainAssembly', () => {
   let eventManager: EventManager;
   let hooks: FormatHooks;
   let beforeSend: BeforeSend;
+  let trackingConsentState: TrackingConsentState;
   let serverEvents: ServerEvent[];
 
   function notifyRawRumEvent(overrides?: Partial<RawRumEvent>) {
@@ -56,6 +58,7 @@ describe('MainAssembly', () => {
     eventManager = new EventManager();
     hooks = createFormatHooks();
     beforeSend = new BeforeSend();
+    trackingConsentState = createTrackingConsentState('granted');
     serverEvents = [];
 
     eventManager.registerHandler<ServerEvent>({
@@ -63,7 +66,7 @@ describe('MainAssembly', () => {
       handle: (event) => serverEvents.push(event),
     });
 
-    new MainAssembly(eventManager, hooks, beforeSend);
+    new MainAssembly(eventManager, hooks, beforeSend, trackingConsentState);
   });
 
   it('favors raw event attributes over hook attributes', () => {
@@ -182,6 +185,37 @@ describe('MainAssembly', () => {
     notifyRawRumEvent();
 
     expect(serverEvents).toHaveLength(0);
+  });
+
+  it('does not reauthorize a rejected pending event when beforeSendRum grants in the same millisecond', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(100);
+    trackingConsentState.update('pending');
+    hooks.registerRum(() => ({ session: { id: 'session' } }));
+    vi.spyOn(beforeSend, 'apply').mockImplementation((event) => {
+      trackingConsentState.update('not-granted');
+      trackingConsentState.update('granted');
+      return event;
+    });
+
+    notifyRawRumEvent();
+
+    expect(serverEvents).toHaveLength(0);
+    vi.useRealTimers();
+  });
+
+  it('preserves a precomputed granted decision when assembly happens after revocation', () => {
+    hooks.registerRum(() => ({ session: { id: 'session' } }));
+    trackingConsentState.update('not-granted');
+
+    notifyRawRumEvent({
+      startTime: 10 as TimeStamp,
+      consentTime: 20,
+      storageConsent: 'granted',
+    });
+
+    expect(serverEvents).toHaveLength(1);
+    expect(serverEvents[0].storageConsent).toBe('granted');
   });
 
   describe('TELEMETRY events', () => {

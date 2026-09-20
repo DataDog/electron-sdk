@@ -47,6 +47,7 @@ export class ViewCollection {
   private serverEventSubscription!: Subscription;
   private consentBoundarySubscription!: Subscription;
   private consentStorageSubscription!: Subscription;
+  private consentSubscription!: Subscription;
 
   constructor(
     private readonly eventManager: EventManager,
@@ -76,13 +77,18 @@ export class ViewCollection {
 
     this.consentBoundarySubscription = this.trackingConsentState.boundaryObservable.subscribe((change) => {
       if (change.previous !== 'not-granted' && this.currentView?.isActive) {
-        this.cancelScheduledViewUpdate();
-        this.currentView.documentVersion++;
-        this.emitViewUpdate();
+        this.closeCurrentView();
       }
     });
     this.consentStorageSubscription = this.trackingConsentState.beforeObservable.subscribe((change) => {
       this.viewContext.updateTrackingConsent(change, this.currentView?.isActive ? this.currentView.id : undefined);
+    });
+    this.consentSubscription = this.trackingConsentState.observable.subscribe((change) => {
+      // SessionManager emits SESSION_RENEW for not-granted -> collecting transitions. Transitions
+      // between two collecting states keep the session but still need a fresh view for the new store.
+      if (change.previous !== 'not-granted' && change.current !== 'not-granted') {
+        this.createNewView();
+      }
     });
 
     this.lifecycleSubscription = this.eventManager.registerHandler<LifecycleEvent>({
@@ -109,6 +115,7 @@ export class ViewCollection {
     this.serverEventSubscription.unsubscribe();
     this.consentBoundarySubscription.unsubscribe();
     this.consentStorageSubscription.unsubscribe();
+    this.consentSubscription.unsubscribe();
   }
 
   private createNewView(): void {
@@ -156,12 +163,20 @@ export class ViewCollection {
       return;
     }
 
+    this.closeCurrentView();
+    this.viewContext.close();
+  }
+
+  private closeCurrentView(): void {
+    if (!this.currentView?.isActive) {
+      return;
+    }
+
     this.cancelScheduledViewUpdate();
     this.stopSessionKeepAlive();
     this.currentView.isActive = false;
     this.currentView.documentVersion++;
     this.emitViewUpdate();
-    this.viewContext.close();
   }
 
   private onSessionRenew(): void {
