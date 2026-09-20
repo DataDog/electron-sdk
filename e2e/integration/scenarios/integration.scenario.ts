@@ -10,7 +10,14 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { test, expect, launchApp } from '../lib/integrationFixture';
 import { getElectronBuilderViteArchivePath } from '../lib/electronBuilderVite';
-import { Intake, type EventBodyByType, type EventType, type ReceivedEvent, type Span } from '../../lib/intake';
+import {
+  Intake,
+  isMainProcessView,
+  type EventBodyByType,
+  type EventType,
+  type ReceivedEvent,
+  type Span,
+} from '../../lib/intake';
 import type { Page } from '@playwright/test';
 import { ONE_SECOND } from '@datadog/js-core/time';
 
@@ -57,7 +64,7 @@ test.describe('electron-builder runtime dependency packaging @integration', () =
 
 test.describe('view event on startup @integration', () => {
   test('sends a view event with a session id on startup', async ({ window, intake }) => {
-    const viewEvents = await flushUntilEventArrives(window, intake, 'view', 1, 15 * ONE_SECOND);
+    const viewEvents = await flushUntilEventArrives(window, intake, 'view', 1, 15 * ONE_SECOND, isMainProcessView);
     expect(viewEvents).toHaveLength(1);
     const view = viewEvents[0].body;
 
@@ -96,7 +103,7 @@ test.describe('main-process fetch resource @integration', () => {
     intake,
     testServer,
   }) => {
-    const [viewEvent] = await flushUntilEventArrives(window, intake, 'view', 1, 15 * ONE_SECOND);
+    const [viewEvent] = await flushUntilEventArrives(window, intake, 'view', 1, 15 * ONE_SECOND, isMainProcessView);
     const view = viewEvent.body;
 
     const url = testServer.urlFor(200);
@@ -227,7 +234,8 @@ async function flushUntilEventArrives<T extends EventType>(
   intake: Intake,
   type: T,
   count: number,
-  timeout: number
+  timeout: number,
+  predicate?: (event: ReceivedEvent<EventBodyByType[T]>) => boolean
 ): Promise<ReceivedEvent<EventBodyByType[T]>[]> {
   const pollInterval = 500;
   const deadline = Date.now() + timeout;
@@ -236,7 +244,7 @@ async function flushUntilEventArrives<T extends EventType>(
       /* empty */
     });
     const received = await intake
-      .waitForEventCount(type, count, { timeout: Math.min(pollInterval, deadline - Date.now()) })
+      .waitForEventCount(type, count, { timeout: Math.min(pollInterval, deadline - Date.now()), predicate })
       .catch(() => null);
     if (received) return received;
   }
