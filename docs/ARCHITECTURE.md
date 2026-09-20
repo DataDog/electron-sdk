@@ -155,13 +155,25 @@ sampling configuration selects active managers because consent is not persisted 
 producers each apply the normal disk cap independently.
 
 Sessions remain continuous across `pending ↔ granted`. Entering `not-granted` expires the session; leaving it for either
-collecting state creates a fresh one. Instantaneous events use their capture-time consent so asynchronous processing after a
-transition does not change their decision. Events representing an interval (views, profiles, spans/resources, duration
-vitals, and renderer duration events) resolve every consent state crossed before completion; any rejected part drops the
-whole event, while an unresolved part keeps it pending. Views emit a boundary snapshot so an authorized or pending portion
-is not lost when the next interval is rejected. Replay records are grouped by capture-time consent so delayed or out-of-order
-IPC cannot mix authorized and pending DOM data in one segment. Previously authorized batches remain eligible for upload after
-any consent change, matching iOS and Android.
+collecting state creates a fresh one. Main-process events use their capture-time consent so asynchronous processing after a
+transition does not change their decision. Main-process views, profiles, spans/resources and duration vitals resolve every
+consent state crossed before completion; any rejected part drops the whole event, while an unresolved part keeps it pending.
+Collectors whose export can be delayed attach that resolved decision to the event before assembly.
+Main-process views emit a boundary snapshot so an authorized or pending portion is not lost when the next interval is rejected.
+Replay records are grouped by capture-time consent so delayed or out-of-order IPC cannot mix authorized and pending DOM data
+in one segment. Previously authorized batches remain eligible for upload after any consent change, matching iOS and Android.
+
+Like the mobile WebView bridges, `RendererPipeline` admits RUM events, logs and telemetry using the consent and native context
+at receipt. It preserves Browser view ids, dates, document versions, cumulative metrics and customer context. It does not
+reconstruct Browser views or adjust their counters after `beforeSendRum`. The admission interval is retained across callbacks:
+a rejected pending event cannot be authorized by a later grant, including transitions within the same millisecond.
+
+The bridge does not propagate consent changes to the Browser SDK's collectors. Consequently, a Browser view update received
+after grant may still contain its original start date and cumulative metrics from before grant. Events received while denied
+are dropped. After denial, replay waits for a new full snapshot for each Browser view; standalone mutations cannot reconstruct
+the page. Metadata and focus records immediately preceding the snapshot are retained. Resuming consent alone does not request
+a snapshot from the Browser SDK; a new view or page load can provide one. Profiles and replay retain capture-time checks because
+their payloads can contain buffered samples or DOM records from a denied interval.
 
 Disk-backed session, view, user, and account histories are paused while consent is pending. Granting commits the pending
 interval; denying restores the last authorized checkpoint. Customer-context API calls made while consent is denied remain

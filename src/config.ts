@@ -91,7 +91,11 @@ export interface InitConfiguration {
    *
    * Use `'pending'` while waiting for the user's decision: data is collected in an isolated on-disk
    * buffer and is uploaded only if consent later becomes `'granted'`. Moving from `'pending'` to
-   * `'not-granted'` deletes that buffer. With `'not-granted'`, data is not collected or persisted.
+   * `'not-granted'` deletes that buffer. With `'not-granted'`, data is not collected or persisted,
+   * except that Electron's native crash reporter may write local `.dmp` files outside the SDK's
+   * consent-controlled batch storage.
+   * Renderer RUM/logs/telemetry are admitted at receipt; Browser collectors are not stopped.
+   * Browser views retain their original dates and cumulative metrics across consent changes.
    * @example trackingConsent: 'not-granted'
    */
   trackingConsent?: TrackingConsent;

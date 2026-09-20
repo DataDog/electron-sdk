@@ -99,13 +99,21 @@ setTrackingConsent('not-granted');
 
 With `pending`, data is collected into a separate local buffer but is never uploaded. Granting consent moves those batches
 to authorized storage and uploads them; rejecting consent deletes them. Pending storage has the same independent disk
-limit as authorized storage. With `not-granted`, the SDK neither collects nor persists new data. Previously authorized
+limit as authorized storage. With `not-granted`, the main process drops new events and does not persist them. Previously authorized
 batches remain eligible for upload after any later consent change.
+
+Native crash dumps are an exception: Electron's crash reporter may write local `.dmp` files while consent is `not-granted`.
+Those files are managed by Electron outside the SDK's consent-controlled batch storage.
 
 The session remains continuous when moving between `pending` and `granted`. Entering `not-granted` expires it, and moving
 from `not-granted` to either collecting state starts a fresh session. Consent is not persisted across application launches;
 stale pending data is deleted on the next SDK initialization. A `setTrackingConsent()` call made before `init()` takes
 precedence over the initial option.
+
+Renderer RUM events, logs and telemetry are admitted according to consent when the main process receives them. Browser view
+ids, dates and cumulative metrics are preserved, including metrics accumulated before consent was granted. The bridge does
+not stop the Browser SDK's collectors. After a denied interval, session replay waits for a fresh full snapshot, such as one
+produced by a new Browser view or page load; granting consent alone does not restart a playable recording.
 
 The pre-init bridge allows no renderer hosts. Call `init()` before creating renderer windows, using `pending` while the
 user's decision is unknown. A window loaded before `init()` keeps the fail-closed bridge configuration and must be reloaded
