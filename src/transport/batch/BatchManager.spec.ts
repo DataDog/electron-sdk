@@ -13,6 +13,7 @@ const {
   mockAuthorizedProducerFlush,
   mockPendingProducerFlush,
   mockPendingProducerClear,
+  mockPendingProducerClearAfterFlush,
   mockPendingProducerRunAfterFlush,
   mockConsumerUpload,
   mockProducerCreate,
@@ -29,6 +30,11 @@ const {
     await mockPendingProducerFlush();
     await operation();
   });
+  const mockPendingProducerClearAfterFlush = vi.fn(async (operation: () => Promise<void>) => {
+    await mockPendingProducerFlush();
+    await operation();
+    await mockPendingProducerClear();
+  });
   const mockConsumerUpload = vi.fn().mockResolvedValue(undefined);
   const authorizedProducer = {
     post: mockAuthorizedProducerPost,
@@ -40,6 +46,7 @@ const {
     post: mockPendingProducerPost,
     flush: mockPendingProducerFlush,
     clear: mockPendingProducerClear,
+    clearAfterFlush: mockPendingProducerClearAfterFlush,
     runAfterFlush: mockPendingProducerRunAfterFlush,
   };
   const createProducer = (config: { trackPath: string }) =>
@@ -53,6 +60,7 @@ const {
     mockAuthorizedProducerFlush,
     mockPendingProducerFlush,
     mockPendingProducerClear,
+    mockPendingProducerClearAfterFlush,
     mockPendingProducerRunAfterFlush,
     mockConsumerUpload,
     mockProducerCreate,
@@ -205,7 +213,7 @@ describe('BatchManager', () => {
 
       manager.post(event);
 
-      expect(mockPendingProducerPost).toHaveBeenCalledWith(event);
+      expect(mockPendingProducerPost).toHaveBeenCalledWith(event, expect.any(Promise));
       expect(mockAuthorizedProducerPost).not.toHaveBeenCalled();
     });
 
@@ -253,7 +261,7 @@ describe('BatchManager', () => {
       manager.post(event);
 
       expect(mockAuthorizedProducerPost).not.toHaveBeenCalled();
-      expect(mockPendingProducerPost).toHaveBeenCalledWith(event);
+      expect(mockPendingProducerPost).toHaveBeenCalledWith(event, expect.any(Promise));
     });
 
     it('authorizes a delayed pending event only when that pending interval was granted', async () => {
@@ -328,7 +336,7 @@ describe('BatchManager', () => {
 
       manager.post(event);
 
-      expect(mockPendingProducerPost).toHaveBeenCalledWith(event);
+      expect(mockPendingProducerPost).toHaveBeenCalledWith(event, expect.any(Promise));
       expect(mockAuthorizedProducerPost).not.toHaveBeenCalled();
     });
   });
@@ -434,7 +442,7 @@ describe('BatchManager', () => {
 
       state.update('pending');
 
-      expect(mockPendingProducerClear.mock.invocationCallOrder[0]).toBeLessThan(
+      expect(mockPendingProducerClearAfterFlush.mock.invocationCallOrder[0]).toBeLessThan(
         mockPendingProducerPost.mock.invocationCallOrder[0]
       );
     });
@@ -462,12 +470,48 @@ describe('BatchManager', () => {
       state.update('not-granted');
       await manager.flush();
 
-      mockPendingProducerClear.mockRejectedValueOnce(new Error('quarantine clear failed'));
       state.update('pending');
       state.update('granted');
       await manager.flush();
 
       expect(authorizePendingBatches).not.toHaveBeenCalled();
+      expect(mockPendingProducerClear).toHaveBeenCalledOnce();
+    });
+
+    it('does not clear granted pending batches until their detachment succeeds', async () => {
+      const { authorizePendingBatches } = await import('./trackingConsentStorage');
+      const error = new Error('directory busy');
+      vi.mocked(authorizePendingBatches).mockRejectedValue(error);
+      const state = createTrackingConsentState('pending');
+      const manager = await BatchManager.create(config, batchConfig, state);
+
+      state.update('granted');
+      state.update('pending');
+      const pendingEvent = {
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        data: { test: 'quarantined' },
+      } as unknown as ServerEvent;
+      manager.post(pendingEvent);
+      // Repeat the transition before any queued storage operation settles. A quarantined interval
+      // must not bypass the earlier authorization failure and clear its files.
+      state.update('granted');
+      state.update('pending');
+
+      await expect(manager.flush()).rejects.toBe(error);
+      expect(mockPendingProducerClearAfterFlush).toHaveBeenCalled();
+      expect(mockPendingProducerClear).not.toHaveBeenCalled();
+      const failedReadiness = mockPendingProducerPost.mock.calls[0][1] as Promise<boolean>;
+      await expect(failedReadiness).resolves.toBe(false);
+
+      vi.mocked(authorizePendingBatches).mockResolvedValue(undefined);
+      await manager.flush();
+      mockPendingProducerPost.mockClear();
+      manager.post(pendingEvent);
+
+      expect(mockPendingProducerClear).toHaveBeenCalledOnce();
+      const recoveredReadiness = mockPendingProducerPost.mock.calls[0][1] as Promise<boolean>;
+      await expect(recoveredReadiness).resolves.toBe(true);
     });
   });
 

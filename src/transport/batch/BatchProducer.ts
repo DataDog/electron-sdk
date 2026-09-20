@@ -36,8 +36,13 @@ export abstract class BatchProducer {
   }
 
   /** Enqueues data to be appended to the current batch file. Writes are serialized. */
-  post(data: unknown) {
+  post(data: unknown, storageReadiness?: Promise<boolean>) {
     void this.enqueueOperation(async () => {
+      // Consent transitions reserve their storage operation before later events are posted. Keep the
+      // write in that queue position, but abandon it if preparing its isolated interval failed.
+      if (storageReadiness && !(await storageReadiness)) {
+        return;
+      }
       try {
         await this.writeData(data);
       } catch (error) {
@@ -73,16 +78,35 @@ export abstract class BatchProducer {
    * consent-change notification before the application can emit its next event.
    */
   clear(): Promise<void> {
+    const operation = this.enqueueOperation(() => this.clearStorage());
+
+    void operation.catch((error) => {
+      display.error('Failed to clear batch storage', error);
+    });
+    return operation;
+  }
+
+  /**
+   * Seals accepted writes, runs a prerequisite, then clears storage only if it succeeded. This keeps
+   * authorized pending batches intact when their detachment fails before a new pending interval.
+   */
+  clearAfterFlush(prerequisite: () => Promise<void>): Promise<void> {
     const operation = this.enqueueOperation(async () => {
-      await fs.rm(this.trackPath, { recursive: true, force: true });
-      await fs.mkdir(this.trackPath, { recursive: true });
-      this.onStorageCleared();
+      await this.flushData();
+      await prerequisite();
+      await this.clearStorage();
     });
 
     void operation.catch((error) => {
       display.error('Failed to clear batch storage', error);
     });
     return operation;
+  }
+
+  private async clearStorage(): Promise<void> {
+    await fs.rm(this.trackPath, { recursive: true, force: true });
+    await fs.mkdir(this.trackPath, { recursive: true });
+    this.onStorageCleared();
   }
 
   /** Append an operation while keeping the queue usable if that operation rejects. */

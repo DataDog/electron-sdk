@@ -50,6 +50,9 @@ export class BatchManager {
   // quarantined and can never be authorized by a later grant.
   private pendingStoreReadiness: Promise<boolean> = Promise.resolve(true);
   private pendingAuthorizationReadiness: Promise<boolean> | undefined;
+  // An authorized interval whose directory could not be detached. Later pending intervals remain
+  // quarantined until a retry authorizes this data and clears the shared path.
+  private pendingAuthorizationRetry: Promise<boolean> | undefined;
   private trackingConsentSubscription: Subscription | undefined;
 
   private constructor(
@@ -112,7 +115,7 @@ export class BatchManager {
     if (consent === 'granted') {
       this.authorizedProducer.post(event);
     } else if (consent === 'pending') {
-      this.pendingProducer.post(event);
+      this.pendingProducer.post(event, this.pendingStoreReadiness);
     }
   }
 
@@ -195,12 +198,14 @@ export class BatchManager {
     try {
       await transitionsBeforeCycle;
       await this.authorizedProducer.flush();
+      const authorizationRetry = this.pendingAuthorizationRetry;
       const authorizationReadiness = this.pendingAuthorizationReadiness;
-      if (authorizationReadiness) {
-        await this.pendingProducer.runAfterFlush(() => this.authorizePendingStore(authorizationReadiness));
-        if (this.pendingAuthorizationReadiness === authorizationReadiness) {
-          this.pendingAuthorizationReadiness = undefined;
-        }
+      if (authorizationRetry) {
+        const recovery = this.recoverPendingAuthorization(authorizationRetry);
+        this.pendingStoreReadiness = toReadiness(recovery);
+        await recovery;
+      } else if (authorizationReadiness) {
+        await this.authorizePendingInterval(authorizationReadiness);
       } else {
         await this.pendingProducer.flush();
       }
@@ -218,26 +223,27 @@ export class BatchManager {
     if (change.previous === 'pending' && change.current === 'granted') {
       const authorizationReadiness = this.pendingStoreReadiness;
       this.pendingAuthorizationReadiness = authorizationReadiness;
-      // Reserve rotation + migration immediately. A subsequent transition back to pending queues its
-      // clear behind this operation, so accepted events cannot be deleted before being authorized.
-      reservedStorageOperation = this.pendingProducer
-        .runAfterFlush(() => this.authorizePendingStore(authorizationReadiness))
-        .then(() => {
-          if (this.pendingAuthorizationReadiness === authorizationReadiness) {
-            this.pendingAuthorizationReadiness = undefined;
-          }
-        });
+      // Reserve rotation + migration immediately. A subsequent transition queues its storage operation
+      // behind this one, so accepted events cannot be deleted before being authorized.
+      reservedStorageOperation = this.authorizePendingInterval(authorizationReadiness);
     } else if (change.current === 'pending') {
-      this.pendingAuthorizationReadiness = undefined;
-      // Reserve deletion immediately; posts following the synchronous state notification queue behind it.
-      reservedStorageOperation = this.pendingProducer.clear();
-      this.pendingStoreReadiness = reservedStorageOperation.then(
-        () => true,
-        () => false
-      );
-    } else if (change.previous === 'pending' && change.current === 'not-granted') {
-      this.pendingAuthorizationReadiness = undefined;
-      reservedStorageOperation = this.pendingProducer.clear();
+      const authorizationReadiness = this.takePendingAuthorization();
+      if (authorizationReadiness) {
+        reservedStorageOperation = this.recoverPendingAuthorization(authorizationReadiness);
+      } else {
+        const previousReadiness = this.pendingStoreReadiness;
+        reservedStorageOperation = this.pendingProducer.clearAfterFlush(() => requireReady(previousReadiness));
+      }
+      this.pendingStoreReadiness = toReadiness(reservedStorageOperation);
+    } else if (change.current === 'not-granted') {
+      const authorizationReadiness = this.takePendingAuthorization();
+      if (authorizationReadiness) {
+        reservedStorageOperation = this.recoverPendingAuthorization(authorizationReadiness);
+      } else {
+        const previousReadiness = this.pendingStoreReadiness;
+        reservedStorageOperation = this.pendingProducer.clearAfterFlush(() => requireReady(previousReadiness));
+      }
+      this.pendingStoreReadiness = toReadiness(reservedStorageOperation);
     }
 
     const previousTransition = this.transitionQueue;
@@ -256,6 +262,57 @@ export class BatchManager {
     if (await readiness) {
       await authorizePendingBatches(this.pendingPath, this.authorizedPath);
     }
+  }
+
+  private authorizePendingInterval(readiness: Promise<boolean>): Promise<void> {
+    return this.pendingProducer
+      .runAfterFlush(() => this.authorizePendingStore(readiness))
+      .then(
+        () => {
+          if (this.pendingAuthorizationReadiness === readiness) {
+            this.pendingAuthorizationReadiness = undefined;
+          }
+          if (this.pendingAuthorizationRetry === readiness) {
+            this.pendingAuthorizationRetry = undefined;
+          }
+        },
+        (error) => {
+          this.pendingAuthorizationRetry ??= readiness;
+          throw error;
+        }
+      );
+  }
+
+  private recoverPendingAuthorization(readiness: Promise<boolean>): Promise<void> {
+    return this.pendingProducer
+      .clearAfterFlush(async () => {
+        await requireReady(readiness);
+        await authorizePendingBatches(this.pendingPath, this.authorizedPath);
+      })
+      .then(
+        () => {
+          if (this.pendingAuthorizationReadiness === readiness) {
+            this.pendingAuthorizationReadiness = undefined;
+          }
+          if (this.pendingAuthorizationRetry === readiness) {
+            this.pendingAuthorizationRetry = undefined;
+          }
+        },
+        (error) => {
+          this.pendingAuthorizationRetry ??= readiness;
+          throw error;
+        }
+      );
+  }
+
+  private takePendingAuthorization(): Promise<boolean> | undefined {
+    // A failed authorization owns the shared directory. It must be recovered before considering a
+    // newer (necessarily quarantined) interval, otherwise that interval could clear the authorized data.
+    const readiness = this.pendingAuthorizationRetry ?? this.pendingAuthorizationReadiness;
+    if (readiness && this.pendingAuthorizationReadiness === readiness) {
+      this.pendingAuthorizationReadiness = undefined;
+    }
+    return readiness;
   }
 
   /**
@@ -296,6 +353,19 @@ export class BatchManager {
       return new ProfileBatchConsumer(consumerConfig);
     }
     return new StandardBatchConsumer(consumerConfig);
+  }
+}
+
+function toReadiness(operation: Promise<void>): Promise<boolean> {
+  return operation.then(
+    () => true,
+    () => false
+  );
+}
+
+async function requireReady(readiness: Promise<boolean>): Promise<void> {
+  if (!(await readiness)) {
+    throw new Error('Pending batch storage is quarantined');
   }
 }
 
