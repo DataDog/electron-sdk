@@ -24,7 +24,7 @@ describe('tracking consent storage', () => {
     expect(fs.rm).toHaveBeenCalledWith('/data/rum/pending', { recursive: true, force: true });
   });
 
-  it('moves only complete pending batches into authorized storage', async () => {
+  it('moves rotated and complete unrotated pending batches into authorized storage', async () => {
     vi.mocked(fs.readdir)
       .mockResolvedValueOnce([{ name: '.authorized-pending-migration-id', isDirectory: () => true }] as never)
       .mockResolvedValueOnce(['batch-1.log', 'batch-2.tmp'] as never);
@@ -36,6 +36,11 @@ describe('tracking consent storage', () => {
       2,
       '/data/rum/.authorized-pending-migration-id/batch-1.log',
       '/data/rum/batch-1-pending-migration-id-1.log'
+    );
+    expect(fs.rename).toHaveBeenNthCalledWith(
+      3,
+      '/data/rum/.authorized-pending-migration-id/batch-2.tmp',
+      '/data/rum/batch-2-pending-migration-id-2.log'
     );
   });
 

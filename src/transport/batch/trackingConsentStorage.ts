@@ -10,8 +10,10 @@ export async function clearBatchDirectory(directory: string): Promise<void> {
 }
 
 /**
- * Move completed pending batches into authorized storage. A unique suffix prevents overwriting an
- * authorized batch when independent producers happened to generate the same timestamp/sequence name.
+ * Move pending batches into authorized storage. The producer is flushed before this runs, so a `.tmp`
+ * file here is a complete batch whose final rotation rename failed and must be preserved as well.
+ * A unique suffix prevents overwriting an authorized batch when independent producers happened to
+ * generate the same timestamp/sequence name.
  */
 export async function authorizePendingBatches(pendingPath: string, authorizedPath: string): Promise<void> {
   await fs.mkdir(authorizedPath, { recursive: true });
@@ -56,14 +58,17 @@ async function migrateAuthorizedDirectory(
   authorizedPath: string,
   migrationId: string
 ): Promise<void> {
-  const files = (await fs.readdir(stagingPath)).filter((file) => file.endsWith('.log'));
+  const files = (await fs.readdir(stagingPath)).filter((file) => /\.(?:log|tmp)$/.test(file));
   for (const [index, file] of files.entries()) {
     const source = path.join(stagingPath, file);
     // Pending and authorized producers have independent filename sequences. Always move into a
     // namespace the authorized producer cannot generate: checking whether the original destination
     // exists before renaming would be racy and POSIX rename() can silently overwrite a file created
     // between that check and the move. Keeping the original name as the prefix preserves age sorting.
-    const destination = path.join(authorizedPath, file.replace(/\.log$/, `-pending-${migrationId}-${index + 1}.log`));
+    const destination = path.join(
+      authorizedPath,
+      file.replace(/\.(?:log|tmp)$/, `-pending-${migrationId}-${index + 1}.log`)
+    );
 
     // A failed rename leaves the source in pending storage so a later granted upload cycle can retry.
     // Let the failure propagate so the SDK reports it instead of silently stranding authorized data.
