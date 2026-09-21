@@ -30,6 +30,7 @@ export const BatchUploadFrequencies = {
 
 export type BatchSize = keyof typeof BatchSizes;
 export type UploadFrequency = keyof typeof BatchUploadFrequencies;
+export type TrackingConsent = 'granted' | 'not-granted' | 'pending';
 
 export interface TraceSamplingRule {
   /** Percentage of matching traces to keep, between 0 and 100. */
@@ -80,6 +81,18 @@ export interface InitConfiguration {
   env?: string;
   version?: string;
   sessionSampleRate?: number;
+  /**
+   * Whether the SDK may collect monitoring data. Defaults to `'granted'`.
+   *
+   * Use `'pending'` while waiting for the user's decision: data is written to isolated local batch files and is uploaded only if consent later becomes `'granted'`. Moving from `'pending'` to
+   * `'not-granted'` deletes those batches. With `'not-granted'`, data is not collected or persisted,
+   * except that Electron's native crash reporter may write local `.dmp` files outside the SDK's
+   * consent-controlled batch storage.
+   * Renderer RUM/logs/telemetry are admitted at receipt; Browser collectors are not stopped.
+   * Browser views retain their original dates and cumulative metrics across consent changes.
+   * @example trackingConsent: 'not-granted'
+   */
+  trackingConsent?: TrackingConsent;
   /**
    * Percentage of logs received from renderer processes to forward (0–100), defaults to `100`.
    * Applied independently to each bridged log.
@@ -162,6 +175,7 @@ export interface Configuration {
   version?: string;
   proxy?: string;
   sessionSampleRate: number;
+  trackingConsent: TrackingConsent;
   logsSampleRate: number;
   traceSampleRate: number;
   traceSamplingRules: TraceSamplingRule[];
@@ -256,6 +270,17 @@ function validateTraceSamplingRules(value: unknown): TraceSamplingRule[] | undef
   return value;
 }
 
+function validateTrackingConsent(value: unknown): TrackingConsent | undefined {
+  if (value === undefined || value === null) {
+    return 'granted';
+  }
+  if (!isTrackingConsent(value)) {
+    display.error(`Configuration error: 'trackingConsent' must be one of: ${VALID_TRACKING_CONSENTS.join(', ')}`);
+    return undefined;
+  }
+  return value;
+}
+
 function isValidTraceSamplingRule(value: unknown): value is TraceSamplingRule {
   if (!isIndexableObject(value)) {
     return false;
@@ -309,6 +334,12 @@ const VALID_PRIVACY_LEVELS: readonly DefaultPrivacyLevel[] = [
   DefaultPrivacyLevel.ALLOW,
   DefaultPrivacyLevel.MASK_USER_INPUT,
 ];
+
+const VALID_TRACKING_CONSENTS: readonly TrackingConsent[] = ['granted', 'not-granted', 'pending'];
+
+export function isTrackingConsent(value: unknown): value is TrackingConsent {
+  return isOneOf(value, VALID_TRACKING_CONSENTS);
+}
 
 function validateAllowedRendererHosts(value: unknown): string[] | undefined {
   if (
@@ -396,6 +427,7 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
 
   const proxy = validateOptionalString(initConfig.proxy);
   const sessionSampleRate = validateSampleRate(initConfig.sessionSampleRate, 'sessionSampleRate', 100);
+  const trackingConsent = validateTrackingConsent(initConfig.trackingConsent);
   const logsSampleRate = validateSampleRate(initConfig.logsSampleRate, 'logsSampleRate', 100);
   const traceSampleRate = validateSampleRate(initConfig.traceSampleRate, 'traceSampleRate', 100);
   const traceSamplingRules = validateTraceSamplingRules(initConfig.traceSamplingRules);
@@ -415,6 +447,7 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
 
   if (
     sessionSampleRate === undefined ||
+    trackingConsent === undefined ||
     logsSampleRate === undefined ||
     traceSampleRate === undefined ||
     traceSamplingRules === undefined ||
@@ -441,6 +474,7 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     version: validateOptionalString(initConfig.version),
     proxy,
     sessionSampleRate,
+    trackingConsent,
     logsSampleRate,
     traceSampleRate,
     traceSamplingRules,

@@ -36,8 +36,13 @@ export abstract class BatchProducer {
   }
 
   /** Enqueues data to be appended to the current batch file. Writes are serialized. */
-  post(data: unknown) {
-    this.writeQueue = this.writeQueue.then(async () => {
+  post(data: unknown, storageReadiness?: Promise<boolean>) {
+    void this.enqueueOperation(async () => {
+      // Consent transitions reserve their storage operation before later events are posted. Keep the
+      // write in that queue position, but abandon it if preparing its isolated interval failed.
+      if (storageReadiness && !(await storageReadiness)) {
+        return;
+      }
       try {
         await this.writeData(data);
       } catch (error) {
@@ -51,9 +56,50 @@ export abstract class BatchProducer {
     });
   }
 
-  /** Waits for all pending writes to complete. */
-  async flush() {
-    await this.writeQueue;
+  /** Waits for pending writes and seals any producer-specific open batch. */
+  flush(): Promise<void> {
+    return this.enqueueOperation(() => this.flushData());
+  }
+
+  /**
+   * Reserves a producer-queue operation that seals accepted writes and then runs a callback. Used to
+   * keep consent migrations ordered with later clears even when the app changes consent repeatedly.
+   */
+  runAfterFlush(operation: () => Promise<void>): Promise<void> {
+    return this.enqueueOperation(async () => {
+      await this.flushData();
+      await operation();
+    });
+  }
+
+  /**
+   * Seals accepted writes, runs a prerequisite, then clears storage only if it succeeded. This keeps
+   * authorized pending batches intact when their detachment fails before a new pending interval.
+   */
+  clearAfterFlush(prerequisite: () => Promise<void>): Promise<void> {
+    const operation = this.enqueueOperation(async () => {
+      await this.flushData();
+      await prerequisite();
+      await this.clearStorage();
+    });
+
+    void operation.catch((error) => {
+      display.error('Failed to clear batch storage', error);
+    });
+    return operation;
+  }
+
+  private async clearStorage(): Promise<void> {
+    await fs.rm(this.trackPath, { recursive: true, force: true });
+    await fs.mkdir(this.trackPath, { recursive: true });
+    this.onStorageCleared();
+  }
+
+  /** Append an operation while keeping the queue usable if that operation rejects. */
+  private enqueueOperation(operation: () => Promise<void>): Promise<void> {
+    const result = this.writeQueue.then(operation);
+    this.writeQueue = result.catch(() => undefined);
+    return result;
   }
 
   /** Ensures the track directory exists and rotates any orphaned `.tmp` files from prior sessions. */
@@ -127,6 +173,16 @@ export abstract class BatchProducer {
     } catch {
       // File doesn't exist or rename failed - silently ignore
     }
+  }
+
+  /** Reset subclass state that references files removed by {@link clearAfterFlush}. */
+  protected onStorageCleared(): void {
+    // Most producers do not retain file state between writes.
+  }
+
+  /** Seal producer-specific open data during {@link flush}. */
+  protected flushData(): Promise<void> {
+    return Promise.resolve();
   }
 
   protected abstract writeData(data: unknown): Promise<void>;
