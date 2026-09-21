@@ -3,18 +3,26 @@ import { BeforeSend, MainAssembly, RendererPipeline, createFormatHooks, register
 import { setDurationVitalApi } from './api';
 import type { AccountInfo, UserInfo } from './domain/customer-context';
 import { AccountContext, UserContext } from './domain/customer-context';
-import type { InitConfiguration } from './config';
-import { buildConfiguration } from './config';
+import type { InitConfiguration, TrackingConsent } from './config';
+import { buildConfiguration, isTrackingConsent } from './config';
 import type { ErrorOptions, FailureReason, FeatureOperationOptions } from './domain/rum';
 import { RumCollection } from './domain/rum';
 import { ReplayCollection } from './domain/replay';
 import { SessionManager } from './domain/session';
-import { addUsage, callMonitored, reportConfiguration, startTelemetry } from './domain/telemetry';
+import {
+  addError as addTelemetryError,
+  addUsage,
+  callMonitored,
+  reportConfiguration,
+  startTelemetry,
+} from './domain/telemetry';
 import { SpanProcessor } from './domain/tracing/SpanProcessor';
 import { Tracing } from './domain/tracing/Tracing';
 import { ProfilingCollection } from './domain/profiling';
+import { createTrackingConsentState, registerTrackingConsentContext } from './domain/tracking-consent';
 import { EventManager } from './event';
 import { BeforeQuitHandler } from './tools/BeforeQuitHandler';
+import { display } from './tools/display';
 import { Transport } from './transport';
 
 let sessionManager: SessionManager | undefined;
@@ -26,6 +34,7 @@ let userContext: UserContext | undefined;
 let accountContext: AccountContext | undefined;
 let replayCollection: ReplayCollection | undefined;
 let beforeQuitHandler: BeforeQuitHandler | undefined;
+const trackingConsentState = createTrackingConsentState();
 
 /**
  * Internal SDK context
@@ -45,33 +54,38 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
     return false;
   }
 
-  tracing = new Tracing(config);
+  // A value set through the public API before init takes precedence, matching the Browser SDK.
+  trackingConsentState.tryToInit(config.trackingConsent);
+  config.trackingConsent = trackingConsentState.get() ?? config.trackingConsent;
+
+  tracing = new Tracing(config, undefined, trackingConsentState);
 
   eventManager = new EventManager();
   const hooks = createFormatHooks();
 
   registerCommonContext(config, hooks);
-  userContext = await UserContext.init(hooks);
-  accountContext = await AccountContext.init(hooks);
-  startTelemetry(eventManager, config);
-  sessionManager = await SessionManager.start(eventManager, hooks, config);
+  registerTrackingConsentContext(hooks, trackingConsentState);
+  userContext = await UserContext.init(hooks, trackingConsentState);
+  accountContext = await AccountContext.init(hooks, trackingConsentState);
+  startTelemetry(eventManager, config, trackingConsentState);
+  sessionManager = await SessionManager.start(eventManager, hooks, config, trackingConsentState);
 
-  new MainAssembly(eventManager, hooks, new BeforeSend(config.beforeSendRum));
-  new ProfilingCollection(eventManager, sessionManager, config, hooks);
-  replayCollection = new ReplayCollection(eventManager, config, sessionManager, hooks);
+  new MainAssembly(eventManager, hooks, new BeforeSend(config.beforeSendRum), trackingConsentState);
+  new ProfilingCollection(eventManager, sessionManager, config, hooks, trackingConsentState);
+  replayCollection = new ReplayCollection(eventManager, config, sessionManager, hooks, trackingConsentState);
 
   if (tracing.enabled) {
-    new SpanProcessor(eventManager, hooks, config);
+    new SpanProcessor(eventManager, hooks, config, trackingConsentState);
   }
 
   // EventManager does not queue events that have no matching handler. Finish registering every
   // transport track before opening the renderer IPC listener, so an event received during init
   // cannot fall into the gap between RendererPipeline and Transport initialization.
-  transport = await Transport.create(config, eventManager);
+  transport = await Transport.create(config, eventManager, trackingConsentState);
 
-  new RendererPipeline(eventManager, hooks, config);
+  new RendererPipeline(eventManager, hooks, config, trackingConsentState);
 
-  const rum = await RumCollection.start(eventManager, hooks);
+  const rum = await RumCollection.start(eventManager, hooks, trackingConsentState);
   rumApi = rum.getApi();
   setDurationVitalApi(rumApi);
 
@@ -82,9 +96,36 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   // component whose state it describes must be constructed. Monitored so a failure anywhere in the
   // telemetry pipeline degrades telemetry rather than rejecting `init()`.
   const { telemetryInitialized: useTracing, version: tracerVersion } = tracing;
-  callMonitored(() => reportConfiguration(config, { useTracing, tracerVersion }));
+  trackingConsentState.onCollectionAuthorizedOnce(() => {
+    callMonitored(() => reportConfiguration(config, { useTracing, tracerVersion }));
+  });
 
   return true;
+}
+
+/**
+ * Update whether the SDK may collect monitoring data.
+ *
+ * With `pending`, events are kept in isolated local storage until consent is granted or rejected.
+ * Granting consent makes that data eligible for upload; rejecting it deletes the pending data and stops
+ * collection. The consent value is not persisted across application launches.
+ *
+ * A call made before {@link init} takes precedence over `init({ trackingConsent })`.
+ * @example
+ * setTrackingConsent('granted');
+ */
+export function setTrackingConsent(trackingConsent: TrackingConsent): void {
+  callMonitored(() => {
+    if (!isTrackingConsent(trackingConsent)) {
+      display.error("'setTrackingConsent' must be called with one of: granted, not-granted, pending");
+      return;
+    }
+    trackingConsentState.update(trackingConsent);
+    addUsage({ feature: 'set-tracking-consent', tracking_consent: trackingConsent });
+    if (trackingConsentState.isGranted()) {
+      void transport?.flush().catch(addTelemetryError);
+    }
+  });
 }
 
 /**
@@ -355,6 +396,7 @@ export type {
   ElectronEventSource,
   InitConfiguration,
   RumBeforeSend,
+  TrackingConsent,
   TraceSamplingRule,
 } from './config';
 export type {

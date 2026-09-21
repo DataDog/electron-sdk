@@ -6,9 +6,12 @@ import type { FormatHooks } from '../../../assembly';
 import { EventSource } from '../../../event';
 import { DiskValueHistory } from '../../../tools/DiskValueHistory';
 import { SESSION_TIME_OUT_DELAY } from '../../session';
+import type { TrackingConsent } from '../../../config';
+import type { TrackingConsentChange, TrackingConsentState } from '../../tracking-consent';
 
 export const VIEW_HISTORY_FILE_NAME = '_dd_view_history';
 
+/** Enriches events with the native view active at their context time, persisting only authorized history. */
 export class ViewContext {
   private readonly history: DiskValueHistory<string>;
 
@@ -53,10 +56,16 @@ export class ViewContext {
     });
   }
 
-  static async init(hooks: FormatHooks, expireDelay = SESSION_TIME_OUT_DELAY): Promise<ViewContext> {
+  static async init(
+    hooks: FormatHooks,
+    expireDelay = SESSION_TIME_OUT_DELAY,
+    trackingConsentState?: TrackingConsentState
+  ): Promise<ViewContext> {
     const filePath = path.join(app.getPath('userData'), VIEW_HISTORY_FILE_NAME);
     const history = await DiskValueHistory.init<string>({ filePath, expireDelay });
-    return new ViewContext(history, hooks);
+    const context = new ViewContext(history, hooks);
+    context.initializeTrackingConsent(trackingConsentState?.get());
+    return context;
   }
 
   add(id: string): void {
@@ -65,5 +74,38 @@ export class ViewContext {
 
   close(): void {
     this.history.closeActive(timeStampNow());
+  }
+
+  updateTrackingConsent(change: TrackingConsentChange, activeViewId?: string): void {
+    if (change.previous === 'pending') {
+      if (change.current === 'granted') {
+        this.history.commitPausedChanges();
+      } else {
+        this.history.discardPausedChanges();
+        this.history.pausePersistence();
+      }
+      return;
+    }
+
+    if (change.previous === 'not-granted') {
+      this.history.discardPausedChanges();
+      if (change.current === 'pending') {
+        this.history.pausePersistence();
+      }
+      return;
+    }
+
+    const now = timeStampNow();
+    this.history.closeActive(now);
+    this.history.pausePersistence();
+    if (change.current === 'pending' && activeViewId !== undefined) {
+      this.history.add(activeViewId, now);
+    }
+  }
+
+  private initializeTrackingConsent(consent: TrackingConsent | undefined): void {
+    if (consent === 'pending' || consent === 'not-granted') {
+      this.history.pausePersistence();
+    }
   }
 }

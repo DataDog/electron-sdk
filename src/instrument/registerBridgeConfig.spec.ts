@@ -30,7 +30,7 @@ describe('registerBridgeConfigResponder', () => {
     ipcMain.listeners[CONFIG_CHANNEL](event);
     expect(event.returnValue).toEqual({
       defaultPrivacyLevel: 'mask',
-      allowedRendererHosts: ['*', ''],
+      allowedRendererHosts: [],
       // 'records' is intentionally omitted from the pre-init fallback (replay must wait for the real config).
       capabilities: ['profiles'],
     });

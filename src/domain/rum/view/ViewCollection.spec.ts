@@ -23,8 +23,10 @@ import {
   type RawRumEvent,
 } from '../../../event';
 import { createFormatHooks, type FormatHooks } from '../../../assembly';
-import { createServerRumEvent, createServerRumView } from '../../../mocks.specUtil';
+import { createServerRumEvent, createServerRumView, createTestConfiguration } from '../../../mocks.specUtil';
 import { RawRumView, MainRumEvent } from '../types';
+import { SessionManager } from '../../session';
+import { createTrackingConsentState, type TrackingConsentState } from '../../tracking-consent';
 
 vi.mock('node:fs/promises');
 const mfs = mockFs();
@@ -37,6 +39,7 @@ describe('ViewCollection', () => {
   let hooks: FormatHooks;
   let viewCollection: ViewCollection;
   let rawRumEvents: RawRumEvent[];
+  let trackingConsentState: TrackingConsentState;
 
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -46,13 +49,14 @@ describe('ViewCollection', () => {
     eventManager = new EventManager();
     hooks = createFormatHooks();
     rawRumEvents = [];
+    trackingConsentState = createTrackingConsentState('granted');
 
     eventManager.registerHandler<RawRumEvent>({
       canHandle: (event): event is RawRumEvent => event.kind === EventKind.RAW && event.format === EventFormat.RUM,
       handle: (event) => rawRumEvents.push(event),
     });
 
-    viewCollection = await ViewCollection.start(eventManager, hooks);
+    viewCollection = await ViewCollection.start(eventManager, hooks, trackingConsentState);
   });
 
   afterEach(() => {
@@ -110,6 +114,79 @@ describe('ViewCollection', () => {
       expect(data._dd.document_version).toBe(2);
       expect(data.view.time_spent).toBe(SESSION_KEEP_ALIVE_INTERVAL * 1e6); // duration in ns
       expect(data.view.is_active).toBe(true);
+    });
+  });
+
+  describe('tracking consent boundaries', () => {
+    it('closes the current view and starts a new one when storage changes', () => {
+      const originalViewId = (rawRumEvents[0].data as RawRumView).view.id;
+      vi.advanceTimersByTime(10);
+
+      trackingConsentState.update('pending');
+
+      expect(rawRumEvents).toHaveLength(3);
+      const closedView = rawRumEvents[1].data as RawRumView;
+      expect(closedView._dd.document_version).toBe(2);
+      expect(closedView.view.time_spent).toBe(10 * 1e6);
+      expect(closedView.view.is_active).toBe(false);
+
+      const pendingView = rawRumEvents[2].data as RawRumView;
+      expect(pendingView.view.id).not.toBe(originalViewId);
+      expect(pendingView.view.is_active).toBe(true);
+      expect(pendingView._dd.document_version).toBe(1);
+    });
+
+    it.each(['granted', 'pending'] as const)(
+      'creates only one view when a consent change renews an expired %s session',
+      async (initialConsent) => {
+        viewCollection.stop();
+        hooks = createFormatHooks();
+        trackingConsentState = createTrackingConsentState(initialConsent);
+        const sessionManager = await SessionManager.start(
+          eventManager,
+          hooks,
+          createTestConfiguration(),
+          trackingConsentState
+        );
+        try {
+          viewCollection = await ViewCollection.start(eventManager, hooks, trackingConsentState);
+          sessionManager.expire();
+          rawRumEvents.length = 0;
+
+          trackingConsentState.update(initialConsent === 'granted' ? 'pending' : 'granted');
+
+          expect(rawRumEvents).toHaveLength(1);
+          const renewedView = rawRumEvents[0].data as RawRumView;
+          expect(renewedView.view.is_active).toBe(true);
+          expect(renewedView._dd.document_version).toBe(1);
+
+          sessionManager.expire();
+          expect(rawRumEvents).toHaveLength(2);
+          expect((rawRumEvents[1].data as RawRumView).view).toMatchObject({
+            id: renewedView.view.id,
+            is_active: false,
+          });
+        } finally {
+          sessionManager.stop();
+        }
+      }
+    );
+
+    it('closes the last uploaded view before consent is revoked', () => {
+      trackingConsentState.update('not-granted');
+
+      expect(rawRumEvents).toHaveLength(2);
+      expect((rawRumEvents[1].data as RawRumView).view.is_active).toBe(false);
+    });
+
+    it('does not create an initial view while consent is not granted', async () => {
+      viewCollection.stop();
+      rawRumEvents.length = 0;
+      trackingConsentState = createTrackingConsentState('not-granted');
+
+      viewCollection = await ViewCollection.start(eventManager, hooks, trackingConsentState);
+
+      expect(rawRumEvents).toEqual([]);
     });
   });
 
