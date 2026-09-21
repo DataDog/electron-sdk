@@ -23,8 +23,9 @@ import {
   type RawRumEvent,
 } from '../../../event';
 import { createFormatHooks, type FormatHooks } from '../../../assembly';
-import { createServerRumEvent, createServerRumView } from '../../../mocks.specUtil';
+import { createServerRumEvent, createServerRumView, createTestConfiguration } from '../../../mocks.specUtil';
 import { RawRumView, MainRumEvent } from '../types';
+import { SessionManager } from '../../session';
 import { createTrackingConsentState, type TrackingConsentState } from '../../tracking-consent';
 
 vi.mock('node:fs/promises');
@@ -134,6 +135,42 @@ describe('ViewCollection', () => {
       expect(pendingView.view.is_active).toBe(true);
       expect(pendingView._dd.document_version).toBe(1);
     });
+
+    it.each(['granted', 'pending'] as const)(
+      'creates only one view when a consent change renews an expired %s session',
+      async (initialConsent) => {
+        viewCollection.stop();
+        hooks = createFormatHooks();
+        trackingConsentState = createTrackingConsentState(initialConsent);
+        const sessionManager = await SessionManager.start(
+          eventManager,
+          hooks,
+          createTestConfiguration(),
+          trackingConsentState
+        );
+        try {
+          viewCollection = await ViewCollection.start(eventManager, hooks, trackingConsentState);
+          sessionManager.expire();
+          rawRumEvents.length = 0;
+
+          trackingConsentState.update(initialConsent === 'granted' ? 'pending' : 'granted');
+
+          expect(rawRumEvents).toHaveLength(1);
+          const renewedView = rawRumEvents[0].data as RawRumView;
+          expect(renewedView.view.is_active).toBe(true);
+          expect(renewedView._dd.document_version).toBe(1);
+
+          sessionManager.expire();
+          expect(rawRumEvents).toHaveLength(2);
+          expect((rawRumEvents[1].data as RawRumView).view).toMatchObject({
+            id: renewedView.view.id,
+            is_active: false,
+          });
+        } finally {
+          sessionManager.stop();
+        }
+      }
+    );
 
     it('closes the last uploaded view before consent is revoked', () => {
       trackingConsentState.update('not-granted');

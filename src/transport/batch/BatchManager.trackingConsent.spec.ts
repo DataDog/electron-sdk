@@ -51,6 +51,7 @@ describe('BatchManager tracking consent storage', () => {
   afterEach(async () => {
     manager?.stop();
     manager = undefined;
+    vi.restoreAllMocks();
     await fs.rm(basePath, { recursive: true, force: true });
   });
 
@@ -120,6 +121,57 @@ describe('BatchManager tracking consent storage', () => {
 
     expect(await logFiles(path.join(basePath, 'rum', 'pending'))).toEqual([]);
     expect(await logFiles(path.join(basePath, 'rum'))).toEqual([]);
+  });
+
+  it('deletes rejected files after a transient clear failure and only authorizes the next interval', async () => {
+    const state = createTrackingConsentState('pending');
+    manager = await BatchManager.create(config, createBatchConfig(), state);
+    const authorizedPath = path.join(basePath, 'rum');
+    const pendingPath = path.join(authorizedPath, 'pending');
+    manager.post(event('rejected'));
+    await manager.flush();
+    vi.spyOn(fs, 'rm').mockRejectedValueOnce(Object.assign(new Error('directory busy'), { code: 'EPERM' }));
+
+    state.update('not-granted');
+    await manager.flush();
+    expect(await storedValues(pendingPath)).toEqual(['rejected']);
+
+    state.update('pending');
+    manager.post(event('accepted'));
+    state.update('granted');
+    await manager.flush();
+
+    expect(await storedValues(pendingPath)).toEqual([]);
+    expect(await storedValues(authorizedPath)).toEqual(['accepted']);
+  });
+
+  it('recovers accepted files before clearing a later quarantined interval', async () => {
+    const state = createTrackingConsentState('pending');
+    manager = await BatchManager.create(config, createBatchConfig(), state);
+    const authorizedPath = path.join(basePath, 'rum');
+    const pendingPath = path.join(authorizedPath, 'pending');
+    manager.post(event('accepted'));
+    await manager.flush();
+    const rename = fs.rename.bind(fs);
+    const error = Object.assign(new Error('directory busy'), { code: 'EPERM' });
+    const renameSpy = vi.spyOn(fs, 'rename').mockImplementation(async (source, destination) => {
+      if (source === pendingPath) throw error;
+      await rename(source, destination);
+    });
+
+    state.update('granted');
+    state.update('pending');
+    manager.post(event('quarantined'));
+    state.update('granted');
+    state.update('not-granted');
+    state.update('pending');
+    await expect(manager.flush()).rejects.toBe(error);
+    expect(await storedValues(pendingPath)).toEqual(['accepted']);
+
+    renameSpy.mockRestore();
+    await manager.flush();
+    expect(await storedValues(authorizedPath)).toEqual(['accepted']);
+    expect(await storedValues(pendingPath)).toEqual([]);
   });
 
   it('preserves transition order when consent changes repeatedly without waiting', async () => {

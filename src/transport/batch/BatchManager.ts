@@ -226,23 +226,8 @@ export class BatchManager {
       // Reserve rotation + migration immediately. A subsequent transition queues its storage operation
       // behind this one, so accepted events cannot be deleted before being authorized.
       reservedStorageOperation = this.authorizePendingInterval(authorizationReadiness);
-    } else if (change.current === 'pending') {
-      const authorizationReadiness = this.takePendingAuthorization();
-      if (authorizationReadiness) {
-        reservedStorageOperation = this.recoverPendingAuthorization(authorizationReadiness);
-      } else {
-        const previousReadiness = this.pendingStoreReadiness;
-        reservedStorageOperation = this.pendingProducer.clearAfterFlush(() => requireReady(previousReadiness));
-      }
-      this.pendingStoreReadiness = toReadiness(reservedStorageOperation);
-    } else if (change.current === 'not-granted') {
-      const authorizationReadiness = this.takePendingAuthorization();
-      if (authorizationReadiness) {
-        reservedStorageOperation = this.recoverPendingAuthorization(authorizationReadiness);
-      } else {
-        const previousReadiness = this.pendingStoreReadiness;
-        reservedStorageOperation = this.pendingProducer.clearAfterFlush(() => requireReady(previousReadiness));
-      }
+    } else if (change.current === 'pending' || change.current === 'not-granted') {
+      reservedStorageOperation = this.recoverPendingAuthorization(this.takePendingAuthorization());
       this.pendingStoreReadiness = toReadiness(reservedStorageOperation);
     }
 
@@ -283,26 +268,28 @@ export class BatchManager {
       );
   }
 
-  private recoverPendingAuthorization(readiness: Promise<boolean>): Promise<void> {
-    return this.pendingProducer
-      .clearAfterFlush(async () => {
-        await requireReady(readiness);
-        await authorizePendingBatches(this.pendingPath, this.authorizedPath);
-      })
-      .then(
-        () => {
-          if (this.pendingAuthorizationReadiness === readiness) {
-            this.pendingAuthorizationReadiness = undefined;
-          }
-          if (this.pendingAuthorizationRetry === readiness) {
-            this.pendingAuthorizationRetry = undefined;
-          }
-        },
-        (error) => {
-          this.pendingAuthorizationRetry ??= readiness;
-          throw error;
-        }
-      );
+  private recoverPendingAuthorization(readiness?: Promise<boolean>): Promise<void> {
+    return this.pendingProducer.clearAfterFlush(async () => {
+      // A queued authorization may have failed since this clear was reserved. Recover its
+      // accepted data before deleting anything, even if a newer interval was quarantined.
+      const authorizationReadiness = this.pendingAuthorizationRetry ?? readiness;
+      if (!authorizationReadiness) return;
+
+      try {
+        await this.authorizePendingStore(authorizationReadiness);
+      } catch (error) {
+        this.pendingAuthorizationRetry ??= authorizationReadiness;
+        throw error;
+      }
+      if (this.pendingAuthorizationReadiness === authorizationReadiness) {
+        this.pendingAuthorizationReadiness = undefined;
+      }
+      if (this.pendingAuthorizationRetry === authorizationReadiness) {
+        this.pendingAuthorizationRetry = undefined;
+      }
+      // A failed preparation makes this interval ineligible for authorization, but must
+      // not prevent another deletion attempt. Only successful clears release new writes.
+    });
   }
 
   private takePendingAuthorization(): Promise<boolean> | undefined {
@@ -361,12 +348,6 @@ function toReadiness(operation: Promise<void>): Promise<boolean> {
     () => true,
     () => false
   );
-}
-
-async function requireReady(readiness: Promise<boolean>): Promise<void> {
-  if (!(await readiness)) {
-    throw new Error('Pending batch storage is quarantined');
-  }
 }
 
 function getBatchPaths(basePath: string, trackType: EventTrack): { authorizedPath: string; pendingPath: string } {

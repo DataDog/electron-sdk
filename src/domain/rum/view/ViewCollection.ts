@@ -84,9 +84,9 @@ export class ViewCollection {
       this.viewContext.updateTrackingConsent(change, this.currentView?.isActive ? this.currentView.id : undefined);
     });
     this.consentSubscription = this.trackingConsentState.observable.subscribe((change) => {
-      // SessionManager emits SESSION_RENEW for not-granted -> collecting transitions. Transitions
-      // between two collecting states keep the session but still need a fresh view for the new store.
-      if (change.previous !== 'not-granted' && change.current !== 'not-granted') {
+      // The boundary observer closed the previous view. A session renewal may already have
+      // created its replacement before this observer runs.
+      if (change.previous !== 'not-granted' && change.current !== 'not-granted' && !this.currentView?.isActive) {
         this.createNewView();
       }
     });

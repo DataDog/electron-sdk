@@ -26,15 +26,25 @@ const {
   const mockAuthorizedProducerClear = vi.fn().mockResolvedValue(undefined);
   const mockPendingProducerClear = vi.fn().mockResolvedValue(undefined);
   const mockAuthorizedProducerRunAfterFlush = vi.fn((operation: () => Promise<void>) => operation());
-  const mockPendingProducerRunAfterFlush = vi.fn(async (operation: () => Promise<void>) => {
-    await mockPendingProducerFlush();
-    await operation();
-  });
-  const mockPendingProducerClearAfterFlush = vi.fn(async (operation: () => Promise<void>) => {
-    await mockPendingProducerFlush();
-    await operation();
-    await mockPendingProducerClear();
-  });
+  let pendingQueue = Promise.resolve();
+  const enqueuePending = (operation: () => Promise<void>) => {
+    const result = pendingQueue.then(operation);
+    pendingQueue = result.catch(() => undefined);
+    return result;
+  };
+  const mockPendingProducerRunAfterFlush = vi.fn((operation: () => Promise<void>) =>
+    enqueuePending(async () => {
+      await mockPendingProducerFlush();
+      await operation();
+    })
+  );
+  const mockPendingProducerClearAfterFlush = vi.fn((operation: () => Promise<void>) =>
+    enqueuePending(async () => {
+      await mockPendingProducerFlush();
+      await operation();
+      await mockPendingProducerClear();
+    })
+  );
   const mockConsumerUpload = vi.fn().mockResolvedValue(undefined);
   const authorizedProducer = {
     post: mockAuthorizedProducerPost,
@@ -115,6 +125,7 @@ describe('BatchManager', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    mockPendingProducerClear.mockReset().mockResolvedValue(undefined);
     config = createTestConfiguration();
     batchConfig = createBatchConfig();
   });
@@ -465,7 +476,9 @@ describe('BatchManager', () => {
       const { authorizePendingBatches } = await import('./trackingConsentStorage');
       const state = createTrackingConsentState('pending');
       const manager = await BatchManager.create(config, batchConfig, state);
-      mockPendingProducerClear.mockRejectedValueOnce(new Error('denial clear failed'));
+      mockPendingProducerClear
+        .mockRejectedValueOnce(new Error('denial clear failed'))
+        .mockRejectedValueOnce(new Error('quarantine clear failed'));
 
       state.update('not-granted');
       await manager.flush();
@@ -475,7 +488,53 @@ describe('BatchManager', () => {
       await manager.flush();
 
       expect(authorizePendingBatches).not.toHaveBeenCalled();
-      expect(mockPendingProducerClear).toHaveBeenCalledOnce();
+      expect(mockPendingProducerClear).toHaveBeenCalledTimes(2);
+    });
+
+    it.each(['pending', 'not-granted'] as const)(
+      'retries a rejected store clear on entering %s',
+      async (nextConsent) => {
+        const { authorizePendingBatches } = await import('./trackingConsentStorage');
+        const state = createTrackingConsentState('pending');
+        const manager = await BatchManager.create(config, batchConfig, state);
+        mockPendingProducerClear.mockRejectedValueOnce(new Error('directory busy'));
+
+        state.update('not-granted');
+        await manager.flush();
+        state.update('granted');
+        await manager.flush();
+        state.update(nextConsent);
+        await manager.flush();
+
+        expect(mockPendingProducerClear).toHaveBeenCalledTimes(2);
+        expect(authorizePendingBatches).not.toHaveBeenCalled();
+
+        if (nextConsent === 'not-granted') {
+          state.update('pending');
+          await manager.flush();
+        }
+        const event = { kind: EventKind.SERVER, track: EventTrack.RUM, data: {} } as unknown as ServerEvent;
+        manager.post(event);
+        await expect(mockPendingProducerPost.mock.lastCall![1]).resolves.toBe(true);
+        state.update('granted');
+        await manager.flush();
+        expect(authorizePendingBatches).toHaveBeenCalledOnce();
+      }
+    );
+
+    it('cleans a rejected interval when its failed preparation is followed by grant and denial', async () => {
+      const { authorizePendingBatches } = await import('./trackingConsentStorage');
+      const state = createTrackingConsentState('granted');
+      const manager = await BatchManager.create(config, batchConfig, state);
+      mockPendingProducerClear.mockRejectedValueOnce(new Error('directory busy'));
+
+      state.update('pending');
+      state.update('granted');
+      state.update('not-granted');
+      await manager.flush();
+
+      expect(mockPendingProducerClear).toHaveBeenCalledTimes(2);
+      expect(authorizePendingBatches).not.toHaveBeenCalled();
     });
 
     it('does not clear granted pending batches until their detachment succeeds', async () => {
