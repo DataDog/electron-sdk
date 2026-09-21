@@ -79,7 +79,47 @@ await init({
 });
 ```
 
-> **Deferred init caveat:** if `init()` is called after some windows are already open (e.g. behind a user-consent gate), those windows keep the fallback bridge configuration (`defaultPrivacyLevel: 'mask'` and the default advertised capabilities) until they are reloaded. SDK telemetry is only processed and collected once `init()` runs — at that point the configured `allowedRendererHosts` is enforced on all messages uniformly, regardless of when each window loaded.
+If the end user's decision is not known yet, initialize the SDK with pending consent before creating windows, then report
+the decision at runtime:
+
+```ts
+import { init, setTrackingConsent } from '@datadog/electron-sdk';
+
+await init({
+  // ...
+  trackingConsent: 'pending',
+});
+
+// After the user opts in:
+setTrackingConsent('granted');
+
+// Or, after the user opts out:
+setTrackingConsent('not-granted');
+```
+
+With `pending`, data is written to separate local batch files but is never uploaded. Granting consent moves those batches
+to authorized storage and uploads them; rejecting consent deletes them. Pending storage has the same independent disk
+limit as authorized storage. With `not-granted`, the main process drops new events and does not persist them. Previously authorized
+batches remain eligible for upload after any later consent change.
+
+Native crash dumps are an exception: Electron's crash reporter may write local `.dmp` files while consent is `not-granted`.
+Those files are managed by Electron outside the SDK's consent-controlled batch storage.
+
+The session remains continuous when moving between `pending` and `granted`. Entering `not-granted` expires it, and moving
+from `not-granted` to either collecting state starts a fresh session. Consent is not persisted across application launches;
+stale pending data is deleted on the next SDK initialization. A `setTrackingConsent()` call made before `init()` takes
+precedence over the initial option.
+
+Renderer RUM events, logs and telemetry are admitted according to consent when the main process receives them. Browser view
+ids, dates and cumulative metrics are preserved, including metrics accumulated before consent was granted. The bridge does
+not stop the Browser SDK's collectors. After a denied interval, session replay waits for a fresh full snapshot, such as one
+produced by a new Browser view or page load; granting consent alone does not restart a playable recording.
+After a native session renews, an existing Browser view can remain associated with the earlier session in RUM.
+Starting a new Browser view or reloading the page restores a distinct view for the new session.
+
+The pre-init bridge allows no renderer hosts. Call `init()` before creating renderer windows, using `pending` while the
+user's decision is unknown. A window loaded before `init()` keeps the fail-closed bridge configuration and must be reloaded
+after initialization before it can send events.
 
 #### Renderer process setup
 
@@ -379,6 +419,12 @@ The Electron SDK advertises a `records` capability over the bridge, so the Brows
 
 Initialize the SDK. Returns `true` on success, `false` if configuration is invalid.
 
+### `setTrackingConsent(consent: 'granted' | 'not-granted' | 'pending'): void`
+
+Update permission to collect data at runtime. `pending` stores data locally without uploading it, `granted` authorizes and
+uploads pending data, and `not-granted` deletes pending data and collects nothing. The value is not persisted across
+launches.
+
 ### `setUserInfo(user: UserInfo & { id: string }): void`
 
 Set the user identity. The user is attached to all subsequent RUM events and spans. An `id` is required; calls without one are ignored with a warning.
@@ -503,25 +549,26 @@ interface FeatureOperationOptions {
 
 ### Configuration Options
 
-| Option                    | Type                                     | Required | Default    | Description                                                                                                                                                                          |
-| ------------------------- | ---------------------------------------- | -------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `clientToken`             | `string`                                 | Yes      | —          | Datadog client token                                                                                                                                                                 |
-| `applicationId`           | `string`                                 | Yes      | —          | RUM application ID                                                                                                                                                                   |
-| `site`                    | `string`                                 | Yes      | —          | Datadog site (e.g. `datadoghq.com`, `datadoghq.eu`, `us3.datadoghq.com`, `us5.datadoghq.com`, `ap1.datadoghq.com`, `ddog-gov.com`)                                                   |
-| `service`                 | `string`                                 | Yes      | —          | Service name                                                                                                                                                                         |
-| `env`                     | `string`                                 | No       | —          | Application environment                                                                                                                                                              |
-| `version`                 | `string`                                 | No       | —          | Application version                                                                                                                                                                  |
-| `sessionSampleRate`       | `number`                                 | No       | `100`      | Percentage of sessions to collect (0–100). `0` collects no sessions; `100` collects all sessions.                                                                                    |
-| `logsSampleRate`          | `number`                                 | No       | `100`      | Percentage of bridged renderer logs to forward (0–100), sampled independently per log. In bridge mode this replaces the Browser Logs `sessionSampleRate`.                            |
-| `traceSampleRate`         | `number`                                 | No       | `100`      | Percentage of main-process traces to keep when no `traceSamplingRules` rule matches (0–100).                                                                                         |
-| `traceSamplingRules`      | `TraceSamplingRule[]`                    | No       | `[]`       | Ordered sampling rules for main-process traces. The first matching rule determines the percentage of traces to keep; unmatched traces use `traceSampleRate`.                         |
-| `sessionReplaySampleRate` | `number`                                 | No       | `0`        | Percentage of sampled sessions that record session replay (0–100). `0` disables renderer session replay. Applied as a child of `sessionSampleRate`.                                  |
-| `profilingSampleRate`     | `number`                                 | No       | `0`        | Percentage of sampled sessions that are profiled (0–100). `0` disables renderer profiling. Applied as a child of `sessionSampleRate`. See [Renderer Profiling](#renderer-profiling). |
-| `batchSize`               | `'SMALL' \| 'MEDIUM' \| 'LARGE'`         | No       | `'MEDIUM'` | Byte threshold that rotates a batch file early: `SMALL` 16 KiB, `MEDIUM` 512 KiB, `LARGE` 4 MiB                                                                                      |
-| `uploadFrequency`         | `'RARE' \| 'NORMAL' \| 'FREQUENT'`       | No       | `'NORMAL'` | How often pending batches are uploaded, and the window over which events accumulate: `RARE` 30s, `NORMAL` 10s, `FREQUENT` 5s                                                         |
-| `defaultPrivacyLevel`     | `'mask' \| 'allow' \| 'mask-user-input'` | No       | `'mask'`   | Default privacy level for renderer session replay                                                                                                                                    |
-| `allowedRendererHosts`    | `string[]`                               | Yes      | —          | Hostnames allowed for the renderer bridge (required; see table below)                                                                                                                |
-| `beforeSendRum`           | `RumBeforeSend`                          | No       | —          | Modify or discard fully assembled main-process and renderer RUM events                                                                                                               |
+| Option                    | Type                                      | Required | Default     | Description                                                                                                                                                                          |
+| ------------------------- | ----------------------------------------- | -------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `clientToken`             | `string`                                  | Yes      | —           | Datadog client token                                                                                                                                                                 |
+| `applicationId`           | `string`                                  | Yes      | —           | RUM application ID                                                                                                                                                                   |
+| `site`                    | `string`                                  | Yes      | —           | Datadog site (e.g. `datadoghq.com`, `datadoghq.eu`, `us3.datadoghq.com`, `us5.datadoghq.com`, `ap1.datadoghq.com`, `ddog-gov.com`)                                                   |
+| `service`                 | `string`                                  | Yes      | —           | Service name                                                                                                                                                                         |
+| `env`                     | `string`                                  | No       | —           | Application environment                                                                                                                                                              |
+| `version`                 | `string`                                  | No       | —           | Application version                                                                                                                                                                  |
+| `sessionSampleRate`       | `number`                                  | No       | `100`       | Percentage of sessions to collect (0–100). `0` collects no sessions; `100` collects all sessions.                                                                                    |
+| `trackingConsent`         | `'granted' \| 'not-granted' \| 'pending'` | No       | `'granted'` | Initial permission to collect data. `pending` buffers locally without uploading; `not-granted` collects nothing. Update it with `setTrackingConsent()`.                              |
+| `logsSampleRate`          | `number`                                  | No       | `100`       | Percentage of bridged renderer logs to forward (0–100), sampled independently per log. In bridge mode this replaces the Browser Logs `sessionSampleRate`.                            |
+| `traceSampleRate`         | `number`                                  | No       | `100`       | Percentage of main-process traces to keep when no `traceSamplingRules` rule matches (0–100).                                                                                         |
+| `traceSamplingRules`      | `TraceSamplingRule[]`                     | No       | `[]`        | Ordered sampling rules for main-process traces. The first matching rule determines the percentage of traces to keep; unmatched traces use `traceSampleRate`.                         |
+| `sessionReplaySampleRate` | `number`                                  | No       | `0`         | Percentage of sampled sessions that record session replay (0–100). `0` disables renderer session replay. Applied as a child of `sessionSampleRate`.                                  |
+| `profilingSampleRate`     | `number`                                  | No       | `0`         | Percentage of sampled sessions that are profiled (0–100). `0` disables renderer profiling. Applied as a child of `sessionSampleRate`. See [Renderer Profiling](#renderer-profiling). |
+| `batchSize`               | `'SMALL' \| 'MEDIUM' \| 'LARGE'`          | No       | `'MEDIUM'`  | Byte threshold that rotates a batch file early: `SMALL` 16 KiB, `MEDIUM` 512 KiB, `LARGE` 4 MiB                                                                                      |
+| `uploadFrequency`         | `'RARE' \| 'NORMAL' \| 'FREQUENT'`        | No       | `'NORMAL'`  | How often pending batches are uploaded, and the window over which events accumulate: `RARE` 30s, `NORMAL` 10s, `FREQUENT` 5s                                                         |
+| `defaultPrivacyLevel`     | `'mask' \| 'allow' \| 'mask-user-input'`  | No       | `'mask'`    | Default privacy level for renderer session replay                                                                                                                                    |
+| `allowedRendererHosts`    | `string[]`                                | Yes      | —           | Hostnames allowed for the renderer bridge (required; see table below)                                                                                                                |
+| `beforeSendRum`           | `RumBeforeSend`                           | No       | —           | Modify or discard fully assembled main-process and renderer RUM events                                                                                                               |
 
 #### `traceSamplingRules`
 
