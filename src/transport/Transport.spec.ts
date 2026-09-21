@@ -4,6 +4,7 @@ import type { RawEvent, ServerEvent, ServerProfileEvent } from '../event';
 import { EventKind, EventTrack, EventManager } from '../event';
 import { createTestConfiguration } from '../mocks.specUtil';
 import { Transport } from './Transport';
+import { createTrackingConsentState } from '../domain/tracking-consent';
 
 vi.mock('electron', () => ({
   app: {
@@ -11,7 +12,7 @@ vi.mock('electron', () => ({
   },
 }));
 
-const { mockBatchPost, mockBatchFlush, mockBatchCreate } = vi.hoisted(() => {
+const { mockBatchPost, mockBatchFlush, mockBatchCreate, mockClearStalePendingData } = vi.hoisted(() => {
   const mockBatchPost = vi.fn();
   const mockBatchFlush = vi.fn().mockResolvedValue(undefined);
   const mockBatchCreate = vi.fn().mockResolvedValue({
@@ -20,12 +21,15 @@ const { mockBatchPost, mockBatchFlush, mockBatchCreate } = vi.hoisted(() => {
     stop: vi.fn(),
   });
 
-  return { mockBatchPost, mockBatchFlush, mockBatchCreate };
+  const mockClearStalePendingData = vi.fn().mockResolvedValue(undefined);
+
+  return { mockBatchPost, mockBatchFlush, mockBatchCreate, mockClearStalePendingData };
 });
 
 vi.mock('./batch', () => ({
   BatchManager: {
     create: mockBatchCreate,
+    clearStalePendingData: mockClearStalePendingData,
   },
 }));
 
@@ -51,6 +55,17 @@ describe('Transport', () => {
       await Transport.create(config, eventManager);
 
       expect(mockBatchCreate).toHaveBeenCalled();
+    });
+
+    it('clears stale pending data before applying track sampling configuration', async () => {
+      const configWithDisabledTracks = createTestConfiguration({
+        profilingSampleRate: 0,
+        sessionReplaySampleRate: 0,
+      });
+
+      await Transport.create(configWithDisabledTracks, eventManager);
+
+      expect(mockClearStalePendingData).toHaveBeenCalledWith('/mock/user/data');
     });
 
     it('should setup the PROFILE track when profiling is enabled', async () => {
@@ -167,7 +182,8 @@ describe('Transport', () => {
         configWithBatchSize,
         expect.objectContaining({
           batchSize: BatchSizes.SMALL,
-        })
+        }),
+        undefined
       );
     });
 
@@ -179,8 +195,19 @@ describe('Transport', () => {
         configWithFrequency,
         expect.objectContaining({
           uploadFrequency: BatchUploadFrequencies.FREQUENT,
-        })
+        }),
+        undefined
       );
+    });
+
+    it('passes the tracking consent state to every batch manager', async () => {
+      const state = createTrackingConsentState('not-granted');
+      await Transport.create(config, eventManager, state);
+
+      expect(mockBatchCreate.mock.calls).toHaveLength(5);
+      for (const call of mockBatchCreate.mock.calls) {
+        expect(call[2]).toBe(state);
+      }
     });
   });
 });

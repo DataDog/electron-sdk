@@ -10,23 +10,30 @@ import { correctedChildSampleRate, isSessionSampled } from '../../tools/Sampler'
 import { monitor } from '../telemetry';
 import type { QuotaReason, QuotaResult } from './quotaCheck';
 import { checkProfilingQuota } from './quotaCheck';
+import { createTrackingConsentState, type TrackingConsentState } from '../tracking-consent';
 
 // The browser SDK attaches its profiling context only to these event types (see the browser SDK's
 // profilingContext assemble hook), so electron scopes its contribution the same way to stay consistent.
 const PROFILING_EVENT_TYPES: readonly RumEventType[] = ['view', 'long_task', 'action', 'vital'];
 
+/** Applies native session sampling, quota and capture-time consent to renderer profiles. */
 export class ProfilingCollection {
   // Sessions denied by the backend quota, keyed by session id (value is the denial reason). A profile is
   // gated on the quota decision of the session that captured it, not the current one, so a profile flushed
   // after a renewal is still dropped if its own session was denied. Absence means "not denied" (allowed or
   // still pending the async check, i.e. optimistic).
   private readonly quotaDeniedSessions = new Map<string, QuotaReason>();
+  private readonly quotaCheckedSessions = new Set<string>();
+  private readonly pendingQuotaSessions = new Set<string>();
 
   constructor(
     eventManager: EventManager,
     private readonly sessionManager: Pick<SessionManager, 'getSession' | 'getTrackedSessionId'>,
     private readonly config: Configuration,
-    hooks: FormatHooks
+    hooks: FormatHooks,
+    private readonly trackingConsentState: TrackingConsentState = createTrackingConsentState(
+      config.trackingConsent ?? 'granted'
+    )
   ) {
     this.maybeCheckQuota();
 
@@ -38,9 +45,8 @@ export class ProfilingCollection {
       if (source !== EventSource.RENDERER || !PROFILING_EVENT_TYPES.includes(eventType)) {
         return SKIPPED;
       }
-      // Resolve the session that produced the event from its start time (as SessionContext does for
-      // `session.id`), so a delayed event crossing a renewal keeps the profiling context of its own session
-      // rather than the current one.
+      // RendererPipeline supplies receipt time, so profiling enrichment uses the same native
+      // session as the bridged RUM event. Profile payloads themselves retain capture-time attribution.
       const sessionId = this.sessionManager.getTrackedSessionId(startTime);
       if (sessionId === undefined) {
         return SKIPPED; // no tracked session covered this event; SessionContext discards it
@@ -78,13 +84,33 @@ export class ProfilingCollection {
         this.maybeCheckQuota();
       },
     });
+
+    this.trackingConsentState.observable.subscribe(
+      monitor((change) => {
+        if (change.current === 'not-granted') {
+          this.pendingQuotaSessions.clear();
+          return;
+        }
+        if (change.current !== 'granted') {
+          return;
+        }
+        for (const sessionId of this.pendingQuotaSessions) {
+          this.triggerQuotaCheck(sessionId);
+        }
+        this.pendingQuotaSessions.clear();
+        this.maybeCheckQuota();
+      })
+    );
   }
 
   // Trigger a quota check for the current session, but only when it is profiling-sampled (an unsampled
   // session never produces profiles, so its quota is irrelevant).
   private maybeCheckQuota(): void {
+    if (!this.trackingConsentState.isGranted()) {
+      return;
+    }
     const session = this.sessionManager.getSession();
-    if (this.isProfilingSampled(session.id)) {
+    if (session.status === 'active' && this.isProfilingSampled(session.id)) {
       this.triggerQuotaCheck(session.id);
     }
   }
@@ -97,6 +123,10 @@ export class ProfilingCollection {
   }
 
   private triggerQuotaCheck(sessionId: string): void {
+    if (this.quotaCheckedSessions.has(sessionId)) {
+      return;
+    }
+    this.quotaCheckedSessions.add(sessionId);
     void checkProfilingQuota(this.config, sessionId).then(
       monitor((result: QuotaResult) => {
         if (result.decision === 'quota_ko') {
@@ -115,12 +145,21 @@ export class ProfilingCollection {
     // profile if none covered it (window expired, or the session was not sampled). Sampling and the quota
     // decision are then evaluated for that session so they match the one that captured the profile.
     const captureTime = new Date(rawEvent.data.start).getTime() as TimeStamp;
+    const endTimeValue = new Date(rawEvent.data.end).getTime();
+    const endTime = (Number.isFinite(endTimeValue) ? endTimeValue : captureTime) as TimeStamp;
+    const storageConsent = this.trackingConsentState.resolveForStorageInterval(captureTime, endTime);
+    if (storageConsent !== 'granted' && storageConsent !== 'pending') {
+      return null;
+    }
     const sessionId = this.sessionManager.getTrackedSessionId(captureTime);
     if (sessionId === undefined || !this.isProfilingSampled(sessionId)) {
       return null;
     }
     if (this.quotaDeniedSessions.has(sessionId)) {
       return null;
+    }
+    if (storageConsent === 'pending') {
+      this.pendingQuotaSessions.add(sessionId);
     }
 
     return {
@@ -131,6 +170,7 @@ export class ProfilingCollection {
         application: { id: this.config.applicationId },
       }),
       trace: rawEvent.trace,
+      storageConsent,
     };
   }
 }

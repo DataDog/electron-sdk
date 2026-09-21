@@ -74,6 +74,7 @@ flowchart LR
     subgraph "Hook Providers"
         CC[commonContext]
         SC[sessionContext]
+        TC[trackingConsentContext]
         VC[viewContext]
         UC[userContext]
         AC[accountContext]
@@ -91,6 +92,7 @@ flowchart LR
     TEL -- RawTelemetryEvent --> COMBINE
     CC -. "application.id, service, ..." .-> HOOKS
     SC -. "session.id" .-> HOOKS
+    TC -. "drop while denied" .-> HOOKS
     VC -. "view.id, view.name, ..." .-> HOOKS
     UC -. "usr" .-> HOOKS
     AC -. "account" .-> HOOKS
@@ -143,6 +145,50 @@ passed to `beforeSendRum`.
 
 Hooks are used by different parts of the SDK to attach their context (e.g., `registerCommonContext` adds `application`, `service`; `sessionContext` adds `session.id`; `viewContext` adds `view.id`).
 
+Tracking consent supports the mobile SDKs' three states. `granted` collects into authorized storage and uploads it;
+`pending` collects into a separate per-track directory that the consumer never reads; `not-granted` has no active session
+and collects or persists nothing. A `pending → granted` transition drains pending writes, atomically detaches that interval
+from the reusable pending directory, and moves complete batches into authorized storage before upload. A partially failed
+migration remains detached and is retried without being exposed to a later pending clear. `pending → not-granted` drains concurrent writes and deletes the pending directory.
+Failed clears quarantine the pending store and are retried on upload cycles, even if consent stays denied.
+Entering `pending` also clears that destination first. At startup, stale pending data is deleted for every known track before
+sampling configuration selects active managers because consent is not persisted across processes. The pending and authorized
+producers each apply the normal disk cap independently.
+
+Sessions remain continuous across `pending ↔ granted`. Entering `not-granted` expires the session; leaving it for either
+collecting state creates a fresh one. Main-process events use their capture-time consent so asynchronous processing after a
+transition does not change their decision. Main-process views, profiles, spans/resources and duration vitals resolve every
+consent state crossed before completion; any rejected part drops the whole event, while an unresolved part keeps it pending.
+Collectors whose export can be delayed attach that resolved decision to the event before assembly.
+Main-process views emit a boundary snapshot so an authorized or pending portion is not lost when the next interval is rejected.
+Replay records are grouped by capture-time consent so delayed or out-of-order IPC cannot mix authorized and pending DOM data
+in one segment. Previously authorized batches remain eligible for upload after any consent change, matching iOS and Android.
+
+Like the mobile WebView bridges, `RendererPipeline` admits RUM events, logs and telemetry using the consent and native context
+at receipt. It preserves Browser view ids, dates, document versions, cumulative metrics and customer context. It does not
+reconstruct Browser views or adjust their counters after `beforeSendRum`. The admission interval is retained across callbacks:
+a rejected pending event cannot be authorized by a later grant, including transitions within the same millisecond.
+
+The bridge does not propagate consent changes to the Browser SDK's collectors. Consequently, a Browser view update received
+after grant may still contain its original start date and cumulative metrics from before grant. Events received while denied
+are dropped. After denial, replay waits for a new full snapshot for each Browser view; standalone mutations cannot reconstruct
+the page. Metadata and focus records immediately preceding the snapshot are retained. Resuming consent alone does not request
+a snapshot from the Browser SDK; a new view or page load can provide one. Profiles and replay retain capture-time checks because
+their payloads can contain buffered samples or DOM records from a denied interval.
+
+A native session renewal does not renew the Browser view. Reusing its id and start date across native sessions can
+collide at view indexing, even though child events carry the new session id. A new Browser view or page load avoids
+that collision. Resolving this requires coordinating Browser view lifecycle with native session renewal; the bridge
+does not synthesize replacement ids, counters or replay metadata.
+
+HTTP trace propagation requires both a sampled session and granted consent. A process-global live check shares this
+decision between the SDK and the separate instrumentation bundle. Electron net and dd-trace's Node HTTP integrations
+apply the same check, while retaining local spans so pending RUM resources can be uploaded after authorization.
+
+Disk-backed session, view, user, and account histories are paused while consent is pending. Granting commits the pending
+interval; denying restores the last authorized checkpoint. Customer-context API calls made while consent is denied remain
+in memory, and a later grant starts their persisted history at the grant boundary.
+
 See `src/assembly/` and `src/assembly/commonContext.ts`.
 
 ## Error Reporting
@@ -183,8 +229,9 @@ Each type is gated by its own sampling, deduplication and rate-limiting policy:
 - **Rate limiting** caps a session at 100 events. `configuration` events are exempt: there is at most
   one per process and it must not be starved by a burst of errors.
 
-The configuration event is reported at the end of `init()` — the transport must be registered for it
-to reach a batch, and every component whose state it describes must be constructed. It reports
+The configuration event is reported once all components are constructed and tracking consent first permits collection
+(`pending` or `granted`). The transport must be registered for it to reach the appropriate batch, and an instance that
+remains `not-granted` should not count as actual SDK adoption. It reports
 _effective_ values (`src/domain/telemetry/configurationTelemetry.ts`): an unset option still produces
 behaviour, so defaults are resolved rather than reported as absent.
 
@@ -327,11 +374,11 @@ The SDK injects a preload script (`@datadog/electron-sdk/preload`) into every re
 
 The preload fetches bridge configuration from the main process synchronously at load time via a `datadog:bridge-config` IPC request. This config drives renderer behavior: `defaultPrivacyLevel`, `allowedRendererHosts`, and the advertised `capabilities` (the bridge features the Browser SDK may use, e.g. profiling or session replay).
 
-The responder is registered at **instrument time** (when `@datadog/electron-sdk/instrument` loads), backed by a process-global holder keyed with `Symbol.for('@datadog/electron-sdk:bridgeConfig')`. The holder is seeded with fallback values (`defaultPrivacyLevel: 'mask'`, `allowedRendererHosts: ['*', '']`, and capabilities advertising the SDK's supported features) so the bridge works immediately, even before `init()` runs. When `init()` executes, `RendererPipeline` calls `setBridgeConfig` to replace the holder's value with the real configuration.
+The responder is registered at **instrument time** (when `@datadog/electron-sdk/instrument` loads), backed by a process-global holder keyed with `Symbol.for('@datadog/electron-sdk:bridgeConfig')`. The holder is seeded with fail-closed fallback values (`defaultPrivacyLevel: 'mask'`, `allowedRendererHosts: []`, and capabilities advertising the SDK's supported features). Call `init()` before creating renderer windows, using `trackingConsent: 'pending'` while the user's decision is unknown. When `init()` executes, `RendererPipeline` calls `setBridgeConfig` to replace the holder's value with the real configuration.
 
 The process-global (`Symbol.for`) is required because `instrument` and the `init()` bundle are separate CommonJS module instances: a module-level variable would not be shared between them, so they would always read the fallback.
 
-Advertised capabilities tell the Browser SDK which bridge features it may use, but the Electron SDK configuration stays authoritative for what is actually sent to Datadog: the main process gates delivery regardless of what a renderer advertised. Narrowing the advertised capabilities from config (for example when a feature is disabled) is therefore an opportunistic optimization to avoid unnecessary renderer-side work, not a data-control mechanism. Combined with the read-once behavior, a window opened before `init()` keeps the fallback capabilities until it reloads, so it may briefly do work for a capability the config would have narrowed; delivery is still gated by the main process.
+Advertised capabilities tell the Browser SDK which bridge features it may use, but the Electron SDK configuration stays authoritative for what is actually sent to Datadog: the main process gates delivery regardless of what a renderer advertised. Narrowing the advertised capabilities from config (for example when a feature is disabled) is therefore an opportunistic optimization to avoid unnecessary renderer-side work, not a data-control mechanism. Combined with the read-once behavior, a window opened before `init()` keeps the fail-closed host allowlist and fallback capabilities until it reloads. It cannot send bridge events before that reload; after initialization, delivery is still gated by the main process.
 
 ### Bundler plugins
 

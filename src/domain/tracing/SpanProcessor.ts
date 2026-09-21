@@ -11,6 +11,8 @@ import { RawRumResource } from '../rum';
 import { monitor } from '../telemetry';
 import { NsTimeStamp, RawSpanData, RawTraceData } from './rawTracingData.types';
 import { Tracing } from './Tracing';
+import { createTrackingConsentState, type TrackingConsentState } from '../tracking-consent';
+import type { TrackingConsent } from '../../config';
 
 /**
  * Structure of spans exported by dd-trace electron exporter.
@@ -51,7 +53,10 @@ export class SpanProcessor {
   constructor(
     private eventManager: EventManager,
     private hooks: FormatHooks,
-    config: Configuration
+    config: Configuration,
+    private readonly trackingConsentState: TrackingConsentState = createTrackingConsentState(
+      config.trackingConsent ?? 'granted'
+    )
   ) {
     this.env = config.env ?? '';
     this.service = config.service;
@@ -72,7 +77,11 @@ export class SpanProcessor {
   }
 
   private processTrace(trace: ExportedSpan[]): void {
-    const processedSpans: RawSpanData[] = [];
+    const processedSpans: {
+      span: RawSpanData;
+      startTime: TimeStamp;
+      endTime: TimeStamp;
+    }[] = [];
     const traceSampled = Tracing.isTraceSampled(trace);
 
     for (const exportedSpan of trace) {
@@ -80,22 +89,51 @@ export class SpanProcessor {
         continue;
       }
       const span = toRawSpan(exportedSpan, this.service);
-      const hookResult = this.hooks.triggerSpan({ startTime: toTimeStamp(span.start), source: EventSource.MAIN });
+      const startTime = toTimeStamp(span.start);
+      const endTime = (startTime + span.duration / 1e6) as TimeStamp;
+      const initialStorageConsent = this.trackingConsentState.resolveForStorageInterval(startTime, endTime);
+      if (initialStorageConsent !== 'granted' && initialStorageConsent !== 'pending') {
+        continue;
+      }
+      const hookResult = this.hooks.triggerSpan({ startTime, source: EventSource.MAIN });
       if (hookResult === DISCARDED) {
         continue;
       }
 
       if (isHttpSpan(exportedSpan)) {
-        this.emitResource(spanToResource(exportedSpan, traceSampled));
+        this.emitResource(spanToResource(exportedSpan, traceSampled), initialStorageConsent);
       }
 
       if (traceSampled) {
-        processedSpans.push(combine(span, hookResult));
+        // Emitting the RUM resource runs customer beforeSend callbacks synchronously. Re-resolve after
+        // those callbacks so a consent revocation cannot persist the span with the stale decision.
+        const storageConsent = this.trackingConsentState.resolveForStorageInterval(startTime, endTime);
+        if (storageConsent !== 'granted' && storageConsent !== 'pending') {
+          continue;
+        }
+        processedSpans.push({ span: combine(span, hookResult), startTime, endTime });
       }
     }
 
-    const processedTrace = { env: this.env, spans: processedSpans };
-    this.emitServerSpansEvent(processedTrace);
+    const spansByConsent = new Map<'granted' | 'pending', RawSpanData[]>();
+    for (const processedSpan of processedSpans) {
+      // A later span in the same trace may have synchronously changed consent. Resolve every interval
+      // again only after all callbacks have completed so earlier spans cannot retain a stale decision.
+      const storageConsent = this.trackingConsentState.resolveForStorageInterval(
+        processedSpan.startTime,
+        processedSpan.endTime
+      );
+      if (storageConsent !== 'granted' && storageConsent !== 'pending') {
+        continue;
+      }
+      const spans = spansByConsent.get(storageConsent) ?? [];
+      spans.push(processedSpan.span);
+      spansByConsent.set(storageConsent, spans);
+    }
+
+    for (const [storageConsent, spans] of spansByConsent) {
+      this.emitServerSpansEvent({ env: this.env, spans }, storageConsent);
+    }
   }
 
   private isIntakeRequest(span: ExportedSpan): boolean {
@@ -118,22 +156,25 @@ export class SpanProcessor {
     }
   }
 
-  private emitResource(resource: RawRumResource): void {
+  private emitResource(resource: RawRumResource, storageConsent: TrackingConsent): void {
     this.eventManager.notify({
       kind: EventKind.RAW,
       format: EventFormat.RUM,
       data: resource,
       startTime: resource.date,
+      consentTime: resource.date + resource.resource.duration / 1e6,
+      storageConsent,
     });
   }
 
-  private emitServerSpansEvent(trace: RawTraceData): void {
+  private emitServerSpansEvent(trace: RawTraceData, storageConsent: TrackingConsent): void {
     if (trace.spans.length === 0) return;
     this.eventManager.notify({
       kind: EventKind.SERVER,
       track: EventTrack.SPANS,
       source: EventSource.MAIN,
       data: trace,
+      storageConsent,
     });
   }
 

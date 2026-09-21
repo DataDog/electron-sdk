@@ -3,6 +3,9 @@ import { type TimeStamp, timeStampNow } from '@datadog/js-core/time';
 import { isEmptyObject } from '@datadog/browser-core';
 import { display } from '../../tools/display';
 import { initContextHistory } from './contextHistory';
+import { monitor } from '../telemetry';
+import type { TrackingConsent } from '../../config';
+import type { TrackingConsentChange, TrackingConsentState } from '../tracking-consent';
 
 export type Context = Record<string, unknown>;
 
@@ -12,6 +15,9 @@ export interface ContextHistory {
   closeAndAdd(value: Context, atTime: TimeStamp): void;
   pruneAndPersist(): void;
   find(startTime: TimeStamp): Context | undefined;
+  pausePersistence(): void;
+  commitPausedChanges(): void;
+  discardPausedChanges(): void;
 }
 
 /**
@@ -45,8 +51,14 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
   constructor(
     private readonly name: string,
     private readonly propertiesConfig: PropertiesConfig = {},
-    private readonly history?: ContextHistory
-  ) {}
+    private readonly history?: ContextHistory,
+    trackingConsentState?: TrackingConsentState
+  ) {
+    if (history && trackingConsentState) {
+      this.initializeTrackingConsent(trackingConsentState.get());
+      trackingConsentState.observable.subscribe(monitor((change) => this.updateTrackingConsent(change)));
+    }
+  }
 
   /**
    * Returns the flat context (standard fields plus extra attributes). Used by format hooks to
@@ -148,6 +160,50 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
       this.history.pruneAndPersist();
     } else {
       this.history.closeAndAdd(deepClone(this.getCurrentContext()), now);
+    }
+  }
+
+  private initializeTrackingConsent(consent: TrackingConsent | undefined): void {
+    if (consent === 'pending' || consent === 'not-granted') {
+      this.history?.pausePersistence();
+    }
+  }
+
+  private updateTrackingConsent(change: TrackingConsentChange): void {
+    if (!this.history) return;
+
+    if (change.previous === 'pending') {
+      if (change.current === 'granted') {
+        this.history.commitPausedChanges();
+      } else {
+        this.history.discardPausedChanges();
+        this.history.pausePersistence();
+      }
+      return;
+    }
+
+    if (change.previous === 'not-granted') {
+      this.history.discardPausedChanges();
+      if (change.current === 'granted') {
+        this.recordCurrentContext();
+      } else {
+        this.startInMemoryHistory(true);
+      }
+      return;
+    }
+
+    this.startInMemoryHistory(change.current === 'pending');
+  }
+
+  /** Close authorized history, then keep the next interval in memory only. */
+  private startInMemoryHistory(includeCurrentContext: boolean): void {
+    if (!this.history) return;
+
+    const now = timeStampNow();
+    this.history.closeActive(now);
+    this.history.pausePersistence();
+    if (includeCurrentContext && !this.isEmpty()) {
+      this.history.add(deepClone(this.getCurrentContext()), now);
     }
   }
 }

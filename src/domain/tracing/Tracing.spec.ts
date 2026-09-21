@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { setCurrentSessionSampled } from '../../common';
+import { isTracePropagationAllowed, setCurrentSessionSampled } from '../../common';
 import { createTestConfiguration } from '../../mocks.specUtil';
 import { Tracing } from './Tracing';
+import { createTrackingConsentState } from '../tracking-consent';
 
 function createTracerRequire() {
   const init = vi.fn();
@@ -114,6 +115,31 @@ describe('Tracing', () => {
     expect(propagationBlocklist()).toBe(false);
     setCurrentSessionSampled(false);
     expect(propagationBlocklist()).toBe(true);
+  });
+
+  it('blocks trace propagation until tracking consent is granted', () => {
+    const { requireFn, use } = createTracerRequire();
+    const state = createTrackingConsentState('pending');
+
+    new Tracing(createTestConfiguration(), requireFn, state);
+
+    const propagationBlocklist = (use.mock.calls[0][1] as { propagationBlocklist: () => boolean }).propagationBlocklist;
+    expect(propagationBlocklist()).toBe(true);
+
+    state.update('granted');
+    expect(propagationBlocklist()).toBe(false);
+
+    state.update('pending');
+    expect(propagationBlocklist()).toBe(true);
+    expect(isTracePropagationAllowed()).toBe(false);
+
+    state.update('not-granted');
+    expect(propagationBlocklist()).toBe(true);
+
+    state.update('granted');
+    expect(isTracePropagationAllowed()).toBe(true);
+    setCurrentSessionSampled(false);
+    expect(isTracePropagationAllowed()).toBe(false);
   });
 
   it('flushes the dd-trace exporter', async () => {

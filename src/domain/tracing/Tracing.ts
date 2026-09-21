@@ -1,8 +1,9 @@
 import { createRequire } from 'node:module';
 import type { SamplingRule } from 'dd-trace';
-import { isCurrentSessionSampled } from '../../common';
+import { isCurrentSessionSampled, isTracePropagationAllowed, setTracePropagationCheck } from '../../common';
 import { addError } from '../telemetry';
 import type { Configuration, TraceSamplingRule } from '../../config';
+import type { TrackingConsentState } from '../tracking-consent';
 
 const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
 
@@ -31,6 +32,7 @@ function readTracerVersion(requireFn: NodeRequire): string | undefined {
   }
 }
 
+/** Configures dd-trace sampling, consent-aware propagation and exporter flushing. */
 export class Tracing {
   enabled = false;
   /**
@@ -43,7 +45,10 @@ export class Tracing {
   version: string | undefined;
   private exporter: ExporterWithFlush | undefined;
 
-  constructor(config: Configuration, requireFn: NodeRequire = _require) {
+  constructor(config: Configuration, requireFn: NodeRequire = _require, trackingConsentState?: TrackingConsentState) {
+    setTracePropagationCheck(
+      () => isCurrentSessionSampled() && (trackingConsentState?.isGranted() ?? config.trackingConsent === 'granted')
+    );
     try {
       const tracer = (requireFn('dd-trace') as { default: typeof import('dd-trace').default }).default;
 
@@ -63,12 +68,12 @@ export class Tracing {
       });
 
       // dd-trace owns global fetch and node:http instrumentation. Prevent those integrations from
-      // propagating trace context for rejected RUM sessions while keeping their local HTTP spans,
-      // which SpanProcessor uses to produce RUM resources.
-      const blockPropagationForUnsampledSession = () => !isCurrentSessionSampled();
-      tracer.use('fetch', { propagationBlocklist: blockPropagationForUnsampledSession });
+      // propagating trace context without granted consent or for rejected RUM sessions, while keeping
+      // their local HTTP spans, which SpanProcessor uses to produce RUM resources.
+      const blockPropagation = () => !isTracePropagationAllowed();
+      tracer.use('fetch', { propagationBlocklist: blockPropagation });
       tracer.use('http', {
-        client: { propagationBlocklist: blockPropagationForUnsampledSession },
+        client: { propagationBlocklist: blockPropagation },
       });
 
       // Service/env/version are set per-span by SpanProcessor.

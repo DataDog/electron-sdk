@@ -1,7 +1,7 @@
 import ddTrace from '../entries/instrument-prelude';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { callMonitored, monitorInstrumentation, monitor } from '../domain/telemetry';
-import { isCurrentSessionSampled } from '../common';
+import { isTracePropagationAllowed } from '../common';
 
 interface PatchableNet {
   fetch?: (input: string | Request, init?: RequestInit) => Promise<Response>;
@@ -49,7 +49,7 @@ export function patchNet(net: Electron.Net): void {
             },
           });
 
-          if (isCurrentSessionSampled()) {
+          if (isTracePropagationAllowed()) {
             const carrier: Record<string, string> = {};
             ddTrace.inject(span, 'http_headers', carrier);
 
@@ -144,7 +144,7 @@ export function patchNet(net: Electron.Net): void {
           },
         });
 
-        if (isCurrentSessionSampled()) {
+        if (isTracePropagationAllowed()) {
           const carrier: Record<string, string> = {};
           ddTrace.inject(span, 'http_headers', carrier);
           if (shouldPropagateTrace(carrier)) {

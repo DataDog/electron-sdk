@@ -8,6 +8,7 @@ import {
   type PropertiesConfig,
 } from './contextManager';
 import type { FormatHooks } from '../../assembly';
+import type { TrackingConsentState } from '../tracking-consent';
 
 export interface AccountInfo {
   id: string;
@@ -26,12 +27,15 @@ export const ACCOUNT_CONTEXT_HISTORY_FILE_NAME = '_dd_account_context_history';
  * Stores account information and injects it as `account` into RUM events and `account.*` tags into spans.
  */
 export class AccountContext extends ContextManager<AccountInfo> {
-  static init(hooks: FormatHooks): Promise<AccountContext> {
-    return initContextWithHistory((history) => new AccountContext(hooks, history), ACCOUNT_CONTEXT_HISTORY_FILE_NAME);
+  static init(hooks: FormatHooks, trackingConsentState?: TrackingConsentState): Promise<AccountContext> {
+    return initContextWithHistory(
+      (history) => new AccountContext(hooks, history, trackingConsentState),
+      ACCOUNT_CONTEXT_HISTORY_FILE_NAME
+    );
   }
 
-  constructor(hooks: FormatHooks, history?: ContextHistory) {
-    super('account', ACCOUNT_PROPERTIES, history);
+  constructor(hooks: FormatHooks, history?: ContextHistory, trackingConsentState?: TrackingConsentState) {
+    super('account', ACCOUNT_PROPERTIES, history, trackingConsentState);
     hooks.registerRum(({ eventType, startTime }) => {
       // View updates retain the view's original start time, but should reflect the customer context
       // active when the update is emitted. Other events use history for start-time attribution.
