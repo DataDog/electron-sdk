@@ -3,6 +3,7 @@ import { type TimeStamp, timeStampNow } from '@datadog/js-core/time';
 import { isEmptyObject } from '@datadog/browser-core';
 import { display } from '../../tools/display';
 import { initContextHistory } from './contextHistory';
+import { monitor } from '../telemetry';
 import type { TrackingConsent } from '../../config';
 import type { TrackingConsentChange, TrackingConsentState } from '../tracking-consent';
 
@@ -55,7 +56,7 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
   ) {
     if (history && trackingConsentState) {
       this.initializeTrackingConsent(trackingConsentState.get());
-      trackingConsentState.observable.subscribe((change) => this.updateTrackingConsent(change));
+      trackingConsentState.observable.subscribe(monitor((change) => this.updateTrackingConsent(change)));
     }
   }
 

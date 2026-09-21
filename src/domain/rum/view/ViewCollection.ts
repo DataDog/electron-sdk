@@ -190,7 +190,7 @@ export class ViewCollection {
     }
 
     const type = event.data.type;
-    if (type === 'error' || type === 'resource') {
+    if ((type === 'error' || type === 'resource') && event.data.view.id === this.currentView.id) {
       this.currentView.counters[type].count++;
       this.currentView.documentVersion++;
       this.scheduleViewUpdate();

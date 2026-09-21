@@ -473,19 +473,19 @@ describe('BatchManager', () => {
       const { authorizePendingBatches } = await import('./trackingConsentStorage');
       const state = createTrackingConsentState('pending');
       const manager = await BatchManager.create(config, batchConfig, state);
-      mockPendingProducerClear
-        .mockRejectedValueOnce(new Error('denial clear failed'))
-        .mockRejectedValueOnce(new Error('quarantine clear failed'));
+      const error = new Error('clear failed');
+      mockPendingProducerClear.mockRejectedValue(error);
 
       state.update('not-granted');
-      await manager.flush();
+      await expect(manager.flush()).rejects.toBe(error);
 
       state.update('pending');
       state.update('granted');
-      await manager.flush();
+      await expect(manager.flush()).rejects.toBe(error);
 
+      mockPendingProducerClear.mockResolvedValue(undefined);
+      await manager.flush();
       expect(authorizePendingBatches).not.toHaveBeenCalled();
-      expect(mockPendingProducerClear).toHaveBeenCalledTimes(2);
     });
 
     it.each(['pending', 'not-granted'] as const)(
@@ -494,16 +494,17 @@ describe('BatchManager', () => {
         const { authorizePendingBatches } = await import('./trackingConsentStorage');
         const state = createTrackingConsentState('pending');
         const manager = await BatchManager.create(config, batchConfig, state);
-        mockPendingProducerClear.mockRejectedValueOnce(new Error('directory busy'));
+        const error = new Error('directory busy');
+        mockPendingProducerClear.mockRejectedValue(error);
 
         state.update('not-granted');
-        await manager.flush();
+        await expect(manager.flush()).rejects.toBe(error);
+        mockPendingProducerClear.mockResolvedValue(undefined);
         state.update('granted');
-        await manager.flush();
         state.update(nextConsent);
         await manager.flush();
 
-        expect(mockPendingProducerClear).toHaveBeenCalledTimes(2);
+        expect(mockPendingProducerClear).toHaveBeenCalledTimes(3);
         expect(authorizePendingBatches).not.toHaveBeenCalled();
 
         if (nextConsent === 'not-granted') {

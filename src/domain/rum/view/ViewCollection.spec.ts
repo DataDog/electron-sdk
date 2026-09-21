@@ -276,12 +276,38 @@ describe('ViewCollection', () => {
   });
 
   describe('event counters', () => {
+    it.each(['error', 'resource'] as const)('does not count a delayed %s in the replacement view', (type) => {
+      trackingConsentState.update('pending');
+      const pendingView = rawRumEvents[rawRumEvents.length - 1].data as RawRumView;
+      const captureTime = Date.now() as TimeStamp;
+      vi.advanceTimersByTime(10);
+      trackingConsentState.update('granted');
+      const activeView = rawRumEvents[rawRumEvents.length - 1].data as RawRumView;
+      const context = hooks.triggerRum({ eventType: type, startTime: captureTime, source: EventSource.MAIN });
+      expect(context).toMatchObject({ view: { id: pendingView.view.id } });
+      expect(activeView.view.id).not.toBe(pendingView.view.id);
+      const countBefore = rawRumEvents.length;
+
+      eventManager.notify({
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        source: EventSource.MAIN,
+        data: createServerRumEvent<MainRumEvent>(type, { view: { id: pendingView.view.id } }),
+      });
+      vi.advanceTimersByTime(VIEW_UPDATE_THROTTLE_DELAY);
+
+      expect(rawRumEvents).toHaveLength(countBefore);
+      expect(activeView.view[type].count).toBe(0);
+    });
+
     it.each(['error', 'resource'] as const)('increments %s counter on corresponding ServerRumEvent', (type) => {
       eventManager.notify({
         kind: EventKind.SERVER,
         track: EventTrack.RUM,
         source: EventSource.MAIN,
-        data: createServerRumEvent<MainRumEvent>(type),
+        data: createServerRumEvent<MainRumEvent>(type, {
+          view: { id: (rawRumEvents[rawRumEvents.length - 1].data as RawRumView).view.id },
+        }),
       });
 
       expect(rawRumEvents).toHaveLength(2);
@@ -299,6 +325,25 @@ describe('ViewCollection', () => {
       });
 
       // Only the initial event, no update
+      expect(rawRumEvents).toHaveLength(1);
+    });
+
+    it('ignores telemetry without a view on the shared RUM track', () => {
+      eventManager.notify({
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        source: EventSource.MAIN,
+        data: {
+          type: 'telemetry',
+          date: 0,
+          service: 'electron-sdk',
+          source: 'electron',
+          version: 'test',
+          _dd: { format_version: 2 },
+          telemetry: { type: 'log', status: 'debug', message: 'test' },
+        },
+      });
+
       expect(rawRumEvents).toHaveLength(1);
     });
 
@@ -333,7 +378,9 @@ describe('ViewCollection', () => {
         kind: EventKind.SERVER,
         track: EventTrack.RUM,
         source: EventSource.MAIN,
-        data: createServerRumEvent<MainRumEvent>(type),
+        data: createServerRumEvent<MainRumEvent>(type, {
+          view: { id: (rawRumEvents[rawRumEvents.length - 1].data as RawRumView).view.id },
+        }),
       });
     }
 

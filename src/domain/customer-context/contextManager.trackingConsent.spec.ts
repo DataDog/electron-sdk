@@ -1,6 +1,13 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DiskValueHistory } from '../../tools/DiskValueHistory';
+import { createTestConfiguration, mockFs } from '../../mocks.specUtil';
+import { EventManager, EventKind, EventFormat, type RawTelemetryEvent } from '../../event';
+import { startTelemetry, stopTelemetry } from '../telemetry';
 import { createTrackingConsentState } from '../tracking-consent';
 import { ContextManager, type ContextHistory } from './contextManager';
+
+vi.mock('node:fs/promises');
+const mfs = mockFs();
 
 function createHistory() {
   const closeActive = vi.fn();
@@ -23,6 +30,39 @@ function createHistory() {
 }
 
 describe('ContextManager tracking consent', () => {
+  afterEach(() => {
+    stopTelemetry();
+    mfs.reset();
+  });
+
+  it('reports a pending context serialization error without interrupting later consent observers', async () => {
+    mfs.readFile.mockRejectedValue(new Error('ENOENT'));
+    mfs.writeFile.mockResolvedValue(undefined);
+    const state = createTrackingConsentState('pending');
+    const eventManager = new EventManager();
+    const errors: RawTelemetryEvent[] = [];
+    eventManager.registerHandler<RawTelemetryEvent>({
+      canHandle: (event): event is RawTelemetryEvent =>
+        event.kind === EventKind.RAW && event.format === EventFormat.TELEMETRY,
+      handle: (event) => errors.push(event),
+    });
+    startTelemetry(eventManager, createTestConfiguration({ telemetrySampleRate: 100 }), state);
+    const history = await DiskValueHistory.init<Record<string, unknown>>({
+      filePath: '/mock/user-context',
+      expireDelay: 60_000,
+    });
+    const context = new ContextManager('test context', {}, history, state);
+    const laterObserver = vi.fn();
+    state.observable.subscribe(laterObserver);
+    context.setContext({ extraInfo: { value: 1n } });
+
+    expect(() => state.update('granted')).not.toThrow();
+
+    expect(laterObserver).toHaveBeenCalledWith({ previous: 'pending', current: 'granted' });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].data.telemetry).toMatchObject({ type: 'log', status: 'error' });
+  });
+
   it('commits customer context history when pending consent is granted', () => {
     const { history, pausePersistence, commitPausedChanges, discardPausedChanges } = createHistory();
     const state = createTrackingConsentState('pending');

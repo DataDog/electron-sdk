@@ -52,6 +52,7 @@ describe('BatchManager tracking consent storage', () => {
     manager?.stop();
     manager = undefined;
     vi.restoreAllMocks();
+    vi.useRealTimers();
     await fs.rm(basePath, { recursive: true, force: true });
   });
 
@@ -134,11 +135,85 @@ describe('BatchManager tracking consent storage', () => {
 
     state.update('not-granted');
     await manager.flush();
-    expect(await storedValues(pendingPath)).toEqual(['rejected']);
+    expect(await storedValues(pendingPath)).toEqual([]);
 
     state.update('pending');
     manager.post(event('accepted'));
     state.update('granted');
+    await manager.flush();
+
+    expect(await storedValues(pendingPath)).toEqual([]);
+    expect(await storedValues(authorizedPath)).toEqual(['accepted']);
+  });
+
+  it.each(['flush', 'scheduled cycle'] as const)(
+    'retries a rejected store deletion on %s without another consent transition',
+    async (retry) => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const state = createTrackingConsentState('pending');
+      manager = await BatchManager.create(config, createBatchConfig(), state);
+      const authorizedPath = path.join(basePath, 'rum');
+      const pendingPath = path.join(authorizedPath, 'pending');
+      manager.post(event('rejected'));
+      await manager.flush();
+      const error = Object.assign(new Error('directory busy'), { code: 'EPERM' });
+      const remove = vi.spyOn(fs, 'rm').mockRejectedValue(error);
+
+      state.update('not-granted');
+      await expect(manager.flush()).rejects.toBe(error);
+      expect(await storedValues(pendingPath)).toEqual(['rejected']);
+
+      remove.mockRestore();
+      if (retry === 'flush') {
+        await manager.flush();
+      } else {
+        await vi.advanceTimersByTimeAsync(createBatchConfig().uploadFrequency);
+        await vi.waitFor(async () => {
+          expect(await storedValues(pendingPath)).toEqual([]);
+        });
+      }
+
+      expect(state.get()).toBe('not-granted');
+      expect(await storedValues(pendingPath)).toEqual([]);
+      expect(await storedValues(authorizedPath)).toEqual([]);
+    }
+  );
+
+  it('keeps a new pending interval intact while a rejected store cleanup is retried', async () => {
+    const state = createTrackingConsentState('pending');
+    manager = await BatchManager.create(config, createBatchConfig(), state);
+    const authorizedPath = path.join(basePath, 'rum');
+    const pendingPath = path.join(authorizedPath, 'pending');
+    manager.post(event('rejected'));
+    await manager.flush();
+    const error = Object.assign(new Error('directory busy'), { code: 'EPERM' });
+    const originalRemove = fs.rm.bind(fs);
+    const remove = vi.spyOn(fs, 'rm').mockRejectedValue(error);
+    state.update('not-granted');
+    await expect(manager.flush()).rejects.toBe(error);
+
+    let notifyStarted!: () => void;
+    let resumeCleanup!: () => void;
+    const started = new Promise<void>((resolve) => {
+      notifyStarted = resolve;
+    });
+    const resume = new Promise<void>((resolve) => {
+      resumeCleanup = resolve;
+    });
+    remove
+      .mockImplementationOnce(async (...args) => {
+        notifyStarted();
+        await resume;
+        await originalRemove(...args);
+      })
+      .mockImplementation(originalRemove);
+    const recovery = manager.flush();
+    await started;
+    state.update('pending');
+    manager.post(event('accepted'));
+    state.update('granted');
+    resumeCleanup();
+    await recovery;
     await manager.flush();
 
     expect(await storedValues(pendingPath)).toEqual([]);

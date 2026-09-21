@@ -46,8 +46,8 @@ export class BatchManager {
   private queuedCycle: Promise<void> | null = null;
   // Consent transitions are reserved synchronously on the pending producer queue in notification order.
   private transitionQueue: Promise<void> = Promise.resolve();
-  // Readiness belongs to one pending interval. If its initial clear fails, that interval stays
-  // quarantined and can never be authorized by a later grant.
+  // Captured by pending writes and authorizations. Failed preparation quarantines those operations;
+  // successful cleanup can release subsequent writes.
   private pendingStoreReadiness: Promise<boolean> = Promise.resolve(true);
   private pendingAuthorizationReadiness: Promise<boolean> | undefined;
   // An authorized interval whose directory could not be detached. Later pending intervals remain
@@ -197,6 +197,14 @@ export class BatchManager {
     const transitionsBeforeCycle = this.transitionQueue;
     try {
       await transitionsBeforeCycle;
+      const pendingReadiness = this.pendingStoreReadiness;
+      if (!(await pendingReadiness) && this.pendingStoreReadiness === pendingReadiness) {
+        // A failed clear must be retried even if consent stays denied. Only retry the same
+        // interval: a newer transition may already have prepared storage for new pending writes.
+        const recovery = this.recoverPendingAuthorization(this.takePendingAuthorization());
+        this.pendingStoreReadiness = toReadiness(recovery);
+        await recovery;
+      }
       await this.authorizedProducer.flush();
       const authorizationRetry = this.pendingAuthorizationRetry;
       const authorizationReadiness = this.pendingAuthorizationReadiness;

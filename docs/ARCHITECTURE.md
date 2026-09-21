@@ -150,6 +150,7 @@ Tracking consent supports the mobile SDKs' three states. `granted` collects into
 and collects or persists nothing. A `pending → granted` transition drains pending writes, atomically detaches that interval
 from the reusable pending directory, and moves complete batches into authorized storage before upload. A partially failed
 migration remains detached and is retried without being exposed to a later pending clear. `pending → not-granted` drains concurrent writes and deletes the pending directory.
+Failed clears quarantine the pending store and are retried on upload cycles, even if consent stays denied.
 Entering `pending` also clears that destination first. At startup, stale pending data is deleted for every known track before
 sampling configuration selects active managers because consent is not persisted across processes. The pending and authorized
 producers each apply the normal disk cap independently.
