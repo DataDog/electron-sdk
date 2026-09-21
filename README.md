@@ -254,7 +254,7 @@ Times passed to the API are in milliseconds. Use `vitalKey` to measure overlappi
 
 ### Global Context
 
-Attach custom attributes to all subsequent RUM events emitted from the main process.
+Attach custom attributes from the main process to all subsequent RUM events, including renderer events.
 
 ```ts
 import {

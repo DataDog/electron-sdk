@@ -129,7 +129,7 @@ export function clearGlobalContext(): void {
 function validateContextKey(method: GlobalContextMethod, key: unknown): key is string {
   if (!isValidString(key) || key !== key.trim()) {
     display.error(
-      `${method}: key cannot be empty, blank, or have leading or trailing whitespace. The context will not be updated.`
+      `${method}: key cannot be empty, blank, or have leading or trailing whitespace. The attribute will be ignored.`
     );
     return false;
   }

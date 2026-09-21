@@ -101,6 +101,19 @@ describe('MainAssembly', () => {
     });
   });
 
+  it('clones nested event context values before storing the assembled event', () => {
+    const eventContext = { feature: { owner: 'event' } };
+    hooks.registerRum(() => ({ context: { build: '1.2.3' } }));
+
+    notifyRawRumEvent({ data: { ...RAW_ERROR_DATA, context: eventContext } });
+    eventContext.feature.owner = 'changed';
+
+    expect((serverEvents[0].data as RumEvent).context).toEqual({
+      feature: { owner: 'event' },
+      build: '1.2.3',
+    });
+  });
+
   it('discards events when hook returns DISCARDED', () => {
     hooks.registerRum(() => DISCARDED);
 

@@ -1,5 +1,5 @@
 import { timeStampNow } from '@datadog/js-core/time';
-import { combine, isIndexableObject, type RecursivePartial } from '@datadog/js-core/util';
+import { combine, deepClone, isIndexableObject, type RecursivePartial } from '@datadog/js-core/util';
 import { DISCARDED } from '@datadog/js-core/assembly';
 import {
   EventFormat,
@@ -83,24 +83,14 @@ export class MainAssembly {
   }
 }
 
-function assembleData<T>(rawData: unknown, hookResult: RecursivePartial<T> | undefined): T {
-  if (!hookResult) {
-    return rawData as T;
-  }
-
-  const assembled = combine(hookResult, rawData) as T;
-  const hookData = hookResult as unknown;
-  if (
-    isIndexableObject(assembled) &&
-    isIndexableObject(hookData) &&
-    isIndexableObject(rawData) &&
-    isIndexableObject(hookData.context) &&
-    isIndexableObject(rawData.context)
-  ) {
-    (assembled as unknown as Record<string, unknown>).context = {
-      ...hookData.context,
-      ...rawData.context,
+function assembleData<T>(rawData: Record<string, unknown>, hookResult: RecursivePartial<T> | undefined): T {
+  const hookData = (hookResult ?? {}) as Record<string, unknown>;
+  const assembled = combine(hookData, rawData);
+  if (isIndexableObject(hookData.context) && isIndexableObject(rawData.context)) {
+    assembled.context = {
+      ...deepClone(hookData.context),
+      ...deepClone(rawData.context),
     };
   }
-  return assembled;
+  return assembled as T;
 }

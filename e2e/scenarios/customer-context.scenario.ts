@@ -139,6 +139,19 @@ test('attaches the global context to subsequent events', async ({ mainPage, inta
   expect(context).toMatchObject({ team: 'checkout', build: '1.2.3' });
 });
 
+test('merges the global context with addError context, event keys winning', async ({ mainPage, intake }) => {
+  await mainPage.setGlobalContext({ team: 'checkout', source: 'global' });
+  await mainPage.generateManualError(undefined, { source: 'error', requestId: 'request-1' });
+  await mainPage.flushTransport();
+
+  const errorEvents = await intake.getEventsByType('error');
+  expect(errorEvents[0].body.context).toEqual({
+    team: 'checkout',
+    source: 'error',
+    requestId: 'request-1',
+  });
+});
+
 test('merges the global context into renderer events, renderer keys winning', async ({
   electronApp,
   mainPage,
