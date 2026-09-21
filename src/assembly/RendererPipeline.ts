@@ -299,11 +299,14 @@ export class RendererPipeline {
 interface CustomerContextCarrier {
   usr?: Readonly<Record<string, unknown>> | null;
   account?: Readonly<Record<string, unknown>> | null;
+  context?: Readonly<Record<string, unknown>> | null;
 }
 
 /**
  * The renderer's own user/account context takes precedence. An anonymous-only renderer user
  * is the exception: preserve its anonymous_id while enriching it with the main-process user.
+ * Both processes contribute global context attributes, with renderer values replacing main-process
+ * values at the top level when a key exists in both contexts.
  * session/application/container always come from the main process.
  */
 function resolveCustomerContextOverrides<E extends CustomerContextCarrier>(
@@ -319,6 +322,9 @@ function resolveCustomerContextOverrides<E extends CustomerContextCarrier>(
     }
   }
   if (hasContext(data.account)) delete overrides.account;
+  if (hasContext(data.context) && hasContext(overrides.context)) {
+    overrides.context = { ...overrides.context, ...data.context };
+  }
   return overrides as RecursivePartial<E>;
 }
 
