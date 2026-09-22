@@ -11,8 +11,8 @@
  * 2. Prepends SDK instrumentation (via @datadog/electron-sdk/instrument)
  *    to the very top of the main process entry chunk, before any hoisted
  *    requires. No manual import needed.
- * 3. Copies dd-trace and @datadog/electron-sdk into the build output's
- *    node_modules so they are available at runtime in packaged apps.
+ * 3. Optionally copies dd-trace and @datadog/electron-sdk into the build
+ *    output's node_modules when the application packager does not stage them.
  *
  * Usage:
  *   import { datadogVitePlugin } from '@datadog/electron-sdk/vite-plugin';
@@ -52,7 +52,7 @@ try { __ddCR(import.meta.url)("@datadog/electron-sdk/instrument"); } catch {}
  * Creates the Datadog Vite plugin.
  *
  * @example
- * plugins: [datadogVitePlugin({ copyRuntimeDependencies: false })]
+ * plugins: [datadogVitePlugin()]
  */
 export function datadogVitePlugin(pluginOptions: DatadogBundlerPluginOptions = {}): VitePlugin {
   // Support both CJS (__filename) and ESM (import.meta.url) contexts at build time
@@ -77,7 +77,7 @@ export function datadogVitePlugin(pluginOptions: DatadogBundlerPluginOptions = {
     },
   };
 
-  if (pluginOptions.copyRuntimeDependencies === false) return plugin;
+  if (pluginOptions.copyRuntimeDependencies !== true) return plugin;
 
   plugin.writeBundle = (outputOptions) => {
     // Copy externalized packages and their transitive dependencies into

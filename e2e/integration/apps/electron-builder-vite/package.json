@@ -13,22 +13,22 @@
       "win32": "out/default-copy/win-unpacked/electron-builder-vite.exe"
     },
     "variants": {
-      "packager-copy": {
-        "devMain": "dist/packager-copy/main.js",
+      "plugin-copy": {
+        "devMain": "dist/plugin-copy/main.js",
         "packagedBinary": {
-          "darwin-arm64": "out/packager-copy/mac-arm64/electron-builder-vite-packager-copy.app/Contents/MacOS/electron-builder-vite-packager-copy",
-          "darwin-x64": "out/packager-copy/mac/electron-builder-vite-packager-copy.app/Contents/MacOS/electron-builder-vite-packager-copy",
-          "linux": "out/packager-copy/linux-unpacked/electron-builder-vite-packager-copy",
-          "win32": "out/packager-copy/win-unpacked/electron-builder-vite-packager-copy.exe"
+          "darwin-arm64": "out/plugin-copy/mac-arm64/electron-builder-vite-plugin-copy.app/Contents/MacOS/electron-builder-vite-plugin-copy",
+          "darwin-x64": "out/plugin-copy/mac/electron-builder-vite-plugin-copy.app/Contents/MacOS/electron-builder-vite-plugin-copy",
+          "linux": "out/plugin-copy/linux-unpacked/electron-builder-vite-plugin-copy",
+          "win32": "out/plugin-copy/win-unpacked/electron-builder-vite-plugin-copy.exe"
         }
       }
     }
   },
   "scripts": {
-    "build": "yarn build:default-copy && yarn build:packager-copy",
+    "build": "yarn build:default-copy && yarn build:plugin-copy",
     "build:default-copy": "vite build -c vite.main.config.ts --mode default-copy && vite build -c vite.preload.config.ts --mode default-copy && vite build -c vite.renderer.config.ts --mode default-copy",
-    "build:packager-copy": "vite build -c vite.main.config.ts --mode packager-copy && vite build -c vite.preload.config.ts --mode packager-copy && vite build -c vite.renderer.config.ts --mode packager-copy",
-    "package": "yarn build && electron-builder --dir --publish never --config electron-builder.yml && electron-builder --dir --publish never --config electron-builder.packager-copy.yml"
+    "build:plugin-copy": "vite build -c vite.main.config.ts --mode plugin-copy && vite build -c vite.preload.config.ts --mode plugin-copy && vite build -c vite.renderer.config.ts --mode plugin-copy",
+    "package": "yarn build && electron-builder --dir --publish never --config electron-builder.yml && electron-builder --dir --publish never --config electron-builder.plugin-copy.yml"
   },
   "dependencies": {
     "@datadog/browser-rum": "7.5.0",

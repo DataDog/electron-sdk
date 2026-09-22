@@ -7,8 +7,8 @@ import type { IntegrationVariant } from '../../playwright.config';
  * directory naming conventions used by electron-builder.
  */
 export function getElectronBuilderViteArchivePath(appDir: string, variant: IntegrationVariant): string {
-  const workflow = variant === 'packager-copy' ? 'packager-copy' : 'default-copy';
-  const productName = variant === 'packager-copy' ? 'electron-builder-vite-packager-copy' : 'electron-builder-vite';
+  const workflow = variant === 'plugin-copy' ? 'plugin-copy' : 'default-copy';
+  const productName = variant === 'plugin-copy' ? 'electron-builder-vite-plugin-copy' : 'electron-builder-vite';
 
   if (process.platform === 'darwin') {
     const outputDirectory = process.arch === 'arm64' ? 'mac-arm64' : 'mac';
