@@ -66,10 +66,11 @@ describe('MainProcessContext', () => {
     expect(viewData.view.id).toBe('session-1');
     expect(viewData.view.is_fake).toBe(true);
     expect(contextData.execution_context.type).toBe('main-process');
+    expect(contextData.execution_context.name).toBe('Main Process');
     expect(contextData.execution_context.instance_id).toBe(String(process.pid));
 
     expect(hooks.triggerRum({ eventType: 'view', startTime: view.startTime!, source: EventSource.MAIN })).toMatchObject(
-      { execution_context: { id: contextData.execution_context.id } }
+      { execution_context: { id: contextData.execution_context.id, name: 'Main Process' } }
     );
     expect(
       hooks.triggerRum({

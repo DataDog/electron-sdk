@@ -21,6 +21,10 @@ import { PROCESS_UPDATE_INTERVAL } from './executionContext.constants';
 
 export const MAIN_EXECUTION_CONTEXT_HISTORY_FILE_NAME = '_dd_execution_context_history';
 
+// Constant across every session the process lives through, so it isn't part of
+// MainExecutionContextDiskEntry — no need to persist what never changes.
+const MAIN_PROCESS_EXECUTION_CONTEXT_NAME = 'Main Process';
+
 interface MainExecutionContextDiskEntry {
   id: string;
   type: 'main-process';
@@ -72,7 +76,7 @@ export class MainProcessContext {
       if (source !== EventSource.MAIN) return SKIPPED;
       const entry = mainHistory.find(startTime);
       if (entry === undefined) return SKIPPED;
-      return { execution_context: { id: entry.id, type: entry.type } };
+      return { execution_context: { id: entry.id, type: entry.type, name: MAIN_PROCESS_EXECUTION_CONTEXT_NAME } };
     });
 
     hooks.registerSpan(({ startTime }) => {
@@ -185,6 +189,7 @@ export class MainProcessContext {
       execution_context: {
         id: this.state.executionContextId,
         type: 'main-process',
+        name: MAIN_PROCESS_EXECUTION_CONTEXT_NAME,
         instance_id: String(process.pid),
         duration: toServerDuration(elapsed(this.state.startTime, timeStampNow())),
       },

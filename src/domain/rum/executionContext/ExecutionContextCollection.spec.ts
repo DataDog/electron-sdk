@@ -80,6 +80,8 @@ describe('ExecutionContextCollection', () => {
         id: 1,
         on: vi.fn(),
         removeListener: vi.fn(),
+        getURL: vi.fn(() => ''),
+        isDestroyed: vi.fn(() => false),
       }
     );
     const rendererEvent = rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext;
@@ -98,6 +100,8 @@ describe('ExecutionContextCollection', () => {
         id: 1,
         on: vi.fn(),
         removeListener: vi.fn(),
+        getURL: vi.fn(() => ''),
+        isDestroyed: vi.fn(() => false),
       }
     );
     const countAfterStart = rawRumEvents.length;

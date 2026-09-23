@@ -14,6 +14,7 @@ import type { FormatHooks } from '../../../assembly';
 import { monitor, setInterval, clearInterval } from '../../telemetry';
 import type { RawRumExecutionContext } from '../types';
 import { PROCESS_UPDATE_INTERVAL } from './executionContext.constants';
+import { deriveExecutionContextName } from './deriveExecutionContextName';
 
 type ExecutionContextExitReason = RawRumExecutionContext['execution_context']['exit_reason'];
 
@@ -25,6 +26,16 @@ interface RendererProcessState {
   instanceId: string;
   parentInstanceId?: string;
   timerId: ReturnType<typeof setInterval>;
+  webContents: Electron.WebContents;
+  // Derived from webContents.getURL() the first time it's non-empty (web-contents-created fires
+  // before any navigation, so the URL is often empty at registration), then frozen for the rest
+  // of this context's lifetime — a later navigation within the same context does not rename it.
+  name?: string;
+  // True only for a crash-revival registration: registerWebContents runs on 'did-start-navigation',
+  // before the new navigation commits, so getURL() can still return the pre-crash page's URL. Blocks
+  // the eager backfill in emitExecutionContextEvent from freezing that stale name — only 'dom-ready'
+  // (which fires once the new navigation actually commits) may resolve the name for this state.
+  pendingNavigation?: boolean;
   // Set once this context's session-boundary final update has been emitted (SESSION_EXPIRED),
   // while the process itself is still alive and the state is kept around only so RUM events
   // arriving during the sessionless gap can still resolve it. A real destroy afterward must not
@@ -47,6 +58,7 @@ interface AttachedListeners {
   webContents: Electron.WebContents;
   destroyed: () => void;
   processGone: (event: Electron.Event, details: Electron.RenderProcessGoneDetails) => void;
+  domReady: () => void;
 }
 
 export class RendererProcessContexts {
@@ -76,7 +88,7 @@ export class RendererProcessContexts {
       if (source !== EventSource.RENDERER) return SKIPPED;
       const state = webContentsId === undefined ? undefined : collection.rendererStates.get(webContentsId);
       if (state === undefined) return SKIPPED;
-      return { execution_context: { id: state.id, type: state.type } };
+      return { execution_context: { id: state.id, type: state.type, name: state.name } };
     });
 
     collection.initRendererTracking();
@@ -105,6 +117,7 @@ export class RendererProcessContexts {
     if (previousListeners) {
       webContents.removeListener('destroyed', previousListeners.destroyed);
       webContents.removeListener('render-process-gone', previousListeners.processGone);
+      webContents.removeListener('dom-ready', previousListeners.domReady);
     }
     this.pendingRevivals.delete(webContentsId);
 
@@ -131,6 +144,8 @@ export class RendererProcessContexts {
         current.documentVersion++;
         this.emitExecutionContextEvent(current);
       }, PROCESS_UPDATE_INTERVAL),
+      webContents,
+      pendingNavigation: previousListeners !== undefined,
     };
     this.rendererStates.set(webContentsId, state);
 
@@ -152,6 +167,33 @@ export class RendererProcessContexts {
       current.documentVersion++;
       this.emitExecutionContextEvent(current, exitReason);
     };
+
+    // web-contents-created fires before the caller ever calls loadURL, so the initial emit above
+    // almost always sees an empty getURL() — without this, the name would only resolve on the
+    // next heartbeat, up to PROCESS_UPDATE_INTERVAL later. 'dom-ready' fires once the navigation
+    // has committed and the URL is reliable, so recheck there instead of waiting on the timer.
+    // Kept attached for this webContents' whole lifetime (harmless once name is frozen) rather
+    // than removed after first use, matching how 'destroyed'/'render-process-gone' are handled.
+    const domReady = monitor(() => {
+      const current = this.rendererStates.get(webContentsId);
+      // closedForSessionExpiry: this context's terminal update was already emitted at the session
+      // boundary — the same invariant endRenderer protects against a real destroy mutating.
+      if (!current || current.name !== undefined || current.closedForSessionExpiry || webContents.isDestroyed()) {
+        return;
+      }
+      const derived = deriveExecutionContextName(webContents.getURL());
+      if (derived === undefined) {
+        return;
+      }
+      current.name = derived;
+      // The revival this state was pending on has now committed — otherwise a later renewal with
+      // no further navigation would carry this flag forward forever, permanently blocking the
+      // backfill-on-emit check from ever resolving a name for it again.
+      current.pendingNavigation = false;
+      current.documentVersion++;
+      this.emitExecutionContextEvent(current);
+    });
+    webContents.on('dom-ready', domReady);
 
     const destroyed = monitor(() => {
       this.attachedListeners.delete(webContentsId);
@@ -191,7 +233,7 @@ export class RendererProcessContexts {
     });
     webContents.on('destroyed', destroyed);
     webContents.on('render-process-gone', processGone);
-    this.attachedListeners.set(webContentsId, { webContents, destroyed, processGone });
+    this.attachedListeners.set(webContentsId, { webContents, destroyed, processGone, domReady });
   }
 
   stop(): void {
@@ -200,9 +242,10 @@ export class RendererProcessContexts {
       clearInterval(state.timerId);
     }
     this.rendererStates.clear();
-    for (const { webContents, destroyed, processGone } of this.attachedListeners.values()) {
+    for (const { webContents, destroyed, processGone, domReady } of this.attachedListeners.values()) {
       webContents.removeListener('destroyed', destroyed);
       webContents.removeListener('render-process-gone', processGone);
+      webContents.removeListener('dom-ready', domReady);
     }
     for (const [webContentsId, pendingRevival] of this.pendingRevivals) {
       this.attachedListeners.get(webContentsId)?.webContents.removeListener('did-start-navigation', pendingRevival);
@@ -272,6 +315,11 @@ export class RendererProcessContexts {
         instanceId: previousState.instanceId,
         parentInstanceId: previousState.parentInstanceId,
         timerId,
+        webContents: previousState.webContents,
+        // Carried over so a crash-revived renderer still awaiting its own dom-ready doesn't have
+        // this emit backfill its name from a still-stale getURL() just because it crossed a
+        // session boundary first.
+        pendingNavigation: previousState.pendingNavigation,
       };
       this.rendererStates.set(webContentsId, state);
 
@@ -280,12 +328,17 @@ export class RendererProcessContexts {
   }
 
   private emitExecutionContextEvent(state: RendererProcessState, exitReason?: ExecutionContextExitReason): void {
+    if (state.name === undefined && !state.pendingNavigation && !state.webContents.isDestroyed()) {
+      state.name = deriveExecutionContextName(state.webContents.getURL());
+    }
+
     const data: RawRumExecutionContext = {
       type: 'execution_context',
       date: state.startTime,
       execution_context: {
         id: state.id,
         type: state.type,
+        name: state.name,
         instance_id: state.instanceId,
         parent_instance_id: state.parentInstanceId,
         duration: toServerDuration(elapsed(state.startTime, timeStampNow())),
