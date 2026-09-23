@@ -42,6 +42,7 @@ import {
   addError,
   _flushTransport,
   stopSession,
+  getInternalContext,
   addDurationVital,
   startDurationVital,
   stopDurationVital,
@@ -145,6 +146,8 @@ void app.whenReady().then(async () => {
       generateTelemetryError(i);
     }
   });
+
+  ipcMain.handle('getSessionId', () => getInternalContext()?.session_id);
 
   ipcMain.handle('stopSession', () => {
     stopSession();

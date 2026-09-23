@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('e2eConfig', { rumBrowserSdk: rumBrowserSdkConfi
 contextBridge.exposeInMainWorld('electronAPI', {
   generateTelemetryErrors: (count: number) => ipcRenderer.invoke('generateTelemetryErrors', count),
   stopSession: () => ipcRenderer.invoke('stopSession'),
+  getSessionId: () => ipcRenderer.invoke('getSessionId'),
   generateUncaughtException: () => ipcRenderer.invoke('generateUncaughtException'),
   generateUnhandledRejection: () => ipcRenderer.invoke('generateUnhandledRejection'),
   generateManualError: (startTime?: number, context?: Record<string, string>) =>
