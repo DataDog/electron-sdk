@@ -145,6 +145,17 @@ Hooks are used by different parts of the SDK to attach their context (e.g., `reg
 
 See `src/assembly/` and `src/assembly/commonContext.ts`.
 
+## Internal Tracking Consent State
+
+`getTrackingConsentManager()` provides one shared main-SDK instance, initially `granted`. Its timestamp history
+is kept in memory from construction onward; it neither persists consent nor infers consent from an earlier process.
+Changes notify monitored subscribers synchronously, and updates requested by a subscriber run after the current notification.
+Consumers own their subscriptions and unsubscribe when stopped.
+
+This component is preparatory: no public configuration or setter exposes it, and collectors and transport do not use it yet.
+History lookups return the original state; deciding whether a past `pending` interval was later authorized belongs to the storage integration.
+The separate instrumentation bundle must not instantiate a second manager to make consent decisions.
+
 ## Error Reporting
 
 Failures are routed by _who can act on them_:
