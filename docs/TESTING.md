@@ -35,6 +35,9 @@ Tests import custom `test` and `expect` from `lib/helpers.ts` (not directly from
 
 The intake server (`e2e/lib/intake.ts`) runs on a dynamic port (OS-assigned) to avoid conflicts. It is managed as a Playwright fixture for automatic startup/teardown.
 
+Session-renewal telemetry and integration startup-view checks allow up to 30 seconds for events to arrive, with a
+60-second test timeout to leave room for app startup and other steps. Other event waits retain their existing limits.
+
 #### `rumBrowserSdk` option
 
 By default, no browser-sdk runs in the main window renderer. Tests that need real user-activity tracking (e.g. session renewal via click) opt in per-describe or per file:

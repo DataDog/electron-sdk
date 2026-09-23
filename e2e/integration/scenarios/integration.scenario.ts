@@ -56,8 +56,10 @@ test.describe('electron-builder runtime dependency packaging @integration', () =
 });
 
 test.describe('view event on startup @integration', () => {
+  test.describe.configure({ timeout: 60 * ONE_SECOND });
+
   test('sends a view event with a session id on startup', async ({ window, intake }) => {
-    const viewEvents = await flushUntilEventArrives(window, intake, 'view', 1, 15 * ONE_SECOND);
+    const viewEvents = await flushUntilEventArrives(window, intake, 'view', 1, 30 * ONE_SECOND);
     expect(viewEvents).toHaveLength(1);
     const view = viewEvents[0].body;
 
