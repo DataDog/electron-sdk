@@ -71,6 +71,7 @@ function generateJob(environment: CompatibilityEnvironment, target: Compatibilit
     `    DD_ELECTRON_COMPATIBILITY_ENVIRONMENT: ${quoteYaml(environment.id)}`,
     `    DD_ELECTRON_COMPATIBILITY_TARGET: ${quoteYaml(target.id)}`,
     "    YARN_ENABLE_INLINE_BUILDS: 'true'",
+    ...(environment.id === 'macos' ? ["    npm_config_cache: '$CI_PROJECT_DIR/.npm-cache/$CI_JOB_ID'"] : []),
     '  script:',
     `    - ${formatCommand([
       'node',

@@ -126,6 +126,10 @@ Leave both filters empty for the complete configured matrix.
 The runner images must provide the repository-pinned Node and Yarn versions and support launching Electron desktop
 applications. Linux additionally runs Electron under Xvfb.
 
+macOS jobs set `npm_config_cache` to `$CI_PROJECT_DIR/.npm-cache/$CI_JOB_ID` for all phases, including npm subprocesses
+started by Yarn. This avoids relying on the runner image's home-directory npm cache, which may contain root-owned
+files. Windows and Linux retain their existing cache configuration.
+
 Compatibility initialization retries each integration-app packaging command twice. This makes transient Electron
 runtime download failures recoverable while preserving the final failure when all three attempts fail.
 
