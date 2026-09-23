@@ -9,7 +9,7 @@ import { assertExpectedElectronVersion } from './compatibility';
 import type { InitConfiguration } from '@datadog/electron-sdk';
 
 const compatibilityRoot = process.env.DD_ELECTRON_COMPATIBILITY_ROOT;
-const e2eAppDirectory = compatibilityRoot ? join(compatibilityRoot, 'e2e-app') : join(__dirname, '../app');
+export const e2eAppDirectory = compatibilityRoot ? join(compatibilityRoot, 'e2e-app') : join(__dirname, '../app');
 
 // Get electron executable path from the app's node_modules
 // eslint-disable-next-line @typescript-eslint/no-require-imports
