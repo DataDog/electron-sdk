@@ -13,7 +13,7 @@
     },
     {
       "id": "windows",
-      "runnerTags": ["windows-v2:2022", "specific:true"],
+      "runnerTags": ["windows-v2:2025", "specific:true"],
       "testCommandPrefix": []
     }
   ],

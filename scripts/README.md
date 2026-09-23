@@ -55,5 +55,8 @@ runMain(async () => {
 
 - Use `runMain()` wrapper for proper async handling and error reporting
 - Use `printLog()` for console output
-- Use `command` template literal for shell commands
+- Use the `command` template literal for commands. Both it and the logged-command runner launch Yarn's
+  JavaScript entry point through Node on Windows, avoiding `.cmd` execution and shell quoting.
+  They use the active Yarn CLI or find Corepack/Yarn beside Node or on `PATH`; macOS/Linux use normal executable lookup.
+  Keep the logged-command runner dependency-free because CI uses it before `yarn install`.
 - Import with `.ts` extension (required for Node.js ESM)

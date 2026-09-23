@@ -44,7 +44,8 @@ test.describe('runtime dependency packaging @integration', () => {
 
     const archivePath = getPackagedArchivePath(findPackagedBinary(appDir));
     expect(existsSync(archivePath)).toBe(true);
-    const archiveEntries = listPackage(archivePath, { isPack: false });
+    // ASAR returns native path separators; compare archive entries consistently across platforms.
+    const archiveEntries = listPackage(archivePath, { isPack: false }).map((entry) => entry.split('\\').join('/'));
 
     const nestedRuntimeDependencies = archiveEntries.filter(
       (entry) =>

@@ -1,4 +1,5 @@
 import childProcess from 'node:child_process';
+import { getCommandInvocation } from './commandInvocation.ts';
 import { printError } from './executionUtils.ts';
 
 interface CommandOptions {
@@ -17,7 +18,7 @@ interface CommandBuilder {
 /**
  * Helper to run executables. This has been introduced to work around Shell injections[0] while
  * keeping a good developer experience. The template string is split on white spaces and passed to
- * a child_process method that don't use a shell.
+ * a child_process method without a shell. On Windows, Yarn's JavaScript entry point is run with Node.
  *
  * Prefer this helper over using other child_process methods. Avoid using `child_process.exec`,
  * `child_process.execSync` or the `shell` option of other `child_process` functions.
@@ -57,9 +58,11 @@ export function command(...templateArguments: [TemplateStringsArray, ...any[]]):
     },
 
     run(): string {
-      const commandResult = childProcess.spawnSync(commandName, commandArguments, {
+      const environment = { ...process.env, ...env };
+      const invocation = getCommandInvocation(commandName, commandArguments, { environment });
+      const commandResult = childProcess.spawnSync(invocation.command, invocation.args, {
         input,
-        env: { ...process.env, ...env },
+        env: environment,
         encoding: 'utf-8',
         ...extraOptions,
       });

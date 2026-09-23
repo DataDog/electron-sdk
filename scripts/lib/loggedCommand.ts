@@ -2,6 +2,8 @@ import childProcess from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { getCommandInvocation } from './commandInvocation.ts';
+
 export interface LoggedCommandOptions {
   command: string;
   args: string[];
@@ -97,9 +99,10 @@ async function runAttempt(
   environment: Record<string, string>,
   log: fs.WriteStream
 ): Promise<{ code: number | null; signal: NodeJS.Signals | null }> {
-  const executable = process.platform === 'win32' && !/\.(?:bat|cmd|exe)$/i.test(command) ? `${command}.cmd` : command;
-  const child = childProcess.spawn(executable, args, {
-    env: { ...process.env, ...environment },
+  const childEnvironment = { ...process.env, ...environment };
+  const invocation = getCommandInvocation(command, args, { environment: childEnvironment });
+  const child = childProcess.spawn(invocation.command, invocation.args, {
+    env: childEnvironment,
     stdio: ['inherit', 'pipe', 'pipe'],
   });
 
