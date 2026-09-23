@@ -1,4 +1,4 @@
-import type { ElectronApplication, Page } from '@playwright/test';
+import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import type {
   AccountInfo,
   AddDurationVitalOptions,
@@ -39,6 +39,7 @@ interface ElectronAppWindow {
     addAccountExtraInfo: (extraInfo: Record<string, unknown>) => Promise<void>;
     ping: () => Promise<string>;
     stopSession: () => Promise<void>;
+    getSessionId: () => Promise<string | undefined>;
     openBridgeFileWindow: () => Promise<void>;
     openBridgeFileWindowNoIsolation: () => Promise<void>;
     openBridgeHttpWindow: () => Promise<void>;
@@ -55,9 +56,29 @@ interface ElectronAppWindow {
 export class MainPage {
   constructor(private readonly page: Page) {}
 
+  /** Waits for the main-process SDK to renew its session before generating more events. */
   async renewSession() {
+    const previousSessionId = await this.getSessionId();
+    expect(previousSessionId, 'An active session is required before renewal').toBeDefined();
+
     await this.stopSession();
-    await this.generateActivity();
+    await this.page.locator('#generate-activity').click();
+
+    // A completed click does not mean browser-rum has delivered its action over IPC.
+    // Generating identical telemetry before renewal can discard it as a duplicate.
+    await expect
+      .poll(
+        async () => {
+          const sessionId = await this.getSessionId();
+          return sessionId !== undefined && sessionId !== previousSessionId;
+        },
+        { timeout: 10000, message: 'Expected a new active SDK session after renderer activity' }
+      )
+      .toBe(true);
+  }
+
+  private async getSessionId(): Promise<string | undefined> {
+    return this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.getSessionId());
   }
 
   async stopSession() {
