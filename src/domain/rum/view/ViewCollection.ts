@@ -97,8 +97,10 @@ export class ViewCollection {
       counters: { action: { count: 0 }, error: { count: 0 }, resource: { count: 0 } },
     };
 
-    this.viewContext.close(); // close previous view if any (ensures non-overlapping history entries)
-    this.viewContext.add(viewId);
+    // Use the event timestamp for both history boundaries. A later clock reading
+    // could make this view event predate its own history entry and get discarded.
+    this.viewContext.close(this.currentView.startTime);
+    this.viewContext.add(viewId, this.currentView.startTime);
     this.emitViewUpdate();
     this.keepSessionAlive();
   }

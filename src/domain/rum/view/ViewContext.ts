@@ -1,6 +1,6 @@
 import { app } from 'electron';
 import * as path from 'node:path';
-import { timeStampNow } from '@datadog/js-core/time';
+import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED, SKIPPED } from '@datadog/js-core/assembly';
 import type { FormatHooks } from '../../../assembly';
 import { EventSource } from '../../../event';
@@ -9,6 +9,7 @@ import { SESSION_TIME_OUT_DELAY } from '../../session';
 
 export const VIEW_HISTORY_FILE_NAME = '_dd_view_history';
 
+/** Associates event timestamps with persisted main-process view history. */
 export class ViewContext {
   private readonly history: DiskValueHistory<string>;
 
@@ -59,11 +60,13 @@ export class ViewContext {
     return new ViewContext(history, hooks);
   }
 
-  add(id: string): void {
-    this.history.add(id, timeStampNow());
+  /** Registers the view at its event timestamp, even if registration happens later. */
+  add(id: string, startTime: TimeStamp = timeStampNow()): void {
+    this.history.add(id, startTime);
   }
 
-  close(): void {
-    this.history.closeActive(timeStampNow());
+  /** Closes the active view at the supplied transition time, or now on expiry. */
+  close(endTime: TimeStamp = timeStampNow()): void {
+    this.history.closeActive(endTime);
   }
 }
