@@ -17,7 +17,7 @@ vi.mock('../../../tools/display', () => ({
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { app, webContents } from 'electron';
-import { RendererProcessContexts } from './RendererProcessContexts';
+import { RendererProcessContexts, RENDERER_DISPOSAL_GRACE_PERIOD } from './RendererProcessContexts';
 import { PROCESS_UPDATE_INTERVAL } from './executionContext.constants';
 import { EventManager, EventKind, EventFormat, EventSource, LifecycleKind, type RawRumEvent } from '../../../event';
 import { createFormatHooks } from '../../../assembly';
@@ -166,6 +166,62 @@ describe('RendererProcessContexts', () => {
           }) as { execution_context?: unknown } | undefined
         )?.execution_context
       ).toBeUndefined();
+    });
+
+    it('resolves a renderer event still queued when its webContents is destroyed, until the retention window elapses', () => {
+      const wc = makeWebContents(1) as unknown as {
+        id: number;
+        _emit: (event: string, ...args: unknown[]) => void;
+      };
+      webContentsCreatedHandler({}, wc);
+      const startEvent = rawRumEvents[rawRumEvents.length - 1];
+      const originalStartTime = startEvent.startTime!;
+      const originalId = (startEvent.data as RawRumExecutionContext).execution_context.id;
+
+      // The webContents is destroyed strictly after the event's own startTime — e.g. a final
+      // beforeunload-triggered RUM event whose IPC message is still queued when 'destroyed' fires.
+      vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL / 2);
+      wc._emit('destroyed');
+
+      // That late event must still resolve its execution_context — the manager isn't torn down
+      // immediately, only after a retention window (matching the history's own tolerance).
+      expect(
+        hooks.triggerRum({
+          eventType: 'view',
+          startTime: originalStartTime,
+          source: EventSource.RENDERER,
+          webContentsId: 1,
+        })
+      ).toMatchObject({ execution_context: { id: originalId } });
+
+      // Once the retention window elapses, the manager is finally disposed and stops resolving —
+      // it doesn't linger forever.
+      vi.advanceTimersByTime(RENDERER_DISPOSAL_GRACE_PERIOD);
+      expect(
+        (
+          hooks.triggerRum({
+            eventType: 'view',
+            startTime: originalStartTime,
+            source: EventSource.RENDERER,
+            webContentsId: 1,
+          }) as { execution_context?: unknown } | undefined
+        )?.execution_context
+      ).toBeUndefined();
+    });
+
+    it('detaches the destroyed webContents and its listeners immediately, not just at eventual disposal', () => {
+      const wc = makeWebContents(1);
+      webContentsCreatedHandler({}, wc);
+      expect(wc._listenerCount('destroyed')).toBeGreaterThan(0);
+      expect(wc._listenerCount('render-process-gone')).toBeGreaterThan(0);
+
+      wc._emit('destroyed');
+
+      // Freed right away — the manager itself lingers for the retention window (see the test
+      // above), but must not hold onto the (now dead) webContents or its listeners for that whole
+      // window, which would keep it artificially alive and grow every session-boundary scan.
+      expect(wc._listenerCount('destroyed')).toBe(0);
+      expect(wc._listenerCount('render-process-gone')).toBe(0);
     });
 
     it('carries the exit reason on render-process-gone', () => {

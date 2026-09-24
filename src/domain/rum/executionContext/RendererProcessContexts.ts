@@ -1,5 +1,5 @@
 import { app, webContents as webContentsModule } from 'electron';
-import { elapsed, timeStampNow, toServerDuration, type TimeStamp } from '@datadog/js-core/time';
+import { elapsed, ONE_SECOND, timeStampNow, toServerDuration, type TimeStamp } from '@datadog/js-core/time';
 import { generateUUID, type Subscription } from '@datadog/browser-core';
 import { SKIPPED } from '@datadog/js-core/assembly';
 import {
@@ -11,7 +11,7 @@ import {
   LifecycleKind,
 } from '../../../event';
 import type { FormatHooks } from '../../../assembly';
-import { monitor, setInterval, clearInterval } from '../../telemetry';
+import { monitor, setInterval, clearInterval, setTimeout, clearTimeout } from '../../telemetry';
 import { SESSION_TIME_OUT_DELAY } from '../../session';
 import { isActive, TimeStampValueHistory } from '../../../tools/TimeStampValueHistory';
 import type { RawRumExecutionContext } from '../types';
@@ -19,14 +19,17 @@ import { PROCESS_UPDATE_INTERVAL } from './executionContext.constants';
 
 type ExecutionContextExitReason = RawRumExecutionContext['execution_context']['exit_reason'];
 
+// Only needs to cover Electron's IPC queue latency, not upload-batch delay.
+export const RENDERER_DISPOSAL_GRACE_PERIOD = 30 * ONE_SECOND;
+
 /**
  * Tracks renderer-process lifecycle by owning one WebContentManager per webContentsId — created at
  * 'web-contents-created' (plus a backfill at start for any webContents already existing, e.g. a
  * deferred init() called after a window opened; only future ones would otherwise be seen, since
  * 'web-contents-created' fires once, at creation, and never again for a given webContents — not
  * even across a crash+reload, which is why WebContentManager needs its own signal to detect a
- * revival) and disposed once a manager reports its webContents is really gone (see
- * WebContentManager's onDisposed). Registers its own format hook that tags renderer-sourced RUM
+ * revival) and disposed a tolerance window after a manager reports its webContents is really gone
+ * (see WebContentManager's onDisposed). Registers its own format hook that tags renderer-sourced RUM
  * events by resolving the matching manager's state at the event's own startTime — not just current
  * state — so an event delivered after a rotation but timestamped before it still resolves to the
  * context that was actually active then. Main-process tagging is MainProcessContext's own, separate
@@ -178,10 +181,15 @@ interface WebContentState {
  * 'render-process-gone' with no revival.
  */
 class WebContentManager {
-  private webContents!: Electron.WebContents;
+  // Undefined before the first register(), and again after a real 'destroyed' — see onDestroyed,
+  // which drops the reference immediately rather than holding the (now dead) WebContents object,
+  // its listeners, and everything they close over alive for the whole retention window.
+  private webContents?: Electron.WebContents;
   private readonly history = new TimeStampValueHistory<WebContentState>({ expireDelay: SESSION_TIME_OUT_DELAY });
   // Set while awaiting the reload a crashed webContents' owning app may perform on it.
   private pendingRevival?: (details: Electron.Event<Electron.WebContentsDidStartNavigationEventParams>) => void;
+  // Set while awaiting disposal after a real 'destroyed' — see onDestroyed.
+  private disposalTimerId?: ReturnType<typeof setTimeout>;
 
   constructor(
     private readonly webContentsId: number,
@@ -250,6 +258,9 @@ class WebContentManager {
 
   private readonly onProcessGone = monitor((_event: Electron.Event, details: Electron.RenderProcessGoneDetails) => {
     this.endRenderer(details.reason);
+    // A crash always arrives on a still-live webContents, ahead of 'destroyed' ever dropping the
+    // reference below — safe to assert.
+    const webContents = this.webContents!;
     // Await the reload the app may perform on this same webContents (Electron reuses the object
     // across a crash, spawning a new process for it) — re-register on the reload's own navigation
     // start rather than its completion, so the replacement renderer is tagged before any of the
@@ -259,7 +270,7 @@ class WebContentManager {
       // The replacement renderer crashed again before its own navigation ever started — drop the
       // stale pending callback so it doesn't also fire once a navigation eventually starts, which
       // would register this webContents twice and orphan the earlier call's timer.
-      this.webContents.removeListener('did-start-navigation', this.pendingRevival);
+      webContents.removeListener('did-start-navigation', this.pendingRevival);
     }
     const onRevival = monitor((navDetails: Electron.Event<Electron.WebContentsDidStartNavigationEventParams>) => {
       // A crashed page can only be revived by navigating its main frame — ignore a subframe
@@ -267,21 +278,28 @@ class WebContentManager {
       if (!navDetails.isMainFrame) {
         return;
       }
-      this.webContents.removeListener('did-start-navigation', onRevival);
+      webContents.removeListener('did-start-navigation', onRevival);
       this.pendingRevival = undefined;
-      this.register(this.webContents);
+      this.register(webContents);
     });
-    this.webContents.on('did-start-navigation', onRevival);
+    webContents.on('did-start-navigation', onRevival);
     this.pendingRevival = onRevival;
   });
 
   private readonly onDestroyed = monitor(() => {
+    // A real destroy always arrives on a still-live webContents.
+    const webContents = this.webContents!;
     if (this.pendingRevival) {
-      this.webContents.removeListener('did-start-navigation', this.pendingRevival);
+      webContents.removeListener('did-start-navigation', this.pendingRevival);
       this.pendingRevival = undefined;
     }
     this.endRenderer('clean-exit');
-    this.onDisposed();
+    // Drop the (now dead) webContents and its listeners right away, not at disposal.
+    webContents.removeListener('destroyed', this.onDestroyed);
+    webContents.removeListener('render-process-gone', this.onProcessGone);
+    this.webContents = undefined;
+    // Disposal itself is deferred: a final IPC message can still be queued past 'destroyed'.
+    this.disposalTimerId = setTimeout(() => this.onDisposed(), RENDERER_DISPOSAL_GRACE_PERIOD);
   });
 
   /** Resolves by the event's own startTime if given, otherwise the live state (undefined if none). */
@@ -344,7 +362,9 @@ class WebContentManager {
     if (!isActive(latest) && latest.value.closeReason !== 'session-expiry') {
       return;
     }
-    this.register(this.webContents);
+    // A state eligible for renewal (active, or closed only for session-expiry) is by construction
+    // never one whose webContents has been really destroyed — safe to assert.
+    this.register(this.webContents!);
   }
 
   stop(): void {
@@ -352,10 +372,13 @@ class WebContentManager {
     if (current) {
       clearInterval(current.timerId);
     }
-    this.webContents.removeListener('destroyed', this.onDestroyed);
-    this.webContents.removeListener('render-process-gone', this.onProcessGone);
-    if (this.pendingRevival) {
-      this.webContents.removeListener('did-start-navigation', this.pendingRevival);
+    clearTimeout(this.disposalTimerId);
+    if (this.webContents) {
+      this.webContents.removeListener('destroyed', this.onDestroyed);
+      this.webContents.removeListener('render-process-gone', this.onProcessGone);
+      if (this.pendingRevival) {
+        this.webContents.removeListener('did-start-navigation', this.pendingRevival);
+      }
     }
   }
 }
