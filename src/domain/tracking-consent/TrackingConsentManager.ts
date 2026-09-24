@@ -17,7 +17,7 @@ export class TrackingConsentManager {
   }
 
   get(): TrackingConsent {
-    return this.history.getEntries()[0].value;
+    return this.history.find(timeStampNow())!;
   }
 
   /** Original consent at capture time, or undefined before this manager was created. */
