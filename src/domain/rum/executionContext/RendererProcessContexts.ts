@@ -12,10 +12,16 @@ import {
 } from '../../../event';
 import type { FormatHooks } from '../../../assembly';
 import { monitor, setInterval, clearInterval } from '../../telemetry';
+import { SESSION_TIME_OUT_DELAY } from '../../session';
+import { TimeStampValueHistory } from '../../../tools/TimeStampValueHistory';
 import type { RawRumExecutionContext } from '../types';
 import { PROCESS_UPDATE_INTERVAL } from './executionContext.constants';
 
 type ExecutionContextExitReason = RawRumExecutionContext['execution_context']['exit_reason'];
+interface RendererHistoryEntry {
+  id: string;
+  type: 'renderer-process';
+}
 
 interface RendererProcessState {
   id: string;
@@ -38,8 +44,10 @@ interface RendererProcessState {
  * deferred init() called after a window opened), rotated on every SESSION_EXPIRED (closed, no
  * exit_reason — the process is still alive) / SESSION_RENEW (reopened, new id, same instance_id)
  * pair, and ended at 'destroyed' ('clean-exit') / 'render-process-gone' (the real crash/kill/OOM
- * reason). Registers its own format hook that tags renderer-sourced RUM events straight from its
- * own rendererStates map — main-process tagging is MainProcessContext's own, separate hook.
+ * reason). Registers its own format hook that tags renderer-sourced RUM events by resolving each
+ * webContentsId's timestamped history at the event's own startTime — not just current state — so
+ * an event delivered after a rotation but timestamped before it still resolves to the context that
+ * was actually active then. Main-process tagging is MainProcessContext's own, separate hook.
  * Composed alongside MainProcessContext by ExecutionContextCollection, which owns neither's
  * internals.
  */
@@ -51,6 +59,11 @@ interface AttachedListeners {
 
 export class RendererProcessContexts {
   private readonly rendererStates = new Map<number, RendererProcessState>();
+  // Timestamped history per webContentsId, resolved by the RUM hook below via find(startTime) —
+  // rendererStates alone only tells you the CURRENT context, which mistags a renderer event whose
+  // startTime predates a since-happened SESSION_EXPIRED/SESSION_RENEW rotation (e.g. a browser-sdk
+  // event delivered late, or a request that straddles a session boundary during a long idle gap).
+  private readonly rendererHistories = new Map<number, TimeStampValueHistory<RendererHistoryEntry>>();
   // Tracks the exact listener functions currently attached per webContents, so a revival (see
   // registerWebContents) can remove the previous cycle's listeners before attaching fresh ones,
   // instead of leaking a pair of stale (but harmless, since endRenderer is idempotent) listeners
@@ -72,11 +85,12 @@ export class RendererProcessContexts {
   static start(eventManager: EventManager, hooks: FormatHooks): RendererProcessContexts {
     const collection = new RendererProcessContexts(eventManager);
 
-    hooks.registerRum(({ source, webContentsId }) => {
+    hooks.registerRum(({ source, webContentsId, startTime }) => {
       if (source !== EventSource.RENDERER) return SKIPPED;
-      const state = webContentsId === undefined ? undefined : collection.rendererStates.get(webContentsId);
-      if (state === undefined) return SKIPPED;
-      return { execution_context: { id: state.id, type: state.type } };
+      const history = webContentsId === undefined ? undefined : collection.rendererHistories.get(webContentsId);
+      const entry = history?.find(startTime);
+      if (entry === undefined) return SKIPPED;
+      return { execution_context: { id: entry.id, type: entry.type } };
     });
 
     collection.initRendererTracking();
@@ -100,6 +114,7 @@ export class RendererProcessContexts {
   private registerWebContents(webContents: Electron.WebContents): void {
     const webContentsId = webContents.id;
     const id = generateUUID();
+    const startTime = timeStampNow();
 
     const previousListeners = this.attachedListeners.get(webContentsId);
     if (previousListeners) {
@@ -108,10 +123,16 @@ export class RendererProcessContexts {
     }
     this.pendingRevivals.delete(webContentsId);
 
+    // Close whatever the previous cycle (a crash+reload revival on this same webContentsId) left
+    // active, before registering this one — a no-op the first time this id is ever seen.
+    const history = this.getOrCreateHistory(webContentsId);
+    history.closeActive(startTime);
+    history.add({ id, type: 'renderer-process' }, startTime);
+
     const state: RendererProcessState = {
       id,
       type: 'renderer-process',
-      startTime: timeStampNow(),
+      startTime,
       documentVersion: 1,
       // webContentsId rather than a process id (getProcessId()/getOSProcessId()): execution_context
       // is really about which webContents an event came from, not which OS process — and a process
@@ -143,6 +164,10 @@ export class RendererProcessContexts {
       }
       clearInterval(current.timerId);
       this.rendererStates.delete(webContentsId);
+      // Idempotent no-op if a preceding SESSION_EXPIRED already closed it — but a genuine
+      // clean-exit/crash must always close it, or the entry stays "active" forever and a later,
+      // unrelated webContentsId reuse (or a stray late event) would wrongly resolve to it.
+      this.rendererHistories.get(webContentsId)?.closeActive(timeStampNow());
       if (current.closedForSessionExpiry) {
         // Already emitted this context's terminal update at the session boundary — a destroy
         // arriving during the sessionless gap must stop tagging but not mutate that already-closed
@@ -209,7 +234,17 @@ export class RendererProcessContexts {
     }
     this.attachedListeners.clear();
     this.pendingRevivals.clear();
+    this.rendererHistories.clear();
     this.lifecycleSubscription.unsubscribe();
+  }
+
+  private getOrCreateHistory(webContentsId: number): TimeStampValueHistory<RendererHistoryEntry> {
+    let history = this.rendererHistories.get(webContentsId);
+    if (!history) {
+      history = new TimeStampValueHistory<RendererHistoryEntry>({ expireDelay: SESSION_TIME_OUT_DELAY });
+      this.rendererHistories.set(webContentsId, history);
+    }
+    return history;
   }
 
   private initRendererTracking(): void {
@@ -236,10 +271,12 @@ export class RendererProcessContexts {
   }
 
   private closeAllRenderersForSessionExpiry(): void {
-    for (const state of this.rendererStates.values()) {
+    const endTime = timeStampNow();
+    for (const [webContentsId, state] of this.rendererStates) {
       clearInterval(state.timerId);
       state.documentVersion++;
       state.closedForSessionExpiry = true;
+      this.rendererHistories.get(webContentsId)?.closeActive(endTime);
       this.emitExecutionContextEvent(state);
     }
   }
@@ -247,6 +284,7 @@ export class RendererProcessContexts {
   private reopenAllRenderersForSessionRenewal(): void {
     for (const [webContentsId, previousState] of this.rendererStates) {
       const id = generateUUID();
+      const startTime = timeStampNow();
 
       // A state registered during the sessionless gap (after SESSION_EXPIRED, before this renewal)
       // never went through closeAllRenderersForSessionExpiry, so its heartbeat is still ticking —
@@ -254,6 +292,10 @@ export class RendererProcessContexts {
       // this map entry is overwritten below, so it would otherwise tick forever, emitting a
       // duplicate heartbeat every interval alongside the new one.
       clearInterval(previousState.timerId);
+
+      const history = this.getOrCreateHistory(webContentsId);
+      history.closeActive(startTime);
+      history.add({ id, type: 'renderer-process' }, startTime);
 
       const timerId = setInterval(() => {
         const current = this.rendererStates.get(webContentsId);
@@ -267,7 +309,7 @@ export class RendererProcessContexts {
       const state: RendererProcessState = {
         id,
         type: 'renderer-process',
-        startTime: timeStampNow(),
+        startTime,
         documentVersion: 1,
         instanceId: previousState.instanceId,
         parentInstanceId: previousState.parentInstanceId,

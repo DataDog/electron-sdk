@@ -297,6 +297,10 @@ describe('RendererProcessContexts', () => {
       webContentsCreatedHandler({}, wc);
       const rendererId = (rawRumEvents[base].data as RawRumExecutionContext).execution_context.id;
 
+      // Advance so the close's endTime is strictly after the context's own startTime — otherwise
+      // the half-open history interval closes at the exact same instant it started, and the lookup
+      // below (at that original startTime) would land right on the excluded boundary.
+      vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL / 2);
       eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
 
       const closeEvent = rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext;
@@ -308,6 +312,41 @@ describe('RendererProcessContexts', () => {
       expect(
         hooks.triggerRum({ eventType: 'view', startTime: 0 as never, source: EventSource.RENDERER, webContentsId: 1 })
       ).toMatchObject({ execution_context: { id: rendererId, type: 'renderer-process' } });
+    });
+
+    it('resolves a renderer event by its own startTime, not current state, so one delivered after a SESSION_RENEW but timestamped before the boundary still resolves to the pre-renewal context', () => {
+      const wc = makeWebContents(1);
+      webContentsCreatedHandler({}, wc);
+      const originalEvent = rawRumEvents[rawRumEvents.length - 1];
+      const originalStartTime = originalEvent.startTime!;
+      const originalId = (originalEvent.data as RawRumExecutionContext).execution_context.id;
+
+      vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL / 2);
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+      vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL / 2);
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+
+      const renewedEvent = rawRumEvents[rawRumEvents.length - 1];
+      const renewedStartTime = renewedEvent.startTime!;
+      const renewedId = (renewedEvent.data as RawRumExecutionContext).execution_context.id;
+      expect(renewedId).not.toBe(originalId);
+
+      expect(
+        hooks.triggerRum({
+          eventType: 'view',
+          startTime: originalStartTime,
+          source: EventSource.RENDERER,
+          webContentsId: 1,
+        })
+      ).toMatchObject({ execution_context: { id: originalId } });
+      expect(
+        hooks.triggerRum({
+          eventType: 'view',
+          startTime: renewedStartTime,
+          source: EventSource.RENDERER,
+          webContentsId: 1,
+        })
+      ).toMatchObject({ execution_context: { id: renewedId } });
     });
 
     it('a destroy during the sessionless gap stops tagging but does not mutate the already-closed context', () => {
