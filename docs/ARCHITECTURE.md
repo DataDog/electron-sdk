@@ -147,7 +147,7 @@ See `src/assembly/` and `src/assembly/commonContext.ts`.
 
 ## Internal Tracking Consent State
 
-`getTrackingConsentManager()` provides one shared main-SDK instance, initially `granted`. Its timestamp history
+`TrackingConsentManager` starts in `granted` when explicitly constructed. Its timestamp history
 is kept in memory from construction onward; it neither persists consent nor infers consent from an earlier process.
 Changes notify monitored subscribers synchronously, and updates requested by a subscriber run after the current notification.
 Consumers own their subscriptions and unsubscribe when stopped.

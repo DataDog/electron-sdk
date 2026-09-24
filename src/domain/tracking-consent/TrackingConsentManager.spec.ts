@@ -3,8 +3,7 @@ import type { TimeStamp } from '@datadog/js-core/time';
 import { EventKind, EventManager, type RawEvent } from '../../event';
 import { createTestConfiguration } from '../../mocks.specUtil';
 import { startTelemetry, stopTelemetry } from '../telemetry';
-import { TrackingConsentManager, type TrackingConsent, type TrackingConsentChange } from './TrackingConsentManager';
-import { getTrackingConsentManager } from './index';
+import { TrackingConsentManager, type TrackingConsent, type TrackingConsentChange } from './index';
 
 describe('TrackingConsentManager', () => {
   let manager: TrackingConsentManager;
@@ -18,13 +17,6 @@ describe('TrackingConsentManager', () => {
   afterEach(() => {
     stopTelemetry();
     vi.useRealTimers();
-  });
-
-  it('provides the same default manager to SDK components', () => {
-    const shared = getTrackingConsentManager();
-
-    expect(getTrackingConsentManager()).toBe(shared);
-    expect(shared.get()).toBe('granted');
   });
 
   it('starts granted without assigning consent to times before its creation', () => {
