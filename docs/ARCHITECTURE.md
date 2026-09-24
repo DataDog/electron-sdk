@@ -149,7 +149,7 @@ See `src/assembly/` and `src/assembly/commonContext.ts`.
 
 `TrackingConsentManager` starts in `granted` when explicitly constructed. Its timestamp history
 is kept in memory from construction onward; it neither persists consent nor infers consent from an earlier process.
-Changes notify monitored subscribers synchronously, and updates requested by a subscriber run after the current notification.
+Changes notify monitored subscribers synchronously after updating the state.
 Consumers own their subscriptions and unsubscribe when stopped.
 
 History lookups return the state active at the requested time. For example, a past `pending` interval still returns

@@ -85,35 +85,7 @@ describe('TrackingConsentManager', () => {
     expect(observer.mock.calls.map(([change]) => change.current)).toEqual(['pending', 'not-granted', 'granted']);
   });
 
-  it('finishes notifying every observer before applying updates requested by an observer', () => {
-    const notifications: string[] = [];
-    manager.subscribe((change) => {
-      notifications.push(`first:${change.current}`);
-      if (change.current === 'pending') {
-        manager.update('not-granted');
-        manager.update('granted');
-        notifications.push(`after requests:${manager.get()}`);
-      }
-    });
-    manager.subscribe((change) => {
-      notifications.push(`second:${change.current}:${manager.get()}`);
-    });
-
-    manager.update('pending');
-
-    expect(notifications).toEqual([
-      'first:pending',
-      'after requests:pending',
-      'second:pending:pending',
-      'first:not-granted',
-      'second:not-granted:not-granted',
-      'first:granted',
-      'second:granted:granted',
-    ]);
-    expect(manager.get()).toBe('granted');
-  });
-
-  it('reports observer errors without interrupting other observers or queued transitions', () => {
+  it('reports observer errors without interrupting other observers', () => {
     const eventManager = new EventManager();
     const onTelemetry = vi.fn<(event: RawEvent) => void>();
     eventManager.registerHandler<RawEvent>({
@@ -121,18 +93,15 @@ describe('TrackingConsentManager', () => {
       handle: (event) => onTelemetry(event),
     });
     startTelemetry(eventManager, createTestConfiguration({ telemetrySampleRate: 100 }));
-    manager.subscribe((change) => {
-      if (change.current === 'pending') {
-        manager.update('not-granted');
-        throw new Error('consent observer failed');
-      }
+    manager.subscribe(() => {
+      throw new Error('consent observer failed');
     });
     const states: TrackingConsent[] = [];
     manager.subscribe((change) => states.push(change.current));
 
     expect(() => manager.update('pending')).not.toThrow();
 
-    expect(states).toEqual(['pending', 'not-granted']);
+    expect(states).toEqual(['pending']);
     expect(onTelemetry.mock.calls).toMatchObject([
       [{ data: { telemetry: { status: 'error', message: 'consent observer failed' } } }],
     ]);

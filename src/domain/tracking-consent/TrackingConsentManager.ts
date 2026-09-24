@@ -5,14 +5,12 @@ import { monitor } from '../telemetry';
 
 /**
  * Owns the internal consent state and its in-memory history for one SDK instance.
- * Observers run synchronously after a transition; reentrant updates wait until every observer
- * has received that transition. Collection and storage remain the responsibility of consumers.
+ * Observers run synchronously after a transition.
+ * Collection and storage remain the responsibility of consumers.
  */
 export class TrackingConsentManager {
   private readonly history = new TimeStampValueHistory<TrackingConsent>({ expireDelay: Infinity });
   private readonly changes = new Observable<TrackingConsentChange>();
-  private readonly queuedUpdates: TrackingConsent[] = [];
-  private isUpdating = false;
 
   constructor() {
     this.history.add('granted', timeStampNow());
@@ -27,30 +25,17 @@ export class TrackingConsentManager {
     return this.history.find(time);
   }
 
-  /** Apply each requested state in order. Repeating the active state has no effect. */
+  /** Update the state and notify subscribers. Repeating the active state has no effect. */
   update(consent: TrackingConsent): void {
-    this.queuedUpdates.push(consent);
-    if (this.isUpdating) {
+    const previous = this.get();
+    if (consent === previous) {
       return;
     }
 
-    this.isUpdating = true;
-    try {
-      let current: TrackingConsent | undefined;
-      while ((current = this.queuedUpdates.shift()) !== undefined) {
-        const previous = this.get();
-        if (current === previous) {
-          continue;
-        }
-
-        const time = timeStampNow();
-        this.history.closeActive(time);
-        this.history.add(current, time);
-        this.changes.notify({ previous, current, time });
-      }
-    } finally {
-      this.isUpdating = false;
-    }
+    const time = timeStampNow();
+    this.history.closeActive(time);
+    this.history.add(consent, time);
+    this.changes.notify({ previous, current: consent, time });
   }
 
   /** Subscribe to future changes. A failing observer must not interrupt other consumers. */
