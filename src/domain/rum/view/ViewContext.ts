@@ -22,6 +22,9 @@ export class ViewContext {
         case EventSource.RENDERER:
           return { container: { view: { id } } };
         case EventSource.MAIN:
+          // A fake view, not a real navigable page: it exists only so main-process events have a
+          // view.id to resolve against, matching the same one MainProcessContext maintains as an
+          // actual view RUM document. See "Fake views" in docs/ARCHITECTURE.md.
           return isExecutionContextEnabled
             ? { view: { id, url: 'electron://fake', is_fake: true } }
             : { view: { id, name: 'main process', url: 'electron://main-process' } };
