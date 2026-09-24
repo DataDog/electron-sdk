@@ -88,6 +88,32 @@ describe('MainAssembly', () => {
     expect(rumEvent.session.id).toBe('hook-session');
   });
 
+  it('lets event context replace a conflicting nested global context value', () => {
+    hooks.registerRum(() => ({ context: { feature: { owner: 'global', enabled: true }, build: '1.2.3' } }));
+
+    notifyRawRumEvent({
+      data: { ...RAW_ERROR_DATA, context: { feature: { owner: 'event' } } },
+    });
+
+    expect((serverEvents[0].data as RumEvent).context).toEqual({
+      feature: { owner: 'event' },
+      build: '1.2.3',
+    });
+  });
+
+  it('clones nested event context values before storing the assembled event', () => {
+    const eventContext = { feature: { owner: 'event' } };
+    hooks.registerRum(() => ({ context: { build: '1.2.3' } }));
+
+    notifyRawRumEvent({ data: { ...RAW_ERROR_DATA, context: eventContext } });
+    eventContext.feature.owner = 'changed';
+
+    expect((serverEvents[0].data as RumEvent).context).toEqual({
+      feature: { owner: 'event' },
+      build: '1.2.3',
+    });
+  });
+
   it('discards events when hook returns DISCARDED', () => {
     hooks.registerRum(() => DISCARDED);
 

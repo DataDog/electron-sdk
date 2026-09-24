@@ -154,6 +154,16 @@ When `enableExecutionContext` is set, `ExecutionContextCollection` (`src/domain/
 
 **Fake views.** Every RUM event needs a `view.id` to resolve against, but the main process has no real navigable page to attach one to. Fake views are synthetically created by the SDK to carry execution-context events during the transition phase where execution-context events still require a `view.id`. Every event type associated with a fake view carries `view.is_fake: true`, so the backend and frontend can filter it out. `ViewContext` (`src/domain/rum/view/ViewContext.ts`) is what tags main-process events with this fake view instead of a real one when execution-context tracking is enabled — pointing at the same `id` `MainProcessContext` maintains as an actual `view` RUM document.
 
+## Internal Tracking Consent State
+
+`TrackingConsentManager` starts in `granted` when explicitly constructed. Its timestamp history
+is kept in memory from construction onward; it neither persists consent nor infers consent from an earlier process.
+Changes notify monitored subscribers synchronously after updating the state.
+Consumers own their subscriptions and unsubscribe when stopped.
+
+History lookups return the state active at the requested time. For example, a past `pending` interval still returns
+`pending` after the current state changes to `granted` or `not-granted`.
+
 ## Error Reporting
 
 Failures are routed by _who can act on them_:

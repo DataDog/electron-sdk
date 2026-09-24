@@ -1,5 +1,5 @@
 import { timeStampNow } from '@datadog/js-core/time';
-import { combine, type RecursivePartial } from '@datadog/js-core/util';
+import { combine, deepClone, isIndexableObject, type RecursivePartial } from '@datadog/js-core/util';
 import { DISCARDED } from '@datadog/js-core/assembly';
 import {
   EventFormat,
@@ -86,6 +86,14 @@ export class MainAssembly {
   }
 }
 
-function assembleData<T>(rawData: unknown, hookResult: RecursivePartial<T> | undefined): T {
-  return (hookResult ? combine(hookResult, rawData) : rawData) as T;
+function assembleData<T>(rawData: Record<string, unknown>, hookResult: RecursivePartial<T> | undefined): T {
+  const hookData = (hookResult ?? {}) as Record<string, unknown>;
+  const assembled = combine(hookData, rawData);
+  if (isIndexableObject(hookData.context) && isIndexableObject(rawData.context)) {
+    assembled.context = {
+      ...deepClone(hookData.context),
+      ...deepClone(rawData.context),
+    };
+  }
+  return assembled as T;
 }
