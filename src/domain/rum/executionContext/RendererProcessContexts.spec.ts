@@ -131,6 +131,29 @@ describe('RendererProcessContexts', () => {
       ).toMatchObject({ execution_context: { id: started.execution_context.id, type: 'renderer-process' } });
     });
 
+    it('resolves a view update dated before a deferred init() against the backfilled execution context', () => {
+      // A window opened, and its browser SDK already created a view, before init() ever ran (a
+      // supported deferred-init flow) — the browser SDK pins every subsequent update to that
+      // view's original (pre-init) date, which predates the backfill instant below.
+      const viewCreatedBeforeInit = 0 as never;
+      vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+
+      const existing = makeWebContents(9);
+      vi.mocked(webContents).getAllWebContents.mockReturnValueOnce([existing as unknown as Electron.WebContents]);
+      const freshEventManager = new EventManager();
+      const freshHooks = createFormatHooks();
+      RendererProcessContexts.start(freshEventManager, freshHooks);
+
+      expect(
+        freshHooks.triggerRum({
+          eventType: 'view_update',
+          startTime: viewCreatedBeforeInit,
+          source: EventSource.RENDERER,
+          webContentsId: 9,
+        })
+      ).toMatchObject({ execution_context: { type: 'renderer-process' } });
+    });
+
     it('tags subsequent RENDERER events with the matching execution context', () => {
       const base = rawRumEvents.length;
       const wc = makeWebContents(1);

@@ -70,7 +70,7 @@ export class RendererProcessContexts {
     // would otherwise be seen: 'web-contents-created' fires once, at creation, so anything created
     // before this listener is attached would never get an execution context.
     for (const existing of webContentsModule.getAllWebContents()) {
-      this.registerWebContents(existing);
+      this.registerWebContents(existing, true);
     }
 
     app.on('web-contents-created', this.onWebContentsCreated);
@@ -91,7 +91,7 @@ export class RendererProcessContexts {
     this.registerWebContents(webContents);
   });
 
-  private registerWebContents(webContents: Electron.WebContents): void {
+  private registerWebContents(webContents: Electron.WebContents, isBackfill = false): void {
     const webContentsId = webContents.id;
     let manager = this.webContentManagers.get(webContentsId);
     if (!manager) {
@@ -109,7 +109,7 @@ export class RendererProcessContexts {
       manager = newManager;
       this.webContentManagers.set(webContentsId, manager);
     }
-    manager.register(webContents);
+    manager.register(webContents, isBackfill);
   }
 
   private emitExecutionContextEvent(state: WebContentState, exitReason?: ExecutionContextExitReason): void {
@@ -207,7 +207,7 @@ class WebContentManager {
    * across a crash, so those listeners stay valid for this manager's entire lifetime and never need
    * removing/reattaching on a later revival.
    */
-  register(webContents: Electron.WebContents): void {
+  register(webContents: Electron.WebContents, isBackfill = false): void {
     const isFirstRegistration = !this.webContents;
     this.webContents = webContents;
 
@@ -246,7 +246,12 @@ class WebContentManager {
         this.emit(current);
       }, PROCESS_UPDATE_INTERVAL),
     };
-    this.history.add(state, startTime);
+    // A backfilled webContents may already have an active view from before this deferred init()
+    // (see README's "Deferred init caveat") — the browser SDK pins that view's date to its
+    // original creation instant on every subsequent update, which predates "now". Index this
+    // first-ever entry from the epoch instead, so those pre-init-dated events still resolve to
+    // it; safe since nothing earlier exists yet to wrongly steal a match from.
+    this.history.add(state, isBackfill ? (0 as TimeStamp) : startTime);
 
     if (isFirstRegistration) {
       webContents.on('destroyed', this.onDestroyed);
