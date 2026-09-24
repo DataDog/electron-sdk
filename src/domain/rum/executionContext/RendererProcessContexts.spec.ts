@@ -449,6 +449,43 @@ describe('RendererProcessContexts', () => {
       expect(heartbeats).toHaveLength(1);
     });
 
+    it('does not renew a context whose webContents crashed during the sessionless gap, and does not leak its heartbeat', () => {
+      const wc = makeWebContents(1) as unknown as {
+        id: number;
+        _emit: (event: string, ...args: unknown[]) => void;
+      };
+      webContentsCreatedHandler({}, wc);
+
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+      const countAfterClose = rawRumEvents.length;
+
+      // Crashes while already closed for session expiry — endRenderer must not mistake this
+      // already-closed context for one still eligible for renewal.
+      wc._emit('render-process-gone', {}, { reason: 'crashed' });
+      expect(rawRumEvents).toHaveLength(countAfterClose); // no re-emission of the already-closed context
+
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+
+      // No spurious execution context for a webContents whose renderer is actually dead.
+      const renewedEvents = rawRumEvents
+        .slice(countAfterClose)
+        .filter((e) => (e.data as RawRumExecutionContext).execution_context.type === 'renderer-process');
+      expect(renewedEvents).toHaveLength(0);
+
+      // No heartbeat either — a leaked timer from the crashed context would otherwise still tick.
+      rawRumEvents.length = 0;
+      vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+      expect(rawRumEvents).toHaveLength(0);
+
+      // The webContents reloading afterward still revives correctly, with exactly one heartbeat.
+      wc._emit('did-start-navigation', { isMainFrame: true });
+      const revived = rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext;
+      expect(revived.execution_context.type).toBe('renderer-process');
+      rawRumEvents.length = 0;
+      vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+      expect(rawRumEvents).toHaveLength(1);
+    });
+
     it('closes the renderer context on SESSION_EXPIRED at its own pinned startTime, not a fresh now() read', () => {
       const base = rawRumEvents.length;
       const wc = makeWebContents(1);
