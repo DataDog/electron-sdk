@@ -1,0 +1,69 @@
+{
+  "environments": [
+    {
+      "id": "linux",
+      "runnerTags": ["arch:amd64"],
+      "image": "$CI_IMAGE",
+      "testCommandPrefix": ["xvfb-run", "-a"]
+    },
+    {
+      "id": "macos",
+      "runnerTags": ["macos:sequoia-arm64", "specific:true"],
+      "testCommandPrefix": []
+    }
+  ],
+  "targets": [
+    {
+      "id": "electron-39",
+      "dependency": "electron",
+      "version": "39.8.10",
+      "channel": "legacy"
+    },
+    {
+      "id": "electron-40",
+      "dependency": "electron",
+      "version": "40.10.6",
+      "channel": "legacy"
+    },
+    {
+      "id": "electron-41",
+      "dependency": "electron",
+      "version": "41.10.5",
+      "channel": "stable"
+    },
+    {
+      "id": "electron-42",
+      "dependency": "electron",
+      "version": "42.9.2",
+      "channel": "stable"
+    },
+    {
+      "id": "electron-43",
+      "dependency": "electron",
+      "version": "43.4.0",
+      "channel": "stable"
+    },
+    {
+      "id": "electron-44-prerelease",
+      "dependency": "electron",
+      "version": "44.0.0-beta.5",
+      "channel": "prerelease"
+    },
+    {
+      "id": "electron-45-nightly",
+      "dependency": "electron-nightly",
+      "version": "45.0.0-nightly.20260814",
+      "channel": "nightly",
+      "allowFailure": true
+    }
+  ],
+  "apps": [
+    "forge-webpack",
+    "forge-vite",
+    "forge-esbuild-cjs",
+    "forge-esbuild-esm",
+    "electron-vite",
+    "electron-vite-esm",
+    "electron-builder-vite"
+  ]
+}
