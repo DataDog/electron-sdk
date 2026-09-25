@@ -57,7 +57,7 @@ test('SDK sends telemetry error event to intake', async ({ mainPage, intake }) =
   expect(event._dd.format_version).toBe(2);
 });
 
-test('SDK sends a configuration telemetry event on init', async ({ mainPage, intake }) => {
+test('SDK sends a configuration telemetry event on init', async ({ electronApp, mainPage, intake }) => {
   await mainPage.flushTransport();
 
   const configurationEvents = await intake.getSettledEventsByType('telemetry', {
@@ -87,9 +87,10 @@ test('SDK sends a configuration telemetry event on init', async ({ mainPage, int
   expect(uploadFrequency).toBeGreaterThan(0);
   expect(batchSize).toBe(uploadFrequency);
 
-  // The app inits inside app.whenReady(), so the display count is readable; the number itself is the
-  // host machine's and is not asserted.
-  expect(event.telemetry.configuration.number_of_displays).toBeGreaterThan(0);
+  // Windows containers can create Electron windows while reporting no attached displays.
+  // Check what Electron actually reports instead of requiring a physical or virtual monitor.
+  const displayCount = await electronApp.evaluate(({ screen }) => screen.getAllDisplays().length);
+  expect(event.telemetry.configuration.number_of_displays).toBe(displayCount);
 
   // Whether dd-trace resolves is an environment fact, so only the pairing is asserted: a reported
   // tracer api must carry the version that goes with it.
