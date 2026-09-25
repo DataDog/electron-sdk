@@ -24,9 +24,8 @@ export abstract class BatchProducer {
    * Maximum number of pending `.log` files kept on disk. Beyond this, the oldest are evicted.
    * Last-resort bound against unbounded growth when uploads fail for a long time. Subclasses may override.
    *
-   * This is a best-effort bound, not an exact cap: the count may transiently exceed it by one (e.g. a
-   * `flush()` rotation creates a `.log` that is only trimmed on the next write). That is intentional —
-   * the goal is to prevent unbounded growth, not to hold a precise limit.
+   * Writes and flushes enforce this bound on a best-effort basis. Files can temporarily exceed the
+   * cap during rotation or migration, or while filesystem errors prevent eviction.
    */
   protected maxLogFiles = 100;
   private fileSequence = 0;
@@ -35,9 +34,12 @@ export abstract class BatchProducer {
     this.trackPath = config.trackPath;
   }
 
-  /** Enqueues data to be appended to the current batch file. Writes are serialized. */
-  post(data: unknown) {
-    this.writeQueue = this.writeQueue.then(async () => {
+  /** Enqueues data to be appended once its storage is ready. Writes are serialized. */
+  post(data: unknown, storageReadiness?: Promise<boolean>) {
+    void this.enqueueOperation(async () => {
+      if (storageReadiness && !(await storageReadiness)) {
+        return;
+      }
       try {
         await this.writeData(data);
       } catch (error) {
@@ -51,9 +53,38 @@ export abstract class BatchProducer {
     });
   }
 
-  /** Waits for all pending writes to complete. */
-  async flush() {
-    await this.writeQueue;
+  /** Waits for pending writes, seals any open batch, and trims completed files to the disk limit. */
+  flush(): Promise<void> {
+    return this.enqueueOperation(async () => {
+      await this.flushData();
+      await this.evictOverflow();
+    });
+  }
+
+  /** Seals earlier writes and runs an operation before accepting later writes. */
+  runAfterFlush(operation: () => Promise<void>): Promise<void> {
+    return this.enqueueOperation(async () => {
+      await this.flushData();
+      await operation();
+    });
+  }
+
+  /** Clears storage after sealing earlier writes and successfully completing the prerequisite. */
+  clearAfterFlush(prerequisite: () => Promise<void>): Promise<void> {
+    return this.enqueueOperation(async () => {
+      await this.flushData();
+      await prerequisite();
+      await fs.rm(this.trackPath, { recursive: true, force: true });
+      await fs.mkdir(this.trackPath, { recursive: true });
+      this.onStorageCleared();
+    });
+  }
+
+  /** Keeps subsequent operations usable after a failure, while returning the original result. */
+  private enqueueOperation(operation: () => Promise<void>): Promise<void> {
+    const result = this.writeQueue.then(operation);
+    this.writeQueue = result.catch(() => undefined);
+    return result;
   }
 
   /** Ensures the track directory exists and rotates any orphaned `.tmp` files from prior sessions. */
@@ -127,6 +158,16 @@ export abstract class BatchProducer {
     } catch {
       // File doesn't exist or rename failed - silently ignore
     }
+  }
+
+  /** Resets subclass state that references files removed by {@link clearAfterFlush}. */
+  protected onStorageCleared(): void {
+    // Most producers do not retain file state between writes.
+  }
+
+  /** Seals producer-specific open data during {@link flush}. */
+  protected flushData(): Promise<void> {
+    return Promise.resolve();
   }
 
   protected abstract writeData(data: unknown): Promise<void>;

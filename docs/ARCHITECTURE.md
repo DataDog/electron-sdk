@@ -155,6 +155,29 @@ Consumers own their subscriptions and unsubscribe when stopped.
 History lookups return the state active at the requested time. For example, a past `pending` interval still returns
 `pending` after the current state changes to `granted` or `not-granted`.
 
+### Consent and batch storage
+
+SDK initialization creates one `TrackingConsentManager` shared by the transport's batch managers.
+Each track uses two producers with the same serialization and file limits:
+
+- The existing track directory holds authorized batches and is the only directory the consumer reads.
+- Its `pending/` subdirectory holds undecided batches, which cannot be uploaded.
+
+`ConsentAwareBatchProducer` selects the store when an event is posted. `not-granted` drops the write.
+Leaving `pending` seals its current batch: a grant moves the files to authorized storage, while a refusal
+deletes them. Already authorized batches remain eligible for upload after later consent changes.
+Writes, sealing, migration, and deletion are ordered on the pending producer's queue.
+
+Authorization first renames the pending directory to `.authorized-pending-<uuid>`, then moves its batches
+into the track directory with unique names. These detached directories survive later refusals and can
+be recovered after an interrupted migration or process restart. A failed deletion prevents reuse of the
+pending store until cleanup succeeds; a failed authorization is recovered before that store can be cleared.
+Upload cycles and explicit flushes retry unfinished work.
+
+At startup, undecided batches from the previous process are removed from every track, including disabled
+tracks. Authorized batches keep their established paths. Each producer retains its existing best-effort
+limit of 100 completed batch files; this is a per-store file limit, not a global byte quota.
+
 ## Error Reporting
 
 Failures are routed by _who can act on them_:
