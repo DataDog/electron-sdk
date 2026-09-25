@@ -35,6 +35,9 @@ Tests import custom `test` and `expect` from `lib/helpers.ts` (not directly from
 
 The intake server (`e2e/lib/intake.ts`) runs on a dynamic port (OS-assigned) to avoid conflicts. It is managed as a Playwright fixture for automatic startup/teardown.
 
+Session-renewal telemetry and integration startup-view checks allow up to 30 seconds for events to arrive, with a
+60-second test timeout to leave room for app startup and other steps. Other event waits retain their existing limits.
+
 #### `rumBrowserSdk` option
 
 By default, no browser-sdk runs in the main window renderer. Tests that need real user-activity tracking (e.g. session renewal via click) opt in per-describe or per file:
@@ -45,6 +48,10 @@ test.describe('session renewal', () => {
   // ...
 });
 ```
+
+`mainPage.renewSession()` stops the current session, triggers a renderer click, and waits up to 10 seconds for the
+main-process SDK to report a new active session ID. This ensures subsequent telemetry is generated after the
+per-session deduplication state resets, instead of relying on a fixed IPC delay.
 
 Pass an object to override specific init options (merged with the defaults). The fixture serialises the config into `DD_RUM_BROWSER_SDK` and the preload exposes it as `window.e2eConfig.rumBrowserSdk`.
 
