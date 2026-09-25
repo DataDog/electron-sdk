@@ -54,6 +54,10 @@ boundaries, etc.>
 **Why not 5:** <Specific gaps that prevented a perfect score — missing tests, observability
 tradeoffs, untested transitive changes, etc.>
 
+**Reviewability / magnitude: Y.Y / 5** — <Breadth across subsystems, new design contracts,
+product policy embedded in code, and cost of human review/iteration. See `docs/REVIEW.md`; this is
+separate from implementation quality (a PR can score high on correctness and low here).>
+
 ---
 
 ### Findings
@@ -64,9 +68,16 @@ tradeoffs, untested transitive changes, etc.>
 
 ---
 
+### Suggested PR split
+
+Include **only when reviewability/magnitude is below 4.0**. Propose an ordered sequence of smaller
+PRs (scope + review focus per PR, dependencies, and couplings that should not be split). See
+`docs/REVIEW.md` for example axes. Omit for localized changes.
+
+---
+
 ### Architectural flow
 
-Explain the architectural flow of the change. Include a Mermaid diagram (sequence diagram or
-flowchart — pick whichever best represents the change) followed by a before/after narrative
-describing what changed at the boundary level.
+Non-trivial PRs only. Include a Mermaid diagram (sequence or flowchart) and a before/after narrative
+at boundary level. Omit for trivial or purely local changes.
 ```
