@@ -75,6 +75,11 @@ also saves `container-state.json` (Docker's process exit code and error) and `co
 failure. They may be absent if Docker could not create or inspect the container. Diagnostic collection
 is best effort and does not change the job result.
 
+The first shared-runner trial reached Node startup but crashed with `0xC0000409` inside the
+synchronous workspace copy, before installing project dependencies or starting Electron. Workspace
+and artifact copies now use `fs.promises.cp` to avoid the synchronous implementation. The same
+source exclusions still apply; this workaround needs confirmation on the Windows runner.
+
 - A container may report zero attached displays even when Playwright can interact with Electron
   windows. The telemetry test compares the reported count with Electron's actual display count.
 - Crash tests previously selected the first error after restart. An unrelated startup error could

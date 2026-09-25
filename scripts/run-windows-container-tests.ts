@@ -17,7 +17,7 @@ runMain(async () => {
   const artifacts = 'C:\\artifacts';
 
   console.log(`Copying test sources from ${source} to ${workspace}...`);
-  copyWindowsContainerWorkspace(source, workspace);
+  await copyWindowsContainerWorkspace(source, workspace);
   console.log('Test sources copied. Checking Node and Yarn versions...');
   process.chdir(workspace);
   const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8')) as { volta: { node: string; yarn: string } };
@@ -73,7 +73,7 @@ runMain(async () => {
       if (fs.existsSync(relative)) {
         const destination = path.join(artifacts, relative);
         fs.mkdirSync(path.dirname(destination), { recursive: true });
-        fs.cpSync(relative, destination, { recursive: true });
+        await fs.promises.cp(relative, destination, { recursive: true });
       }
     }
   }

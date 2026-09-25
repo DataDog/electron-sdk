@@ -4,7 +4,7 @@ import path from 'node:path';
 import { expect, it } from 'vitest';
 import { copyWindowsContainerWorkspace } from './windowsContainer.ts';
 
-it('copies local sources and Git refs without importing host installs or generated applications', () => {
+it('copies local sources and Git refs without importing host installs or generated applications', async () => {
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'windows-container-'));
   const source = path.join(temporary, 'source');
   const destination = path.join(temporary, 'workspace');
@@ -13,6 +13,8 @@ it('copies local sources and Git refs without importing host installs or generat
     'rum-events-format/lib/generated/rum.ts',
     '.git/refs/heads/out',
     'local-edit.ts',
+    'src/fixtures/新建文件夹/café.ts',
+    '.git/objects/ab/readonly-object',
   ];
   const artifacts = [
     'node_modules/electron/index.js',
@@ -29,7 +31,9 @@ it('copies local sources and Git refs without importing host installs or generat
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, relative);
     }
-    copyWindowsContainerWorkspace(source, destination);
+    const gitObject = path.join(source, '.git/objects/ab/readonly-object');
+    fs.chmodSync(gitObject, 0o444);
+    await copyWindowsContainerWorkspace(source, destination);
     for (const relative of sources) expect(fs.readFileSync(path.join(destination, relative), 'utf8')).toBe(relative);
     for (const relative of artifacts) expect(fs.existsSync(path.join(destination, relative))).toBe(false);
   } finally {

@@ -1,8 +1,8 @@
-import fs from 'node:fs';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 
 /** Copies source edits into a disposable workspace without reusing host dependencies or build outputs. */
-export function copyWindowsContainerWorkspace(source: string, destination: string): void {
+export async function copyWindowsContainerWorkspace(source: string, destination: string): Promise<void> {
   const buildDirectories = new Set([
     'node_modules',
     '.yarn',
@@ -14,7 +14,9 @@ export function copyWindowsContainerWorkspace(source: string, destination: strin
     'playwright-report',
   ]);
   const rootArtifacts = new Set(['logs', '.npm-cache', '.test-logs', 'windows-test-artifacts', '.worktrees']);
-  fs.cpSync(source, destination, {
+  // The synchronous copy crashes natively during Windows CI startup. Use the async
+  // implementation while retaining the same source and artifact exclusions.
+  await fs.cp(source, destination, {
     recursive: true,
     filter: (entry) => {
       const relative = path.relative(source, entry).split(path.sep).join('/');
