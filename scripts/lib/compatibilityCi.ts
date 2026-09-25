@@ -72,41 +72,62 @@ function generateJob(environment: CompatibilityEnvironment, target: Compatibilit
     `    DD_ELECTRON_COMPATIBILITY_TARGET: ${quoteYaml(target.id)}`,
     "    YARN_ENABLE_INLINE_BUILDS: 'true'",
     ...(environment.id === 'macos' ? ["    npm_config_cache: '$CI_PROJECT_DIR/.npm-cache/$CI_JOB_ID'"] : []),
+    ...(environment.id === 'windows' ? ["    OVERRIDE_GIT_STRATEGY: 'clone'"] : []),
     '  script:',
-    `    - ${formatCommand([
-      'node',
-      'scripts/run-command-with-logs.ts',
-      '--log',
-      'logs/01-yarn-install.log',
-      '--env',
-      'ELECTRON_SKIP_BINARY_DOWNLOAD=1',
-      '--retry-delay',
-      '2000',
-      '--retry-delay',
-      '5000',
-      '--',
-      'yarn',
-      'install',
-      '--immutable',
-    ])}`,
-    `    - ${formatCommand([
-      'node',
-      'scripts/run-command-with-logs.ts',
-      '--log',
-      'logs/02-compatibility-init.log',
-      '--',
-      'yarn',
-      'test:compatibility:init',
-      target.id,
-    ])}`,
-    `    - ${testCommand}`,
+    ...(environment.id === 'windows'
+      ? [
+          `    - powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ci/windows/run.ps1 -Target ${target.id}`,
+        ]
+      : [
+          `    - ${formatCommand([
+            'node',
+            'scripts/run-command-with-logs.ts',
+            '--log',
+            'logs/01-yarn-install.log',
+            '--env',
+            'ELECTRON_SKIP_BINARY_DOWNLOAD=1',
+            '--retry-delay',
+            '2000',
+            '--retry-delay',
+            '5000',
+            '--',
+            'yarn',
+            'install',
+            '--immutable',
+          ])}`,
+          `    - ${formatCommand([
+            'node',
+            'scripts/run-command-with-logs.ts',
+            '--log',
+            'logs/02-compatibility-init.log',
+            '--',
+            'yarn',
+            'test:compatibility:init',
+            target.id,
+          ])}`,
+          `    - ${testCommand}`,
+        ]),
+    ...(environment.id === 'windows'
+      ? [
+          '  after_script:',
+          '    - |',
+          "      $ErrorActionPreference = 'Continue'",
+          '      docker rm --force "electron-sdk-tests-$env:CI_JOB_ID" 2>$null',
+          '      docker image rm --no-prune "electron-sdk-windows-tests:$env:CI_JOB_ID" 2>$null',
+          '      $global:LASTEXITCODE = 0',
+        ]
+      : []),
     '  artifacts:',
     '    when: always',
     '    paths:',
-    '      - logs/',
-    '      - e2e/test-results/',
-    '      - e2e/playwright-report/',
-    '      - e2e/compatibility/generated/*/metadata.json'
+    ...(environment.id === 'windows'
+      ? ['      - windows-test-artifacts/']
+      : [
+          '      - logs/',
+          '      - test-results/',
+          '      - playwright-report/',
+          '      - e2e/compatibility/generated/*/metadata.json',
+        ])
   );
   return lines;
 }

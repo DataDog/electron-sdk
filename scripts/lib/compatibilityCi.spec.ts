@@ -36,6 +36,22 @@ describe('compatibility CI generator', () => {
     expect(ci).toContain('  artifacts:\n    when: always\n    paths:\n      - logs/');
   });
 
+  it('runs Windows preparation and tests inside a container on the shared runner', () => {
+    const ci = generateCompatibilityCi(loadCompatibilityConfig(), {
+      environmentIds: ['windows'],
+      targetIds: ['electron-41'],
+    });
+    expect(ci).toContain("    - 'windows-v2:2022'");
+    expect(ci).not.toContain('specific:true');
+    expect(ci).toContain("OVERRIDE_GIT_STRATEGY: 'clone'");
+    expect(ci).toContain('-File ci/windows/run.ps1 -Target electron-41');
+    expect(ci).not.toContain('run-command-with-logs.ts');
+    expect(ci).toContain('      - windows-test-artifacts/');
+    expect(ci).toContain('  after_script:');
+    expect(ci).toContain('docker rm --force "electron-sdk-tests-$env:CI_JOB_ID"');
+    expect(ci).not.toContain('      - logs/');
+  });
+
   it('filters environments and targets from comma-separated pipeline variables', () => {
     const config = loadCompatibilityConfig();
     const filters = parseCompatibilityCiFilters(config, {

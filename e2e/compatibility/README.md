@@ -123,8 +123,13 @@ stages without editing `config.json`. A typical rollout is:
 
 Leave both filters empty for the complete configured matrix.
 
-The runner images must provide the repository-pinned Node and Yarn versions and support launching Electron desktop
-applications. Linux additionally runs Electron under Xvfb.
+Linux and macOS runner images must provide the repository-pinned Node and Yarn versions and support launching
+Electron desktop applications. Linux additionally runs Electron under Xvfb.
+
+Windows jobs use the shared `windows-v2:2022` runner to build and run a full Windows Server container. Dependencies,
+fixture builds and tests all run inside that container. See [the Windows workflow](../../../ci/windows/README.md) for
+local commands, prerequisites and current validation limits. Windows artifacts are saved under
+`windows-test-artifacts/`, including image-build and container logs.
 
 macOS jobs set `npm_config_cache` to `$CI_PROJECT_DIR/.npm-cache/$CI_JOB_ID` for all phases, including npm subprocesses
 started by Yarn. This avoids relying on the runner image's home-directory npm cache, which may contain root-owned
