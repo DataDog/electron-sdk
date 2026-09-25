@@ -18,3 +18,5 @@ When making changes that impact development workflows or architecture, update th
 | `scripts/README.md`         | Script placement and CLI conventions                        |
 | `e2e/integration/README.md` | Integration tests strategy and structure                    |
 | `playground/README.md`      | Playground app, Playwright test infra for agent prototyping |
+
+[Electron compatibility testing](../e2e/compatibility/README.md) covers the Linux/macOS version matrix.
