@@ -57,6 +57,7 @@ export class TimeStampValueHistory<T> {
     }
   }
 
+  /** Entries ordered newest-first — index 0 is the active one, if isActive(entries[0]) is true. */
   getEntries(): readonly TimeStampHistoryEntry<T>[] {
     return this.entries;
   }
@@ -78,4 +79,9 @@ export class TimeStampValueHistory<T> {
       }
     }
   }
+}
+
+/** Whether an entry (e.g. from getEntries()) is still open, i.e. hasn't gone through closeActive(). */
+export function isActive<T>(entry: TimeStampHistoryEntry<T>): boolean {
+  return entry.endTime === END_OF_TIMES;
 }

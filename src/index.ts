@@ -72,7 +72,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   new RendererPipeline(eventManager, hooks, config);
 
-  const rum = await RumCollection.start(eventManager, hooks);
+  const rum = await RumCollection.start(eventManager, hooks, sessionManager, config);
   rumApi = rum.getApi();
   setDurationVitalApi(rumApi);
 
@@ -373,7 +373,9 @@ export type {
   FailureReason,
   FeatureOperationOptions,
   RumEvent,
+  RumActionEvent,
   RumErrorEvent,
+  RumExecutionContextEvent,
   RumResourceEvent,
   RumViewEvent,
   RumVitalEvent,

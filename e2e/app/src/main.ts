@@ -69,6 +69,7 @@ import {
 
 const isDebugMode = process.env.PWDEBUG === '1';
 let mainWindow: BrowserWindow | null = null;
+let testRendererWindow: BrowserWindow | null = null;
 let rendererHttpServer: http.Server | null = null;
 
 const noop = () => undefined;
@@ -275,6 +276,47 @@ void app.whenReady().then(async () => {
   });
 
   ipcMain.handle('ping', () => 'pong');
+
+  ipcMain.handle('openRendererProcess', () => {
+    testRendererWindow = new BrowserWindow({
+      width: 400,
+      height: 300,
+      show: isDebugMode,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+    void testRendererWindow.loadURL('about:blank');
+    testRendererWindow.on('closed', () => {
+      testRendererWindow = null;
+    });
+  });
+
+  ipcMain.handle('closeRendererProcess', () => {
+    testRendererWindow?.close();
+    testRendererWindow = null;
+  });
+
+  // Simulates the app-driven crash recovery pattern Electron's own docs recommend: crash the
+  // renderer, then reload the SAME webContents (it survives the process death) rather than closing
+  // and recreating the window — so no 'web-contents-created' fires for the replacement renderer.
+  // The reload is delayed slightly after 'render-process-gone': reloading in the same tick as the
+  // crash races the OS tearing down the old process, which can take the whole webContents down with
+  // it instead of respawning it — matching how a real app's own crash-recovery UI would only reload
+  // once it has actually reacted to the crash, not synchronously within the same event loop turn.
+  ipcMain.handle('crashAndReloadRendererProcess', () => {
+    const wc = testRendererWindow?.webContents;
+    if (!wc) return;
+    wc.once('render-process-gone', () => {
+      setTimeout(() => {
+        if (!wc.isDestroyed()) {
+          wc.reload();
+        }
+      }, 500);
+    });
+    wc.forcefullyCrashRenderer();
+  });
 
   ipcMain.on('mainFireAndForget', (event) => {
     event.sender.send('mainFireAndForgetAck');

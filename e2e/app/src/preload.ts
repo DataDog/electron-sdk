@@ -55,4 +55,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openBridgeFileWindowNoIsolation: () => ipcRenderer.invoke('openBridgeFileWindowNoIsolation'),
   openBridgeHttpWindow: () => ipcRenderer.invoke('openBridgeHttpWindow'),
   openBridgeAppProtocolWindow: () => ipcRenderer.invoke('openBridgeAppProtocolWindow'),
+  openRendererProcess: () => ipcRenderer.invoke('openRendererProcess'),
+  closeRendererProcess: () => ipcRenderer.invoke('closeRendererProcess'),
+  crashAndReloadRendererProcess: () => ipcRenderer.invoke('crashAndReloadRendererProcess'),
 });

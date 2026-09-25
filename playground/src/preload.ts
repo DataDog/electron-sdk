@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   mainFetchApiNet: () => ipcRenderer.invoke('main:fetch-api-net'),
   mainFetchApiNetDrop: () => ipcRenderer.invoke('main:fetch-api-net-drop'),
   openRumExplorer: () => ipcRenderer.invoke('open-rum-explorer'),
+  openSecondaryWindow: () => ipcRenderer.invoke('main:open-secondary-window'),
   flushTransport: () => ipcRenderer.invoke('flush-transport'),
   setGlobalContext: () => ipcRenderer.invoke('main:set-global-context'),
   setGlobalContextProperty: () => ipcRenderer.invoke('main:set-global-context-property'),

@@ -68,6 +68,7 @@ interface ElectronAPI {
   mainFetchApiNet: () => Promise<unknown>;
   mainFetchApiNetDrop: () => Promise<unknown>;
   openRumExplorer: () => Promise<void>;
+  openSecondaryWindow: () => Promise<void>;
   flushTransport: () => Promise<void>;
   setGlobalContext: () => Promise<void>;
   setGlobalContextProperty: () => Promise<void>;
@@ -300,6 +301,10 @@ setupDemoButton('clear-account-info', 'main:clear-account-info', () => window.el
 setupDemoButton('get-user-info', 'main:get-user-info', () => window.electronAPI.getUserInfo());
 setupDemoButton('get-account-info', 'main:get-account-info', () => window.electronAPI.getAccountInfo());
 setupDemoButton('add-error', 'main:add-error', () => window.electronAPI.addError());
+
+// --- Process Lifecycle demo button ---
+
+setupDemoButton('open-secondary-window', 'main:open-secondary-window', () => window.electronAPI.openSecondaryWindow());
 
 setupDemoButton('main-fetch', 'main:fetch-api', () => window.electronAPI.mainFetchApi());
 setupDemoButton('main-fetch-fetch', 'main:fetch-api-fetch', () => window.electronAPI.mainFetchApiFetch());
