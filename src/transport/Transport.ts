@@ -1,6 +1,7 @@
 import { app } from 'electron';
 
 import { resolveBatchSize, resolveUploadFrequency, type Configuration } from '../config';
+import type { TrackingConsentManager } from '../domain/tracking-consent';
 import { EventKind, EventTrack, type EventManager, type ServerEvent } from '../event';
 import { BatchManager } from './batch';
 
@@ -14,14 +15,20 @@ export class Transport {
 
   private constructor(
     private readonly config: Configuration,
-    private readonly eventManager: EventManager
+    private readonly eventManager: EventManager,
+    private readonly trackingConsentManager: TrackingConsentManager
   ) {
     this.basePath = app.getPath('userData');
   }
 
   /** Creates and fully initializes a Transport instance. */
-  static async create(config: Configuration, eventManager: EventManager) {
-    const transport = new Transport(config, eventManager);
+  static async create(
+    config: Configuration,
+    eventManager: EventManager,
+    trackingConsentManager: TrackingConsentManager
+  ) {
+    const transport = new Transport(config, eventManager, trackingConsentManager);
+    await BatchManager.clearStalePendingData(transport.basePath);
     for (const track of transport.getTracks()) {
       await transport.setupTrackBatching(track);
     }
@@ -60,12 +67,16 @@ export class Transport {
     const batchSize = resolveBatchSize(this.config);
     const uploadFrequency = resolveUploadFrequency(this.config);
 
-    const manager = await BatchManager.create(this.config, {
-      path,
-      trackType,
-      batchSize,
-      uploadFrequency,
-    });
+    const manager = await BatchManager.create(
+      this.config,
+      {
+        path,
+        trackType,
+        batchSize,
+        uploadFrequency,
+      },
+      this.trackingConsentManager
+    );
     this.batchManagers.push(manager);
 
     return manager;

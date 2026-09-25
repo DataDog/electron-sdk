@@ -13,6 +13,7 @@ import { addUsage, callMonitored, reportConfiguration, startTelemetry } from './
 import { SpanProcessor } from './domain/tracing/SpanProcessor';
 import { Tracing } from './domain/tracing/Tracing';
 import { ProfilingCollection } from './domain/profiling';
+import { TrackingConsentManager } from './domain/tracking-consent';
 import { EventManager } from './event';
 import { BeforeQuitHandler } from './tools/BeforeQuitHandler';
 import { Transport } from './transport';
@@ -45,6 +46,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
     return false;
   }
 
+  const trackingConsentManager = new TrackingConsentManager();
   tracing = new Tracing(config);
 
   eventManager = new EventManager();
@@ -68,7 +70,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   // EventManager does not queue events that have no matching handler. Finish registering every
   // transport track before opening the renderer IPC listener, so an event received during init
   // cannot fall into the gap between RendererPipeline and Transport initialization.
-  transport = await Transport.create(config, eventManager);
+  transport = await Transport.create(config, eventManager, trackingConsentManager);
 
   new RendererPipeline(eventManager, hooks, config);
 
