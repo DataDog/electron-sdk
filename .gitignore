@@ -31,3 +31,6 @@ e2e/compatibility/generated.gitlab-ci.yml
 
 # Playground local test scenarios
 playground/test/local/
+
+# Windows container logs and Playwright artifacts
+windows-test-artifacts/
