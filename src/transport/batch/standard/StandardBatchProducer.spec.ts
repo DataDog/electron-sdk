@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { StandardBatchProducerConfig as ProducerConfig } from './StandardBatchProducer';
 import { mockFs } from '../../../mocks.specUtil';
@@ -28,6 +29,7 @@ describe('StandardBatchProducer', () => {
 
   beforeEach(() => {
     fsMocks.reset();
+    vi.mocked(fs.rm).mockReset().mockResolvedValue(undefined);
     config = makeConfig();
 
     fsMocks.access.mockResolvedValue(undefined);
@@ -239,6 +241,148 @@ describe('StandardBatchProducer', () => {
     });
   });
 
+  describe('storage operation ordering', () => {
+    it('finishes a flush before writing events posted after it', async () => {
+      const producer = await StandardBatchProducer.create(config);
+      let releaseRotation!: () => void;
+      const rotation = new Promise<void>((resolve) => (releaseRotation = resolve));
+      let notifyRotationStarted!: () => void;
+      const rotationStarted = new Promise<void>((resolve) => (notifyRotationStarted = resolve));
+      fsMocks.rename.mockImplementationOnce(() => {
+        notifyRotationStarted();
+        return rotation;
+      });
+
+      producer.post({ data: { order: 1 } });
+      const flush = producer.flush();
+      producer.post({ data: { order: 2 } });
+      await rotationStarted;
+      expect(fsMocks.appendFile).toHaveBeenCalledTimes(1);
+
+      releaseRotation();
+      await flush;
+      await producer.flush();
+
+      expect(fsMocks.appendFile).toHaveBeenNthCalledWith(
+        2,
+        path.join(config.trackPath, 'batch-1234567890-2.tmp'),
+        '{"order":2}\n',
+        'utf8'
+      );
+    });
+
+    it('seals earlier writes and waits for the storage operation before writing later events', async () => {
+      const producer = await StandardBatchProducer.create(config);
+      let releaseOperation!: () => void;
+      const operation = new Promise<void>((resolve) => (releaseOperation = resolve));
+      let notifyOperationStarted!: () => void;
+      const operationStarted = new Promise<void>((resolve) => (notifyOperationStarted = resolve));
+
+      producer.post({ data: { order: 1 } });
+      const migration = producer.runAfterFlush(() => {
+        notifyOperationStarted();
+        return operation;
+      });
+      producer.post({ data: { order: 2 } });
+      await operationStarted;
+
+      expect(fsMocks.rename).toHaveBeenCalledWith(
+        path.join(config.trackPath, 'batch-1234567890-1.tmp'),
+        path.join(config.trackPath, 'batch-1234567890-1.log')
+      );
+      expect(fsMocks.appendFile).toHaveBeenCalledTimes(1);
+
+      releaseOperation();
+      await migration;
+      await producer.flush();
+      expect(fsMocks.appendFile).toHaveBeenCalledTimes(2);
+    });
+
+    it('seals earlier writes, checks the prerequisite, and clears storage before later writes', async () => {
+      const producer = await StandardBatchProducer.create(config);
+      const operations: string[] = [];
+      fsMocks.appendFile.mockImplementation(() => {
+        operations.push('write');
+        return Promise.resolve();
+      });
+      fsMocks.rename.mockImplementation(() => {
+        operations.push('seal');
+        return Promise.resolve();
+      });
+      vi.mocked(fs.rm).mockImplementation(() => {
+        operations.push('remove');
+        return Promise.resolve();
+      });
+      fsMocks.mkdir.mockImplementation(() => {
+        operations.push('recreate');
+        return Promise.resolve();
+      });
+
+      producer.post({ data: { order: 1 } });
+      const clear = producer.clearAfterFlush(() => {
+        operations.push('prerequisite');
+        return Promise.resolve();
+      });
+      producer.post({ data: { order: 2 } });
+      await clear;
+      await producer.flush();
+
+      expect(operations).toEqual(['write', 'seal', 'prerequisite', 'remove', 'recreate', 'write', 'seal']);
+      expect(fs.rm).toHaveBeenCalledWith(config.trackPath, { recursive: true, force: true });
+      expect(fsMocks.mkdir).toHaveBeenCalledWith(config.trackPath, { recursive: true });
+      expect(fsMocks.appendFile.mock.calls[0][0]).not.toBe(fsMocks.appendFile.mock.calls[1][0]);
+    });
+
+    it('retains files when the prerequisite fails and still processes later operations', async () => {
+      const producer = await StandardBatchProducer.create(config);
+      const error = new Error('Authorization has not completed');
+      producer.post({ data: { authorized: true } });
+
+      await expect(producer.clearAfterFlush(() => Promise.reject(error))).rejects.toBe(error);
+
+      expect(fs.rm).not.toHaveBeenCalled();
+      const operation = vi.fn().mockResolvedValue(undefined);
+      await producer.runAfterFlush(operation);
+      expect(operation).toHaveBeenCalledOnce();
+    });
+
+    it.each(['rm', 'mkdir'] as const)('allows retrying a clear after %s fails', async (method) => {
+      const producer = await StandardBatchProducer.create(config);
+      const error = new Error('EPERM');
+      vi.mocked(fs[method]).mockRejectedValueOnce(error);
+
+      await expect(producer.clearAfterFlush(() => Promise.resolve())).rejects.toBe(error);
+      await producer.clearAfterFlush(() => Promise.resolve());
+      producer.post({ data: { recovered: true } });
+      await producer.flush();
+
+      expect(fs.rm).toHaveBeenCalledTimes(2);
+      expect(fsMocks.appendFile).toHaveBeenCalledWith(expect.any(String), '{"recovered":true}\n', 'utf8');
+    });
+
+    it('skips writes whose storage is not ready without blocking later writes', async () => {
+      const producer = await StandardBatchProducer.create(config);
+
+      producer.post({ data: { rejected: true } }, Promise.resolve(false));
+      producer.post({ data: { accepted: true } }, Promise.resolve(true));
+      await producer.flush();
+
+      expect(fsMocks.appendFile).toHaveBeenCalledOnce();
+      expect(fsMocks.appendFile).toHaveBeenCalledWith(expect.any(String), '{"accepted":true}\n', 'utf8');
+    });
+
+    it('propagates a storage operation failure without blocking subsequent writes', async () => {
+      const producer = await StandardBatchProducer.create(config);
+      const error = new Error('Migration failed');
+
+      await expect(producer.runAfterFlush(() => Promise.reject(error))).rejects.toBe(error);
+      producer.post({ data: { recovered: true } });
+      await producer.flush();
+
+      expect(fsMocks.appendFile).toHaveBeenCalledWith(expect.any(String), '{"recovered":true}\n', 'utf8');
+    });
+  });
+
   describe('directory handling', () => {
     it('calls mkdir recursively when directory is missing during a write', async () => {
       // create() consumes one ensureTrackDirectory call and we want the failure to happen during writeData().
@@ -270,7 +414,7 @@ describe('StandardBatchProducer', () => {
       fsMocks.unlink.mockResolvedValue(undefined);
 
       const producer = await StandardBatchProducer.create(config);
-      fsMocks.readdir.mockResolvedValue(logFiles);
+      fsMocks.readdir.mockResolvedValueOnce(logFiles);
 
       producer.post({ data: { event: 'test' } });
       await producer.flush();
@@ -287,7 +431,7 @@ describe('StandardBatchProducer', () => {
       fsMocks.unlink.mockResolvedValue(undefined);
 
       const producer = await StandardBatchProducer.create(config);
-      fsMocks.readdir.mockResolvedValue(logFiles);
+      fsMocks.readdir.mockResolvedValueOnce(logFiles);
       fsMocks.appendFile.mockRejectedValue(new Error('ENOSPC'));
 
       producer.post({ data: { event: 'test' } });
@@ -304,7 +448,7 @@ describe('StandardBatchProducer', () => {
       fsMocks.unlink.mockResolvedValue(undefined);
 
       const producer = await StandardBatchProducer.create(config);
-      fsMocks.readdir.mockResolvedValue(logFiles);
+      fsMocks.readdir.mockResolvedValueOnce(logFiles);
 
       producer.post({ data: { event: 'test' } });
       await producer.flush();
@@ -313,6 +457,22 @@ describe('StandardBatchProducer', () => {
       expect(fsMocks.unlink).toHaveBeenCalledWith(path.join(config.trackPath, 'batch-100-1.log'));
       expect(fsMocks.unlink).toHaveBeenCalledWith(path.join(config.trackPath, 'batch-100-2.log'));
       expect(fsMocks.unlink).not.toHaveBeenCalledWith(path.join(config.trackPath, 'batch-100-10.log'));
+    });
+
+    it('flushes migrated completed files down to the cap without requiring a new event', async () => {
+      const producer = await StandardBatchProducer.create(config);
+      const logFiles = Array.from({ length: 102 }, (_, i) => `batch-100-${i + 1}.log`);
+      const files = new Set([...logFiles, 'batch-101-1.tmp']);
+      fsMocks.readdir.mockImplementation(() => Promise.resolve([...files]));
+      fsMocks.unlink.mockImplementation((filePath: string) => {
+        files.delete(path.basename(filePath));
+        return Promise.resolve();
+      });
+
+      await producer.flush();
+
+      expect([...files]).toEqual([...logFiles.slice(2), 'batch-101-1.tmp']);
+      expect(fsMocks.appendFile).not.toHaveBeenCalled();
     });
 
     it('does not evict when the pending count is within the cap', async () => {
