@@ -18,8 +18,10 @@ test('emits a crash error event after a native crash', async ({ intake }) => {
   const { electronApp: secondElectronApp, mainPage: secondMainPage } = await launchAppManually(intake, userDataDir);
   try {
     await secondMainPage.flushTransport();
-    // increase timeout to account for crash dump processing
-    const errorEvents = await intake.getEventsByType('error', { timeout: 15_000 });
+    // Other startup errors can arrive first; wait for the processed native crash itself.
+    const errorEvents = await secondMainPage.whileFlushing(() =>
+      intake.getEventsByType('error', { timeout: 15_000, predicate: (event) => event.body.error.is_crash === true })
+    );
     expect(errorEvents).toHaveLength(1);
 
     const error = errorEvents[0].body;
@@ -57,7 +59,9 @@ test('crash error event carries user and account context set before the crash', 
   const { electronApp: secondElectronApp, mainPage: secondMainPage } = await launchAppManually(intake, userDataDir);
   try {
     await secondMainPage.flushTransport();
-    const errorEvents = await intake.getEventsByType('error', { timeout: 15_000 });
+    const errorEvents = await secondMainPage.whileFlushing(() =>
+      intake.getEventsByType('error', { timeout: 15_000, predicate: (event) => event.body.error.is_crash === true })
+    );
     const error = errorEvents[0].body;
 
     expect(error.error.is_crash).toBe(true);

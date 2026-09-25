@@ -208,7 +208,15 @@ test.describe('crash reporting across restart @integration', () => {
         const secondWindow = await secondApp.firstWindow();
         await secondWindow.waitForLoadState('load');
 
-        const errorEvents = await flushUntilEventArrives(secondWindow, intake, 'error', 1, 15 * ONE_SECOND);
+        // Startup errors are not evidence that the native crash dump has been processed.
+        const errorEvents = await flushUntilEventArrives(
+          secondWindow,
+          intake,
+          'error',
+          1,
+          15 * ONE_SECOND,
+          (event) => event.body.error.is_crash === true
+        );
         expect(errorEvents).toHaveLength(1);
 
         const error = errorEvents[0].body;
@@ -242,7 +250,8 @@ async function flushUntilEventArrives<T extends EventType>(
   intake: Intake,
   type: T,
   count: number,
-  timeout: number
+  timeout: number,
+  predicate?: (event: ReceivedEvent<EventBodyByType[T]>) => boolean
 ): Promise<ReceivedEvent<EventBodyByType[T]>[]> {
   const pollInterval = 500;
   const deadline = Date.now() + timeout;
@@ -251,7 +260,7 @@ async function flushUntilEventArrives<T extends EventType>(
       /* empty */
     });
     const received = await intake
-      .waitForEventCount(type, count, { timeout: Math.min(pollInterval, deadline - Date.now()) })
+      .waitForEventCount(type, count, { timeout: Math.min(pollInterval, deadline - Date.now()), predicate })
       .catch(() => null);
     if (received) return received;
   }
