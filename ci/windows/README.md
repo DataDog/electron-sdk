@@ -68,6 +68,13 @@ not automatically available. Start with the default, which packages the current 
 
 ## Interpreting failures
 
+If the container stops before the suites start, check `container.log` for the last startup marker:
+PowerShell startup, Node startup, source copying or toolchain validation. Before cleanup, the runner
+also saves `container-state.json` (Docker's process exit code and error) and `container-output.log`
+(output retained by Docker). These help distinguish a Docker client failure from a container process
+failure. They may be absent if Docker could not create or inspect the container. Diagnostic collection
+is best effort and does not change the job result.
+
 - A container may report zero attached displays even when Playwright can interact with Electron
   windows. The telemetry test compares the reported count with Electron's actual display count.
 - Crash tests previously selected the first error after restart. An unrelated startup error could

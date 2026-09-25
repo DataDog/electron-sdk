@@ -47,7 +47,7 @@ try {
     ) -LogName '00-image-build.log'
 
     $dockerArguments = @(
-        'run', '--rm', '--name', $containerName, '--isolation', $Isolation, '--memory', $Memory,
+        'run', '--name', $containerName, '--isolation', $Isolation, '--memory', $Memory,
         '--mount', "type=bind,source=$checkout,target=C:\source,readonly",
         '--mount', "type=bind,source=$artifacts,target=C:\artifacts",
         '--env', "DD_ELECTRON_TEST_SUITE=$Suite", '--env', "DD_ELECTRON_COMPATIBILITY_TARGET=$Target",
@@ -61,6 +61,18 @@ try {
 } finally {
     # Remove only resources created by this invocation; never prune the shared daemon.
     $ErrorActionPreference = 'Continue'
+    # Keep the stopped container until diagnostics are saved. Its exit code distinguishes a
+    # process failure inside the container from a failure of the host Docker client.
+    try {
+        $state = & docker inspect --format '{{json .State}}' $containerName 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            $state | Set-Content -Encoding UTF8 (Join-Path $artifacts 'container-state.json')
+            Write-Host "Container state: $state"
+            & docker logs $containerName 2>&1 | Out-File -Encoding UTF8 (Join-Path $artifacts 'container-output.log')
+        }
+    } catch {
+        Write-Warning "Could not collect container diagnostics: $_"
+    }
     & docker rm --force $containerName 2>$null | Out-Null
     & docker image rm --no-prune $imageTag 2>$null | Out-Null
     Write-Host "Windows test artifacts: $artifacts"

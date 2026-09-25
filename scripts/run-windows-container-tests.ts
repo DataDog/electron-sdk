@@ -16,12 +16,15 @@ runMain(async () => {
   const workspace = 'C:\\w';
   const artifacts = 'C:\\artifacts';
 
+  console.log(`Copying test sources from ${source} to ${workspace}...`);
   copyWindowsContainerWorkspace(source, workspace);
+  console.log('Test sources copied. Checking Node and Yarn versions...');
   process.chdir(workspace);
   const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8')) as { volta: { node: string; yarn: string } };
   if (process.versions.node !== manifest.volta.node || command`yarn --version`.run().trim() !== manifest.volta.yarn) {
     throw new Error('The Windows image toolchain no longer matches package.json. Update ci/windows/install-tools.ps1.');
   }
+  console.log('Toolchain versions match package.json. Recording the test environment...');
   fs.writeFileSync(
     path.join(artifacts, 'environment.json'),
     JSON.stringify(

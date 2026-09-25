@@ -11,4 +11,4 @@ COPY install-tools.ps1 C:/install-tools.ps1
 RUN C:/install-tools.ps1; Remove-Item C:/install-tools.ps1
 
 WORKDIR C:/w
-CMD ["node", "C:/source/scripts/run-windows-container-tests.ts"]
+CMD ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "C:/source/ci/windows/start.ps1"]
