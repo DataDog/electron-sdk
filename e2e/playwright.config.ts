@@ -1,15 +1,8 @@
 import { defineConfig } from '@playwright/test';
 import type { IntegrationFixtures } from './integration/lib/integrationFixture';
 
-const INTEGRATION_APPS = [
-  'forge-webpack',
-  'forge-vite',
-  'forge-esbuild-cjs',
-  'forge-esbuild-esm',
-  'electron-vite',
-  'electron-vite-esm',
-  'electron-builder-vite',
-] as const;
+import compatibilityConfig from './compatibility/config.json';
+const INTEGRATION_APPS = compatibilityConfig.apps;
 const INTEGRATION_MODES = ['dev', 'packaged'] as const;
 
 export type IntegrationApp = (typeof INTEGRATION_APPS)[number];
@@ -38,15 +31,11 @@ export default defineConfig<IntegrationFixtures>({
         use: { app, mode, variant: null },
       }))
     ),
-    {
-      name: 'electron-builder-vite-packager-copy-packaged',
+    ...(process.env.DD_ELECTRON_COMPATIBILITY_ROOT ? INTEGRATION_APPS : ['electron-builder-vite']).map((app) => ({
+      name: `${app}-packager-copy-packaged`,
       testDir: './integration/scenarios',
       testMatch: '**/*.scenario.ts',
-      use: {
-        app: 'electron-builder-vite' as const,
-        mode: 'packaged' as const,
-        variant: 'packager-copy' as const,
-      },
-    },
+      use: { app, mode: 'packaged' as const, variant: 'packager-copy' as const },
+    })),
   ],
 });

@@ -5,8 +5,14 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { Intake } from '../../lib/intake';
 import { TestServer } from '../../lib/testServer';
+import { assertExpectedElectronVersion } from '../../lib/compatibility';
 import type { IntegrationApp, IntegrationMode, IntegrationVariant } from '../../playwright.config';
 import type { InitConfiguration } from '@datadog/electron-sdk';
+
+export function getIntegrationAppDirectory(app: IntegrationApp, variant: IntegrationVariant): string {
+  const root = process.env.DD_ELECTRON_COMPATIBILITY_ROOT;
+  return root ? join(root, 'integration-apps', app, variant ?? 'default') : join(__dirname, '../apps', app);
+}
 
 export interface IntegrationFixtures {
   /** The integration app name, set via Playwright project `use` config. */
@@ -53,7 +59,7 @@ export const test = base.extend<IntegrationFixtures>({
   ],
 
   electronApp: async ({ app, mode, variant, intake }, use) => {
-    const appDir = join(__dirname, '../apps', app);
+    const appDir = getIntegrationAppDirectory(app, variant);
     const userDataDir = await mkdtemp(join(tmpdir(), 'electron-sdk-integration-'));
     const electronApp = await launchApp(appDir, mode, intake, userDataDir, variant);
     await use(electronApp);
@@ -85,7 +91,7 @@ export async function launchApp(
   const userDataArgs = [`--user-data-dir=${userDataDir}`];
 
   if (mode === 'packaged') {
-    return electron.launch({
+    return launchAndAssertVersion({
       executablePath: findPackagedBinary(appDir, variant),
       args: userDataArgs,
       env: { ...process.env, DD_SDK_CONFIG: JSON.stringify(config) },
@@ -99,11 +105,22 @@ export async function launchApp(
   const electronPath = require(join(appDir, 'node_modules/electron')) as string;
   const mainScript = findDevMainScript(appDir, variant);
 
-  return electron.launch({
+  return launchAndAssertVersion({
     executablePath: electronPath,
     args: [mainScript, ...userDataArgs],
     env: { ...process.env, DD_SDK_CONFIG: JSON.stringify(config) },
   });
+}
+
+async function launchAndAssertVersion(options: Parameters<typeof electron.launch>[0]): Promise<ElectronApplication> {
+  const app = await electron.launch(options);
+  try {
+    await assertExpectedElectronVersion(app);
+    return app;
+  } catch (error) {
+    await app.close();
+    throw error;
+  }
 }
 
 function buildSdkConfig(intake: Intake): InitConfiguration {
@@ -126,7 +143,7 @@ function buildSdkConfig(intake: Intake): InitConfiguration {
  * Each integration app declares its dev main entry in `package.json` under
  * `integration.devMain` — a path relative to the app directory.
  */
-function findDevMainScript(appDir: string, variant: IntegrationVariant): string {
+export function findDevMainScript(appDir: string, variant: IntegrationVariant): string {
   const pkgPath = join(appDir, 'package.json');
   const integration = getIntegrationLaunchConfiguration(pkgPath, variant);
   const devMain = integration.devMain;
@@ -154,7 +171,7 @@ function findDevMainScript(appDir: string, variant: IntegrationVariant): string 
  * `${platform}` (e.g. "darwin"), allowing arch-specific overrides where packagers use
  * different output directory names per arch (e.g. electron-builder: `mac-arm64` vs `mac`).
  */
-function findPackagedBinary(appDir: string, variant: IntegrationVariant): string {
+export function findPackagedBinary(appDir: string, variant: IntegrationVariant): string {
   const pkgPath = join(appDir, 'package.json');
   const integration = getIntegrationLaunchConfiguration(pkgPath, variant);
   const packagedBinary = integration.packagedBinary;
@@ -202,7 +219,7 @@ function getIntegrationLaunchConfiguration(
   if (!integration) {
     throw new Error(`No "integration" field in ${packageJsonPath}.`);
   }
-  if (!variant) return integration;
+  if (!variant || (process.env.DD_ELECTRON_COMPATIBILITY_ROOT && !integration.variants)) return integration;
 
   const variantConfiguration = integration.variants?.[variant];
   if (!variantConfiguration) {
