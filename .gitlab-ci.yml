@@ -118,8 +118,8 @@ e2e:
   artifacts:
     when: on_failure
     paths:
-      - e2e/test-results/
-      - e2e/playwright-report/
+      - test-results/
+      - playwright-report/
 
 integration:
   extends: .regular-pipeline
@@ -131,8 +131,8 @@ integration:
   artifacts:
     when: on_failure
     paths:
-      - e2e/test-results/
-      - e2e/playwright-report/
+      - test-results/
+      - playwright-report/
 
 playground:
   extends: .regular-pipeline
