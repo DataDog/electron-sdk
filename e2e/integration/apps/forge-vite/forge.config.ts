@@ -5,6 +5,10 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     name: 'forge-vite',
+    ignore: (file) => {
+      if (!file) return false;
+      return !/^[/\\](?:\.vite|node_modules)(?:[/\\]|$)/.test(file);
+    },
   },
   rebuildConfig: {},
   makers: [],

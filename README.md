@@ -135,10 +135,49 @@ mode, so the Electron setting is authoritative.
 
 The SDK instruments Electron as it is loaded, which requires correct module loading order. The SDK provides bundler plugins to ensure this works in all environments:
 
-**Vite** (including Electron Forge with Vite and electron-vite):
+##### Electron Forge
+
+Keep `copyRuntimeDependencies` disabled. Configure Forge to package root `node_modules` alongside its
+bundler output so Electron Packager can stage production dependencies normally.
+
+**Forge Vite:** add an `ignore` function to `packagerConfig` in `forge.config.ts`:
+
+```ts
+packagerConfig: {
+  ignore: (file) => {
+    if (!file) return false;
+    return !/^[/\\](?:\.vite|node_modules)(?:[/\\]|$)/.test(file);
+  },
+},
+```
+
+**Forge Webpack:** use the same configuration with `.webpack` instead of `.vite`:
+
+```ts
+packagerConfig: {
+  ignore: (file) => {
+    if (!file) return false;
+    return !/^[/\\](?:\.webpack|node_modules)(?:[/\\]|$)/.test(file);
+  },
+},
+```
+
+Use `datadogVitePlugin()` or `new DatadogWebpackPlugin()` without the copy option. See the
+[complete Electron Forge setup guide](docs/RUNTIME_DEPENDENCIES.md) for full examples and package
+manager requirements.
+
+##### Other packagers
+
+`copyRuntimeDependencies` defaults to `false` for every Datadog bundler plugin. Keep the default and
+configure the application packager to stage production dependencies.
+
+Add the corresponding Datadog plugin to the main-process bundler configuration.
+
+**Vite** (including electron-vite and standalone Vite):
 
 ```ts
 // vite config
+import { defineConfig } from 'vite';
 import { datadogVitePlugin } from '@datadog/electron-sdk/vite-plugin';
 
 export default defineConfig({
@@ -146,7 +185,7 @@ export default defineConfig({
 });
 ```
 
-**Webpack** (including Electron Forge with Webpack):
+**Webpack:**
 
 ```ts
 // webpack config
@@ -157,7 +196,7 @@ module.exports = {
 };
 ```
 
-**ESBuild**
+**esbuild:**
 
 ```ts
 // esbuild config
@@ -167,11 +206,6 @@ await esbuild.build({
   plugins: [datadogEsbuildPlugin()],
 });
 ```
-
-Bundler plugins copy the SDK, dd-trace, and their runtime dependencies into the build output by
-default. If your application packager stages external dependencies, pass
-`{ copyRuntimeDependencies: false }` to any plugin and ensure the packager includes both packages
-and their runtime dependencies.
 
 ## Available Features
 

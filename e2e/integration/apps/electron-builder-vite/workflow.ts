@@ -1,4 +1,4 @@
-export function getWorkflow(mode: string): 'default-copy' | 'packager-copy' {
-  if (mode === 'default-copy' || mode === 'packager-copy') return mode;
-  throw new Error(`Expected Vite mode "default-copy" or "packager-copy", received "${mode}"`);
+export function getWorkflow(mode: string): 'default-copy' | 'plugin-copy' {
+  if (mode === 'default-copy' || mode === 'plugin-copy') return mode;
+  throw new Error(`Expected Vite mode "default-copy" or "plugin-copy", received "${mode}"`);
 }

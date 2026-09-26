@@ -2,9 +2,10 @@ export interface DatadogBundlerPluginOptions {
   /**
    * Copy the SDK, dd-trace, and their runtime dependencies into the build output.
    *
-   * Disable this when the application packager stages external dependencies.
+   * Prefer configuring the application packager to stage external dependencies. Enable this
+   * compatibility fallback only when the packager cannot do so.
    *
-   * @default true
+   * @default false
    */
   copyRuntimeDependencies?: boolean;
 }
