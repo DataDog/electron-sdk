@@ -26,9 +26,12 @@ yarn test:compatibility electron-41 --project=forge-vite-packaged --grep 'view e
 
 ## CI
 
-Start a web or scheduled pipeline with `COMPATIBILITY_TESTS=true`. It generates Linux and macOS jobs
-for every configured target. Nightly failures are allowed; stable and prerelease failures fail the pipeline.
-The regular pipeline runs when `COMPATIBILITY_TESTS` is false.
+Compatibility tests run automatically after the regular checks pass on every push to the default branch
+(`main`), including PR merges. Feature-branch pushes keep the regular checks without the compatibility matrix.
+
+To run compatibility tests separately, start a web or scheduled pipeline with `COMPATIBILITY_TESTS=true`.
+This skips the regular checks and generates Linux and macOS jobs for every configured target.
+Nightly failures are allowed; stable and prerelease failures fail the pipeline.
 
 Optional comma-separated filters limit the matrix:
 

@@ -6,7 +6,7 @@ variables:
     options:
       - 'false'
       - 'true'
-    description: 'Run the Electron compatibility test matrix instead of the regular pipeline.'
+    description: 'Run compatibility tests instead of regular checks in web or scheduled pipelines. Default-branch pushes run both automatically.'
   DD_ELECTRON_COMPATIBILITY_ENVIRONMENTS:
     value: ''
     description: 'Optional comma-separated compatibility environments, for example linux,macos.'
@@ -146,6 +146,7 @@ playground:
 generate-compatibility-pipeline:
   stage: compatibility
   rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $COMPATIBILITY_TESTS == "true"'
     - if: '$CI_PIPELINE_SOURCE == "web" && $COMPATIBILITY_TESTS == "true"'
   script:
@@ -158,6 +159,7 @@ generate-compatibility-pipeline:
 compatibility:
   stage: compatibility
   rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $COMPATIBILITY_TESTS == "true"'
     - if: '$CI_PIPELINE_SOURCE == "web" && $COMPATIBILITY_TESTS == "true"'
   needs:
