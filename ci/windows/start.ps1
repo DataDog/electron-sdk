@@ -15,6 +15,26 @@ function Invoke-Node {
     }
 }
 
+# Record the runtime actually installed by the floating VC++ installer URL.
+# Diagnostics must not change whether the baseline starts or how Electron is launched.
+try {
+    $runtime = [ordered]@{
+        WindowsBuild = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' |
+            Select-Object CurrentBuild, UBR, BuildLabEx
+        VisualCpp = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64' |
+            Select-Object Version, Installed
+        RuntimeDlls = @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll', 'ucrtbase.dll') | ForEach-Object {
+            $file = Get-Item (Join-Path $env:SystemRoot "System32\$_")
+            [ordered]@{ Path = $file.FullName; Version = $file.VersionInfo.FileVersion; Sha256 = (Get-FileHash $file.FullName -Algorithm SHA256).Hash }
+        }
+    }
+    $json = $runtime | ConvertTo-Json -Depth 5
+    $json | Set-Content -Encoding UTF8 C:/artifacts/container-system.json
+    Write-Host "Container runtime versions: $json"
+} catch {
+    Write-Warning "Could not collect container runtime versions: $_"
+}
+
 Write-Host 'Checking Node startup...'
 Invoke-Node -NodeArguments @('--version')
 Write-Host 'Starting the Windows test preparation script...'

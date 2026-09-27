@@ -33,6 +33,57 @@ function Invoke-DockerLogged {
     }
 }
 
+# These probes report evidence, not a verdict on nested virtualization support.
+# A denied or unavailable probe must not prevent the tests from running.
+function Get-HostDiagnostic {
+    param([scriptblock]$Probe)
+    $ErrorActionPreference = 'Stop'
+    try {
+        $value = & $Probe
+        return @{ Status = 'collected'; Value = $value }
+    } catch {
+        return @{ Status = 'unavailable'; Error = $_.Exception.Message; ErrorId = $_.FullyQualifiedErrorId }
+    }
+}
+
+function Save-HostDiagnostics {
+    try {
+        $diagnostics = [ordered]@{
+            Time = [DateTime]::UtcNow.ToString('o')
+            RequestedIsolation = $Isolation
+            RequestedMemory = $Memory
+            PowerShellVersion = $PSVersionTable.PSVersion.ToString()
+            Docker = Get-HostDiagnostic {
+                $info = & docker info --format '{{json .}}' 2>$null
+                if ($LASTEXITCODE -ne 0) { throw "docker info failed with exit code $LASTEXITCODE" }
+                $info | ConvertFrom-Json | Select-Object ServerVersion, OperatingSystem, KernelVersion, OSType, Architecture, Isolation, NCPU, MemTotal
+            }
+            Windows = Get-HostDiagnostic {
+                Get-CimInstance Win32_OperatingSystem -OperationTimeoutSec 10 |
+                    Select-Object Caption, Version, BuildNumber, OSArchitecture
+            }
+            Computer = Get-HostDiagnostic {
+                Get-CimInstance Win32_ComputerSystem -OperationTimeoutSec 10 |
+                    Select-Object Manufacturer, Model, HypervisorPresent
+            }
+            Processors = Get-HostDiagnostic {
+                Get-CimInstance Win32_Processor -OperationTimeoutSec 10 |
+                    Select-Object Name, VirtualizationFirmwareEnabled, VMMonitorModeExtensions, SecondLevelAddressTranslationExtensions
+            }
+            HyperVFeatures = Get-HostDiagnostic {
+                Get-WindowsOptionalFeature -Online -FeatureName '*Hyper-V*' |
+                    Select-Object FeatureName, @{ Name = 'State'; Expression = { $_.State.ToString() } }
+            }
+        }
+        $diagnostics | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 (Join-Path $artifacts 'host-diagnostics.json')
+        Write-Host "Requested container isolation: $Isolation; memory: $Memory. Host probes saved to host-diagnostics.json."
+    } catch {
+        Write-Warning "Could not save host diagnostics: $_"
+    }
+}
+
+Save-HostDiagnostics
+
 $dockerOs = & docker info --format '{{.OSType}}'
 if ($LASTEXITCODE -ne 0) { throw 'Cannot connect to the Docker daemon' }
 if ($dockerOs.Trim() -ne 'windows') { throw 'This test requires a Windows Docker daemon' }
@@ -72,6 +123,36 @@ try {
         }
     } catch {
         Write-Warning "Could not collect container diagnostics: $_"
+    }
+    # Read selected metadata before cleanup, without including environment variables or credentials.
+    foreach ($diagnostic in @(
+        @{
+            File = 'container-runtime.json'
+            Target = $containerName
+            Properties = @(
+                @{ Name = 'Isolation'; Expression = { $_.HostConfig.Isolation } },
+                @{ Name = 'MemoryBytes'; Expression = { $_.HostConfig.Memory } },
+                @{ Name = 'ImageId'; Expression = { $_.Image } }
+            )
+        },
+        @{
+            File = 'image-runtime.json'
+            Target = $imageTag
+            Properties = @('Id', 'OsVersion', 'Architecture')
+        }
+    )) {
+        try {
+            $inspection = & docker inspect --format '{{json .}}' $diagnostic.Target 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                $metadata = $inspection | ConvertFrom-Json | Select-Object -Property $diagnostic.Properties | ConvertTo-Json -Compress
+                $metadata | Set-Content -Encoding UTF8 (Join-Path $artifacts $diagnostic.File)
+                Write-Host "$($diagnostic.File): $metadata"
+            } else {
+                Write-Warning "Could not inspect $($diagnostic.Target) for $($diagnostic.File); docker exit code $LASTEXITCODE"
+            }
+        } catch {
+            Write-Warning "Could not save $($diagnostic.File): $_"
+        }
     }
     & docker rm --force $containerName 2>$null | Out-Null
     & docker image rm --no-prune $imageTag 2>$null | Out-Null

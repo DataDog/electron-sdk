@@ -1,4 +1,5 @@
-import { test as base, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { launchElectronWithWindowsDiagnostics, logWindowsStartup } from './windowsStartup';
+import { test as base, type ElectronApplication, type Page } from '@playwright/test';
 import { join } from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -155,13 +156,13 @@ async function launchApp(
 
   Object.assign(env, extraEnv);
 
-  const electronApp = await electron.launch({
+  const electronApp = await launchElectronWithWindowsDiagnostics({
     executablePath: electronPath,
     args: [join(e2eAppDirectory, 'dist/main.js'), `--user-data-dir=${userDataDir}`],
     env,
   });
   try {
-    await assertExpectedElectronVersion(electronApp);
+    await logWindowsStartup('electron.version', () => assertExpectedElectronVersion(electronApp));
     return electronApp;
   } catch (error) {
     await electronApp.close();
@@ -170,7 +171,7 @@ async function launchApp(
 }
 
 async function waitForWindowLoaded(electronApp: ElectronApplication): Promise<{ window: Page }> {
-  const window = await electronApp.firstWindow();
+  const window = await logWindowsStartup('electron.firstWindow', () => electronApp.firstWindow());
   window.on('console', (msg) => {
     const text = msg.text();
     // The main window is served over file://, which cannot carry the `Document-Policy: js-profiling` header,
@@ -181,7 +182,7 @@ async function waitForWindowLoaded(electronApp: ElectronApplication): Promise<{ 
     }
     console.log('Browser console:', text);
   });
-  await window.waitForLoadState('load');
+  await logWindowsStartup('window.load', () => window.waitForLoadState('load'));
   await window.waitForTimeout(500);
   return { window };
 }

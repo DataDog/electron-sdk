@@ -92,3 +92,20 @@ source exclusions still apply; this workaround needs confirmation on the Windows
 
 This establishes a functional test environment. Overhead measurements need a separate baseline:
 container resource limits, software rendering and GPU fallback may differ from a desktop app.
+
+## Baseline launch comparison
+
+This diagnostic branch starts from baseline `82e8298`. Run the `electron-41` target to compare
+Electron 41.10.5 with the failing Windows branch. The baseline app preparation, container image,
+isolation, memory, Electron arguments, and child environment are retained.
+
+Windows tests have no retries, stop after three failures, print errors immediately, and retain
+failed traces. Launch has a 20-second timeout so its error can surface before the 30-second test
+timeout. Linux/macOS keep their existing timeout and retry behavior.
+
+`03-tests.log` contains `pw:browser` process output from before launch completes, startup milestones,
+launch paths, selected Windows environment paths (missing values are `null`), and executable SHA-256.
+Behavior flags report only whether they are set. The full child environment is never printed.
+`host-diagnostics.json`, `container-runtime.json`, and `image-runtime.json` record host and isolation
+details. `container-system.json` records Windows build, VC++ version, and runtime DLL versions/hashes,
+including the result of the floating VC++ installer download. Diagnostic probes are best effort.

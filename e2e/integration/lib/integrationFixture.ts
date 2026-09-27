@@ -1,4 +1,5 @@
-import { test as base, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { launchElectronWithWindowsDiagnostics, logWindowsStartup } from '../../lib/windowsStartup';
+import { test as base, type ElectronApplication, type Page } from '@playwright/test';
 import { join } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -73,8 +74,8 @@ export const test = base.extend<IntegrationFixtures>({
   },
 
   window: async ({ electronApp }, use) => {
-    const window = await electronApp.firstWindow();
-    await window.waitForLoadState('load');
+    const window = await logWindowsStartup('electron.firstWindow', () => electronApp.firstWindow());
+    await logWindowsStartup('window.load', () => window.waitForLoadState('load'));
     // Small buffer for the SDK and browser-rum to initialize
     await window.waitForTimeout(500);
     await use(window);
@@ -113,13 +114,13 @@ async function launchAndAssertVersion(
   args: string[],
   config: InitConfiguration
 ): Promise<ElectronApplication> {
-  const electronApp = await electron.launch({
+  const electronApp = await launchElectronWithWindowsDiagnostics({
     executablePath,
     args,
     env: { ...process.env, DD_SDK_CONFIG: JSON.stringify(config) },
   });
   try {
-    await assertExpectedElectronVersion(electronApp);
+    await logWindowsStartup('electron.version', () => assertExpectedElectronVersion(electronApp));
     return electronApp;
   } catch (error) {
     await electronApp.close();

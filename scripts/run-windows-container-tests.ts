@@ -60,7 +60,8 @@ runMain(async () => {
     await runLoggedCommand({
       command: 'yarn',
       args: [`test:${suite}`, ...targetArguments],
-      environment: {},
+      // Playwright streams process output even when electron.launch() never resolves.
+      environment: { DEBUG: 'pw:browser' },
       logFile: path.join(artifacts, '03-tests.log'),
       retryDelays: [],
     });
