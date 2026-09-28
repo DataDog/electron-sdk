@@ -10,6 +10,11 @@
       "id": "macos",
       "runnerTags": ["macos:sequoia-arm64", "specific:true"],
       "testCommandPrefix": []
+    },
+    {
+      "id": "windows",
+      "runnerTags": ["windows-v2:2022"],
+      "testCommandPrefix": []
     }
   ],
   "targets": [

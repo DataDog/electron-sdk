@@ -208,6 +208,7 @@ __metadata:
     typescript: "npm:5.9.3"
     typescript-eslint: "npm:8.64.0"
     vitest: "npm:4.1.10"
+    yaml: "npm:2.9.0"
   peerDependencies:
     electron: ">=39"
   languageName: unknown
@@ -4986,7 +4987,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"yaml@npm:^2.9.0":
+"yaml@npm:2.9.0, yaml@npm:^2.9.0":
   version: 2.9.0
   resolution: "yaml@npm:2.9.0"
   bin:

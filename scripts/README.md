@@ -14,9 +14,9 @@ scripts/
 
 ## Compatibility testing
 
-- `yarn test:compatibility:init <target>` builds the current SDK and prepares the apps for an Electron target.
+- `yarn test:compatibility:init <target>` builds and checks the SDK package contents before preparing the apps for an Electron target.
 - `yarn test:compatibility <target> [Playwright options]` runs the prepared target's E2E and integration tests.
-- `yarn test:compatibility:ci:generate` generates the Linux/macOS child pipeline.
+- `yarn test:compatibility:ci:generate` generates the Linux/macOS/Windows child pipeline.
 
 See the [compatibility guide](../e2e/compatibility/README.md) for targets, CI filters, and examples.
 
