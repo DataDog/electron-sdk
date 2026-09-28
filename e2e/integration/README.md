@@ -54,6 +54,10 @@ Vite-based apps use `datadogVitePlugin`, webpack-based apps use `DatadogWebpackP
 The `forge-esbuild-esm` app additionally exercises the plugin's ESM path, where the banner loads `instrument` via `createRequire` because ES modules have no global `require`.
 The `electron-builder-vite` app packages two isolated variants: the default plugin-owned runtime dependency copy
 and `copyRuntimeDependencies: false`, where electron-builder owns dependency staging.
+The Windows payload extraction scenario verifies that default-copy `dd-trace` paths would exceed `MAX_PATH`
+at a long temporary destination, while the copy-disabled Vite output extracts completely with Windows
+PowerShell 5.1. The separate packaging scenario checks dependency placement in `app.asar`; this does not
+run a full MSIX build or signing pipeline.
 
 ## Key design points
 
