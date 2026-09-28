@@ -30,7 +30,7 @@ const config = [
         entryFileNames: 'index.cjs',
         // Explicit chunk names so each dynamic import gets a meaningful, stable filename
         chunkFileNames: '[name].chunk.cjs',
-        manualChunks: (id) => (id.includes('/wasm/') ? 'wasm' : undefined),
+        manualChunks: (id) => (id.replaceAll('\\', '/').includes('/wasm/') ? 'wasm' : undefined),
       },
       {
         dir: 'dist',
@@ -38,7 +38,7 @@ const config = [
         sourcemap: true,
         entryFileNames: 'index.mjs',
         chunkFileNames: '[name].chunk.mjs',
-        manualChunks: (id) => (id.includes('/wasm/') ? 'wasm' : undefined),
+        manualChunks: (id) => (id.replaceAll('\\', '/').includes('/wasm/') ? 'wasm' : undefined),
       },
     ],
     external: ['electron'],
