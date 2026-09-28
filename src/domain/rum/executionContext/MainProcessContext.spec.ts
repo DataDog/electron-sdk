@@ -66,10 +66,11 @@ describe('MainProcessContext', () => {
     expect(viewData.view.id).toBe('session-1');
     expect(viewData.view.is_fake).toBe(true);
     expect(contextData.execution_context.type).toBe('main-process');
+    expect(contextData.execution_context.name).toBe('Main Process');
     expect(contextData.execution_context.instance_id).toBe(String(process.pid));
 
     expect(hooks.triggerRum({ eventType: 'view', startTime: view.startTime!, source: EventSource.MAIN })).toMatchObject(
-      { execution_context: { id: contextData.execution_context.id } }
+      { execution_context: { id: contextData.execution_context.id, name: 'Main Process' } }
     );
     expect(
       hooks.triggerRum({
@@ -78,6 +79,20 @@ describe('MainProcessContext', () => {
         source: EventSource.MAIN,
       })
     ).toMatchObject({ view: { id: 'session-1' } });
+  });
+
+  it('does not tag an execution_context event with its own execution_context field', () => {
+    // Regression: this hook must not tag execution_context events at all — otherwise combine()
+    // lets its name fill in for any execution_context event (main's own or a renderer's) whose
+    // own name hasn't resolved yet (undefined at emit time), since both reach here with source
+    // MAIN — RendererProcessContexts's own tagging code also runs in the main process.
+    const executionContext = rawRumEvents.find((e) => e.data.type === 'execution_context')!;
+    const result = hooks.triggerRum({
+      eventType: 'execution_context',
+      startTime: executionContext.startTime!,
+      source: EventSource.MAIN,
+    }) as { execution_context?: unknown };
+    expect(result.execution_context).toBeUndefined();
   });
 
   it('span hook tags spans within the pair with _dd.execution_context.id', () => {
