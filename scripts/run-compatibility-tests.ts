@@ -5,14 +5,12 @@ import { getCompatibilityTarget, getGeneratedTargetRoot, loadCompatibilityConfig
 
 runMain(() => {
   const [id, ...args] = process.argv.slice(2);
-  const target = getCompatibilityTarget(loadCompatibilityConfig(), id);
+  getCompatibilityTarget(loadCompatibilityConfig(), id);
   const root = getGeneratedTargetRoot(id);
   if (!fs.existsSync(`${root}/metadata.json`)) throw new Error(`Run yarn test:compatibility:init ${id} first.`);
   command`yarn playwright test -c e2e ${args}`
     .withEnvironment({
-      DD_ELECTRON_COMPATIBILITY_ROOT: root,
       DD_ELECTRON_COMPATIBILITY_TARGET: id,
-      DD_ELECTRON_EXPECTED_VERSION: target.version,
     })
     .withLogs()
     .run();

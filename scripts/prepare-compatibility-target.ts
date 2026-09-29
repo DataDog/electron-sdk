@@ -52,7 +52,7 @@ runMain(async () => {
     const destination = path.join(generated, app.destination);
     await materializeApp(path.join(root, app.source), destination, target, app.sdk);
     const environment = {
-      DD_ELECTRON_RUNTIME_DEPENDENCY_STRATEGY: app.variant === 'packager-copy' ? 'packager-copy' : 'plugin-copy',
+      DD_ELECTRON_COPY_RUNTIME_DEPENDENCIES: String(app.variant !== 'packager-copy'),
     };
     command`yarn install --no-immutable`
       .withCurrentWorkingDirectory(destination)

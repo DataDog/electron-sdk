@@ -3,7 +3,7 @@ import { WebpackPlugin } from '@electron-forge/plugin-webpack';
 import { mainConfig } from './webpack.main.config';
 import { rendererConfig } from './webpack.renderer.config';
 
-const packageRuntimeDependencies = process.env.DD_ELECTRON_RUNTIME_DEPENDENCY_STRATEGY === 'packager-copy';
+const copyRuntimeDependencies = process.env.DD_ELECTRON_COPY_RUNTIME_DEPENDENCIES !== 'false';
 
 const isPackagedApplicationFile = (file: string): boolean => {
   const normalizedFile = file.replaceAll('\\', '/');
@@ -21,7 +21,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     name: 'forge-webpack',
-    ...(packageRuntimeDependencies && {
+    ...(!copyRuntimeDependencies && {
       ignore: (file: string) => file !== '' && !isPackagedApplicationFile(file),
     }),
   },

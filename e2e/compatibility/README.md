@@ -15,6 +15,9 @@ xvfb-run -a yarn test:compatibility electron-41
 Preparation downloads and verifies Electron, installs each app, and packages the integration apps.
 Tests check the actual Electron version at launch. Each integration app runs in development and
 packaged modes, including a packaged variant where the packager copies runtime dependencies.
+Preparation sets `DD_ELECTRON_COPY_RUNTIME_DEPENDENCIES` to `true` or `false` for each variant;
+when unset, fixture builds keep plugin-owned copying enabled. The test runner passes only
+`DD_ELECTRON_COMPATIBILITY_TARGET`, from which fixtures derive their paths and expected version.
 The existing `test:e2e` and `test:integration` commands still use their regular fixtures.
 
 Pass normal Playwright options to select tests without preparing another target:

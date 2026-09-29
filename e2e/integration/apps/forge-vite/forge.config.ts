@@ -1,7 +1,7 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 
-const packageRuntimeDependencies = process.env.DD_ELECTRON_RUNTIME_DEPENDENCY_STRATEGY === 'packager-copy';
+const copyRuntimeDependencies = process.env.DD_ELECTRON_COPY_RUNTIME_DEPENDENCIES !== 'false';
 
 const isPackagedApplicationFile = (file: string): boolean => {
   const normalizedFile = file.replaceAll('\\', '/');
@@ -19,7 +19,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     name: 'forge-vite',
-    ...(packageRuntimeDependencies && {
+    ...(!copyRuntimeDependencies && {
       ignore: (file: string) => file !== '' && !isPackagedApplicationFile(file),
     }),
   },

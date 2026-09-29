@@ -17,6 +17,7 @@ import {
   findPackagedBinary,
 } from '../lib/integrationFixture';
 import { getElectronBuilderViteArchivePath } from '../lib/electronBuilderVite';
+import { getCompatibilityRun } from '../../lib/compatibility';
 import { Intake, type EventBodyByType, type EventType, type ReceivedEvent, type Span } from '../../lib/intake';
 import type { Page } from '@playwright/test';
 import { ONE_SECOND } from '@datadog/js-core/time';
@@ -37,7 +38,7 @@ interface IntegrationTestWindow {
 test.describe('electron-builder runtime dependency packaging @integration', () => {
   test('stages Datadog dependencies according to the plugin option', ({ app, mode, variant }) => {
     test.skip(
-      mode !== 'packaged' || (!process.env.DD_ELECTRON_COMPATIBILITY_ROOT && app !== 'electron-builder-vite'),
+      mode !== 'packaged' || (!getCompatibilityRun() && app !== 'electron-builder-vite'),
       'packaged compatibility apps or electron-builder-vite only'
     );
 

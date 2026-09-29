@@ -2,6 +2,7 @@ import { defineConfig } from '@playwright/test';
 import type { IntegrationFixtures } from './integration/lib/integrationFixture';
 
 import compatibilityConfig from './compatibility/config.json';
+import { getCompatibilityRun } from './lib/compatibility';
 const INTEGRATION_APPS = compatibilityConfig.apps;
 const INTEGRATION_MODES = ['dev', 'packaged'] as const;
 
@@ -32,7 +33,7 @@ export default defineConfig<IntegrationFixtures>({
         use: { app, mode, variant: null },
       }))
     ),
-    ...(process.env.DD_ELECTRON_COMPATIBILITY_ROOT ? INTEGRATION_APPS : ['electron-builder-vite']).map((app) => ({
+    ...(getCompatibilityRun() ? INTEGRATION_APPS : ['electron-builder-vite']).map((app) => ({
       name: `${app}-packager-copy-packaged`,
       testDir: './integration/scenarios',
       testMatch: '**/*.scenario.ts',

@@ -5,12 +5,12 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { Intake } from '../../lib/intake';
 import { TestServer } from '../../lib/testServer';
-import { assertExpectedElectronVersion } from '../../lib/compatibility';
+import { assertExpectedElectronVersion, getCompatibilityRun } from '../../lib/compatibility';
 import type { IntegrationApp, IntegrationMode, IntegrationVariant } from '../../playwright.config';
 import type { InitConfiguration } from '@datadog/electron-sdk';
 
 export function getIntegrationAppDirectory(app: IntegrationApp, variant: IntegrationVariant): string {
-  const root = process.env.DD_ELECTRON_COMPATIBILITY_ROOT;
+  const root = getCompatibilityRun()?.root;
   return root ? join(root, 'integration-apps', app, variant ?? 'default') : join(__dirname, '../apps', app);
 }
 
@@ -219,7 +219,7 @@ function getIntegrationLaunchConfiguration(
   if (!integration) {
     throw new Error(`No "integration" field in ${packageJsonPath}.`);
   }
-  if (!variant || (process.env.DD_ELECTRON_COMPATIBILITY_ROOT && !integration.variants)) return integration;
+  if (!variant || (getCompatibilityRun()?.root && !integration.variants)) return integration;
 
   const variantConfiguration = integration.variants?.[variant];
   if (!variantConfiguration) {

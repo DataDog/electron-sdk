@@ -1,6 +1,6 @@
 import { DatadogWebpackPlugin } from '@datadog/electron-sdk/webpack-plugin';
 
-const copyRuntimeDependencies = process.env.DD_ELECTRON_RUNTIME_DEPENDENCY_STRATEGY !== 'packager-copy';
+const copyRuntimeDependencies = process.env.DD_ELECTRON_COPY_RUNTIME_DEPENDENCIES !== 'false';
 
 export const mainConfig = {
   entry: './src/main.ts',

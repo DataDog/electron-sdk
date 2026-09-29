@@ -5,10 +5,10 @@ import { tmpdir } from 'node:os';
 import { Intake } from './intake';
 import { TestServer } from './testServer';
 import { MainPage } from './mainPage';
-import { assertExpectedElectronVersion } from './compatibility';
+import { assertExpectedElectronVersion, getCompatibilityRun } from './compatibility';
 import type { InitConfiguration } from '@datadog/electron-sdk';
 
-const compatibilityRoot = process.env.DD_ELECTRON_COMPATIBILITY_ROOT;
+const compatibilityRoot = getCompatibilityRun()?.root;
 export const e2eAppDirectory = compatibilityRoot ? join(compatibilityRoot, 'e2e-app') : join(__dirname, '../app');
 
 // Get electron executable path from the app's node_modules
