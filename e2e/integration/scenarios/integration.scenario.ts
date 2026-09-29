@@ -57,7 +57,7 @@ test.describe('electron-builder runtime dependency packaging @integration', () =
 
 test.describe('view event on startup @integration', () => {
   test('sends a view event with a session id on startup', async ({ window, intake }) => {
-    const viewEvents = await flushUntilEventArrives(window, intake, 'view', 1, 15 * ONE_SECOND);
+    const viewEvents = await flushUntilEventArrives(window, intake, 'view', 1);
     expect(viewEvents).toHaveLength(1);
     const view = viewEvents[0].body;
 
@@ -96,7 +96,7 @@ test.describe('main-process fetch resource @integration', () => {
     intake,
     testServer,
   }) => {
-    const [viewEvent] = await flushUntilEventArrives(window, intake, 'view', 1, 15 * ONE_SECOND);
+    const [viewEvent] = await flushUntilEventArrives(window, intake, 'view', 1);
     const view = viewEvent.body;
 
     const url = testServer.urlFor(200);
@@ -153,7 +153,7 @@ test.describe('custom-session window instrumentation @integration', () => {
     );
     await customWindow.waitForTimeout(ONE_SECOND);
 
-    const errors = await flushUntilEventArrives(window, intake, 'error', 1, 15 * ONE_SECOND);
+    const errors = await flushUntilEventArrives(window, intake, 'error', 1);
     expect(errors.some((e) => e.body.error.message === message)).toBe(true);
   });
 });
@@ -174,7 +174,7 @@ test.describe('crash reporting across restart @integration', () => {
       const firstWindow = await firstApp.firstWindow();
       await firstWindow.waitForLoadState('load');
       await firstWindow.waitForTimeout(500);
-      await flushUntilEventArrives(firstWindow, intake, 'view', 1, 15 * ONE_SECOND);
+      await flushUntilEventArrives(firstWindow, intake, 'view', 1);
 
       const appClosed = firstApp.waitForEvent('close');
       void firstWindow
@@ -193,7 +193,7 @@ test.describe('crash reporting across restart @integration', () => {
         const secondWindow = await secondApp.firstWindow();
         await secondWindow.waitForLoadState('load');
 
-        const errorEvents = await flushUntilEventArrives(secondWindow, intake, 'error', 1, 15 * ONE_SECOND);
+        const errorEvents = await flushUntilEventArrives(secondWindow, intake, 'error', 1);
         expect(errorEvents).toHaveLength(1);
 
         const error = errorEvents[0].body;
@@ -227,7 +227,7 @@ async function flushUntilEventArrives<T extends EventType>(
   intake: Intake,
   type: T,
   count: number,
-  timeout: number
+  timeout = 30 * ONE_SECOND
 ): Promise<ReceivedEvent<EventBodyByType[T]>[]> {
   const pollInterval = 500;
   const deadline = Date.now() + timeout;

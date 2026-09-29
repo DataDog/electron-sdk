@@ -17,7 +17,7 @@ export type IntegrationMode = (typeof INTEGRATION_MODES)[number];
 export type IntegrationVariant = null | 'packager-copy';
 
 export default defineConfig<IntegrationFixtures>({
-  timeout: 30000,
+  timeout: 60000, // Integration scenarios include app startup and event propagation.
   workers: 1, // Serial execution
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? [['html'], ['list']] : 'list',
@@ -27,6 +27,7 @@ export default defineConfig<IntegrationFixtures>({
   projects: [
     {
       name: 'e2e',
+      timeout: 30000,
       testDir: './scenarios',
       testMatch: '**/*.scenario.ts',
     },

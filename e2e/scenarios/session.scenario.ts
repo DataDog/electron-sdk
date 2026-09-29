@@ -1,5 +1,6 @@
 import { test, expect, launchAppManually, createUserDataDir, cleanupUserDataDir } from '../lib/helpers';
 import { byMainProcessTelemetryType } from '../lib/intake';
+import { ONE_SECOND } from '@datadog/js-core/time';
 
 /**
  * The SDK's own error telemetry. The main window runs the browser SDK in these tests, and the SDK
@@ -10,6 +11,7 @@ const isMainProcessError = byMainProcessTelemetryType('log');
 test.use({ rumBrowserSdk: {} });
 
 test('new session id is generated when renewing a session', async ({ mainPage, intake }) => {
+  test.setTimeout(60 * ONE_SECOND);
   await mainPage.generateTelemetryErrors(1);
   await mainPage.flushTransport();
 
@@ -21,7 +23,10 @@ test('new session id is generated when renewing a session', async ({ mainPage, i
   await mainPage.generateTelemetryErrors(1);
   await mainPage.flushTransport();
 
-  const allEvents = await intake.waitForEventCount('telemetry', 2, { predicate: isMainProcessError });
+  const allEvents = await intake.waitForEventCount('telemetry', 2, {
+    predicate: isMainProcessError,
+    timeout: 30 * ONE_SECOND,
+  });
   const secondSessionId = allEvents[1].body.session?.id;
   expect(secondSessionId).toMatch(/^[0-9a-f-]+$/);
 

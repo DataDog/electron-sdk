@@ -8,6 +8,7 @@ declare global {
     electronAPI: {
       generateTelemetryErrors: (count: number) => Promise<void>;
       stopSession: () => Promise<void>;
+      getSessionId: () => Promise<string | undefined>;
       generateUncaughtException: () => Promise<void>;
       generateUnhandledRejection: () => Promise<void>;
       generateManualError: (startTime?: number, context?: Record<string, string>) => Promise<void>;

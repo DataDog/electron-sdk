@@ -13,6 +13,7 @@ vi.mock('../../../tools/display', () => ({
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { TimeStamp } from '@datadog/js-core/time';
 import { ViewCollection, SESSION_KEEP_ALIVE_INTERVAL, VIEW_UPDATE_THROTTLE_DELAY } from './ViewCollection';
+import { ViewContext } from './ViewContext';
 import {
   EventManager,
   EventKind,
@@ -82,6 +83,43 @@ describe('ViewCollection', () => {
       expect(data.date).toBe(0);
     });
   });
+
+  it.each(['startup', 'renewal'])(
+    'attributes the %s view when the clock advances before history registration',
+    async (phase) => {
+      // The wrapper calls the original method with its actual ViewContext receiver below.
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      const originalAdd = ViewContext.prototype.add;
+      const add = vi.spyOn(ViewContext.prototype, 'add').mockImplementation(function (this: ViewContext, ...args) {
+        // Simulate crossing a millisecond boundary after capturing the event's start time.
+        vi.setSystemTime(Date.now() + 1);
+        return originalAdd.apply(this, args);
+      });
+
+      try {
+        vi.setSystemTime(10);
+        if (phase === 'startup') {
+          viewCollection.stop();
+          hooks = createFormatHooks();
+          rawRumEvents.length = 0;
+          viewCollection = await ViewCollection.start(eventManager, hooks);
+        } else {
+          eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+          rawRumEvents.length = 0;
+          eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+        }
+
+        const event = rawRumEvents[0];
+        expect(
+          hooks.triggerRum({ eventType: 'view', startTime: event.startTime!, source: EventSource.MAIN })
+        ).toMatchObject({
+          view: { id: (event.data as RawRumView).view.id },
+        });
+      } finally {
+        add.mockRestore();
+      }
+    }
+  );
 
   describe('hook registration', () => {
     it('injects view attributes into RUM hooks', () => {

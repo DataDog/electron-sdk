@@ -9,6 +9,7 @@ import { SESSION_TIME_OUT_DELAY } from '../../session';
 
 export const VIEW_HISTORY_FILE_NAME = '_dd_view_history';
 
+/** Associates event timestamps with persisted main-process view history. */
 export class ViewContext {
   private readonly history: DiskValueHistory<string>;
 
@@ -68,10 +69,12 @@ export class ViewContext {
     return new ViewContext(history, hooks, options?.isExecutionContextEnabled ?? false);
   }
 
+  /** Registers the view at its event timestamp, even if registration happens later. */
   add(id: string, atTime: TimeStamp = timeStampNow()): void {
     this.history.add(id, atTime);
   }
 
+  /** Closes the active view at the supplied transition time, or now on expiry. */
   close(atTime: TimeStamp = timeStampNow()): void {
     this.history.closeActive(atTime);
   }
