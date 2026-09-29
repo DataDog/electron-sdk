@@ -35,8 +35,10 @@ Tests import custom `test` and `expect` from `lib/helpers.ts` (not directly from
 
 The intake server (`e2e/lib/intake.ts`) runs on a dynamic port (OS-assigned) to avoid conflicts. It is managed as a Playwright fixture for automatic startup/teardown.
 
-Session-renewal telemetry and integration startup-view checks allow up to 30 seconds for events to arrive, with a
-60-second test timeout to leave room for app startup and other steps. Other event waits retain their existing limits.
+Integration scenarios inherit a 60-second test timeout from `e2e/playwright.config.ts`. Their
+`flushUntilEventArrives` helper defaults to 30 seconds for event delivery, leaving room for app startup and other steps.
+The minimal E2E project keeps its 30-second timeout; the session-renewal scenario allows 60 seconds overall
+and 30 seconds for renewed-session telemetry. Other intake waits retain their existing limits.
 
 #### `rumBrowserSdk` option
 

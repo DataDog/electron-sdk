@@ -62,7 +62,7 @@ export class MainPage {
     expect(previousSessionId, 'An active session is required before renewal').toBeDefined();
 
     await this.stopSession();
-    await this.page.locator('#generate-activity').click();
+    await this.generateActivity({ waitForPropagation: false });
 
     // A completed click does not mean browser-rum has delivered its action over IPC.
     // Generating identical telemetry before renewal can discard it as a duplicate.
@@ -85,9 +85,9 @@ export class MainPage {
     await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.stopSession());
   }
 
-  async generateActivity() {
+  async generateActivity({ waitForPropagation = true } = {}) {
     await this.page.locator('#generate-activity').click();
-    await this.waitForIpcPropagation();
+    if (waitForPropagation) await this.waitForIpcPropagation();
   }
 
   private async waitForIpcPropagation() {
