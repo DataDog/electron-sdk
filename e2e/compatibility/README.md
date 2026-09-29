@@ -35,7 +35,8 @@ Compatibility tests run automatically after the regular checks pass on every pus
 
 To run compatibility tests separately, start a web or scheduled pipeline with `COMPATIBILITY_TESTS=true`.
 This skips the regular checks and generates Linux and macOS jobs for every configured target.
-Nightly failures are allowed; stable failures fail the pipeline.
+The matrix covers stable Electron releases and a pinned prerelease, excluding nightlies.
+Every compatibility job must pass.
 
 Optional comma-separated filters limit the matrix:
 

@@ -29,7 +29,6 @@ export function generateCompatibilityCi(
         '  tags:',
         ...environment.runnerTags.map((tag) => `    - ${quote(tag)}`),
         ...(environment.image ? [`  image: ${quote(environment.image)}`] : []),
-        ...(target.allowFailure ? ['  allow_failure: true'] : []),
         '  variables:',
         "    YARN_ENABLE_INLINE_BUILDS: 'true'",
         "    npm_config_cache: '$CI_PROJECT_DIR/.npm-cache/$CI_JOB_ID'",

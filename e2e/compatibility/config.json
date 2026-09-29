@@ -44,10 +44,9 @@
       "version": "44.4.5"
     },
     {
-      "id": "electron-45-nightly",
-      "dependency": "electron-nightly",
-      "version": "45.0.0-nightly.20260814",
-      "allowFailure": true
+      "id": "electron-45-prerelease",
+      "dependency": "electron",
+      "version": "45.0.0-alpha.13"
     }
   ]
 }

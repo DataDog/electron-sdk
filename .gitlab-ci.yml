@@ -38,6 +38,11 @@ workflow:
   rules:
     - if: '$COMPATIBILITY_TESTS != "true"'
 
+.compatibility-pipeline:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_PIPELINE_SOURCE =~ /^(schedule|web)$/ && $COMPATIBILITY_TESTS == "true"'
+
 build-container-image:
   stage: docker
   image: 'registry.ddbuild.io/images/docker:27.3.1'
@@ -143,10 +148,7 @@ playground:
 
 generate-compatibility-pipeline:
   stage: compatibility
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-    - if: '$CI_PIPELINE_SOURCE == "schedule" && $COMPATIBILITY_TESTS == "true"'
-    - if: '$CI_PIPELINE_SOURCE == "web" && $COMPATIBILITY_TESTS == "true"'
+  extends: .compatibility-pipeline
   script:
     - yarn install --immutable
     - yarn test:compatibility:ci:generate
@@ -156,10 +158,7 @@ generate-compatibility-pipeline:
 
 compatibility:
   stage: compatibility
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-    - if: '$CI_PIPELINE_SOURCE == "schedule" && $COMPATIBILITY_TESTS == "true"'
-    - if: '$CI_PIPELINE_SOURCE == "web" && $COMPATIBILITY_TESTS == "true"'
+  extends: .compatibility-pipeline
   needs:
     - generate-compatibility-pipeline
   trigger:

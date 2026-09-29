@@ -5,7 +5,6 @@ export interface CompatibilityTarget {
   id: string;
   dependency: string;
   version: string;
-  allowFailure?: boolean;
 }
 export interface CompatibilityEnvironment {
   id: string;

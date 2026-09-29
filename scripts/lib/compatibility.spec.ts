@@ -50,6 +50,7 @@ it('generates the Linux/macOS matrix, preserves failure reporting, and validates
   expect(yaml).toContain('set -o pipefail');
   expect(yaml).toContain('npm_config_cache:');
   expect(yaml).not.toContain('windows');
+  expect(yaml).not.toContain('allow_failure:');
   const filtered = generateCompatibilityCi(
     config,
     parseCompatibilityCiFilters(config, {
