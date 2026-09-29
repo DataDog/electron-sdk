@@ -1,4 +1,5 @@
-import { test, expect } from '../lib/helpers';
+import { join } from 'node:path';
+import { test, expect, e2eAppDirectory } from '../lib/helpers';
 import {
   byRendererTelemetryType,
   byTelemetryType,
@@ -26,9 +27,9 @@ const isCapped = (event: ReceivedEvent<TelemetryEvent>) =>
  * The browser SDK version the bridge window runs, which relayed telemetry must keep reporting: the
  * event describes that SDK's behaviour, not the Electron SDK's.
  */
+const browserSdkPackagePath = join(e2eAppDirectory, 'node_modules/@datadog/browser-rum/package.json');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const BROWSER_SDK_VERSION = (require('../app/node_modules/@datadog/browser-rum/package.json') as { version: string })
-  .version;
+const BROWSER_SDK_VERSION = (require(browserSdkPackagePath) as { version: string }).version;
 
 /** A usage event relayed from a renderer, which the browser SDK emits once its view exists. */
 const isRendererUsage = byRendererTelemetryType('usage');

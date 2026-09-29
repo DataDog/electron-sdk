@@ -1,0 +1,52 @@
+{
+  "environments": [
+    {
+      "id": "linux",
+      "runnerTags": ["arch:amd64"],
+      "image": "$CI_IMAGE",
+      "testCommandPrefix": ["xvfb-run", "-a"]
+    },
+    {
+      "id": "macos",
+      "runnerTags": ["macos:sequoia-arm64", "specific:true"],
+      "testCommandPrefix": []
+    }
+  ],
+  "targets": [
+    {
+      "id": "electron-39",
+      "dependency": "electron",
+      "version": "39.8.10"
+    },
+    {
+      "id": "electron-40",
+      "dependency": "electron",
+      "version": "40.10.6"
+    },
+    {
+      "id": "electron-41",
+      "dependency": "electron",
+      "version": "41.10.5"
+    },
+    {
+      "id": "electron-42",
+      "dependency": "electron",
+      "version": "42.9.2"
+    },
+    {
+      "id": "electron-43",
+      "dependency": "electron",
+      "version": "43.4.0"
+    },
+    {
+      "id": "electron-44",
+      "dependency": "electron",
+      "version": "44.4.5"
+    },
+    {
+      "id": "electron-45-prerelease",
+      "dependency": "electron",
+      "version": "45.0.0-alpha.13"
+    }
+  ]
+}

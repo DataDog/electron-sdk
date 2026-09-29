@@ -27,3 +27,12 @@ e2e/integration/apps/*/.vite/
 
 # Playground local test scenarios
 playground/test/local/
+
+# Compatibility artifacts
+e2e/compatibility/generated/
+e2e/compatibility/generated.gitlab-ci.yml
+logs/
+.npm-cache/
+
+# macOS Finder metadata
+.DS_Store
