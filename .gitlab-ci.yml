@@ -12,7 +12,7 @@ variables:
     description: 'Optional comma-separated compatibility environments, for example linux,macos.'
   DD_ELECTRON_COMPATIBILITY_TARGETS:
     value: ''
-    description: 'Optional comma-separated compatibility targets, for example electron-41,electron-44-prerelease.'
+    description: 'Optional comma-separated compatibility targets, for example electron-41,electron-44.'
 
 stages:
   - docker
@@ -36,9 +36,7 @@ workflow:
 
 .regular-pipeline:
   rules:
-    - if: '$COMPATIBILITY_TESTS == "true"'
-      when: never
-    - when: on_success
+    - if: '$COMPATIBILITY_TESTS != "true"'
 
 build-container-image:
   stage: docker

@@ -1,7 +1,7 @@
 # Electron compatibility tests
 
 Run the maintained E2E and integration apps against the Electron versions in `config.json`.
-This PR supports Linux and macOS. Each run packages the current SDK checkout and prepares isolated
+Current support is Linux and macOS. Each run packages the current SDK checkout and prepares isolated
 apps under `generated/<target>/`, leaving the source templates and their lockfiles unchanged.
 
 ```sh
@@ -13,6 +13,7 @@ xvfb-run -a yarn test:compatibility electron-41
 ```
 
 Preparation downloads and verifies Electron, installs each app, and packages the integration apps.
+Integration apps are discovered from the directories under `e2e/integration/apps/`.
 Tests check the actual Electron version at launch. Each integration app runs in development and
 packaged modes, including a packaged variant where the packager copies runtime dependencies.
 Preparation sets `DD_ELECTRON_COPY_RUNTIME_DEPENDENCIES` to `true` or `false` for each variant;
@@ -34,7 +35,7 @@ Compatibility tests run automatically after the regular checks pass on every pus
 
 To run compatibility tests separately, start a web or scheduled pipeline with `COMPATIBILITY_TESTS=true`.
 This skips the regular checks and generates Linux and macOS jobs for every configured target.
-Nightly failures are allowed; stable and prerelease failures fail the pipeline.
+Nightly failures are allowed; stable failures fail the pipeline.
 
 Optional comma-separated filters limit the matrix:
 

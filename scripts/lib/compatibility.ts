@@ -5,7 +5,6 @@ export interface CompatibilityTarget {
   id: string;
   dependency: string;
   version: string;
-  channel: string;
   allowFailure?: boolean;
 }
 export interface CompatibilityEnvironment {
@@ -17,7 +16,6 @@ export interface CompatibilityEnvironment {
 export interface CompatibilityConfig {
   environments: CompatibilityEnvironment[];
   targets: CompatibilityTarget[];
-  apps: string[];
 }
 
 export function getRepositoryRoot(): string {
@@ -60,12 +58,12 @@ export async function materializeApp(
     recursive: true,
     filter: (entry) => !ignored.has(path.basename(entry)) && !entry.endsWith('.tsbuildinfo'),
   });
-  const manifestPath = path.join(destination, 'package.json');
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  manifest.dependencies['@datadog/electron-sdk'] = sdk;
-  manifest.devDependencies.electron =
+  const packageJsonPath = path.join(destination, 'package.json');
+  const packageJsonContent = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+  packageJsonContent.dependencies['@datadog/electron-sdk'] = sdk;
+  packageJsonContent.devDependencies.electron =
     target.dependency === 'electron' ? target.version : `npm:${target.dependency}@${target.version}`;
-  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJsonContent, null, 2)}\n`);
   const yarnConfigPath = path.join(destination, '.yarnrc.yml');
   const config = fs.existsSync(yarnConfigPath) ? fs.readFileSync(yarnConfigPath, 'utf8') : 'nodeLinker: node-modules\n';
   const entry = `  - ${target.dependency}@${target.version}\n`;

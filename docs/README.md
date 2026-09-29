@@ -8,15 +8,14 @@ When making changes that impact development workflows or architecture, update th
 
 ## Reference
 
-| Document                    | Purpose                                                     |
-| --------------------------- | ----------------------------------------------------------- |
-| `docs/DEVELOPMENT.md`       | Workflow, build system, dependencies                        |
-| `docs/CONVENTIONS.md`       | Coding conventions and style guidelines                     |
-| `docs/ARCHITECTURE.md`      | SDK design patterns and event pipeline                      |
-| `docs/TESTING.md`           | Unit and E2E testing strategy and infrastructure            |
-| `docs/REVIEW.md`            | Code review guide for agents                                |
-| `scripts/README.md`         | Script placement and CLI conventions                        |
-| `e2e/integration/README.md` | Integration tests strategy and structure                    |
-| `playground/README.md`      | Playground app, Playwright test infra for agent prototyping |
-
-[Electron compatibility testing](../e2e/compatibility/README.md) covers the Linux/macOS version matrix.
+| Document                                                      | Purpose                                                     |
+| ------------------------------------------------------------- | ----------------------------------------------------------- |
+| `docs/DEVELOPMENT.md`                                         | Workflow, build system, dependencies                        |
+| `docs/CONVENTIONS.md`                                         | Coding conventions and style guidelines                     |
+| `docs/ARCHITECTURE.md`                                        | SDK design patterns and event pipeline                      |
+| `docs/TESTING.md`                                             | Unit and E2E testing strategy and infrastructure            |
+| `docs/REVIEW.md`                                              | Code review guide for agents                                |
+| `scripts/README.md`                                           | Script placement and CLI conventions                        |
+| `e2e/integration/README.md`                                   | Integration tests strategy and structure                    |
+| [e2e/compatibility/README.md](../e2e/compatibility/README.md) | Linux/macOS Electron version matrix                         |
+| `playground/README.md`                                        | Playground app, Playwright test infra for agent prototyping |

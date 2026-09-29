@@ -1,9 +1,13 @@
 import { defineConfig } from '@playwright/test';
 import type { IntegrationFixtures } from './integration/lib/integrationFixture';
 
-import compatibilityConfig from './compatibility/config.json';
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { getCompatibilityRun } from './lib/compatibility';
-const INTEGRATION_APPS = compatibilityConfig.apps;
+const INTEGRATION_APPS = readdirSync(join(__dirname, 'integration/apps'), { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+  .sort();
 const INTEGRATION_MODES = ['dev', 'packaged'] as const;
 
 export type IntegrationApp = (typeof INTEGRATION_APPS)[number];

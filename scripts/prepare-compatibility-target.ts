@@ -36,9 +36,14 @@ runMain(async () => {
     arch: process.arch,
     downloader: new RetryingFetchDownloader(),
   });
+  const integrationApps = fs
+    .readdirSync(path.join(root, 'e2e/integration/apps'), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
   const apps = [
     { source: 'e2e/app', destination: 'e2e-app', variant: 'default', sdk: 'file:../compatibility-sdk.tgz' },
-    ...config.apps.flatMap((app) =>
+    ...integrationApps.flatMap((app) =>
       ['default', 'packager-copy'].map((variant) => ({
         source: `e2e/integration/apps/${app}`,
         destination: `integration-apps/${app}/${variant}`,

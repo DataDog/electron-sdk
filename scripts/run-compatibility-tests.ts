@@ -4,6 +4,8 @@ import { runMain } from './lib/executionUtils.ts';
 import { getCompatibilityTarget, getGeneratedTargetRoot, loadCompatibilityConfig } from './lib/compatibility.ts';
 
 runMain(() => {
+  // The target comes first; remaining arguments are forwarded to Playwright.
+  // Example: yarn test:compatibility electron-41 --project=forge-vite-packaged --grep 'view event'
   const [id, ...args] = process.argv.slice(2);
   getCompatibilityTarget(loadCompatibilityConfig(), id);
   const root = getGeneratedTargetRoot(id);
