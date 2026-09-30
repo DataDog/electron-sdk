@@ -48,6 +48,10 @@ describe('deriveExecutionContextName', () => {
     expect(deriveExecutionContextName('file:///')).toBe('file:');
   });
 
+  it('keeps the filename alongside the hash for a hash-routed file:// app', () => {
+    expect(deriveExecutionContextName('file:///app/index.html#/settings/profile')).toBe('index.html#/settings/profile');
+  });
+
   it('strips scheme, host and port from custom app protocols with a host, keeping path and query', () => {
     expect(deriveExecutionContextName('app://app/')).toBe('/');
     expect(deriveExecutionContextName('app://app/secondary.html')).toBe('/secondary.html');
@@ -65,6 +69,12 @@ describe('deriveExecutionContextName', () => {
     expect(deriveExecutionContextName('blob:https://example.com/550e8400-e29b-41d4-a716-446655440000')).toBe(
       '550e8400-e29b-41d4-a716-446655440000'
     );
+  });
+
+  it('keeps the identifying segment alongside the hash for a hostless scheme with a route', () => {
+    expect(
+      deriveExecutionContextName('blob:https://example.com/550e8400-e29b-41d4-a716-446655440000#/settings/profile')
+    ).toBe('550e8400-e29b-41d4-a716-446655440000#/settings/profile');
   });
 
   it('returns undefined for about: so a transient window.open() blank document is not frozen as the name', () => {

@@ -49,10 +49,22 @@ export function deriveExecutionContextName(url: string): string | undefined {
   return truncate(lastPathSegment(parsed.href));
 }
 
-// Last non-empty '/'-separated segment (e.g. the filename for file://); a trailing slash would
-// otherwise leak the full url. Falls back to the scheme itself if there's no segment at all.
+// Last non-empty '/'-separated segment of the path (e.g. the filename for file://), with any
+// query/hash reattached afterward — splitting the whole url would otherwise let a hash route
+// (e.g. a client-side router under file://, index.html#/settings/profile) swallow the filename,
+// keeping only the route's own last segment. A trailing slash falls back to the parent segment;
+// no segment at all (e.g. a bare file:///) falls back to the scheme.
 function lastPathSegment(url: string): string {
-  return url.split('/').filter(Boolean).pop() || url;
+  const hashIndex = url.indexOf('#');
+  const hash = hashIndex === -1 ? '' : url.slice(hashIndex);
+  const beforeHash = hashIndex === -1 ? url : url.slice(0, hashIndex);
+
+  const queryIndex = beforeHash.indexOf('?');
+  const query = queryIndex === -1 ? '' : beforeHash.slice(queryIndex);
+  const path = queryIndex === -1 ? beforeHash : beforeHash.slice(0, queryIndex);
+
+  const segment = path.split('/').filter(Boolean).pop() || path;
+  return `${segment}${query}${hash}`;
 }
 
 function truncate(name: string): string {
