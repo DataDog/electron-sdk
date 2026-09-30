@@ -2,6 +2,24 @@
 
 All notable changes to `@datadog/electron-sdk` are documented here.
 
+## [0.10.0] - 2026-09-30
+
+### ✨ Features
+
+- ✨ add global context to the main process (#192)
+
+### 🐛 Bug Fixes
+
+- 🐛 [RUM-18683] Fix view timestamp race and stabilize session renewal tests (#226)
+
+### Internal
+
+- 👷 [RUM-15522] Electron OS & Version testing [linux, macos] (#204)
+- ⚗️ [RUM-17561] add execution context tracking for main and renderer processes (#209)
+- ⚗️ [RUM-18548] Compute execution context name (#222)
+- ⚗️ Add internal tracking consent state (#224)
+- ♻️ split RumEvent into RendererRumEvent and MainRumEvent (#207)
+
 ## [0.9.0] - 2026-09-14
 
 ### ✨ Features
