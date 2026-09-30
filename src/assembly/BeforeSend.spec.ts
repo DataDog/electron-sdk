@@ -263,6 +263,27 @@ describe('beforeSendRum', () => {
     expect(display.warn).toHaveBeenCalledWith("Can't dismiss view events using beforeSendRum!");
   });
 
+  it('lets beforeSendRum modify execution_context.name on any event type, not just execution_context events', () => {
+    const executionContextEvent = createServerRumView({
+      type: 'execution_context',
+      execution_context: { name: 'secret name' },
+    } as never) as unknown as RumEvent;
+    const view = createServerRumView({ execution_context: { name: 'secret name' } });
+    const beforeSend = new BeforeSend((modifiableEvent) => {
+      if (modifiableEvent.execution_context) {
+        modifiableEvent.execution_context.name = 'redacted name';
+      }
+      return true;
+    });
+
+    expect(beforeSend.apply(executionContextEvent, 'main')).toMatchObject({
+      execution_context: { name: 'redacted name' },
+    });
+    expect(beforeSend.apply(view, 'main')).toMatchObject({
+      execution_context: { name: 'redacted name' },
+    });
+  });
+
   it('does not drop execution_context events', () => {
     const event = createServerRumView({ type: 'execution_context' } as never) as unknown as RumEvent;
 

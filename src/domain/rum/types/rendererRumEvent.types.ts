@@ -444,6 +444,10 @@ export type RumErrorEvent = CommonProperties &
          * Build ID used to identify the WebAssembly debug symbols.
          */
         readonly build_id: string;
+        /**
+         * Debug information format used to symbolicate the WebAssembly module.
+         */
+        readonly debug_info_type?: 'dwarf' | 'sourcemap' | 'unknown';
         [k: string]: unknown;
       }[];
       /**
@@ -862,7 +866,8 @@ export type RumResourceEvent = CommonProperties &
        */
       readonly delivery_type?: 'cache' | 'navigational-prefetch' | 'other';
       /**
-       * Whether the resource was served from the device's local cache
+       * @deprecated
+       * Whether the resource was served from the device's local cache (deprecated in favor of `delivery_type`/`transfer_size`)
        */
       readonly local_cache_hit?: boolean;
       /**
@@ -1490,7 +1495,7 @@ export interface CommonProperties {
     /**
      * Execution context name
      */
-    readonly name?: string;
+    name?: string;
     [k: string]: unknown;
   };
   [k: string]: unknown;

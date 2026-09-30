@@ -11,6 +11,7 @@ const COMMON_MODIFIABLE_FIELD_PATHS: ModifiableFieldPaths = {
   'view.name': 'string',
   'view.url': 'string',
   'view.referrer': 'string',
+  'execution_context.name': 'string',
   service: 'string',
   version: 'string',
   context: 'object',
