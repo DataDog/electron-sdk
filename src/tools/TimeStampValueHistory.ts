@@ -62,6 +62,11 @@ export class TimeStampValueHistory<T> {
     return this.entries;
   }
 
+  /** Restore entries without sharing mutable interval boundaries with the supplied snapshot. */
+  replaceEntries(entries: readonly TimeStampHistoryEntry<T>[]): void {
+    this.entries = entries.map((entry) => ({ ...entry }));
+  }
+
   pruneExpired(): boolean {
     const before = this.entries.length;
     this.pruneExpiredValues();

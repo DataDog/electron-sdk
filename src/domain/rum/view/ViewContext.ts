@@ -4,16 +4,16 @@ import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED, SKIPPED } from '@datadog/js-core/assembly';
 import type { FormatHooks } from '../../../assembly';
 import { EventSource } from '../../../event';
-import { DiskValueHistory } from '../../../tools/DiskValueHistory';
+import { TrackingConsentHistory, type TrackingConsentManager } from '../../tracking-consent';
 import { SESSION_TIME_OUT_DELAY } from '../../session';
 
 export const VIEW_HISTORY_FILE_NAME = '_dd_view_history';
 
-/** Associates event timestamps with persisted main-process view history. */
+/** Enriches events with the main-process view at capture time and persists only authorized history. */
 export class ViewContext {
-  private readonly history: DiskValueHistory<string>;
+  private readonly history: TrackingConsentHistory<string>;
 
-  private constructor(history: DiskValueHistory<string>, hooks: FormatHooks, isExecutionContextEnabled: boolean) {
+  private constructor(history: TrackingConsentHistory<string>, hooks: FormatHooks, isExecutionContextEnabled: boolean) {
     this.history = history;
 
     hooks.registerRum(({ source, startTime }) => {
@@ -61,11 +61,12 @@ export class ViewContext {
 
   static async init(
     hooks: FormatHooks,
+    trackingConsentManager: TrackingConsentManager,
     expireDelay = SESSION_TIME_OUT_DELAY,
     options?: { isExecutionContextEnabled?: boolean }
   ): Promise<ViewContext> {
     const filePath = path.join(app.getPath('userData'), VIEW_HISTORY_FILE_NAME);
-    const history = await DiskValueHistory.init<string>({ filePath, expireDelay });
+    const history = await TrackingConsentHistory.init<string>({ filePath, expireDelay }, trackingConsentManager);
     return new ViewContext(history, hooks, options?.isExecutionContextEnabled ?? false);
   }
 
@@ -77,5 +78,9 @@ export class ViewContext {
   /** Closes the active view at the supplied transition time, or now on expiry. */
   close(atTime: TimeStamp = timeStampNow()): void {
     this.history.closeActive(atTime);
+  }
+
+  stop(): void {
+    this.history.stop();
   }
 }

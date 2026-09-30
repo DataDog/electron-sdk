@@ -273,5 +273,6 @@ function createHistory(find: ContextHistory['find']): ContextHistory {
     closeAndAdd: vi.fn(),
     pruneAndPersist: vi.fn(),
     find,
+    stop: vi.fn(),
   };
 }

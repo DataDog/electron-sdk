@@ -23,6 +23,7 @@ import { EventManager, EventKind, EventFormat, EventSource, type RawRumEvent } f
 import { createFormatHooks } from '../../../assembly';
 import type { SessionManager } from '../../session';
 import type { RawRumExecutionContext } from '../types';
+import { TrackingConsentManager } from '../../tracking-consent';
 
 vi.mock('node:fs/promises');
 const mfs = mockFs();
@@ -58,7 +59,12 @@ describe('ExecutionContextCollection', () => {
       return app;
     });
 
-    collection = await ExecutionContextCollection.start(eventManager, hooks, sessionManager);
+    collection = await ExecutionContextCollection.start(
+      eventManager,
+      hooks,
+      sessionManager,
+      new TrackingConsentManager()
+    );
   });
 
   afterEach(() => {

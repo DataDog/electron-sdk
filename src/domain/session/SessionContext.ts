@@ -3,15 +3,16 @@ import * as path from 'node:path';
 import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED, SKIPPED } from '@datadog/js-core/assembly';
 import type { FormatHooks } from '../../assembly';
-import { DiskValueHistory } from '../../tools/DiskValueHistory';
+import { TrackingConsentHistory, type TrackingConsentManager } from '../tracking-consent';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
 
 export const SESSION_HISTORY_FILE_NAME = '_dd_session_history';
 
+/** Enriches events with the session at capture time and persists only authorized history. */
 export class SessionContext {
-  private readonly history: DiskValueHistory<string>;
+  private readonly history: TrackingConsentHistory<string>;
 
-  private constructor(history: DiskValueHistory<string>, hooks: FormatHooks) {
+  private constructor(history: TrackingConsentHistory<string>, hooks: FormatHooks) {
     this.history = history;
 
     hooks.registerRum((params) => {
@@ -47,9 +48,13 @@ export class SessionContext {
     });
   }
 
-  static async init(hooks: FormatHooks, expireDelay = SESSION_TIME_OUT_DELAY): Promise<SessionContext> {
+  static async init(
+    hooks: FormatHooks,
+    trackingConsentManager: TrackingConsentManager,
+    expireDelay = SESSION_TIME_OUT_DELAY
+  ): Promise<SessionContext> {
     const filePath = path.join(app.getPath('userData'), SESSION_HISTORY_FILE_NAME);
-    const history = await DiskValueHistory.init<string>({ filePath, expireDelay });
+    const history = await TrackingConsentHistory.init<string>({ filePath, expireDelay }, trackingConsentManager);
     return new SessionContext(history, hooks);
   }
 
@@ -62,6 +67,10 @@ export class SessionContext {
   // so this is the single source of truth for "which tracked session covered this instant".
   getTrackedSessionId(at: TimeStamp = timeStampNow()): string | undefined {
     return this.history.find(at);
+  }
+
+  stop(): void {
+    this.history.stop();
   }
 
   close(): void {

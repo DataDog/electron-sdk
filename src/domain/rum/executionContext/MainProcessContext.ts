@@ -16,7 +16,7 @@ import { SESSION_TIME_OUT_DELAY, type SessionManager } from '../../session';
 import type { RawRumExecutionContext, RawRumView } from '../types';
 import { setInterval, clearInterval } from '../../telemetry';
 import { ViewContext } from '../view';
-import { DiskValueHistory } from '../../../tools/DiskValueHistory';
+import { TrackingConsentHistory, type TrackingConsentManager } from '../../tracking-consent';
 import { PROCESS_UPDATE_INTERVAL } from './executionContext.constants';
 
 export const MAIN_EXECUTION_CONTEXT_HISTORY_FILE_NAME = '_dd_execution_context_history';
@@ -40,7 +40,7 @@ interface MainProcessState {
  * execution_context event's instance_id is always the OS process pid, constant across every session
  * the process lives through. Also registers the format hooks that tag every other main-process RUM
  * event and span with the execution context active at that event's timestamp, backed by a
- * disk-persisted history so a crash file replayed from a previous run still resolves to the
+ * consent-aware history so a crash file replayed from a previous run still resolves to the
  * context that was active when the crash happened.
  */
 export class MainProcessContext {
@@ -51,21 +51,24 @@ export class MainProcessContext {
   private constructor(
     private readonly eventManager: EventManager,
     private readonly viewContext: ViewContext,
-    private readonly mainHistory: DiskValueHistory<MainExecutionContextDiskEntry>,
+    private readonly mainHistory: TrackingConsentHistory<MainExecutionContextDiskEntry>,
     private readonly sessionManager: SessionManager
   ) {}
 
   static async start(
     eventManager: EventManager,
     hooks: FormatHooks,
-    sessionManager: SessionManager
+    sessionManager: SessionManager,
+    trackingConsentManager: TrackingConsentManager
   ): Promise<MainProcessContext> {
-    const viewContext = await ViewContext.init(hooks, undefined, { isExecutionContextEnabled: true });
-    const filePath = path.join(app.getPath('userData'), MAIN_EXECUTION_CONTEXT_HISTORY_FILE_NAME);
-    const mainHistory = await DiskValueHistory.init<MainExecutionContextDiskEntry>({
-      filePath,
-      expireDelay: SESSION_TIME_OUT_DELAY,
+    const viewContext = await ViewContext.init(hooks, trackingConsentManager, undefined, {
+      isExecutionContextEnabled: true,
     });
+    const filePath = path.join(app.getPath('userData'), MAIN_EXECUTION_CONTEXT_HISTORY_FILE_NAME);
+    const mainHistory = await TrackingConsentHistory.init<MainExecutionContextDiskEntry>(
+      { filePath, expireDelay: SESSION_TIME_OUT_DELAY },
+      trackingConsentManager
+    );
     const context = new MainProcessContext(eventManager, viewContext, mainHistory, sessionManager);
 
     hooks.registerRum(({ source, startTime }) => {
@@ -100,11 +103,13 @@ export class MainProcessContext {
   stop(): void {
     this.clearHeartbeat();
     this.lifecycleSubscription.unsubscribe();
+    this.viewContext.stop();
+    this.mainHistory.stop();
   }
 
   private startState(): void {
     // One shared startTime for every registration below: the view and execution_context events
-    // cross-tag each other by looking up the other's DiskValueHistory at their own startTime, so
+    // cross-tag each other by looking up the other's history at their own startTime, so
     // both entries must be registered at the exact same instant — two independent timeStampNow()
     // reads, even microseconds apart, could land on opposite sides of a lookup boundary and miss.
     const startTime = timeStampNow();

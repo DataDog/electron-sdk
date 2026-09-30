@@ -6,7 +6,8 @@ import { display } from './display';
 /**
  * Disk-backed extension of TimeStampValueHistory. All in-memory operations delegate to an
  * underlying TimeStampValueHistory; add() and closeActive() additionally persist the full
- * entry list to disk as a JSON array (newest-first).
+ * entry list to disk as a JSON array (newest-first). Persistence can be paused to keep changes
+ * in memory until they are committed or discarded.
  *
  * Lifecycle:
  * - Create instances via `DiskValueHistory.init()` which loads and restores entries from a
@@ -23,6 +24,7 @@ export class DiskValueHistory<T> {
   private readonly history: TimeStampValueHistory<T>;
   private readonly filePath: string;
   private pendingWrite: Promise<void> = Promise.resolve();
+  private persistenceCheckpoint: TimeStampHistoryEntry<T>[] | undefined;
 
   private constructor(history: TimeStampValueHistory<T>, filePath: string) {
     this.history = history;
@@ -90,7 +92,36 @@ export class DiskValueHistory<T> {
     return this.history.getEntries();
   }
 
+  /** Keep subsequent changes in memory until they are explicitly committed or discarded. */
+  pausePersistence(): void {
+    if (this.persistenceCheckpoint) {
+      return;
+    }
+    this.persistenceCheckpoint = this.history.getEntries().map((entry) => ({ ...entry }));
+  }
+
+  /** Resume persistence and write all changes made since {@link pausePersistence}. */
+  commitPausedChanges(): void {
+    if (!this.persistenceCheckpoint) {
+      return;
+    }
+    this.persistenceCheckpoint = undefined;
+    this.persistToDisk();
+  }
+
+  /** Restore the history captured by {@link pausePersistence} and resume persistence. */
+  discardPausedChanges(): void {
+    if (!this.persistenceCheckpoint) {
+      return;
+    }
+    this.history.replaceEntries(this.persistenceCheckpoint);
+    this.persistenceCheckpoint = undefined;
+  }
+
   private persistToDisk(): void {
+    if (this.persistenceCheckpoint) {
+      return;
+    }
     const snapshot = JSON.stringify(this.history.getEntries());
     this.pendingWrite = this.pendingWrite
       .then(() => fs.writeFile(this.filePath, snapshot, 'utf-8'))

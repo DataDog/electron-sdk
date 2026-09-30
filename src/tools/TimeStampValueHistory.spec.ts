@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { TimeStamp } from '@datadog/js-core/time';
-import { TimeStampValueHistory } from './TimeStampValueHistory';
+import { TimeStampValueHistory, type TimeStampHistoryEntry } from './TimeStampValueHistory';
 
 // Fake timers align Date.now() with test timestamps so pruning works predictably
 const T0 = 0 as TimeStamp;
@@ -226,6 +226,30 @@ describe('TimeStampValueHistory', () => {
       const entries = history.getEntries();
       expect(entries[0].startTime).toBe(T10);
       expect(entries[0].endTime).toBe(T30);
+    });
+  });
+
+  describe('replaceEntries', () => {
+    it('replaces the history and preserves the supplied interval boundaries', () => {
+      const history = new TimeStampValueHistory<string>({ expireDelay: EXPIRE_DELAY });
+      history.add('removed', T0);
+      const snapshot: TimeStampHistoryEntry<string>[] = [
+        { startTime: T20, endTime: Infinity as TimeStamp, value: 'current' },
+        { startTime: T10, endTime: T20, value: 'previous' },
+      ];
+
+      history.replaceEntries(snapshot);
+      history.closeActive(T30);
+
+      expect(history.find(T0)).toBeUndefined();
+      expect(history.find(T10)).toBe('previous');
+      expect(history.find(T20)).toBe('current');
+      expect(history.find(T30)).toBeUndefined();
+      expect(snapshot[0].endTime).toBe(Infinity);
+
+      snapshot[1].endTime = T10;
+      snapshot.pop();
+      expect(history.find(T10)).toBe('previous');
     });
   });
 });

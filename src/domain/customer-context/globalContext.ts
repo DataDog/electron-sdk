@@ -1,5 +1,6 @@
 import { ContextManager, initContextWithHistory, type Context, type ContextHistory } from './contextManager';
 import type { FormatHooks } from '../../assembly';
+import type { TrackingConsentManager } from '../tracking-consent';
 
 export const GLOBAL_CONTEXT_HISTORY_FILE_NAME = '_dd_global_context_history';
 
@@ -14,8 +15,12 @@ export const GLOBAL_CONTEXT_HISTORY_FILE_NAME = '_dd_global_context_history';
  * it sets win (see `RendererPipeline`).
  */
 export class GlobalContext extends ContextManager<Context> {
-  static init(hooks: FormatHooks): Promise<GlobalContext> {
-    return initContextWithHistory((history) => new GlobalContext(hooks, history), GLOBAL_CONTEXT_HISTORY_FILE_NAME);
+  static init(hooks: FormatHooks, trackingConsentManager: TrackingConsentManager): Promise<GlobalContext> {
+    return initContextWithHistory(
+      (history) => new GlobalContext(hooks, history),
+      GLOBAL_CONTEXT_HISTORY_FILE_NAME,
+      trackingConsentManager
+    );
   }
 
   constructor(hooks: FormatHooks, history?: ContextHistory) {

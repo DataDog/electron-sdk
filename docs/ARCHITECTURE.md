@@ -164,6 +164,22 @@ Consumers own their subscriptions and unsubscribe when stopped.
 History lookups return the state active at the requested time. For example, a past `pending` interval still returns
 `pending` after the current state changes to `granted` or `not-granted`.
 
+### Consent and attribution history
+
+Session, main-process view and execution context, user, account, and global context histories identify the context active
+at an event's timestamp. Their authorized disk history survives a process restart for crash attribution;
+it does not restore the application's current user, account, or global context.
+
+`TrackingConsentHistory` shares the manager created by SDK initialization and applies one persistence
+policy to these histories. Entering `pending` closes the authorized period on disk, then keeps
+changes in memory. A grant commits those changes; a refusal discards them and preserves the earlier
+authorized periods. During `not-granted`, only the latest supplied value is retained in memory.
+Resuming tracking starts a new period at that transition, without filling the refused period.
+
+`DiskValueHistory` provides the underlying pause, commit, and discard operations without knowing about
+consent. On initialization, the previous process's active interval is closed before persistence can be
+paused. Pending changes are never loaded after restart. Owners release the consent subscription in `stop()`.
+
 ## Error Reporting
 
 Failures are routed by _who can act on them_:

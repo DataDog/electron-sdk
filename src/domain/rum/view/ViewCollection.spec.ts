@@ -26,6 +26,7 @@ import {
 import { createFormatHooks, type FormatHooks } from '../../../assembly';
 import { createServerRumEvent, createServerRumView } from '../../../mocks.specUtil';
 import { RawRumView, MainRumEvent, RumErrorEvent } from '../types';
+import { TrackingConsentManager } from '../../tracking-consent';
 
 vi.mock('node:fs/promises');
 const mfs = mockFs();
@@ -37,11 +38,13 @@ describe('ViewCollection', () => {
   let eventManager: EventManager;
   let hooks: FormatHooks;
   let viewCollection: ViewCollection;
+  let trackingConsentManager: TrackingConsentManager;
   let rawRumEvents: RawRumEvent[];
 
   beforeEach(async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
+    trackingConsentManager = new TrackingConsentManager();
     mfs.readFile.mockRejectedValue(new Error('ENOENT'));
     mfs.writeFile.mockResolvedValue(undefined);
     eventManager = new EventManager();
@@ -53,7 +56,7 @@ describe('ViewCollection', () => {
       handle: (event) => rawRumEvents.push(event),
     });
 
-    viewCollection = await ViewCollection.start(eventManager, hooks);
+    viewCollection = await ViewCollection.start(eventManager, hooks, trackingConsentManager);
   });
 
   afterEach(() => {
@@ -102,7 +105,7 @@ describe('ViewCollection', () => {
           viewCollection.stop();
           hooks = createFormatHooks();
           rawRumEvents.length = 0;
-          viewCollection = await ViewCollection.start(eventManager, hooks);
+          viewCollection = await ViewCollection.start(eventManager, hooks, trackingConsentManager);
         } else {
           eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
           rawRumEvents.length = 0;

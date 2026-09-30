@@ -9,6 +9,7 @@ import {
 } from './contextManager';
 import { display } from '../../tools/display';
 import type { FormatHooks } from '../../assembly';
+import type { TrackingConsentManager } from '../tracking-consent';
 
 export interface UserInfo {
   id?: string;
@@ -33,8 +34,12 @@ export const USER_CONTEXT_HISTORY_FILE_NAME = '_dd_user_context_history';
  * Stores user information and injects it as `usr` into RUM events and `usr.*` tags into spans.
  */
 export class UserContext extends ContextManager<UserInfo> {
-  static init(hooks: FormatHooks): Promise<UserContext> {
-    return initContextWithHistory((history) => new UserContext(hooks, history), USER_CONTEXT_HISTORY_FILE_NAME);
+  static init(hooks: FormatHooks, trackingConsentManager: TrackingConsentManager): Promise<UserContext> {
+    return initContextWithHistory(
+      (history) => new UserContext(hooks, history),
+      USER_CONTEXT_HISTORY_FILE_NAME,
+      trackingConsentManager
+    );
   }
 
   constructor(hooks: FormatHooks, history?: ContextHistory) {

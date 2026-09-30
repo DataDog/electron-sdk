@@ -14,6 +14,7 @@ import type { FormatHooks } from '../../../assembly';
 import { setInterval, throttle } from '../../telemetry';
 import type { RawRumView } from '../types';
 import { ViewContext } from './ViewContext';
+import type { TrackingConsentManager } from '../../tracking-consent';
 
 export const SESSION_KEEP_ALIVE_INTERVAL = 5 * ONE_MINUTE;
 // throttle view updates to avoid bursts
@@ -46,11 +47,16 @@ export class ViewCollection {
 
   constructor(
     private readonly eventManager: EventManager,
-    private readonly hooks: FormatHooks
+    private readonly hooks: FormatHooks,
+    private readonly trackingConsentManager: TrackingConsentManager
   ) {}
 
-  static async start(eventManager: EventManager, hooks: FormatHooks): Promise<ViewCollection> {
-    const collection = new ViewCollection(eventManager, hooks);
+  static async start(
+    eventManager: EventManager,
+    hooks: FormatHooks,
+    trackingConsentManager: TrackingConsentManager
+  ): Promise<ViewCollection> {
+    const collection = new ViewCollection(eventManager, hooks, trackingConsentManager);
     await collection.init();
     return collection;
   }
@@ -60,7 +66,7 @@ export class ViewCollection {
     this.scheduleViewUpdate = throttled;
     this.cancelScheduledViewUpdate = cancel;
 
-    this.viewContext = await ViewContext.init(this.hooks);
+    this.viewContext = await ViewContext.init(this.hooks, this.trackingConsentManager);
     this.createNewView();
 
     this.lifecycleSubscription = this.eventManager.registerHandler<LifecycleEvent>({
@@ -81,6 +87,7 @@ export class ViewCollection {
   }
 
   stop(): void {
+    this.viewContext.stop();
     this.cancelScheduledViewUpdate();
     this.stopSessionKeepAlive();
     this.lifecycleSubscription.unsubscribe();

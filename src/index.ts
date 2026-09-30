@@ -13,6 +13,7 @@ import { addUsage, callMonitored, reportConfiguration, startTelemetry } from './
 import { SpanProcessor } from './domain/tracing/SpanProcessor';
 import { Tracing } from './domain/tracing/Tracing';
 import { ProfilingCollection } from './domain/profiling';
+import { TrackingConsentManager } from './domain/tracking-consent';
 import { EventManager } from './event';
 import { BeforeQuitHandler } from './tools/BeforeQuitHandler';
 import { Transport } from './transport';
@@ -45,17 +46,18 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
     return false;
   }
 
+  const trackingConsentManager = new TrackingConsentManager();
   tracing = new Tracing(config);
 
   eventManager = new EventManager();
   const hooks = createFormatHooks();
 
   registerCommonContext(config, hooks);
-  userContext = await UserContext.init(hooks);
-  accountContext = await AccountContext.init(hooks);
-  setGlobalContextApi(await GlobalContext.init(hooks));
+  userContext = await UserContext.init(hooks, trackingConsentManager);
+  accountContext = await AccountContext.init(hooks, trackingConsentManager);
+  setGlobalContextApi(await GlobalContext.init(hooks, trackingConsentManager));
   startTelemetry(eventManager, config);
-  sessionManager = await SessionManager.start(eventManager, hooks, config);
+  sessionManager = await SessionManager.start(eventManager, hooks, config, trackingConsentManager);
 
   new MainAssembly(eventManager, hooks, new BeforeSend(config.beforeSendRum));
   new ProfilingCollection(eventManager, sessionManager, config, hooks);
@@ -72,7 +74,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   new RendererPipeline(eventManager, hooks, config);
 
-  const rum = await RumCollection.start(eventManager, hooks, sessionManager, config);
+  const rum = await RumCollection.start(eventManager, hooks, sessionManager, config, trackingConsentManager);
   rumApi = rum.getApi();
   setDurationVitalApi(rumApi);
 

@@ -5,6 +5,7 @@ import { isEmptyObject } from '@datadog/browser-core';
 import { display } from '../../tools/display';
 import { initContextHistory } from './contextHistory';
 import type { FormatHooks } from '../../assembly';
+import type { TrackingConsentManager } from '../tracking-consent';
 
 export type Context = Record<string, unknown>;
 
@@ -14,6 +15,7 @@ export interface ContextHistory {
   closeAndAdd(value: Context, atTime: TimeStamp): void;
   pruneAndPersist(): void;
   find(startTime: TimeStamp): Context | undefined;
+  stop(): void;
 }
 
 /**
@@ -54,6 +56,11 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
     private readonly propertiesConfig: PropertiesConfig = {},
     private readonly history?: ContextHistory
   ) {}
+
+  /** Releases the consent subscription held by the attribution history. */
+  stop(): void {
+    this.history?.stop();
+  }
 
   /**
    * Returns the flat context (standard fields plus extra attributes). Used by format hooks to
@@ -220,9 +227,10 @@ export function toSpanMeta(prefix: 'usr' | 'account', context: Context): Record<
  */
 export async function initContextWithHistory<T>(
   construct: (history: ContextHistory) => T,
-  historyFileName: string
+  historyFileName: string,
+  trackingConsentManager: TrackingConsentManager
 ): Promise<T> {
-  const history = await initContextHistory(historyFileName);
+  const history = await initContextHistory(historyFileName, trackingConsentManager);
   return construct(history);
 }
 

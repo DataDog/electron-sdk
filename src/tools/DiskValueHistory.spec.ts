@@ -230,4 +230,130 @@ describe('DiskValueHistory', () => {
       expect(history.find(T10)).toBe('session-a');
     });
   });
+
+  describe('paused persistence', () => {
+    it('keeps changes readable in memory without writing them to disk', async () => {
+      const history = await DiskValueHistory.init<string>({ filePath: FILE_PATH, expireDelay: EXPIRE_DELAY });
+      history.pausePersistence();
+
+      history.add('first', T0);
+      history.closeAndAdd('second', T10);
+      history.closeActive(T20);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(history.find(T0)).toBe('first');
+      expect(history.find(T10)).toBe('second');
+      expect(history.find(T20)).toBeUndefined();
+      expect(mfs.writeFile).not.toHaveBeenCalled();
+    });
+
+    it('commits all paused changes in one write and resumes ordinary persistence', async () => {
+      const history = await DiskValueHistory.init<string>({ filePath: FILE_PATH, expireDelay: EXPIRE_DELAY });
+      history.pausePersistence();
+      history.add('first', T0);
+      history.closeAndAdd('second', T10);
+
+      history.commitPausedChanges();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(mfs.writeFile).toHaveBeenCalledExactlyOnceWith(
+        FILE_PATH,
+        JSON.stringify([
+          { startTime: T10, endTime: null, value: 'second' },
+          { startTime: T0, endTime: T10, value: 'first' },
+        ]),
+        'utf-8'
+      );
+
+      history.closeActive(T20);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(mfs.writeFile).toHaveBeenLastCalledWith(
+        FILE_PATH,
+        JSON.stringify([
+          { startTime: T10, endTime: T20, value: 'second' },
+          { startTime: T0, endTime: T10, value: 'first' },
+        ]),
+        'utf-8'
+      );
+    });
+
+    it('discards paused changes while retaining closed history and allows subsequent writes', async () => {
+      const history = await DiskValueHistory.init<string>({ filePath: FILE_PATH, expireDelay: EXPIRE_DELAY });
+      history.add('retained', T0);
+      history.closeActive(T10);
+      await vi.advanceTimersByTimeAsync(0);
+      mfs.writeFile.mockClear();
+
+      history.pausePersistence();
+      history.add('discarded', T10);
+      history.discardPausedChanges();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(history.getEntries()).toEqual([{ startTime: T0, endTime: T10, value: 'retained' }]);
+      expect(mfs.writeFile).not.toHaveBeenCalled();
+
+      history.add('resumed', T20);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(mfs.writeFile).toHaveBeenCalledExactlyOnceWith(
+        FILE_PATH,
+        JSON.stringify([
+          { startTime: T20, endTime: null, value: 'resumed' },
+          { startTime: T0, endTime: T10, value: 'retained' },
+        ]),
+        'utf-8'
+      );
+    });
+
+    it('preserves the original checkpoint when persistence is paused repeatedly', async () => {
+      const history = await DiskValueHistory.init<string>({ filePath: FILE_PATH, expireDelay: EXPIRE_DELAY });
+      history.add('original', T0);
+      history.pausePersistence();
+      history.closeAndAdd('temporary', T10);
+      history.pausePersistence();
+
+      history.discardPausedChanges();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(history.getEntries()).toEqual([{ startTime: T0, endTime: Infinity, value: 'original' }]);
+    });
+
+    it('keeps writes queued before the pause ordered before the commit and later changes', async () => {
+      const history = await DiskValueHistory.init<string>({ filePath: FILE_PATH, expireDelay: EXPIRE_DELAY });
+      let finishFirstWrite!: () => void;
+      mfs.writeFile.mockReturnValueOnce(new Promise<void>((resolve) => (finishFirstWrite = resolve)));
+
+      history.add('first', T0);
+      history.pausePersistence();
+      history.closeAndAdd('second', T10);
+      history.commitPausedChanges();
+      history.closeActive(T20);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(mfs.writeFile).toHaveBeenCalledExactlyOnceWith(
+        FILE_PATH,
+        JSON.stringify([{ startTime: T0, endTime: null, value: 'first' }]),
+        'utf-8'
+      );
+
+      finishFirstWrite();
+      await vi.advanceTimersByTimeAsync(0);
+
+      const snapshots = mfs.writeFile.mock.calls.map(
+        ([, snapshot]) => JSON.parse(snapshot as string) as TimeStampHistoryEntry<string>[]
+      );
+      expect(snapshots).toEqual([
+        [{ startTime: T0, endTime: null, value: 'first' }],
+        [
+          { startTime: T10, endTime: null, value: 'second' },
+          { startTime: T0, endTime: T10, value: 'first' },
+        ],
+        [
+          { startTime: T10, endTime: T20, value: 'second' },
+          { startTime: T0, endTime: T10, value: 'first' },
+        ],
+      ]);
+    });
+  });
 });

@@ -9,6 +9,7 @@ import { SessionContext } from './SessionContext';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
 import { isSessionSampled } from '../../tools/Sampler';
 import { setCurrentSessionSampled } from '../../common';
+import type { TrackingConsentManager } from '../tracking-consent';
 
 export const SESSION_EXPIRATION_DELAY = 15 * ONE_MINUTE;
 
@@ -36,15 +37,17 @@ export class SessionManager {
   private constructor(
     private readonly eventManager: EventManager,
     private readonly hooks: FormatHooks,
-    private readonly configuration: Configuration
+    private readonly configuration: Configuration,
+    private readonly trackingConsentManager: TrackingConsentManager
   ) {}
 
   static async start(
     eventManager: EventManager,
     hooks: FormatHooks,
-    configuration: Configuration
+    configuration: Configuration,
+    trackingConsentManager: TrackingConsentManager
   ): Promise<SessionManager> {
-    const manager = new SessionManager(eventManager, hooks, configuration);
+    const manager = new SessionManager(eventManager, hooks, configuration, trackingConsentManager);
     await manager.init();
     return manager;
   }
@@ -67,6 +70,7 @@ export class SessionManager {
 
   stop(): void {
     this.clearTimers();
+    this.sessionContext.stop();
     setCurrentSessionSampled(false);
     if (this.activitySubscription) {
       this.activitySubscription.unsubscribe();
@@ -75,8 +79,7 @@ export class SessionManager {
   }
 
   private async init(): Promise<void> {
-    this.sessionContext = await SessionContext.init(this.hooks);
-    this.sessionContext.close();
+    this.sessionContext = await SessionContext.init(this.hooks, this.trackingConsentManager);
     this.createNewSession();
 
     this.activitySubscription = this.eventManager.registerHandler<EndUserActivityEvent>({

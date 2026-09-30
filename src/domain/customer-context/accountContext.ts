@@ -8,6 +8,7 @@ import {
   type PropertiesConfig,
 } from './contextManager';
 import type { FormatHooks } from '../../assembly';
+import type { TrackingConsentManager } from '../tracking-consent';
 
 export interface AccountInfo {
   id: string;
@@ -26,8 +27,12 @@ export const ACCOUNT_CONTEXT_HISTORY_FILE_NAME = '_dd_account_context_history';
  * Stores account information and injects it as `account` into RUM events and `account.*` tags into spans.
  */
 export class AccountContext extends ContextManager<AccountInfo> {
-  static init(hooks: FormatHooks): Promise<AccountContext> {
-    return initContextWithHistory((history) => new AccountContext(hooks, history), ACCOUNT_CONTEXT_HISTORY_FILE_NAME);
+  static init(hooks: FormatHooks, trackingConsentManager: TrackingConsentManager): Promise<AccountContext> {
+    return initContextWithHistory(
+      (history) => new AccountContext(hooks, history),
+      ACCOUNT_CONTEXT_HISTORY_FILE_NAME,
+      trackingConsentManager
+    );
   }
 
   constructor(hooks: FormatHooks, history?: ContextHistory) {
