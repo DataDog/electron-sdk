@@ -12,19 +12,10 @@ const { mockProducerPost, mockProducerFlush, mockConsumerUpload, mockProducerCre
     const mockProducerPost = vi.fn();
     const mockProducerFlush = vi.fn().mockResolvedValue(undefined);
     const mockConsumerUpload = vi.fn().mockResolvedValue(undefined);
-    const mockProducerCreate = vi
-      .fn()
-      .mockImplementation(({ trackPath }: { trackPath: string }) =>
-        Promise.resolve(
-          trackPath.endsWith('/pending')
-            ? { post: vi.fn(), runAfterFlush: vi.fn((operation: () => Promise<void>) => operation()) }
-            : { post: mockProducerPost, flush: mockProducerFlush }
-        )
-      );
+    const mockProducerCreate = vi.fn().mockResolvedValue({ post: mockProducerPost, flush: mockProducerFlush });
     const mockProfileProducerCreate = vi.fn().mockResolvedValue({
       post: vi.fn(),
       flush: vi.fn().mockResolvedValue(undefined),
-      runAfterFlush: vi.fn((operation: () => Promise<void>) => operation()),
     });
 
     return { mockProducerPost, mockProducerFlush, mockConsumerUpload, mockProducerCreate, mockProfileProducerCreate };
@@ -50,8 +41,10 @@ vi.mock('./profiling/ProfileBatchConsumer', () => ({
   }),
 }));
 
-vi.mock('./trackingConsentStorage', () => ({
-  recoverAuthorizedPendingBatches: vi.fn().mockResolvedValue(undefined),
+vi.mock('./BatchMigration', () => ({
+  BatchMigration: vi.fn().mockImplementation(function () {
+    return { flush: vi.fn().mockResolvedValue(undefined) };
+  }),
 }));
 
 vi.mock('../utils', () => ({
@@ -93,10 +86,7 @@ describe('BatchManager', () => {
         trackPath: '/mock/path/rum',
         batchSize: BatchSizes.MEDIUM,
       });
-      expect(mockProducerCreate).toHaveBeenCalledWith({
-        trackPath: '/mock/path/rum/pending',
-        batchSize: BatchSizes.MEDIUM,
-      });
+      expect(mockProducerCreate).toHaveBeenCalledTimes(1);
     });
 
     it('limits LOGS batches to the intake maximum of 1,000 entries', async () => {
@@ -107,11 +97,7 @@ describe('BatchManager', () => {
         batchSize: BatchSizes.MEDIUM,
         maxEventsPerBatch: 1_000,
       });
-      expect(mockProducerCreate).toHaveBeenCalledWith({
-        trackPath: '/mock/path/dd_logs/pending',
-        batchSize: BatchSizes.MEDIUM,
-        maxEventsPerBatch: 1_000,
-      });
+      expect(mockProducerCreate).toHaveBeenCalledTimes(1);
     });
 
     it('creates a StandardBatchConsumer with the resolved trackPath, intakeUrl and clientToken', async () => {

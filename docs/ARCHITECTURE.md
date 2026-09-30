@@ -152,31 +152,39 @@ is kept in memory from construction onward; it neither persists consent nor infe
 Changes notify monitored subscribers synchronously after updating the state.
 Consumers own their subscriptions and unsubscribe when stopped.
 
-History lookups return the state active at the requested time. For example, a past `pending` interval still returns
+History lookups return the state active at the requested time. For example, a past `pending` period still returns
 `pending` after the current state changes to `granted` or `not-granted`.
 
 ### Consent and batch storage
 
 SDK initialization creates one `TrackingConsentManager` shared by the transport's batch managers.
-Each track uses two producers with the same serialization and file limits:
+`Transport` routes events to one `BatchManager` per active track (RUM, logs, spans, replay, profiling).
+The manager coordinates a consent-aware writer and a consumer that reads only authorized batches.
 
-- The existing track directory holds authorized batches and is the only directory the consumer reads.
-- Its `pending/` subdirectory holds undecided batches, which cannot be uploaded.
+Here, **authorized** means the data has received consent, even if the current consent later changes.
+A **pending period** is one stay in `pending`, ending at the next grant or refusal. Each period owns a
+new directory and producer, so an old cleanup failure cannot mix its files with the next period's data.
 
-`ConsentAwareBatchProducer` selects the store when an event is posted. `not-granted` drops the write.
-Leaving `pending` seals its current batch: a grant moves the files to authorized storage, while a refusal
-deletes them. Already authorized batches remain eligible for upload after later consent changes.
-Writes, sealing, migration, and deletion are ordered on the pending producer's queue.
+```text
+rum/                              authorized batches; the consumer scans this directory only
+  batch-….log
+  pending-<uuid>/                 one pending period, never reused by another period
+  .authorized-pending-<uuid>/     consent granted; migration to rum/ still unfinished
+```
 
-Authorization first renames the pending directory to `.authorized-pending-<uuid>`, then moves its batches
-into the track directory with unique names. These detached directories survive later refusals and can
-be recovered after an interrupted migration or process restart. A failed deletion prevents reuse of the
-pending store until cleanup succeeds; a failed authorization is recovered before that store can be cleared.
-Upload cycles and explicit flushes retry unfinished work.
+`ConsentAwareBatchProducer` captures the destination when an event is posted: the track root for
+`granted`, the current pending store for `pending`, or no write for `not-granted`. On leaving `pending`,
+it hands that store and its decision to `BatchMigration`. The migrator finishes earlier writes and closes
+open batch files, then moves or deletes the store. Failed operations are retried on upload cycles
+and explicit flushes. Their failure does not prevent other stores or authorized uploads from progressing.
 
-At startup, undecided batches from the previous process are removed from every track, including disabled
-tracks. Authorized batches keep their established paths. Each producer retains its existing best-effort
-limit of 100 completed batch files; this is a per-store file limit, not a global byte quota.
+Before moving individual files, authorization renames the directory to `.authorized-pending-<uuid>`.
+This records the grant on disk: after restart, unfinished moves can resume. A crash before that rename
+succeeds leaves undecided storage, which `Transport` clears at startup for **all** tracks, even disabled ones.
+
+The existing best-effort limit of 100 completed batches applies to the authorized root. A separate limit
+of 100 applies across all remaining pending and migration directories together, so creating new periods
+does not multiply the allowance. Open files and filesystem failures can temporarily exceed these limits.
 
 ## Error Reporting
 

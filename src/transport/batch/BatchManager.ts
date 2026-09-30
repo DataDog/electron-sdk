@@ -1,4 +1,3 @@
-import path from 'node:path';
 import type { Configuration } from '../../config';
 import { addError, clearTimeout, monitor, setTimeout } from '../../domain/telemetry';
 import type { TrackingConsentManager } from '../../domain/tracking-consent';
@@ -16,14 +15,14 @@ import { StandardBatchProducer } from './standard/StandardBatchProducer';
 import type { StandardBatchProducerConfig } from './standard/StandardBatchProducer';
 import type { BatchConfig } from './batchConfig.types';
 import { ConsentAwareBatchProducer } from './ConsentAwareBatchProducer';
-import { clearBatchDirectory } from './trackingConsentStorage';
+import { getTrackPath } from './batchPaths';
 
 /** Maximum array length accepted by the Logs HTTP intake. */
 const MAX_LOGS_EVENTS_PER_BATCH = 1_000;
 
 /**
  * Coordinates consent-aware disk writes and uploads for a single track type.
- * The consumer only reads authorized batches; pending batches stay in a separate directory.
+ * The consent router selects the writer; the consumer reads only authorized batches at the track root.
  */
 export class BatchManager {
   private producer: ConsentAwareBatchProducer;
@@ -45,14 +44,11 @@ export class BatchManager {
   static async create(config: Configuration, batchConfig: BatchConfig, consentManager: TrackingConsentManager) {
     const { uploadFrequency } = batchConfig;
     const trackPath = getTrackPath(batchConfig.path, batchConfig.trackType);
-    const pendingPath = path.join(trackPath, 'pending');
     const authorizedProducer = await BatchManager.createProducer(batchConfig, trackPath);
-    const pendingProducer = await BatchManager.createProducer(batchConfig, pendingPath);
     const producer = new ConsentAwareBatchProducer(
       authorizedProducer,
-      pendingProducer,
       trackPath,
-      pendingPath,
+      (directory) => BatchManager.createProducer(batchConfig, directory),
       consentManager
     );
     const consumer = BatchManager.createConsumer(config, batchConfig.trackType, trackPath);
@@ -62,20 +58,13 @@ export class BatchManager {
     return manager;
   }
 
-  /** Discards undecided data from the previous process, including tracks disabled on this launch. */
-  static async clearStalePendingData(basePath: string): Promise<void> {
-    for (const track of Object.values(EventTrack)) {
-      await clearBatchDirectory(path.join(getTrackPath(basePath, track), 'pending'));
-    }
-  }
-
   /** Enqueues a server event to be written to the current batch file. */
   post(event: ServerEvent) {
     this.producer.post(event);
   }
 
   /**
-   * Drains the write queue, rotates the current batch, and uploads all pending files.
+   * Drains writes, rotates current batches, and uploads authorized files awaiting delivery.
    *
    * Guarantees a full cycle runs to completion *after* this call. A scheduled cycle already in
    * flight may have scanned the directory before the caller rotated new files (e.g. the final
@@ -144,12 +133,11 @@ export class BatchManager {
     return cycle;
   }
 
-  /** Flushes the producer to rotate pending files, then uploads all ready batches. */
+  /** Closes open batch files, then uploads authorized batches. */
   private async runUploadCycle() {
     try {
-      // Flush producer first to rotate any pending .tmp files to .log
+      // Seal open batches before scanning the authorized directory.
       await this.producer.flush();
-      // Then upload all .log files
       await this.consumer.upload();
     } finally {
       this.activeCycle = null;
@@ -177,7 +165,7 @@ export class BatchManager {
     return StandardBatchProducer.create(standardProducerConfig);
   }
 
-  /** Creates a consumer that only scans the authorized directory, never its pending subdirectory. */
+  /** The consumer scans the track root, never pending stores or migration directories. */
   private static createConsumer(config: Configuration, trackType: EventTrack, trackPath: string): BatchConsumer {
     const consumerConfig: BatchConsumerConfig = {
       trackPath,
@@ -192,9 +180,4 @@ export class BatchManager {
     }
     return new StandardBatchConsumer(consumerConfig);
   }
-}
-
-function getTrackPath(basePath: string, track: EventTrack): string {
-  // Keep established paths so authorized batches survive SDK upgrades.
-  return path.join(basePath, track === EventTrack.LOGS ? 'dd_logs' : track);
 }

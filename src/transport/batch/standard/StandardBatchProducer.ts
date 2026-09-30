@@ -79,10 +79,6 @@ export class StandardBatchProducer extends BatchProducer {
       return;
     }
     await this.renameBatchFile(this.currentBatchFile);
-    this.onStorageCleared();
-  }
-
-  protected override onStorageCleared(): void {
     this.currentBatchFile = null;
     this.currentBatchSize = 0;
     this.currentBatchEventCount = 0;

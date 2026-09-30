@@ -3,7 +3,7 @@ import { app } from 'electron';
 import { resolveBatchSize, resolveUploadFrequency, type Configuration } from '../config';
 import type { TrackingConsentManager } from '../domain/tracking-consent';
 import { EventKind, EventTrack, type EventManager, type ServerEvent } from '../event';
-import { BatchManager } from './batch';
+import { BatchManager, BatchMigration, getTrackPath } from './batch';
 
 /**
  * Orchestrates event transport by routing server events from registered domains
@@ -28,7 +28,10 @@ export class Transport {
     trackingConsentManager: TrackingConsentManager
   ) {
     const transport = new Transport(config, eventManager, trackingConsentManager);
-    await BatchManager.clearStalePendingData(transport.basePath);
+    // A new process cannot authorize a previous process's undecided data, even for disabled tracks.
+    for (const track of Object.values(EventTrack)) {
+      await BatchMigration.clearPendingData(getTrackPath(transport.basePath, track));
+    }
     for (const track of transport.getTracks()) {
       await transport.setupTrackBatching(track);
     }

@@ -12,7 +12,7 @@ vi.mock('electron', () => ({
   },
 }));
 
-const { mockBatchPost, mockBatchFlush, mockBatchCreate, mockClearStalePendingData } = vi.hoisted(() => {
+const { mockBatchPost, mockBatchFlush, mockBatchCreate, mockClearPendingData } = vi.hoisted(() => {
   const mockBatchPost = vi.fn();
   const mockBatchFlush = vi.fn().mockResolvedValue(undefined);
   const mockBatchCreate = vi.fn().mockResolvedValue({
@@ -21,15 +21,14 @@ const { mockBatchPost, mockBatchFlush, mockBatchCreate, mockClearStalePendingDat
     stop: vi.fn(),
   });
 
-  const mockClearStalePendingData = vi.fn().mockResolvedValue(undefined);
-  return { mockBatchPost, mockBatchFlush, mockBatchCreate, mockClearStalePendingData };
+  const mockClearPendingData = vi.fn<(trackPath: string) => Promise<void>>().mockResolvedValue(undefined);
+  return { mockBatchPost, mockBatchFlush, mockBatchCreate, mockClearPendingData };
 });
 
-vi.mock('./batch', () => ({
-  BatchManager: {
-    create: mockBatchCreate,
-    clearStalePendingData: mockClearStalePendingData,
-  },
+vi.mock('./batch', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./batch')>()),
+  BatchManager: { create: mockBatchCreate },
+  BatchMigration: { clearPendingData: mockClearPendingData },
 }));
 
 describe('Transport', () => {
@@ -64,15 +63,18 @@ describe('Transport', () => {
     it('should finish clearing stale pending data before setting up tracks, including when some are disabled', async () => {
       const minimalConfig = createTestConfiguration({ profilingSampleRate: 0, sessionReplaySampleRate: 0 });
       let finishCleanup!: () => void;
-      mockClearStalePendingData.mockReturnValueOnce(new Promise<void>((resolve) => (finishCleanup = resolve)));
+      mockClearPendingData.mockReturnValueOnce(new Promise<void>((resolve) => (finishCleanup = resolve)));
 
       const startup = Transport.create(minimalConfig, eventManager, trackingConsentManager);
 
-      expect(mockClearStalePendingData).toHaveBeenCalledWith('/mock/user/data');
+      expect(mockClearPendingData).toHaveBeenCalled();
       expect(mockBatchCreate).not.toHaveBeenCalled();
 
       finishCleanup();
       await startup;
+      expect(mockClearPendingData.mock.calls.map(([trackPath]) => trackPath).sort()).toEqual(
+        ['rum', 'spans', 'dd_logs', 'profile', 'replay'].map((track) => `/mock/user/data/${track}`).sort()
+      );
       expect(mockBatchCreate).toHaveBeenCalledTimes(3);
     });
 
