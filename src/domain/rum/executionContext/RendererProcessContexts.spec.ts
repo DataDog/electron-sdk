@@ -22,6 +22,8 @@ import { PROCESS_UPDATE_INTERVAL } from './executionContext.constants';
 import { EventManager, EventKind, EventFormat, EventSource, LifecycleKind, type RawRumEvent } from '../../../event';
 import { createFormatHooks } from '../../../assembly';
 import type { RawRumExecutionContext } from '../types';
+import { TrackingConsentManager } from '../../tracking-consent';
+import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
 
 vi.mock('node:fs/promises');
 const mfs = mockFs();
@@ -31,11 +33,13 @@ describe('RendererProcessContexts', () => {
   let hooks: ReturnType<typeof createFormatHooks>;
   let rawRumEvents: RawRumEvent[];
   let collection: RendererProcessContexts;
+  let consentManager: TrackingConsentManager;
   let webContentsCreatedHandler: (event: unknown, webContents: unknown) => void;
 
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
+    consentManager = new TrackingConsentManager();
     mfs.readFile.mockRejectedValue(new Error('ENOENT'));
     mfs.writeFile.mockResolvedValue(undefined);
 
@@ -53,10 +57,11 @@ describe('RendererProcessContexts', () => {
       return app;
     });
 
-    collection = RendererProcessContexts.start(eventManager, hooks);
+    collection = RendererProcessContexts.start(eventManager, hooks, consentManager);
   });
 
   afterEach(() => {
+    collection.stop();
     vi.useRealTimers();
     vi.clearAllMocks();
     mfs.reset();
@@ -102,6 +107,117 @@ describe('RendererProcessContexts', () => {
       expect(rendererStart._dd.document_version).toBe(1);
     });
 
+    it.each(['pending', 'granted'] as const)('splits renderer durations when consent becomes %s', (next) => {
+      const wc = makeWebContents(1);
+      webContentsCreatedHandler({}, wc);
+      if (next === 'granted') consentManager.update('pending');
+      const previous = rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext;
+      rawRumEvents.length = 0;
+      vi.advanceTimersByTime(10);
+
+      consentManager.update(next);
+
+      expect(rawRumEvents).toHaveLength(2);
+      expect(rawRumEvents[0].data).toMatchObject({
+        execution_context: { id: previous.execution_context.id, duration: 10e6 },
+      });
+      const started = rawRumEvents[1].data as RawRumExecutionContext;
+      expect(started.execution_context.id).not.toBe(previous.execution_context.id);
+      expect(started.execution_context.instance_id).toBe('1');
+      expect(started.execution_context.duration).toBe(0);
+      expect(started._dd.document_version).toBe(1);
+      rawRumEvents.length = 0;
+      vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+      expect(rawRumEvents).toHaveLength(1);
+    });
+
+    it('closes an active renderer on refusal and collects no heartbeat or attribution in the denied interval', () => {
+      const wc = makeWebContents(1);
+      webContentsCreatedHandler({}, wc);
+      const initialId = (rawRumEvents[0].data as RawRumExecutionContext).execution_context.id;
+      vi.advanceTimersByTime(10);
+      const boundary = timeStampNow();
+      consentManager.update('not-granted');
+
+      expect(rawRumEvents).toHaveLength(2);
+      expect(rawRumEvents[1].data).toMatchObject({
+        execution_context: { id: initialId, duration: 10e6 },
+      });
+      rawRumEvents.length = 0;
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+      vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+      expect(rawRumEvents).toEqual([]);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(
+        hooks.triggerRum({ eventType: 'error', source: EventSource.RENDERER, webContentsId: 1, startTime: boundary })
+      ).toBeUndefined();
+
+      consentManager.update('granted');
+      expect(rawRumEvents).toHaveLength(1);
+      expect((rawRumEvents[0].data as RawRumExecutionContext).execution_context.id).not.toBe(initialId);
+    });
+
+    it.each(['before grant', 'after grant'] as const)(
+      'tracks windows created while denied only when alive and ready, with reload %s',
+      (reload) => {
+        consentManager.update('not-granted');
+        const live = makeWebContents(1);
+        const destroyed = makeWebContents(2);
+        const crashed = makeWebContents(3);
+        webContentsCreatedHandler({}, live);
+        webContentsCreatedHandler({}, destroyed);
+        webContentsCreatedHandler({}, crashed);
+        destroyed._emit('destroyed');
+        crashed._emit('render-process-gone', {}, { reason: 'crashed' });
+        if (reload === 'before grant') crashed._emit('did-start-navigation', { isMainFrame: true });
+        vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+        expect(rawRumEvents).toEqual([]);
+        expect(vi.getTimerCount()).toBe(0);
+
+        consentManager.update('granted');
+        expect(rawRumEvents).toHaveLength(reload === 'before grant' ? 2 : 1);
+        if (reload === 'after grant') crashed._emit('did-start-navigation', { isMainFrame: true });
+
+        expect(
+          rawRumEvents.map((event) => (event.data as RawRumExecutionContext).execution_context.instance_id)
+        ).toEqual(['1', '3']);
+        rawRumEvents.length = 0;
+        vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+        expect(rawRumEvents).toHaveLength(2);
+      }
+    );
+
+    it('does not rotate a renderer again after a synchronous session renewal for the new consent', () => {
+      collection.stop();
+      consentManager.subscribe((change) => {
+        eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW, time: change.time });
+      });
+      collection = RendererProcessContexts.start(eventManager, hooks, consentManager);
+      webContentsCreatedHandler({}, makeWebContents(1));
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+      rawRumEvents.length = 0;
+
+      consentManager.update('pending');
+
+      expect(rawRumEvents).toHaveLength(1);
+      expect((rawRumEvents[0].data as RawRumExecutionContext)._dd.document_version).toBe(1);
+      rawRumEvents.length = 0;
+      vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+      expect(rawRumEvents).toHaveLength(1);
+    });
+
+    it('uses the supplied session-expiry boundary for renderer duration', () => {
+      webContentsCreatedHandler({}, makeWebContents(1));
+      vi.advanceTimersByTime(20);
+      eventManager.notify({
+        kind: EventKind.LIFECYCLE,
+        lifecycle: LifecycleKind.SESSION_EXPIRED,
+        time: 10 as TimeStamp,
+      });
+
+      expect(rawRumEvents[1].data).toMatchObject({ execution_context: { duration: 10e6 } });
+    });
+
     it('backfills execution contexts for webContents that already exist at start', () => {
       const existing = makeWebContents(9);
       vi.mocked(webContents).getAllWebContents.mockReturnValueOnce([existing as unknown as Electron.WebContents]);
@@ -114,7 +230,7 @@ describe('RendererProcessContexts', () => {
         handle: (e) => freshEvents.push(e),
       });
 
-      RendererProcessContexts.start(freshEventManager, freshHooks);
+      const freshCollection = RendererProcessContexts.start(freshEventManager, freshHooks, consentManager);
 
       expect(freshEvents).toHaveLength(1);
       const started = freshEvents[0].data as RawRumExecutionContext;
@@ -129,6 +245,7 @@ describe('RendererProcessContexts', () => {
           webContentsId: 9,
         })
       ).toMatchObject({ execution_context: { id: started.execution_context.id, type: 'renderer-process' } });
+      freshCollection.stop();
     });
 
     it('tags subsequent RENDERER events with the matching execution context', () => {

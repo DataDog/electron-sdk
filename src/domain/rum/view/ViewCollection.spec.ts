@@ -245,7 +245,7 @@ describe('ViewCollection', () => {
         kind: EventKind.SERVER,
         track: EventTrack.RUM,
         source: EventSource.MAIN,
-        data: createServerRumEvent<MainRumEvent>(type),
+        data: createServerRumEvent<MainRumEvent>(type, { view: (rawRumEvents[0].data as RawRumView).view }),
       });
 
       expect(rawRumEvents).toHaveLength(2);
@@ -285,9 +285,47 @@ describe('ViewCollection', () => {
 
       vi.advanceTimersByTime(SESSION_KEEP_ALIVE_INTERVAL);
       eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+      trackingConsentManager.update('pending');
 
       // Only the initial event, nothing else
       expect(rawRumEvents).toHaveLength(1);
+    });
+  });
+
+  describe('consent boundaries', () => {
+    it('closes accumulated counters, resets the replacement view and ignores events attributed to the old view', () => {
+      const originalView = (rawRumEvents[0].data as RawRumView).view;
+      const resource = createServerRumEvent<MainRumEvent>('resource', { view: originalView });
+      eventManager.notify({ kind: EventKind.SERVER, track: EventTrack.RUM, source: EventSource.MAIN, data: resource });
+      vi.setSystemTime(10);
+
+      trackingConsentManager.update('pending');
+
+      const closedView = rawRumEvents[rawRumEvents.length - 2].data as RawRumView;
+      const pendingView = rawRumEvents[rawRumEvents.length - 1].data as RawRumView;
+      expect(closedView.view).toMatchObject({
+        id: originalView.id,
+        is_active: false,
+        time_spent: 10 * 1e6,
+        resource: { count: 1 },
+      });
+      expect(pendingView.view.resource.count).toBe(0);
+      const eventCount = rawRumEvents.length;
+
+      eventManager.notify({ kind: EventKind.SERVER, track: EventTrack.RUM, source: EventSource.MAIN, data: resource });
+      vi.advanceTimersByTime(VIEW_UPDATE_THROTTLE_DELAY);
+
+      expect(rawRumEvents).toHaveLength(eventCount);
+      expect(pendingView.view.resource.count).toBe(0);
+    });
+
+    it('creates separate views even when two consent changes share a timestamp', () => {
+      trackingConsentManager.update('pending');
+      trackingConsentManager.update('granted');
+
+      const views = rawRumEvents.map((event) => event.data as RawRumView);
+      expect(views.map((view) => view.view.is_active)).toEqual([true, false, true, false, true]);
+      expect(new Set(views.filter((view) => view.view.is_active).map((view) => view.view.id)).size).toBe(3);
     });
   });
 
@@ -297,7 +335,7 @@ describe('ViewCollection', () => {
         kind: EventKind.SERVER,
         track: EventTrack.RUM,
         source: EventSource.MAIN,
-        data: createServerRumEvent<MainRumEvent>(type),
+        data: createServerRumEvent<MainRumEvent>(type, { view: (rawRumEvents[0].data as RawRumView).view }),
       });
     }
 

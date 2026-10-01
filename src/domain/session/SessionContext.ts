@@ -58,8 +58,8 @@ export class SessionContext {
     return new SessionContext(history, hooks);
   }
 
-  add(sessionId: string): void {
-    this.history.add(sessionId, timeStampNow());
+  add(sessionId: string, atTime: TimeStamp = timeStampNow()): void {
+    this.history.add(sessionId, atTime);
   }
 
   // Returns the tracked session id covering the given time (defaults to now), or undefined if there is none.
@@ -73,7 +73,7 @@ export class SessionContext {
     this.history.stop();
   }
 
-  close(): void {
-    this.history.closeActive(timeStampNow());
+  close(atTime: TimeStamp = timeStampNow()): void {
+    this.history.closeActive(atTime);
   }
 }

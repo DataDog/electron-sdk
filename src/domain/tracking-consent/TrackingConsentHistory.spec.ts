@@ -164,4 +164,28 @@ describe('TrackingConsentHistory', () => {
 
     expect(fs.writeFile).not.toHaveBeenCalled();
   });
+
+  it('applies a transition before writes triggered by an earlier consent observer', async () => {
+    // Session renewal can update view history before that history's own observer is notified.
+    const subscription = manager.subscribe((change) => {
+      if (change.current === 'pending') {
+        history.closeAndAdd('pending-view', (change.time + 1) as TimeStamp);
+      }
+    });
+    history = await TrackingConsentHistory.init<string>(options, manager);
+    history.add('authorized-view', timeStampNow());
+
+    vi.setSystemTime(2000);
+    manager.update('pending');
+
+    expect(await persisted()).toEqual([{ value: 'authorized-view', startTime: 1000, endTime: 2000 }]);
+    expect(history.find(2001 as TimeStamp)).toBe('pending-view');
+
+    vi.setSystemTime(3000);
+    manager.update('not-granted');
+
+    expect(history.find(2001 as TimeStamp)).toBeUndefined();
+    expect(await persisted()).toEqual([{ value: 'authorized-view', startTime: 1000, endTime: 2000 }]);
+    subscription.unsubscribe();
+  });
 });

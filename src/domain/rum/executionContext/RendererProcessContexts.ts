@@ -16,6 +16,7 @@ import { SESSION_TIME_OUT_DELAY } from '../../session';
 import { isActive, TimeStampValueHistory } from '../../../tools/TimeStampValueHistory';
 import type { RawRumExecutionContext } from '../types';
 import { PROCESS_UPDATE_INTERVAL } from './executionContext.constants';
+import type { TrackingConsent, TrackingConsentChange, TrackingConsentManager } from '../../tracking-consent';
 
 type ExecutionContextExitReason = RawRumExecutionContext['execution_context']['exit_reason'];
 
@@ -39,11 +40,19 @@ export const RENDERER_DISPOSAL_GRACE_PERIOD = 30 * ONE_SECOND;
 export class RendererProcessContexts {
   private readonly webContentManagers = new Map<number, WebContentManager>();
   private lifecycleSubscription!: Subscription;
+  private consentSubscription!: Subscription;
 
-  private constructor(private readonly eventManager: EventManager) {}
+  private constructor(
+    private readonly eventManager: EventManager,
+    private readonly consentManager: TrackingConsentManager
+  ) {}
 
-  static start(eventManager: EventManager, hooks: FormatHooks): RendererProcessContexts {
-    const rendererProcessContexts = new RendererProcessContexts(eventManager);
+  static start(
+    eventManager: EventManager,
+    hooks: FormatHooks,
+    consentManager: TrackingConsentManager
+  ): RendererProcessContexts {
+    const rendererProcessContexts = new RendererProcessContexts(eventManager, consentManager);
 
     hooks.registerRum(({ source, webContentsId, startTime }) => {
       if (source !== EventSource.RENDERER) return SKIPPED;
@@ -79,11 +88,14 @@ export class RendererProcessContexts {
       canHandle: (event): event is LifecycleEvent => event.kind === EventKind.LIFECYCLE,
       handle: (event) => {
         if (event.lifecycle === LifecycleKind.SESSION_EXPIRED) {
-          this.closeAllRenderersForSessionExpiry();
+          this.closeAllRenderersForSessionExpiry(event.time);
         } else if (event.lifecycle === LifecycleKind.SESSION_RENEW) {
-          this.reopenAllRenderersForSessionRenewal();
+          this.reopenAllRenderersForSessionRenewal(event.time);
         }
       },
+    });
+    this.consentSubscription = this.consentManager.subscribe((change) => {
+      for (const manager of this.webContentManagers.values()) manager.updateConsent(change);
     });
   }
 
@@ -97,7 +109,8 @@ export class RendererProcessContexts {
     if (!manager) {
       const newManager: WebContentManager = new WebContentManager(
         webContentsId,
-        (state, exitReason) => this.emitExecutionContextEvent(state, exitReason),
+        this.consentManager,
+        (state, exitReason, atTime) => this.emitExecutionContextEvent(state, exitReason, atTime),
         () => {
           // Guard by identity, not just presence: webContentsId is never reused within a process's
           // lifetime, but this keeps disposal safe by construction rather than by that invariant.
@@ -112,7 +125,11 @@ export class RendererProcessContexts {
     manager.register(webContents);
   }
 
-  private emitExecutionContextEvent(state: WebContentState, exitReason?: ExecutionContextExitReason): void {
+  private emitExecutionContextEvent(
+    state: WebContentState,
+    exitReason?: ExecutionContextExitReason,
+    atTime = timeStampNow()
+  ): void {
     const data: RawRumExecutionContext = {
       type: 'execution_context',
       date: state.startTime,
@@ -121,7 +138,7 @@ export class RendererProcessContexts {
         type: state.type,
         instance_id: state.instanceId,
         parent_instance_id: state.parentInstanceId,
-        duration: toServerDuration(elapsed(state.startTime, timeStampNow())),
+        duration: toServerDuration(elapsed(state.startTime, atTime)),
         exit_reason: exitReason,
       },
       _dd: { document_version: state.documentVersion },
@@ -142,17 +159,18 @@ export class RendererProcessContexts {
     }
     this.webContentManagers.clear();
     this.lifecycleSubscription.unsubscribe();
+    this.consentSubscription.unsubscribe();
   }
 
-  private closeAllRenderersForSessionExpiry(): void {
+  private closeAllRenderersForSessionExpiry(atTime?: TimeStamp): void {
     for (const manager of this.webContentManagers.values()) {
-      manager.closeForSessionExpiry();
+      manager.closeForSessionExpiry(atTime);
     }
   }
 
-  private reopenAllRenderersForSessionRenewal(): void {
+  private reopenAllRenderersForSessionRenewal(atTime?: TimeStamp): void {
     for (const manager of this.webContentManagers.values()) {
-      manager.reopenForSessionRenewal();
+      manager.reopenForSessionRenewal(atTime);
     }
   }
 }
@@ -165,13 +183,10 @@ interface WebContentState {
   instanceId: string;
   parentInstanceId?: string;
   timerId: ReturnType<typeof setInterval>;
-  // Set once this context is closed, recording WHY: 'session-expiry' while the webContents is
-  // still alive (only this one is eligible for SESSION_RENEW to revive — see
-  // WebContentManager#reopenForSessionRenewal), or 'ended' once it's genuinely gone (a real
-  // crash/destroy — see WebContentManager#endRenderer). A crash/destroy arriving after a prior
-  // 'session-expiry' close overwrites it with 'ended', so a later SESSION_RENEW doesn't mistake a
-  // since-crashed webContents for one that's merely between sessions.
-  closeReason?: 'session-expiry' | 'ended';
+  consent: TrackingConsent;
+  // Session and consent boundaries permit reuse of the window; a crash or destruction does not.
+  // A later crash overwrites a temporary closure so session renewal cannot revive a dead renderer.
+  closeReason?: 'session-expiry' | 'consent' | 'ended';
 }
 
 /**
@@ -193,9 +208,14 @@ class WebContentManager {
 
   constructor(
     private readonly webContentsId: number,
+    private readonly consentManager: TrackingConsentManager,
     // Called by this manager every time it produces a state worth emitting: on register(),
     // closeForSessionExpiry(), reopenForSessionRenewal(), a crash/destroy exit, and the heartbeat.
-    private readonly emit: (state: WebContentState, exitReason?: ExecutionContextExitReason) => void,
+    private readonly emit: (
+      state: WebContentState,
+      exitReason?: ExecutionContextExitReason,
+      atTime?: TimeStamp
+    ) => void,
     // Called once this manager will never be used again — a real 'destroyed' with no revival.
     private readonly onDisposed: () => void
   ) {}
@@ -207,11 +227,16 @@ class WebContentManager {
    * across a crash, so those listeners stay valid for this manager's entire lifetime and never need
    * removing/reattaching on a later revival.
    */
-  register(webContents: Electron.WebContents): void {
+  register(webContents: Electron.WebContents, startTime = timeStampNow()): void {
     const isFirstRegistration = !this.webContents;
     this.webContents = webContents;
+    if (isFirstRegistration) {
+      webContents.on('destroyed', this.onDestroyed);
+      webContents.on('render-process-gone', this.onProcessGone);
+    }
+    const consent = this.consentManager.get();
+    if (consent === 'not-granted') return;
 
-    const startTime = timeStampNow();
     const previousActive = this.history.getEntries()[0];
     if (previousActive && isActive(previousActive)) {
       // A prior state left ticking — e.g. a state registered during the sessionless gap, never
@@ -227,6 +252,7 @@ class WebContentManager {
       type: 'renderer-process',
       startTime,
       documentVersion: 1,
+      consent,
       // webContentsId rather than a process id (getProcessId()/getOSProcessId()): execution_context
       // is really about which webContents an event came from, not which OS process — and a process
       // id can't cleanly answer that anyway, since Electron can place multiple webContents in one
@@ -248,12 +274,17 @@ class WebContentManager {
     };
     this.history.add(state, startTime);
 
-    if (isFirstRegistration) {
-      webContents.on('destroyed', this.onDestroyed);
-      webContents.on('render-process-gone', this.onProcessGone);
-    }
+    this.emit(state, undefined, startTime);
+  }
 
-    this.emit(state);
+  /** Splits cumulative contexts at consent boundaries without reviving crashed or destroyed windows. */
+  updateConsent(change: TrackingConsentChange): void {
+    const current = this.getState();
+    if (current?.consent === change.current) return;
+    this.closePeriod('consent', change.time);
+    if (change.current !== 'not-granted' && this.webContents && !this.pendingRevival) {
+      this.register(this.webContents, change.time);
+    }
   }
 
   private readonly onProcessGone = monitor((_event: Electron.Event, details: Electron.RenderProcessGoneDetails) => {
@@ -337,16 +368,20 @@ class WebContentManager {
   }
 
   /** SESSION_EXPIRED. A no-op, mid-crash and awaiting either a revival or a real destroy. */
-  closeForSessionExpiry(): void {
+  closeForSessionExpiry(atTime = timeStampNow()): void {
+    this.closePeriod('session-expiry', atTime);
+  }
+
+  private closePeriod(reason: 'session-expiry' | 'consent', atTime: TimeStamp): void {
     const current = this.getState();
     if (!current) {
       return;
     }
     clearInterval(current.timerId);
     current.documentVersion++;
-    current.closeReason = 'session-expiry';
-    this.history.closeActive(timeStampNow());
-    this.emit(current);
+    current.closeReason = reason;
+    this.history.closeActive(atTime);
+    this.emit(current, undefined, atTime);
   }
 
   /**
@@ -354,17 +389,16 @@ class WebContentManager {
    * that one must be left untouched. register() itself clears the prior state's heartbeat if it
    * was still active (a gap-created state that never went through closeForSessionExpiry).
    */
-  reopenForSessionRenewal(): void {
+  reopenForSessionRenewal(atTime = timeStampNow()): void {
+    if (this.consentManager.get() === 'not-granted' || !this.webContents || this.pendingRevival) return;
     const latest = this.history.getEntries()[0];
     if (!latest) {
       return;
     }
-    if (!isActive(latest) && latest.value.closeReason !== 'session-expiry') {
+    if (!isActive(latest) && latest.value.closeReason === 'ended') {
       return;
     }
-    // A state eligible for renewal (active, or closed only for session-expiry) is by construction
-    // never one whose webContents has been really destroyed — safe to assert.
-    this.register(this.webContents!);
+    this.register(this.webContents, atTime);
   }
 
   stop(): void {

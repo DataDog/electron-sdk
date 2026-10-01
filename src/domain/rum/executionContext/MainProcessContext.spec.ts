@@ -9,7 +9,7 @@ vi.mock('../../../tools/display', () => ({
 }));
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { timeStampNow } from '@datadog/js-core/time';
+import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED } from '@datadog/js-core/assembly';
 import { MainProcessContext, MAIN_EXECUTION_CONTEXT_HISTORY_FILE_NAME } from './MainProcessContext';
 import { PROCESS_UPDATE_INTERVAL } from './executionContext.constants';
@@ -175,6 +175,97 @@ describe('MainProcessContext', () => {
     expect(rawRumEvents).toHaveLength(0);
   });
 
+  it('creates no state or heartbeat until initially denied consent becomes enabled', async () => {
+    context.stop();
+    trackingConsentManager.update('not-granted');
+    hooks = createFormatHooks();
+    rawRumEvents.length = 0;
+    context = await MainProcessContext.start(eventManager, hooks, sessionManager, trackingConsentManager);
+
+    eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+    vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+    expect(rawRumEvents).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
+
+    const acceptedAt = timeStampNow();
+    trackingConsentManager.update('granted');
+
+    expect(rawRumEvents).toHaveLength(2);
+    expect(rawRumEvents.map((event) => event.startTime)).toEqual([acceptedAt, acceptedAt]);
+    rawRumEvents.length = 0;
+    vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+    expect(rawRumEvents).toHaveLength(1);
+  });
+
+  it.each(['pending', 'granted'] as const)('starts a distinct cumulative period when consent becomes %s', (next) => {
+    if (next === 'granted') trackingConsentManager.update('pending');
+    const previousView = rawRumEvents.filter((event) => event.data.type === 'view').slice(-1)[0].data as RawRumView;
+    const previousContext = rawRumEvents.filter((event) => event.data.type === 'execution_context').slice(-1)[0]
+      .data as RawRumExecutionContext;
+    rawRumEvents.length = 0;
+    vi.advanceTimersByTime(10);
+    const boundary = timeStampNow();
+
+    trackingConsentManager.update(next);
+
+    expect(rawRumEvents).toHaveLength(4);
+    expect(rawRumEvents[0].data).toMatchObject({
+      view: { id: previousView.view.id, is_active: false, time_spent: 10e6 },
+    });
+    expect(rawRumEvents[1].data).toMatchObject({
+      execution_context: { id: previousContext.execution_context.id, duration: 10e6 },
+    });
+    const nextView = rawRumEvents[2].data as RawRumView;
+    const nextContext = rawRumEvents[3].data as RawRumExecutionContext;
+    expect(nextView.view.id).not.toBe(previousView.view.id);
+    expect(nextView.view.id).not.toBe(currentSessionId);
+    expect(nextContext.execution_context.id).not.toBe(previousContext.execution_context.id);
+    expect(nextView._dd.document_version).toBe(1);
+    expect(nextContext.execution_context.duration).toBe(0);
+    expect(hooks.triggerRum({ eventType: 'error', source: EventSource.MAIN, startTime: boundary })).toMatchObject({
+      view: { id: nextView.view.id },
+      execution_context: { id: nextContext.execution_context.id },
+    });
+
+    rawRumEvents.length = 0;
+    vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+    expect(rawRumEvents).toHaveLength(1);
+  });
+
+  it('closes at the supplied session boundary and ignores repeated expiry', () => {
+    const boundary = (timeStampNow() + 10) as TimeStamp;
+    vi.advanceTimersByTime(20);
+    rawRumEvents.length = 0;
+    eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED, time: boundary });
+    eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+
+    expect(rawRumEvents).toHaveLength(2);
+    expect(rawRumEvents[0].data).toMatchObject({ view: { time_spent: 10e6, is_active: false } });
+    expect(rawRumEvents[1].data).toMatchObject({ execution_context: { duration: 10e6 } });
+  });
+
+  it('does not rotate twice when an earlier consent observer renews the session', async () => {
+    context.stop();
+    hooks = createFormatHooks();
+    trackingConsentManager = new TrackingConsentManager();
+    trackingConsentManager.subscribe((change) => {
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW, time: change.time });
+    });
+    context = await MainProcessContext.start(eventManager, hooks, sessionManager, trackingConsentManager);
+    eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+    rawRumEvents.length = 0;
+
+    trackingConsentManager.update('pending');
+
+    expect(rawRumEvents).toHaveLength(2);
+    expect(
+      rawRumEvents.map((event) => (event.data as RawRumView | RawRumExecutionContext)._dd.document_version)
+    ).toEqual([1, 1]);
+    rawRumEvents.length = 0;
+    vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+    expect(rawRumEvents).toHaveLength(1);
+  });
+
   it('resolves execution_context by time even after a SESSION_RENEW, matching what a replayed crash file needs', () => {
     const originalEvent = rawRumEvents.find((e) => e.data.type === 'execution_context')!;
     const originalStartTime = originalEvent.startTime!;
@@ -221,9 +312,9 @@ describe('MainProcessContext', () => {
     expect(hooks.triggerSpan({ startTime: pendingStart, source: EventSource.MAIN })).toBe(DISCARDED);
 
     currentSessionId = 'current-session';
+    const eventsBeforeDeniedRenewal = rawRumEvents.length;
     eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
-    const currentEvent = rawRumEvents.filter((event) => event.data.type === 'execution_context').slice(-1)[0];
-    const currentId = (currentEvent.data as RawRumExecutionContext).execution_context.id;
+    expect(rawRumEvents).toHaveLength(eventsBeforeDeniedRenewal);
     await vi.advanceTimersByTimeAsync(0);
     expect(mfs.writeFile).not.toHaveBeenCalled();
 
@@ -231,9 +322,12 @@ describe('MainProcessContext', () => {
     const grantTime = timeStampNow();
     trackingConsentManager.update('granted');
     await vi.advanceTimersByTimeAsync(0);
+    const currentEvent = rawRumEvents.filter((event) => event.data.type === 'execution_context').slice(-1)[0];
+    const currentId = (currentEvent.data as RawRumExecutionContext).execution_context.id;
 
-    expect(mfs.writeFile).toHaveBeenCalledTimes(2);
-    for (const [file, snapshot] of mfs.writeFile.mock.calls) {
+    const latestSnapshots = new Map(mfs.writeFile.mock.calls.map(([file, snapshot]) => [file, snapshot]));
+    expect(latestSnapshots.size).toBe(2);
+    for (const [file, snapshot] of latestSnapshots) {
       const entries = JSON.parse(snapshot as string) as { startTime: number; value: unknown }[];
       expect(entries[0]).toMatchObject({ startTime: grantTime });
       if (file === `/mock/user/data/${VIEW_HISTORY_FILE_NAME}`) {

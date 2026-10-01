@@ -4,12 +4,12 @@ import { generateUUID, type Subscription } from '@datadog/browser-core';
 import { type EndUserActivityEvent, EventKind, EventManager, LifecycleKind } from '../../event';
 import type { FormatHooks } from '../../assembly';
 import type { Configuration } from '../../config';
-import { setTimeout } from '../telemetry';
+import { clearTimeout, setTimeout } from '../telemetry';
 import { SessionContext } from './SessionContext';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
 import { isSessionSampled } from '../../tools/Sampler';
 import { setCurrentSessionSampled } from '../../common';
-import type { TrackingConsentManager } from '../tracking-consent';
+import type { TrackingConsentChange, TrackingConsentManager } from '../tracking-consent';
 
 export const SESSION_EXPIRATION_DELAY = 15 * ONE_MINUTE;
 
@@ -22,7 +22,8 @@ export type SessionStatus = 'active' | 'expired';
 
 /**
  * Track session lifecycle
- * - on start, always create a new Session
+ * - while consent is granted or pending, create and track sessions
+ * - when consent is refused, expire the Session until tracking resumes
  * - after SESSION_EXPIRATION_DELAY without activity, expire the Session
  * - after SESSION_TIME_OUT_DELAY if the Session is still active, expire the Session
  * - on activity, if the Session is expired, create a new Session
@@ -33,6 +34,7 @@ export class SessionManager {
   private inactivityTimeoutId: ReturnType<typeof setTimeout> | undefined;
   private sessionTimeoutId: ReturnType<typeof setTimeout> | undefined;
   private activitySubscription: Subscription | undefined;
+  private consentSubscription: Subscription | undefined;
 
   private constructor(
     private readonly eventManager: EventManager,
@@ -76,11 +78,21 @@ export class SessionManager {
       this.activitySubscription.unsubscribe();
       this.activitySubscription = undefined;
     }
+    if (this.consentSubscription) {
+      this.consentSubscription.unsubscribe();
+      this.consentSubscription = undefined;
+    }
   }
 
   private async init(): Promise<void> {
     this.sessionContext = await SessionContext.init(this.hooks, this.trackingConsentManager);
-    this.createNewSession();
+    if (this.trackingConsentManager.get() === 'not-granted') {
+      this.currentSession = { id: generateUUID(), status: 'expired' };
+      setCurrentSessionSampled(false);
+    } else {
+      this.createNewSession();
+    }
+    this.consentSubscription = this.trackingConsentManager.subscribe((change) => this.onConsentChange(change));
 
     this.activitySubscription = this.eventManager.registerHandler<EndUserActivityEvent>({
       canHandle: (event): event is EndUserActivityEvent =>
@@ -91,22 +103,29 @@ export class SessionManager {
     });
   }
 
-  private createNewSession(): void {
-    const now = Date.now();
+  private onConsentChange(change: TrackingConsentChange): void {
+    if (change.current === 'not-granted') {
+      this.expireSession(change.time);
+    } else if (this.currentSession.status === 'expired') {
+      this.renewSession(change.time);
+    }
+  }
+
+  private createNewSession(atTime: TimeStamp = timeStampNow()): void {
     const id = generateUUID();
     const isSampled = isSessionSampled(id, this.configuration.sessionSampleRate);
 
     this.currentSession = { id, status: 'active' };
     setCurrentSessionSampled(isSampled);
     if (isSampled) {
-      this.sessionContext.add(id);
+      this.sessionContext.add(id, atTime);
     }
 
     this.scheduleInactivityTimeout();
-    this.scheduleSessionTimeout(now);
+    this.scheduleSessionTimeout(atTime);
   }
 
-  private expireSession(): void {
+  private expireSession(atTime?: TimeStamp): void {
     if (this.currentSession.status === 'expired') {
       return;
     }
@@ -114,18 +133,33 @@ export class SessionManager {
     this.clearTimers();
     this.currentSession.status = 'expired';
     setCurrentSessionSampled(false);
-    this.sessionContext.close();
-    this.eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+    this.sessionContext.close(atTime);
+    this.eventManager.notify({
+      kind: EventKind.LIFECYCLE,
+      lifecycle: LifecycleKind.SESSION_EXPIRED,
+      ...(atTime === undefined ? {} : { time: atTime }),
+    });
   }
 
   private updateActivity(): void {
+    if (this.trackingConsentManager.get() === 'not-granted') {
+      return;
+    }
     if (this.currentSession.status === 'expired') {
-      this.createNewSession();
-      this.eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+      this.renewSession();
       return;
     }
 
     this.scheduleInactivityTimeout();
+  }
+
+  private renewSession(atTime?: TimeStamp): void {
+    this.createNewSession(atTime);
+    this.eventManager.notify({
+      kind: EventKind.LIFECYCLE,
+      lifecycle: LifecycleKind.SESSION_RENEW,
+      ...(atTime === undefined ? {} : { time: atTime }),
+    });
   }
 
   private scheduleInactivityTimeout(): void {

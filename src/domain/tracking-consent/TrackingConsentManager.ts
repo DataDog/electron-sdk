@@ -11,6 +11,7 @@ import { monitor } from '../telemetry';
 export class TrackingConsentManager {
   private readonly history = new TimeStampValueHistory<TrackingConsent>({ expireDelay: Infinity });
   private readonly changes = new Observable<TrackingConsentChange>();
+  private lastChange: TrackingConsentChange | undefined;
 
   constructor() {
     this.history.add('granted', timeStampNow());
@@ -25,6 +26,11 @@ export class TrackingConsentManager {
     return this.history.find(time);
   }
 
+  /** Available before observers run, including code called synchronously by an earlier observer. */
+  getLastChange(): TrackingConsentChange | undefined {
+    return this.lastChange;
+  }
+
   /** Update the state and notify subscribers. Repeating the active state has no effect. */
   update(consent: TrackingConsent): void {
     const previous = this.get();
@@ -35,7 +41,8 @@ export class TrackingConsentManager {
     const time = timeStampNow();
     this.history.closeActive(time);
     this.history.add(consent, time);
-    this.changes.notify({ previous, current: consent, time });
+    this.lastChange = { previous, current: consent, time };
+    this.changes.notify(this.lastChange);
   }
 
   /** Subscribe to future changes. A failing observer must not interrupt other consumers. */

@@ -180,6 +180,20 @@ Resuming tracking starts a new period at that transition, without filling the re
 consent. On initialization, the previous process's active interval is closed before persistence can be
 paused. Pending changes are never loaded after restart. Owners release the consent subscription in `stop()`.
 
+### Consent and session lifecycle
+
+| Consent change                         | Session                                                                      | Views and execution contexts                                        |
+| -------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `granted` ↔ `pending`                  | Keep an active session and its existing deadlines; renew an expired session. | Close the cumulative period and start a new one with a distinct ID. |
+| Any state → `not-granted`              | Expire the session; ignore activity until tracking resumes.                  | Close the active period and stop its heartbeat.                     |
+| `not-granted` → `granted` or `pending` | Create a fresh session.                                                      | Start new periods for the main process and live renderers.          |
+
+Closing a period emits its final duration and counters before a replacement starts. Session lifecycle
+notifications carry the consent timestamp so session and view histories share the same boundary.
+A collector that already started a period during synchronous session renewal skips a second rotation
+when its consent observer runs. Histories also apply any outstanding consent change before use: a
+session observer can create a view before that view's history observer receives the notification.
+
 ## Error Reporting
 
 Failures are routed by _who can act on them_:

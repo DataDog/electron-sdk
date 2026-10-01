@@ -11,6 +11,7 @@ import type { TrackingConsentChange, TrackingConsentManager } from './TrackingCo
 export class TrackingConsentHistory<T> {
   private readonly subscription: Subscription;
   private currentValue: T | undefined;
+  private appliedChange: TrackingConsentChange | undefined;
 
   private constructor(
     private readonly history: DiskValueHistory<T>,
@@ -19,7 +20,8 @@ export class TrackingConsentHistory<T> {
     if (consentManager.get() !== 'granted') {
       history.pausePersistence();
     }
-    this.subscription = consentManager.subscribe((change) => this.onConsentChange(change));
+    this.appliedChange = consentManager.getLastChange();
+    this.subscription = consentManager.subscribe(() => this.synchronizeConsent());
   }
 
   /** Loads authorized history and closes the previous process's interval before applying consent. */
@@ -33,6 +35,7 @@ export class TrackingConsentHistory<T> {
   }
 
   add(value: T, startTime: TimeStamp): void {
+    this.synchronizeConsent();
     this.currentValue = value;
     if (this.consentManager.get() !== 'not-granted') {
       this.history.add(value, startTime);
@@ -40,6 +43,7 @@ export class TrackingConsentHistory<T> {
   }
 
   closeActive(endTime: TimeStamp): void {
+    this.synchronizeConsent();
     this.currentValue = undefined;
     if (this.consentManager.get() !== 'not-granted') {
       this.history.closeActive(endTime);
@@ -47,6 +51,7 @@ export class TrackingConsentHistory<T> {
   }
 
   closeAndAdd(value: T, atTime: TimeStamp): void {
+    this.synchronizeConsent();
     this.currentValue = value;
     if (this.consentManager.get() !== 'not-granted') {
       this.history.closeAndAdd(value, atTime);
@@ -54,12 +59,14 @@ export class TrackingConsentHistory<T> {
   }
 
   pruneAndPersist(): void {
+    this.synchronizeConsent();
     if (this.consentManager.get() !== 'not-granted') {
       this.history.pruneAndPersist();
     }
   }
 
   find(atTime: TimeStamp): T | undefined {
+    this.synchronizeConsent();
     return this.history.find(atTime);
   }
 
@@ -68,7 +75,19 @@ export class TrackingConsentHistory<T> {
     this.subscription.unsubscribe();
   }
 
+  private synchronizeConsent(): void {
+    // A session observer can renew a view before that view's history observer gets its turn.
+    const change = this.consentManager.getLastChange();
+    if (change) {
+      this.onConsentChange(change);
+    }
+  }
+
   private onConsentChange(change: TrackingConsentChange): void {
+    if (this.appliedChange === change) {
+      return;
+    }
+    this.appliedChange = change;
     if (change.previous === 'granted') {
       try {
         this.history.closeActive(change.time);
