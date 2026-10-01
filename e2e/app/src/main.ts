@@ -3,6 +3,7 @@ import { app, BrowserWindow, ipcMain, net, protocol } from 'electron';
 import * as http from 'node:http';
 import * as fs from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 // A custom scheme must be registered as privileged (standard + secure) before app ready so that pages
 // served through it can use the JS Self-Profiling API when the response carries the Document-Policy header.
@@ -290,7 +291,7 @@ void app.whenReady().then(async () => {
         nodeIntegration: false,
       },
     });
-    void testRendererWindow.loadURL('about:blank');
+    void testRendererWindow.loadFile(join(__dirname, 'main-window.html'));
     testRendererWindow.on('closed', () => {
       testRendererWindow = null;
     });
@@ -313,8 +314,11 @@ void app.whenReady().then(async () => {
     if (!wc) return;
     wc.once('render-process-gone', () => {
       setTimeout(() => {
+        // A query string (rather than wc.reload(), the same exact URL) makes the reloaded page's
+        // execution_context.name distinguishable from the pre-crash one, without changing which
+        // page/script actually runs.
         if (!wc.isDestroyed()) {
-          wc.reload();
+          void wc.loadURL(`${pathToFileURL(join(__dirname, 'main-window.html')).href}?revived=1`);
         }
       }, 500);
     });

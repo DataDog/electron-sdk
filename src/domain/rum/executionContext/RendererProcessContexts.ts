@@ -17,6 +17,7 @@ import { isActive, TimeStampValueHistory } from '../../../tools/TimeStampValueHi
 import type { RawRumExecutionContext } from '../types';
 import { PROCESS_UPDATE_INTERVAL } from './executionContext.constants';
 import type { TrackingConsent, TrackingConsentChange, TrackingConsentManager } from '../../tracking-consent';
+import { deriveExecutionContextName } from './deriveExecutionContextName';
 
 type ExecutionContextExitReason = RawRumExecutionContext['execution_context']['exit_reason'];
 
@@ -58,7 +59,7 @@ export class RendererProcessContexts {
       if (source !== EventSource.RENDERER) return SKIPPED;
       const state = rendererProcessContexts.getState(webContentsId, startTime);
       if (state === undefined) return SKIPPED;
-      return { execution_context: { id: state.executionContextId, type: state.type } };
+      return { execution_context: { id: state.executionContextId, type: state.type, name: state.name } };
     });
 
     rendererProcessContexts.initRendererTracking();
@@ -136,6 +137,7 @@ export class RendererProcessContexts {
       execution_context: {
         id: state.executionContextId,
         type: state.type,
+        name: state.name,
         instance_id: state.instanceId,
         parent_instance_id: state.parentInstanceId,
         duration: toServerDuration(elapsed(state.startTime, atTime)),
@@ -184,6 +186,8 @@ interface WebContentState {
   parentInstanceId?: string;
   timerId: ReturnType<typeof setInterval>;
   consent: TrackingConsent;
+  // Resolved from getURL() once the navigation commits, then frozen for this context.
+  name?: string;
   // Session and consent boundaries permit reuse of the window; a crash or destruction does not.
   // A later crash overwrites a temporary closure so session renewal cannot revive a dead renderer.
   closeReason?: 'session-expiry' | 'consent' | 'ended';
@@ -203,6 +207,9 @@ class WebContentManager {
   private readonly history = new TimeStampValueHistory<WebContentState>({ expireDelay: SESSION_TIME_OUT_DELAY });
   // Set while awaiting the reload a crashed webContents' owning app may perform on it.
   private pendingRevival?: (details: Electron.Event<Electron.WebContentsDidStartNavigationEventParams>) => void;
+  // A reload can begin while consent is denied, without an active context. Until dom-ready,
+  // getURL() may still return the pre-crash URL, including across session or consent boundaries.
+  private pendingNavigation = false;
   // Set while awaiting disposal after a real 'destroyed' — see onDestroyed.
   private disposalTimerId?: ReturnType<typeof setTimeout>;
 
@@ -222,10 +229,10 @@ class WebContentManager {
 
   /**
    * Registers a fresh execution context — called once for a genuinely new webContents, and again
-   * after a crash/reload cycle (see onProcessGone below). 'destroyed'/'render-process-gone' are
-   * attached only once, at the very first registration: Electron reuses the same WebContents object
-   * across a crash, so those listeners stay valid for this manager's entire lifetime and never need
-   * removing/reattaching on a later revival.
+   * after a crash/reload cycle (see onProcessGone below). 'destroyed'/'render-process-gone'/
+   * 'dom-ready' are attached only once, at the very first registration: Electron reuses the same
+   * WebContents object across a crash, so those listeners stay valid for this manager's entire
+   * lifetime and never need removing/reattaching on a later revival.
    */
   register(webContents: Electron.WebContents, startTime = timeStampNow()): void {
     const isFirstRegistration = !this.webContents;
@@ -233,6 +240,7 @@ class WebContentManager {
     if (isFirstRegistration) {
       webContents.on('destroyed', this.onDestroyed);
       webContents.on('render-process-gone', this.onProcessGone);
+      webContents.on('dom-ready', this.onDomReady);
     }
     const consent = this.consentManager.get();
     if (consent === 'not-granted') return;
@@ -269,11 +277,13 @@ class WebContentManager {
           return;
         }
         current.documentVersion++;
+        this.resolveName(current);
         this.emit(current);
       }, PROCESS_UPDATE_INTERVAL),
     };
     this.history.add(state, startTime);
 
+    this.resolveName(state);
     this.emit(state, undefined, startTime);
   }
 
@@ -285,6 +295,13 @@ class WebContentManager {
     if (change.current !== 'not-granted' && this.webContents && !this.pendingRevival) {
       this.register(this.webContents, change.time);
     }
+  }
+
+  private resolveName(state: WebContentState): void {
+    if (state.name !== undefined || this.pendingNavigation || !this.webContents || this.webContents.isDestroyed()) {
+      return;
+    }
+    state.name = deriveExecutionContextName(this.webContents.getURL());
   }
 
   private readonly onProcessGone = monitor((_event: Electron.Event, details: Electron.RenderProcessGoneDetails) => {
@@ -304,13 +321,14 @@ class WebContentManager {
       webContents.removeListener('did-start-navigation', this.pendingRevival);
     }
     const onRevival = monitor((navDetails: Electron.Event<Electron.WebContentsDidStartNavigationEventParams>) => {
-      // A crashed page can only be revived by navigating its main frame — ignore a subframe
-      // navigation and keep waiting for that one.
-      if (!navDetails.isMainFrame) {
+      // Only a real main-frame navigation revives a crashed page — a same-document one (hash
+      // change, pushState) never fires 'dom-ready', so it could never clear pendingNavigation.
+      if (!navDetails.isMainFrame || navDetails.isSameDocument) {
         return;
       }
       webContents.removeListener('did-start-navigation', onRevival);
       this.pendingRevival = undefined;
+      this.pendingNavigation = true;
       this.register(webContents);
     });
     webContents.on('did-start-navigation', onRevival);
@@ -328,9 +346,28 @@ class WebContentManager {
     // Drop the (now dead) webContents and its listeners right away, not at disposal.
     webContents.removeListener('destroyed', this.onDestroyed);
     webContents.removeListener('render-process-gone', this.onProcessGone);
+    webContents.removeListener('dom-ready', this.onDomReady);
     this.webContents = undefined;
     // Disposal itself is deferred: a final IPC message can still be queued past 'destroyed'.
     this.disposalTimerId = setTimeout(() => this.onDisposed(), RENDERER_DISPOSAL_GRACE_PERIOD);
+  });
+
+  // Resolves the name as soon as the navigation commits, rather than waiting up to
+  // PROCESS_UPDATE_INTERVAL for the next heartbeat.
+  private readonly onDomReady = monitor(() => {
+    this.pendingNavigation = false;
+    // A closed context already emitted its terminal update; dom-ready must not mutate it.
+    const current = this.getState();
+    if (!current || current.name !== undefined || !this.webContents || this.webContents.isDestroyed()) {
+      return;
+    }
+    const derived = deriveExecutionContextName(this.webContents.getURL());
+    if (derived === undefined) {
+      return;
+    }
+    current.name = derived;
+    current.documentVersion++;
+    this.emit(current);
   });
 
   /** Resolves by the event's own startTime if given, otherwise the live state (undefined if none). */
@@ -364,6 +401,7 @@ class WebContentManager {
     this.history.closeActive(timeStampNow());
     current.documentVersion++;
     current.closeReason = 'ended';
+    this.resolveName(current);
     this.emit(current, exitReason);
   }
 
@@ -381,6 +419,7 @@ class WebContentManager {
     current.documentVersion++;
     current.closeReason = reason;
     this.history.closeActive(atTime);
+    this.resolveName(current);
     this.emit(current, undefined, atTime);
   }
 
@@ -410,6 +449,7 @@ class WebContentManager {
     if (this.webContents) {
       this.webContents.removeListener('destroyed', this.onDestroyed);
       this.webContents.removeListener('render-process-gone', this.onProcessGone);
+      this.webContents.removeListener('dom-ready', this.onDomReady);
       if (this.pendingRevival) {
         this.webContents.removeListener('did-start-navigation', this.pendingRevival);
       }

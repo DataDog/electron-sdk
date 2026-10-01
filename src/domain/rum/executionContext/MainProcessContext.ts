@@ -26,6 +26,8 @@ import { PROCESS_UPDATE_INTERVAL } from './executionContext.constants';
 
 export const MAIN_EXECUTION_CONTEXT_HISTORY_FILE_NAME = '_dd_execution_context_history';
 
+const MAIN_PROCESS_EXECUTION_CONTEXT_NAME = 'Main Process';
+
 interface MainExecutionContextDiskEntry {
   id: string;
   type: 'main-process';
@@ -42,9 +44,9 @@ interface MainProcessState {
 }
 
 /**
- * Owns the fake main-process view and the main execution context as one session-scoped state:
- * both are created together on SDK init and on every SESSION_RENEW, and closed together on
- * SESSION_EXPIRED. Each new state gets a fresh execution_context.id and view.id, but the emitted
+ * Owns the fake main-process view and main execution context for each session and consent period.
+ * Both start and end together at session and consent boundaries, and stay inactive while denied.
+ * Each new state gets a fresh execution_context.id and view.id, but the emitted
  * execution_context event's instance_id is always the OS process pid, constant across every session
  * the process lives through. Also registers the format hooks that tag every other main-process RUM
  * event and span with the execution context active at that event's timestamp, backed by a
@@ -88,11 +90,16 @@ export class MainProcessContext {
       trackingConsentManager
     );
 
-    hooks.registerRum(({ source, startTime }) => {
-      if (source !== EventSource.MAIN) return SKIPPED;
+    hooks.registerRum(({ source, eventType, startTime }) => {
+      // execution_context events (main's own and every renderer's) are fully self-authored —
+      // this hook only tags *other* event types with the context active at their own startTime.
+      // Without this, combine() lets this hook's name fill in for a renderer's still-unresolved
+      // (undefined) one, since both this event and the renderer's own reach here with source
+      // MAIN — RendererProcessContexts's own tagging code also runs in the main process.
+      if (source !== EventSource.MAIN || eventType === 'execution_context') return SKIPPED;
       const entry = mainHistory.find(startTime);
       if (entry === undefined) return SKIPPED;
-      return { execution_context: { id: entry.id, type: entry.type } };
+      return { execution_context: { id: entry.id, type: entry.type, name: MAIN_PROCESS_EXECUTION_CONTEXT_NAME } };
     });
 
     hooks.registerSpan(({ startTime }) => {
@@ -221,6 +228,7 @@ export class MainProcessContext {
       execution_context: {
         id: state.executionContextId,
         type: 'main-process',
+        name: MAIN_PROCESS_EXECUTION_CONTEXT_NAME,
         instance_id: String(process.pid),
         duration: toServerDuration(elapsed(state.startTime, atTime)),
       },

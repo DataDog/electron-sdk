@@ -1,4 +1,6 @@
 import { test, expect } from '../lib/helpers';
+import type { MainPage } from '../lib/mainPage';
+import type { Intake } from '../lib/intake';
 
 test.use({ sdkConfigOverrides: { enableExecutionContext: true } });
 
@@ -8,6 +10,7 @@ interface ExecutionContextEvent {
     id: string;
     type: 'main-process' | 'renderer-process';
     instance_id: string;
+    name?: string;
     duration?: number;
     exit_reason?: string;
   };
@@ -16,6 +19,31 @@ interface ExecutionContextEvent {
 
 function asExecutionContextEvent(body: unknown): ExecutionContextEvent {
   return body as ExecutionContextEvent;
+}
+
+// The name resolves asynchronously (on 'dom-ready', or the heartbeat as a fallback), not
+// necessarily by the time of any single flush — poll until the update that carries it arrives.
+async function waitForExecutionContextName(
+  mainPage: MainPage,
+  intake: Intake,
+  executionContextId: string,
+  { since = 0, deadline = Date.now() + 15_000 }: { since?: number; deadline?: number } = {}
+): Promise<string | undefined> {
+  const findNamed = async () =>
+    (await intake.getEventsByType('execution_context'))
+      .slice(since)
+      .find(
+        (e) =>
+          asExecutionContextEvent(e.body).execution_context.id === executionContextId &&
+          asExecutionContextEvent(e.body).execution_context.name
+      );
+
+  let namedEvent = await findNamed();
+  while (!namedEvent && Date.now() < deadline) {
+    await mainPage.flushTransport();
+    namedEvent = await findNamed();
+  }
+  return namedEvent && asExecutionContextEvent(namedEvent.body).execution_context.name;
 }
 
 test('emits a main execution context start event on SDK init', async ({ mainPage, intake }) => {
@@ -31,6 +59,7 @@ test('emits a main execution context start event on SDK init', async ({ mainPage
   expect(body._dd.document_version).toBe(1);
   expect(body.execution_context.duration).toBeGreaterThanOrEqual(0);
   expect(body.execution_context.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  expect(body.execution_context.name).toBe('Main Process');
 });
 
 test('all main-process events carry execution_context.id and execution_context.type', async ({ mainPage, intake }) => {
@@ -79,12 +108,20 @@ test('emits start and end execution_context events for a renderer window lifecyc
   expect(body._dd.document_version).toBe(1);
   const rendererId = body.execution_context.id;
 
+  const name = await waitForExecutionContextName(mainPage, intake, rendererId, { since: before });
+  expect(name).toBe('main-window.html');
+
+  // Recomputed here, not from afterOpen: waiting for the name above already pulled in one more
+  // event (its dom-ready update) than afterOpen had — slicing from afterOpen would let that same
+  // update satisfy the "end event" match below instead of the real close.
+  const beforeClose = (await intake.getEventsByType('execution_context')).length;
+
   await mainPage.closeRendererProcess();
   await mainPage.flushTransport();
 
   const afterClose = await intake.getEventsByType('execution_context');
   const rendererEnd = afterClose
-    .slice(afterOpen.length)
+    .slice(beforeClose)
     .find((e) => asExecutionContextEvent(e.body).execution_context.id === rendererId);
   expect(rendererEnd).toBeDefined();
   expect(asExecutionContextEvent(rendererEnd!.body)._dd.document_version).toBeGreaterThan(1);
@@ -105,6 +142,18 @@ test('a renderer that crashes and reloads the same window gets a fresh execution
     .find((e) => asExecutionContextEvent(e.body).execution_context.type === 'renderer-process')!;
   const firstBody = asExecutionContextEvent(firstStart.body);
 
+  // Wait for the pre-crash context's own name to resolve, so the revived one can be asserted as
+  // genuinely different — not just absent.
+  const firstName = await waitForExecutionContextName(mainPage, intake, firstBody.execution_context.id, {
+    since: before,
+  });
+  expect(firstName).toBe('main-window.html');
+
+  // Recomputed here, not from afterOpen: waiting for the pre-crash name above already pulled in
+  // one more event (its dom-ready update) than afterOpen had, so counting from afterOpen would
+  // let the loop below exit one event too early — before the revived context's own start event.
+  const beforeCrash = (await intake.getEventsByType('execution_context')).length;
+
   // Electron reuses the same webContents object across a crash: no new 'web-contents-created' fires
   // for the replacement renderer, so the fix under test relies on 'did-start-navigation' from the
   // reload to re-register a fresh execution context for it. Transport only sends on an explicit
@@ -113,7 +162,7 @@ test('a renderer that crashes and reloads the same window gets a fresh execution
   // once and hoping the single flush lands after they're queued.
   await mainPage.crashAndReloadRendererProcess();
 
-  const targetCount = afterOpen.length + 2; // end event + new start event
+  const targetCount = beforeCrash + 2; // end event + new start event
   let afterRevival = await intake.getEventsByType('execution_context');
   const deadline = Date.now() + 15_000;
   while (afterRevival.length < targetCount && Date.now() < deadline) {
@@ -123,7 +172,7 @@ test('a renderer that crashes and reloads the same window gets a fresh execution
   expect(afterRevival.length).toBeGreaterThanOrEqual(targetCount);
 
   const revivedEvents = afterRevival
-    .slice(afterOpen.length)
+    .slice(beforeCrash)
     .filter((e) => asExecutionContextEvent(e.body).execution_context.type === 'renderer-process');
 
   const revivedEnd = revivedEvents.find(
@@ -138,6 +187,13 @@ test('a renderer that crashes and reloads the same window gets a fresh execution
   const revivedBody = asExecutionContextEvent(revivedStart!.body);
   expect(revivedBody._dd.document_version).toBe(1);
   expect(revivedBody.execution_context.instance_id).toBe(firstBody.execution_context.instance_id);
+  const revivedId = revivedBody.execution_context.id;
+
+  // did-start-navigation (which registers the revived context) fires before the reload commits,
+  // so its name resolves later, on 'dom-ready' — proving it picks up the reloaded page and not a
+  // stale pre-crash getURL() is the actual point of this test.
+  const revivedName = await waitForExecutionContextName(mainPage, intake, revivedId, { since: beforeCrash });
+  expect(revivedName).toBe('main-window.html?revived=1');
 
   await mainPage.closeRendererProcess();
 });

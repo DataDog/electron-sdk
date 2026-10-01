@@ -91,6 +91,8 @@ describe('RendererProcessContexts', () => {
             (h) => h !== handler && (h as { listener?: unknown }).listener !== handler
           );
         }),
+        getURL: vi.fn(() => ''),
+        isDestroyed: vi.fn(() => false),
         _emit: (event: string, ...args: unknown[]) => listeners[event]?.slice().forEach((h) => h(...args)),
         _listenerCount: (event: string) => listeners[event]?.length ?? 0,
       };
@@ -216,6 +218,49 @@ describe('RendererProcessContexts', () => {
       });
 
       expect(rawRumEvents[1].data).toMatchObject({ execution_context: { duration: 10e6 } });
+    });
+
+    it('leaves the name unset when web-contents-created fires before any navigation', () => {
+      const base = rawRumEvents.length;
+      const wc = makeWebContents(1);
+      webContentsCreatedHandler({}, wc);
+      const rendererStart = rawRumEvents[base].data as RawRumExecutionContext;
+      expect(rendererStart.execution_context.name).toBeUndefined();
+    });
+
+    it('resolves and freezes the name from getURL() on dom-ready instead of waiting for the heartbeat', () => {
+      const base = rawRumEvents.length;
+      const wc = makeWebContents(1);
+      webContentsCreatedHandler({}, wc);
+
+      wc.getURL.mockReturnValue('https://example.com/foo');
+      wc._emit('dom-ready');
+
+      expect(rawRumEvents).toHaveLength(base + 2);
+      const domReadyEvent = rawRumEvents[base + 1].data as RawRumExecutionContext;
+      expect(domReadyEvent.execution_context.name).toBe('https://example.com/foo');
+      expect(domReadyEvent._dd.document_version).toBe(2);
+
+      // A later navigation within the same context must not rename it.
+      wc.getURL.mockReturnValue('https://example.com/bar');
+      wc._emit('dom-ready');
+      expect(rawRumEvents).toHaveLength(base + 2);
+
+      expect(
+        hooks.triggerRum({ eventType: 'view', startTime: 0 as never, source: EventSource.RENDERER, webContentsId: 1 })
+      ).toMatchObject({
+        execution_context: { id: domReadyEvent.execution_context.id, name: 'https://example.com/foo' },
+      });
+    });
+
+    it('does not resolve the name on dom-ready while getURL() is still empty', () => {
+      const base = rawRumEvents.length;
+      const wc = makeWebContents(1);
+      webContentsCreatedHandler({}, wc);
+
+      wc._emit('dom-ready');
+
+      expect(rawRumEvents).toHaveLength(base + 1);
     });
 
     it('backfills execution contexts for webContents that already exist at start', () => {
@@ -386,6 +431,164 @@ describe('RendererProcessContexts', () => {
       ).toMatchObject({ execution_context: { id: revived.execution_context.id, type: 'renderer-process' } });
     });
 
+    it('does not freeze the revived context name from the stale pre-crash URL, only from its own dom-ready', () => {
+      const wc = makeWebContents(1);
+      webContentsCreatedHandler({}, wc);
+      wc.getURL.mockReturnValue('https://example.com/crashed-page');
+      wc._emit('dom-ready');
+
+      wc._emit('render-process-gone', {}, { reason: 'crashed' });
+      // getURL() still reflects the pre-crash page: did-start-navigation fires before the new
+      // navigation commits, so this must not be read as the revived context's real name.
+      wc._emit('did-start-navigation', { isMainFrame: true });
+
+      const revived = rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext;
+      expect(revived.execution_context.name).toBeUndefined();
+
+      vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+      const afterHeartbeat = rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext;
+      expect(afterHeartbeat.execution_context.name).toBeUndefined();
+
+      wc.getURL.mockReturnValue('https://example.com/reloaded-page');
+      wc._emit('dom-ready');
+      const afterDomReady = rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext;
+      expect(afterDomReady.execution_context.name).toBe('https://example.com/reloaded-page');
+    });
+
+    it.each(['pending', 'granted'] as const)('keeps a reload name unresolved across a consent split to %s', (next) => {
+      if (next === 'granted') consentManager.update('pending');
+      const wc = makeWebContents(1);
+      wc.getURL.mockReturnValue('https://example.com/crashed-page');
+      webContentsCreatedHandler({}, wc);
+      wc._emit('render-process-gone', {}, { reason: 'crashed' });
+      wc._emit('did-start-navigation', { isMainFrame: true });
+
+      consentManager.update(next);
+      const replacement = rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext;
+      expect(replacement.execution_context.name).toBeUndefined();
+      vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+      expect(
+        (rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext).execution_context.name
+      ).toBeUndefined();
+
+      wc.getURL.mockReturnValue('https://example.com/reloaded-page');
+      wc._emit('dom-ready');
+      expect(rawRumEvents[rawRumEvents.length - 1].data).toMatchObject({
+        execution_context: { id: replacement.execution_context.id, name: 'https://example.com/reloaded-page' },
+      });
+    });
+
+    it.each(['before grant', 'after grant'] as const)(
+      'resolves a renderer reloaded while denied when dom-ready arrives %s',
+      (domReady) => {
+        consentManager.update('not-granted');
+        const wc = makeWebContents(1);
+        wc.getURL.mockReturnValue('https://example.com/crashed-page');
+        webContentsCreatedHandler({}, wc);
+        wc._emit('render-process-gone', {}, { reason: 'crashed' });
+        wc._emit('did-start-navigation', { isMainFrame: true });
+        if (domReady === 'before grant') {
+          wc.getURL.mockReturnValue('https://example.com/reloaded-page');
+          wc._emit('dom-ready');
+        }
+        expect(rawRumEvents).toEqual([]);
+
+        consentManager.update('granted');
+        expect(rawRumEvents).toHaveLength(1);
+        if (domReady === 'after grant') {
+          const initial = rawRumEvents[0].data as RawRumExecutionContext;
+          expect(initial.execution_context.name).toBeUndefined();
+          vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+          expect(
+            (rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext).execution_context.name
+          ).toBeUndefined();
+          wc.getURL.mockReturnValue('https://example.com/reloaded-page');
+          wc._emit('dom-ready');
+        }
+        expect(rawRumEvents[rawRumEvents.length - 1].data).toMatchObject({
+          execution_context: { name: 'https://example.com/reloaded-page' },
+        });
+      }
+    );
+
+    it('ignores a same-document navigation as a revival signal, since it would never get a dom-ready to clear pendingNavigation', () => {
+      const base = rawRumEvents.length;
+      const wc = makeWebContents(1);
+      webContentsCreatedHandler({}, wc);
+      const firstId = (rawRumEvents[base].data as RawRumExecutionContext).execution_context.id;
+
+      wc._emit('render-process-gone', {}, { reason: 'crashed' });
+      // A hash change / pushState on the still-crashed page — must not be read as the revival.
+      wc._emit('did-start-navigation', { isMainFrame: true, isSameDocument: true });
+      expect(rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext).toMatchObject({
+        execution_context: { id: firstId },
+      });
+
+      // The real revival navigation still works afterward.
+      wc._emit('did-start-navigation', { isMainFrame: true, isSameDocument: false });
+      const revived = rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext;
+      expect(revived.execution_context.id).not.toBe(firstId);
+    });
+
+    it('carries the pending-navigation guard through a session renewal that lands before dom-ready', () => {
+      const wc = makeWebContents(1);
+      webContentsCreatedHandler({}, wc);
+      wc.getURL.mockReturnValue('https://example.com/crashed-page');
+      wc._emit('dom-ready');
+
+      wc._emit('render-process-gone', {}, { reason: 'crashed' });
+      // Revival still awaiting its own dom-ready when the session renews — getURL() is stale.
+      wc._emit('did-start-navigation', { isMainFrame: true });
+
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+
+      const afterRenewal = rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext;
+      expect(afterRenewal.execution_context.name).toBeUndefined();
+
+      wc.getURL.mockReturnValue('https://example.com/reloaded-page');
+      wc._emit('dom-ready');
+      const afterDomReady = rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext;
+      expect(afterDomReady.execution_context.name).toBe('https://example.com/reloaded-page');
+    });
+
+    it('clears the pending-navigation flag from dom-ready even during the sessionless gap, so a later renewal still resolves a name', () => {
+      const wc = makeWebContents(1);
+      webContentsCreatedHandler({}, wc);
+
+      wc._emit('render-process-gone', {}, { reason: 'crashed' });
+      wc._emit('did-start-navigation', { isMainFrame: true }); // revival, pendingNavigation: true
+
+      // Session expires before the revival's own navigation commits.
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+
+      // The navigation commits with no active entry; its readiness must still be remembered.
+      wc.getURL.mockReturnValue('https://example.com/reloaded-page');
+      wc._emit('dom-ready');
+
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+
+      const afterRenewal = rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext;
+      expect(afterRenewal.execution_context.name).toBe('https://example.com/reloaded-page');
+    });
+
+    it('clears the pending-navigation flag once the revival commits, so a later renewal still resolves a name', () => {
+      const wc = makeWebContents(1);
+      webContentsCreatedHandler({}, wc);
+
+      wc._emit('render-process-gone', {}, { reason: 'crashed' });
+      wc._emit('did-start-navigation', { isMainFrame: true });
+      wc.getURL.mockReturnValue('https://example.com/reloaded-page');
+      wc._emit('dom-ready');
+
+      // No further navigation — the session renews on its own.
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+
+      const afterRenewal = rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext;
+      expect(afterRenewal.execution_context.name).toBe('https://example.com/reloaded-page');
+    });
+
     it('a revived webContents ending for real does not double-emit from the pre-crash listeners', () => {
       const wc = makeWebContents(1);
       webContentsCreatedHandler({}, wc);
@@ -554,6 +757,26 @@ describe('RendererProcessContexts', () => {
       ).toBeUndefined();
     });
 
+    it('ignores dom-ready during the sessionless gap instead of mutating the already-closed context', () => {
+      const wc = makeWebContents(1);
+      webContentsCreatedHandler({}, wc);
+
+      // Session expires before this renderer's first navigation ever completes: name is still
+      // unset when the terminal update is emitted.
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+      const closeEvent = rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext;
+      const countAfterClose = rawRumEvents.length;
+      expect(closeEvent.execution_context.name).toBeUndefined();
+
+      // The navigation finally commits during the sessionless gap.
+      wc.getURL.mockReturnValue('https://example.com/foo');
+      wc._emit('dom-ready');
+
+      // No stray update for the already-closed context — same invariant a real destroy protects.
+      expect(rawRumEvents).toHaveLength(countAfterClose);
+      expect(closeEvent._dd.document_version).toBe(2);
+    });
+
     it('reopens a new renderer context on SESSION_RENEW with a new id but the same instance_id', () => {
       const base = rawRumEvents.length;
       const wc = makeWebContents(1);
@@ -571,6 +794,26 @@ describe('RendererProcessContexts', () => {
       expect(
         hooks.triggerRum({ eventType: 'view', startTime: 0 as never, source: EventSource.RENDERER, webContentsId: 1 })
       ).toMatchObject({ execution_context: { id: newContext.execution_context.id, type: 'renderer-process' } });
+    });
+
+    it('resolves the name on dom-ready for the renewed context, not the stale pre-renewal one', () => {
+      const wc = makeWebContents(1);
+      webContentsCreatedHandler({}, wc);
+      const oldId = (rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext).execution_context.id;
+
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+      const newId = (rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext).execution_context.id;
+      const countAfterRenewal = rawRumEvents.length;
+
+      wc.getURL.mockReturnValue('https://example.com/foo');
+      wc._emit('dom-ready');
+
+      expect(rawRumEvents).toHaveLength(countAfterRenewal + 1);
+      const domReadyEvent = rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext;
+      expect(domReadyEvent.execution_context.id).toBe(newId);
+      expect(domReadyEvent.execution_context.id).not.toBe(oldId);
+      expect(domReadyEvent.execution_context.name).toBe('https://example.com/foo');
     });
 
     it('the new renderer context keeps ticking on its own heartbeat after renewal', () => {

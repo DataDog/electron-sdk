@@ -30,11 +30,12 @@ interface ViewState {
 }
 
 /**
- * Track the main view lifecycle
+ * Tracks the main view while consent is granted or pending.
  * - on creation, emit an initial view event
  * - keep session alive by regularly send view updates
  * - on SESSION_EXPIRED, emit a final inactive view update
  * - on SESSION_RENEW, create a new view
+ * - on consent changes, close the cumulative view and replace it unless consent is refused
  * - on main-process RUM server event (error, resource), increment view counters (throttled)
  */
 export class ViewCollection {
