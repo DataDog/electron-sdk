@@ -14,7 +14,7 @@ import { StandardBatchConsumer } from './standard/StandardBatchConsumer';
 import { StandardBatchProducer } from './standard/StandardBatchProducer';
 import type { StandardBatchProducerConfig } from './standard/StandardBatchProducer';
 import type { BatchConfig } from './batchConfig.types';
-import { ConsentAwareBatchProducer } from './ConsentAwareBatchProducer';
+import { ConsentAwareBatchRouter } from './ConsentAwareBatchRouter';
 import { getTrackPath } from './batchPaths';
 
 /** Maximum array length accepted by the Logs HTTP intake. */
@@ -25,7 +25,7 @@ const MAX_LOGS_EVENTS_PER_BATCH = 1_000;
  * The consent router selects the writer; the consumer reads only authorized batches at the track root.
  */
 export class BatchManager {
-  private producer: ConsentAwareBatchProducer;
+  private router: ConsentAwareBatchRouter;
   private consumer: BatchConsumer;
   private uploadFrequency: number;
   private timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -34,8 +34,8 @@ export class BatchManager {
   // A cycle queued to run after the active one. Concurrent flush() callers coalesce onto it.
   private queuedCycle: Promise<void> | null = null;
 
-  private constructor(producer: ConsentAwareBatchProducer, consumer: BatchConsumer, uploadFrequency: number) {
-    this.producer = producer;
+  private constructor(router: ConsentAwareBatchRouter, consumer: BatchConsumer, uploadFrequency: number) {
+    this.router = router;
     this.consumer = consumer;
     this.uploadFrequency = uploadFrequency;
   }
@@ -44,15 +44,13 @@ export class BatchManager {
   static async create(config: Configuration, batchConfig: BatchConfig, consentManager: TrackingConsentManager) {
     const { uploadFrequency } = batchConfig;
     const trackPath = getTrackPath(batchConfig.path, batchConfig.trackType);
-    const authorizedProducer = await BatchManager.createProducer(batchConfig, trackPath);
-    const producer = new ConsentAwareBatchProducer(
-      authorizedProducer,
+    const router = await ConsentAwareBatchRouter.create(
       trackPath,
       (directory) => BatchManager.createProducer(batchConfig, directory),
       consentManager
     );
     const consumer = BatchManager.createConsumer(config, batchConfig.trackType, trackPath);
-    const manager = new BatchManager(producer, consumer, uploadFrequency);
+    const manager = new BatchManager(router, consumer, uploadFrequency);
     manager.start();
 
     return manager;
@@ -60,7 +58,7 @@ export class BatchManager {
 
   /** Enqueues a server event to be written to the current batch file. */
   post(event: ServerEvent) {
-    this.producer.post(event);
+    this.router.post(event);
   }
 
   /**
@@ -77,7 +75,7 @@ export class BatchManager {
 
   /** Stops the periodic upload cycle. */
   stop() {
-    this.producer.stop();
+    this.router.stop();
     if (this.timeoutId) {
       clearTimeout(this.timeoutId);
       this.timeoutId = null;
@@ -137,7 +135,7 @@ export class BatchManager {
   private async runUploadCycle() {
     try {
       // Seal open batches before scanning the authorized directory.
-      await this.producer.flush();
+      await this.router.flush();
       await this.consumer.upload();
     } finally {
       this.activeCycle = null;

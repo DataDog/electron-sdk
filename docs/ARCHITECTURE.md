@@ -169,16 +169,18 @@ new directory and producer, so an old cleanup failure cannot mix its files with 
 rum/                              authorized batches; the consumer scans this directory only
   batch-….log
   pending-<uuid>/                 one pending period, never reused by another period
-  .authorized-pending-<uuid>/     consent granted; migration to rum/ still unfinished
+  authorized-pending-<uuid>/      consent granted; migration to rum/ still unfinished
 ```
 
-`ConsentAwareBatchProducer` captures the destination when an event is posted: the track root for
-`granted`, the current pending store for `pending`, or no write for `not-granted`. On leaving `pending`,
-it hands that store and its decision to `BatchMigration`. The migrator finishes earlier writes and closes
-open batch files, then moves or deletes the store. Failed operations are retried on upload cycles
-and explicit flushes. Their failure does not prevent other stores or authorized uploads from progressing.
+`ConsentAwareBatchRouter` creates the producers and captures the destination when an event is posted:
+the track root for `granted`, the current pending store for `pending`, or no write for `not-granted`.
+`PendingBatchStore` owns the pending writer and retries failed creation while its period is active.
+On leaving `pending`, the router hands that store and its decision to `BatchMigration`. The migrator closes
+the store to new events, finishes earlier writes and closes open batch files, then moves or deletes the store.
+Failed operations are retried on upload cycles and explicit flushes. Their failure does not prevent
+other stores or authorized uploads from progressing.
 
-Before moving individual files, authorization renames the directory to `.authorized-pending-<uuid>`.
+Before moving individual files, authorization renames the directory to `authorized-pending-<uuid>`.
 This records the grant on disk: after restart, unfinished moves can resume. A crash before that rename
 succeeds leaves undecided storage, which `Transport` clears at startup for **all** tracks, even disabled ones.
 

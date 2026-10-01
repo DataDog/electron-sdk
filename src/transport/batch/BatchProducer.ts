@@ -2,7 +2,7 @@ import { dateNow } from '@datadog/js-core/time';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { display } from '../../tools/display';
-import { evictBatchFiles, MAX_BATCH_FILES } from './batchFileEviction';
+import { evictBatchFiles } from './batchFileEviction';
 
 /** Configuration for a {@link BatchProducer} instance. */
 export interface BatchProducerConfig {
@@ -14,20 +14,13 @@ export interface BatchProducerConfig {
  * Writes serialized event data to `.tmp` batch files on disk.
  * Subclasses implement {@link writeData} to control how each event is serialized and
  * when files are rotated.
+ * Writes and flushes enforce the shared completed-file limit on a best-effort basis.
  */
 export abstract class BatchProducer {
   protected trackPath: string;
   protected writeQueue: Promise<void> = Promise.resolve();
   /** Prefix used for generated batch file names. Subclasses may override. */
   protected fileNamePrefix = 'batch';
-  /**
-   * Maximum number of completed `.log` batches kept in this directory. The oldest are evicted.
-   * Last-resort bound against unbounded growth when uploads fail for a long time. Subclasses may override.
-   *
-   * Writes and flushes enforce this bound on a best-effort basis. Files can temporarily exceed the
-   * cap during rotation or migration, or while filesystem errors prevent eviction.
-   */
-  protected maxLogFiles = MAX_BATCH_FILES;
   private fileSequence = 0;
 
   protected constructor(config: BatchProducerConfig) {
@@ -46,7 +39,7 @@ export abstract class BatchProducer {
       }
       // Evict even when the write failed: a full disk (ENOSPC) is exactly when trimming the backlog
       // frees space for subsequent writes to succeed.
-      await evictBatchFiles([this.trackPath], this.maxLogFiles);
+      await evictBatchFiles([this.trackPath]);
     });
   }
 
@@ -54,7 +47,7 @@ export abstract class BatchProducer {
   flush(): Promise<void> {
     return this.enqueueOperation(async () => {
       await this.flushData();
-      await evictBatchFiles([this.trackPath], this.maxLogFiles);
+      await evictBatchFiles([this.trackPath]);
     });
   }
 

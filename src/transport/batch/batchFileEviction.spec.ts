@@ -12,7 +12,7 @@ describe('batch file eviction', () => {
 
   it('applies one limit across directories and orders completed batches by their filenames', async () => {
     const firstDirectory = '/track/pending-z';
-    const secondDirectory = '/track/.authorized-pending-a';
+    const secondDirectory = '/track/authorized-pending-a';
     const firstFiles = Array.from({ length: 51 }, (_, i) => `batch-100-${2 * i + 1}.log`);
     const secondFiles = Array.from({ length: 51 }, (_, i) => `batch-100-${2 * i + 2}.log`);
     vi.mocked(fs.readdir)
