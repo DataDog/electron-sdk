@@ -1,7 +1,6 @@
-import path from 'node:path';
-import { setTimeout } from '@datadog/browser-core';
 import type { Configuration } from '../../config';
-import { addError } from '../../domain/telemetry';
+import { addError, clearTimeout, monitor, setTimeout } from '../../domain/telemetry';
+import type { TrackingConsentManager } from '../../domain/tracking-consent';
 import { EventTrack } from '../../event';
 import type { ServerEvent } from '../../event';
 import { computeIntakeUrlForTrack } from '../utils';
@@ -15,17 +14,18 @@ import { StandardBatchConsumer } from './standard/StandardBatchConsumer';
 import { StandardBatchProducer } from './standard/StandardBatchProducer';
 import type { StandardBatchProducerConfig } from './standard/StandardBatchProducer';
 import type { BatchConfig } from './batchConfig.types';
+import { ConsentAwareBatchRouter } from './ConsentAwareBatchRouter';
+import { getTrackPath } from './batchPaths';
 
 /** Maximum array length accepted by the Logs HTTP intake. */
 const MAX_LOGS_EVENTS_PER_BATCH = 1_000;
 
 /**
- * Coordinates a {@link BatchProducer} and {@link BatchConsumer} pair for a single track type.
- * Runs a periodic upload cycle that rotates pending `.tmp` files to `.log` and
- * delivers them to the intake endpoint.
+ * Coordinates consent-aware disk writes and uploads for a single track type.
+ * The consent router selects the writer; the consumer reads only authorized batches at the track root.
  */
 export class BatchManager {
-  private producer: BatchProducer;
+  private router: ConsentAwareBatchRouter;
   private consumer: BatchConsumer;
   private uploadFrequency: number;
   private timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -34,18 +34,23 @@ export class BatchManager {
   // A cycle queued to run after the active one. Concurrent flush() callers coalesce onto it.
   private queuedCycle: Promise<void> | null = null;
 
-  private constructor(producer: BatchProducer, consumer: BatchConsumer, uploadFrequency: number) {
-    this.producer = producer;
+  private constructor(router: ConsentAwareBatchRouter, consumer: BatchConsumer, uploadFrequency: number) {
+    this.router = router;
     this.consumer = consumer;
     this.uploadFrequency = uploadFrequency;
   }
 
   /** Creates and fully initializes a BatchManager instance. */
-  static async create(config: Configuration, batchConfig: BatchConfig) {
+  static async create(config: Configuration, batchConfig: BatchConfig, consentManager: TrackingConsentManager) {
     const { uploadFrequency } = batchConfig;
-
-    const { producer, consumer } = await BatchManager.createProducerConsumerPair(config, batchConfig);
-    const manager = new BatchManager(producer, consumer, uploadFrequency);
+    const trackPath = getTrackPath(batchConfig.path, batchConfig.trackType);
+    const router = await ConsentAwareBatchRouter.create(
+      trackPath,
+      (directory) => BatchManager.createProducer(batchConfig, directory),
+      consentManager
+    );
+    const consumer = BatchManager.createConsumer(config, batchConfig.trackType, trackPath);
+    const manager = new BatchManager(router, consumer, uploadFrequency);
     manager.start();
 
     return manager;
@@ -53,11 +58,11 @@ export class BatchManager {
 
   /** Enqueues a server event to be written to the current batch file. */
   post(event: ServerEvent) {
-    this.producer.post(event);
+    this.router.post(event);
   }
 
   /**
-   * Drains the write queue, rotates the current batch, and uploads all pending files.
+   * Drains writes, rotates current batches, and uploads authorized files awaiting delivery.
    *
    * Guarantees a full cycle runs to completion *after* this call. A scheduled cycle already in
    * flight may have scanned the directory before the caller rotated new files (e.g. the final
@@ -70,6 +75,7 @@ export class BatchManager {
 
   /** Stops the periodic upload cycle. */
   stop() {
+    this.router.stop();
     if (this.timeoutId) {
       clearTimeout(this.timeoutId);
       this.timeoutId = null;
@@ -85,8 +91,8 @@ export class BatchManager {
   private scheduleNext() {
     this.timeoutId = setTimeout(() => {
       void this.runPeriodicCycle()
-        .catch((error) => addError(error))
-        .then(() => this.scheduleNext());
+        .catch(monitor((error) => addError(error)))
+        .then(monitor(() => this.scheduleNext()));
     }, this.uploadFrequency);
   }
 
@@ -125,12 +131,11 @@ export class BatchManager {
     return cycle;
   }
 
-  /** Flushes the producer to rotate pending files, then uploads all ready batches. */
+  /** Closes open batch files, then uploads authorized batches. */
   private async runUploadCycle() {
     try {
-      // Flush producer first to rotate any pending .tmp files to .log
-      await this.producer.flush();
-      // Then upload all .log files
+      // Seal open batches before scanning the authorized directory.
+      await this.router.flush();
       await this.consumer.upload();
     } finally {
       this.activeCycle = null;
@@ -138,36 +143,16 @@ export class BatchManager {
   }
 
   /**
-   * Creates the appropriate {@link BatchProducer} / {@link BatchConsumer} pair for the
-   * given track type. Add a new branch here when introducing a new transport strategy.
-   *
-   * Each producer narrows `writeData()` to its track's event shape, so a mismatched pairing
-   * fails only at runtime. Keep each branch in sync with `Transport.setupTrackBatching`.
+   * Uses the same serialization and file limits for both consent stores of a track.
    */
-  private static async createProducerConsumerPair(
-    config: Configuration,
-    batchConfig: BatchConfig
-  ): Promise<{ producer: BatchProducer; consumer: BatchConsumer }> {
-    const { clientToken } = config;
-    const { path: configPath, trackType, batchSize } = batchConfig;
-
-    // TODO(RUM-18471): revisit track path naming for rum/spans/other tracks too; logs is fine to rename now,
-    // but existing tracks already have established on-disk paths, making them harder to change later.
-    const trackPath = path.join(configPath, trackType === EventTrack.LOGS ? 'dd_logs' : trackType);
-    const intakeUrl = computeIntakeUrlForTrack(config.site, trackType, { proxy: config.proxy });
-
-    const consumerConfig: BatchConsumerConfig = { trackPath, intakeUrl, clientToken };
-
+  private static createProducer(batchConfig: BatchConfig, trackPath: string): Promise<BatchProducer> {
+    const { trackType, batchSize } = batchConfig;
     if (trackType === EventTrack.REPLAY) {
-      const producer = await ReplayBatchProducer.create({ trackPath });
-      const consumer = new ReplayBatchConsumer(consumerConfig);
-      return { producer, consumer };
+      return ReplayBatchProducer.create({ trackPath });
     }
 
     if (trackType === EventTrack.PROFILE) {
-      const producer = await ProfileBatchProducer.create({ trackPath });
-      const consumer = new ProfileBatchConsumer(consumerConfig);
-      return { producer, consumer };
+      return ProfileBatchProducer.create({ trackPath });
     }
 
     const standardProducerConfig: StandardBatchProducerConfig = {
@@ -175,8 +160,22 @@ export class BatchManager {
       batchSize,
       ...(trackType === EventTrack.LOGS ? { maxEventsPerBatch: MAX_LOGS_EVENTS_PER_BATCH } : {}),
     };
-    const producer = await StandardBatchProducer.create(standardProducerConfig);
-    const consumer = new StandardBatchConsumer(consumerConfig);
-    return { producer, consumer };
+    return StandardBatchProducer.create(standardProducerConfig);
+  }
+
+  /** The consumer scans the track root, never pending stores or migration directories. */
+  private static createConsumer(config: Configuration, trackType: EventTrack, trackPath: string): BatchConsumer {
+    const consumerConfig: BatchConsumerConfig = {
+      trackPath,
+      intakeUrl: computeIntakeUrlForTrack(config.site, trackType, { proxy: config.proxy }),
+      clientToken: config.clientToken,
+    };
+    if (trackType === EventTrack.REPLAY) {
+      return new ReplayBatchConsumer(consumerConfig);
+    }
+    if (trackType === EventTrack.PROFILE) {
+      return new ProfileBatchConsumer(consumerConfig);
+    }
+    return new StandardBatchConsumer(consumerConfig);
   }
 }

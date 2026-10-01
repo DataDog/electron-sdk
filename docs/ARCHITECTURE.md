@@ -162,8 +162,41 @@ is kept in memory from construction onward; it neither persists consent nor infe
 Changes notify monitored subscribers synchronously after updating the state.
 Consumers own their subscriptions and unsubscribe when stopped.
 
-History lookups return the state active at the requested time. For example, a past `pending` interval still returns
+History lookups return the state active at the requested time. For example, a past `pending` period still returns
 `pending` after the current state changes to `granted` or `not-granted`.
+
+### Consent and batch storage
+
+SDK initialization creates one `TrackingConsentManager` shared by the transport's batch managers.
+`Transport` routes events to one `BatchManager` per active track (RUM, logs, spans, replay, profiling).
+The manager coordinates a consent-aware writer and a consumer that reads only authorized batches.
+
+Here, **authorized** means the data has received consent, even if the current consent later changes.
+A **pending period** is one stay in `pending`, ending at the next grant or refusal. Each period owns a
+new directory and producer, so an old cleanup failure cannot mix its files with the next period's data.
+
+```text
+rum/                              authorized batches; the consumer scans this directory only
+  batch-….log
+  pending-<uuid>/                 one pending period, never reused by another period
+  authorized-pending-<uuid>/      consent granted; migration to rum/ still unfinished
+```
+
+`ConsentAwareBatchRouter` creates the producers and captures the destination when an event is posted:
+the track root for `granted`, the current pending store for `pending`, or no write for `not-granted`.
+`PendingBatchStore` owns the pending writer and retries failed creation while its period is active.
+On leaving `pending`, the router hands that store and its decision to `BatchMigration`. The migrator closes
+the store to new events, finishes earlier writes and closes open batch files, then moves or deletes the store.
+Failed operations are retried on upload cycles and explicit flushes. Their failure does not prevent
+other stores or authorized uploads from progressing.
+
+Before moving individual files, authorization renames the directory to `authorized-pending-<uuid>`.
+This records the grant on disk: after restart, unfinished moves can resume. A crash before that rename
+succeeds leaves undecided storage, which `Transport` clears at startup for **all** tracks, even disabled ones.
+
+The existing best-effort limit of 100 completed batches applies to the authorized root. A separate limit
+of 100 applies across all remaining pending and migration directories together, so creating new periods
+does not multiply the allowance. Open files and filesystem failures can temporarily exceed these limits.
 
 ## Error Reporting
 
