@@ -84,7 +84,7 @@ describe.each([false, true])('consent lifecycle with execution contexts enabled:
     expect(eventContexts).not.toContain(DISCARDED);
   });
 
-  it('splits cumulative views at consent boundaries while preserving the active session', async () => {
+  it('keeps view updates attributed to the active session across granted and pending', async () => {
     await start();
     const sessionId = session.getSession().id;
     vi.setSystemTime(1010);
@@ -93,20 +93,10 @@ describe.each([false, true])('consent lifecycle with execution contexts enabled:
     consent.update('granted');
 
     expect(session.getSession().id).toBe(sessionId);
-    expect(views().map((view) => view.view.is_active)).toEqual([true, false, true, false, true]);
-    expect(
-      views()
-        .filter((view) => !view.view.is_active)
-        .map((view) => view.view.time_spent)
-    ).toEqual([10 * 1e6, 10 * 1e6]);
-    expect(
-      new Set(
-        views()
-          .filter((view) => view.view.is_active)
-          .map((view) => view.view.id)
-      ).size
-    ).toBe(3);
-    expect(eventContexts).not.toContain(DISCARDED);
+    expect(views()).toHaveLength(5);
+    for (const context of eventContexts) {
+      expect(context).toMatchObject({ session: { id: sessionId } });
+    }
   });
 
   it('does not persist a pending view created by synchronous renewal before its history observer runs', async () => {

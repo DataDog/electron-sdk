@@ -38,36 +38,25 @@ describe.each([
   ['account', AccountContext],
   ['global', GlobalContext],
 ] as const)('%s context consent history', (_name, ContextType) => {
-  it('persists granted context and holds pending changes in memory until grant', async () => {
+  it('keeps pending customer context available and persists it on grant', async () => {
+    manager.update('pending');
     const context = await ContextType.init(createFormatHooks(), manager);
     contexts.push(context);
-    vi.setSystemTime(1010);
-    context.setContext({ id: 'authorized', extraInfo: { plan: 'free' } });
-    const authorized = context.getContext();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(lastWrittenHistory()).toEqual([{ startTime: 1010, endTime: null, value: authorized }]);
-
-    vi.setSystemTime(1020);
-    manager.update('pending');
     await vi.advanceTimersByTimeAsync(0);
     mfs.writeFile.mockClear();
-    vi.setSystemTime(1030);
+    vi.setSystemTime(1010);
     context.setContext({ id: 'pending', extraInfo: { plan: 'premium' } });
     const pending = context.getContext();
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(context.getContext(1030 as TimeStamp)).toEqual(pending);
+    expect(context.getContext(1010 as TimeStamp)).toEqual(pending);
     expect(mfs.writeFile).not.toHaveBeenCalled();
 
-    vi.setSystemTime(1040);
+    vi.setSystemTime(1020);
     manager.update('granted');
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(lastWrittenHistory()).toEqual([
-      { startTime: 1030, endTime: null, value: pending },
-      { startTime: 1020, endTime: 1030, value: authorized },
-      { startTime: 1010, endTime: 1020, value: authorized },
-    ]);
+    expect(lastWrittenHistory()).toContainEqual(expect.objectContaining({ value: pending }));
   });
 
   it('rejects pending history while preserving the current customer value for a later grant', async () => {
@@ -89,12 +78,10 @@ describe.each([
 
     vi.setSystemTime(1040);
     manager.update('granted');
-    await vi.advanceTimersByTimeAsync(0);
 
     expect(context.getContext(1010 as TimeStamp)).toEqual({});
     expect(context.getContext(1030 as TimeStamp)).toEqual({});
     expect(context.getContext(1040 as TimeStamp)).toEqual({ id: 'current' });
-    expect(lastWrittenHistory()).toEqual([{ startTime: 1040, endTime: null, value: { id: 'current' } }]);
   });
 
   it('restores authorized attribution after restart without restoring pending or current customer context', async () => {

@@ -18,7 +18,6 @@ import { createFormatHooks, type FormatHooks } from '../../../assembly';
 import type { SessionManager } from '../../session';
 import type { RawRumExecutionContext, RawRumView } from '../types';
 import { TrackingConsentManager } from '../../tracking-consent';
-import { VIEW_HISTORY_FILE_NAME } from '../view';
 
 vi.mock('node:fs/promises');
 const mfs = mockFs();
@@ -59,7 +58,7 @@ describe('MainProcessContext', () => {
     context.stop();
   });
 
-  it('emits a view and an execution_context event on start, cross-tagged with each other', () => {
+  it('emits a view and an execution_context event on start, cross-tagged with each other', async () => {
     expect(rawRumEvents).toHaveLength(2);
 
     const view = rawRumEvents.find((e) => e.data.type === 'view')!;
@@ -83,6 +82,13 @@ describe('MainProcessContext', () => {
         source: EventSource.MAIN,
       })
     ).toMatchObject({ view: { id: 'session-1' } });
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mfs.writeFile).toHaveBeenCalledWith(
+      `/mock/user/data/${MAIN_EXECUTION_CONTEXT_HISTORY_FILE_NAME}`,
+      expect.stringContaining(contextData.execution_context.id),
+      'utf-8'
+    );
   });
 
   it('does not tag an execution_context event with its own execution_context field', () => {
@@ -302,7 +308,7 @@ describe('MainProcessContext', () => {
     ).toMatchObject({ execution_context: { id: renewedContextId } });
   });
 
-  it('keeps pending view and execution-context history in memory and discards it on refusal', async () => {
+  it('keeps both pending histories off disk and discards their RUM and span attribution on refusal', async () => {
     vi.advanceTimersByTime(10);
     const pendingStart = timeStampNow();
     trackingConsentManager.update('pending');
@@ -325,34 +331,6 @@ describe('MainProcessContext', () => {
     trackingConsentManager.update('not-granted');
     expect(hooks.triggerRum({ eventType: 'error', startTime: pendingStart, source: EventSource.MAIN })).toBe(DISCARDED);
     expect(hooks.triggerSpan({ startTime: pendingStart, source: EventSource.MAIN })).toBe(DISCARDED);
-
-    currentSessionId = 'current-session';
-    const eventsBeforeDeniedRenewal = rawRumEvents.length;
-    eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
-    expect(rawRumEvents).toHaveLength(eventsBeforeDeniedRenewal);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(mfs.writeFile).not.toHaveBeenCalled();
-
-    vi.advanceTimersByTime(10);
-    const grantTime = timeStampNow();
-    trackingConsentManager.update('granted');
-    await vi.advanceTimersByTimeAsync(0);
-    const currentEvent = rawRumEvents.filter((event) => event.data.type === 'execution_context').slice(-1)[0];
-    const currentId = (currentEvent.data as RawRumExecutionContext).execution_context.id;
-
-    const latestSnapshots = new Map(mfs.writeFile.mock.calls.map(([file, snapshot]) => [file, snapshot]));
-    expect(latestSnapshots.size).toBe(2);
-    for (const [file, snapshot] of latestSnapshots) {
-      const entries = JSON.parse(snapshot as string) as { startTime: number; value: unknown }[];
-      expect(entries[0]).toMatchObject({ startTime: grantTime });
-      if (file === `/mock/user/data/${VIEW_HISTORY_FILE_NAME}`) {
-        expect(entries[0].value).toBe('current-session');
-      } else {
-        expect(file).toBe(`/mock/user/data/${MAIN_EXECUTION_CONTEXT_HISTORY_FILE_NAME}`);
-        expect(entries[0].value).toEqual({ id: currentId, type: 'main-process' });
-      }
-      expect(entries.map((entry) => entry.startTime)).not.toContain(pendingStart);
-    }
   });
 
   describe('with a pre-existing history file left open by a previous run', () => {

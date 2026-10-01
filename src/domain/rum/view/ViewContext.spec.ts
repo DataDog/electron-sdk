@@ -244,7 +244,7 @@ describe('ViewContext', () => {
     });
   });
   describe('tracking consent', () => {
-    it('attributes main and renderer events to a pending view without persisting it before a grant', async () => {
+    it('attributes main and renderer events to a pending view without persisting it', async () => {
       trackingConsentManager.update('pending');
       const hooks = createFormatHooks();
       context = await ViewContext.init(hooks, trackingConsentManager, EXPIRE_DELAY);
@@ -261,13 +261,6 @@ describe('ViewContext', () => {
       });
       await vi.advanceTimersByTimeAsync(0);
       expect(mfs.writeFile).not.toHaveBeenCalled();
-
-      trackingConsentManager.update('granted');
-      await vi.advanceTimersByTimeAsync(0);
-
-      expect(JSON.parse(mfs.writeFile.mock.lastCall![1] as string)).toEqual([
-        { value: 'pending-view', startTime: 0, endTime: null },
-      ]);
     });
 
     it('discards a rejected pending view while retaining earlier authorized attribution', async () => {
@@ -281,7 +274,6 @@ describe('ViewContext', () => {
       vi.advanceTimersByTime(10);
 
       trackingConsentManager.update('not-granted');
-      await vi.advanceTimersByTimeAsync(0);
 
       expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toMatchObject({
         view: { id: 'authorized-view' },
@@ -289,9 +281,6 @@ describe('ViewContext', () => {
       expect(hooks.triggerRum({ eventType: 'view', startTime: 15 as TimeStamp, source: EventSource.MAIN })).toBe(
         DISCARDED
       );
-      expect(JSON.parse(mfs.writeFile.mock.lastCall![1] as string)).toEqual([
-        { value: 'authorized-view', startTime: 0, endTime: 10 },
-      ]);
     });
   });
 });

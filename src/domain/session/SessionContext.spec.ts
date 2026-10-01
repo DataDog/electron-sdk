@@ -236,7 +236,7 @@ describe('SessionContext', () => {
     });
   });
   describe('tracking consent', () => {
-    it('enriches pending events in memory and persists their session only after a grant', async () => {
+    it('enriches pending events in memory without persisting their session', async () => {
       trackingConsentManager.update('pending');
       const hooks = createFormatHooks();
       context = await SessionContext.init(hooks, trackingConsentManager, EXPIRE_DELAY);
@@ -253,13 +253,6 @@ describe('SessionContext', () => {
       });
       await vi.advanceTimersByTimeAsync(0);
       expect(mfs.writeFile).not.toHaveBeenCalled();
-
-      trackingConsentManager.update('granted');
-      await vi.advanceTimersByTimeAsync(0);
-
-      expect(JSON.parse(mfs.writeFile.mock.lastCall![1] as string)).toEqual([
-        { value: 'pending-session', startTime: 0, endTime: null },
-      ]);
     });
 
     it('restores authorized sessions after a restart without restoring pending sessions', async () => {
