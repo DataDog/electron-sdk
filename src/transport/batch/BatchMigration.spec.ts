@@ -18,7 +18,7 @@ vi.mock('@datadog/browser-core', async (importOriginal) => ({
 
 const trackPath = '/data/rum';
 const pendingPath = '/data/rum/pending-period-1';
-const stagingPath = '/data/rum/authorized-pending-migration-id';
+const authorizedPath = '/data/rum/authorized-pending-migration-id';
 const missingPath = () => Object.assign(new Error('missing'), { code: 'ENOENT' });
 const directory = (name: string) => ({ name, isDirectory: () => true });
 
@@ -53,7 +53,7 @@ describe('BatchMigration', () => {
       })
     );
     vi.mocked(fs.readdir).mockImplementation((directoryPath) =>
-      Promise.resolve(directoryPath === stagingPath ? (['batch-1.log', 'batch-1.tmp'] as never) : [])
+      Promise.resolve(directoryPath === authorizedPath ? (['batch-1.log', 'batch-1.tmp'] as never) : [])
     );
 
     migration.authorize(store);
@@ -64,11 +64,11 @@ describe('BatchMigration', () => {
     await migration.flush();
 
     expect(vi.mocked(fs.rename).mock.calls).toEqual([
-      [pendingPath, stagingPath],
-      [`${stagingPath}/batch-1.log`, `${trackPath}/batch-1.log-pending-migration-id.log`],
-      [`${stagingPath}/batch-1.tmp`, `${trackPath}/batch-1.tmp-pending-migration-id.log`],
+      [pendingPath, authorizedPath],
+      [`${authorizedPath}/batch-1.log`, `${trackPath}/batch-1.log-pending-migration-id.log`],
+      [`${authorizedPath}/batch-1.tmp`, `${trackPath}/batch-1.tmp-pending-migration-id.log`],
     ]);
-    expect(fs.rm).toHaveBeenCalledWith(stagingPath, { recursive: true, force: true });
+    expect(fs.rm).toHaveBeenCalledWith(authorizedPath, { recursive: true, force: true });
     expect(fs.access).not.toHaveBeenCalled();
   });
 
@@ -79,16 +79,16 @@ describe('BatchMigration', () => {
     let failMove = true;
     let files = ['batch-1.log', 'batch-1.tmp'];
     vi.mocked(fs.readdir).mockImplementation((directoryPath) =>
-      Promise.resolve(directoryPath === stagingPath ? ([...files] as never) : [])
+      Promise.resolve(directoryPath === authorizedPath ? ([...files] as never) : [])
     );
     vi.mocked(fs.rename).mockImplementation((source) => {
       if (source === pendingPath) {
         if (detached) return Promise.reject(missingPath());
         detached = true;
-      } else if (source === `${stagingPath}/batch-1.tmp` && failMove) {
+      } else if (source === `${authorizedPath}/batch-1.tmp` && failMove) {
         return Promise.reject(error);
       } else {
-        files = files.filter((file) => `${stagingPath}/${file}` !== source);
+        files = files.filter((file) => `${authorizedPath}/${file}` !== source);
       }
       return Promise.resolve();
     });
@@ -100,14 +100,14 @@ describe('BatchMigration', () => {
     failMove = false;
     await migration.flush();
 
-    expect(vi.mocked(fs.rename).mock.calls.filter(([source]) => source === `${stagingPath}/batch-1.log`)).toHaveLength(
-      1
-    );
+    expect(
+      vi.mocked(fs.rename).mock.calls.filter(([source]) => source === `${authorizedPath}/batch-1.log`)
+    ).toHaveLength(1);
     expect(fs.rename).toHaveBeenLastCalledWith(
-      `${stagingPath}/batch-1.tmp`,
+      `${authorizedPath}/batch-1.tmp`,
       `${trackPath}/batch-1.tmp-pending-migration-id.log`
     );
-    expect(fs.rm).toHaveBeenCalledWith(stagingPath, { recursive: true, force: true });
+    expect(fs.rm).toHaveBeenCalledWith(authorizedPath, { recursive: true, force: true });
   });
 
   it('retries failed detachment without deleting authorized files when a later period is rejected', async () => {
@@ -121,10 +121,10 @@ describe('BatchMigration', () => {
     migration.discard(next.store);
     await migration.flush();
 
-    expect(fs.rename).toHaveBeenCalledWith(pendingPath, stagingPath);
+    expect(fs.rename).toHaveBeenCalledWith(pendingPath, authorizedPath);
     expect(fs.rm).toHaveBeenCalledWith(next.store.path, { recursive: true, force: true });
     expect(fs.rm).not.toHaveBeenCalledWith(pendingPath, expect.anything());
-    expect(fs.rm).toHaveBeenCalledWith(stagingPath, { recursive: true, force: true });
+    expect(fs.rm).toHaveBeenCalledWith(authorizedPath, { recursive: true, force: true });
   });
 
   it('keeps failed rejection retryable and cannot authorize it through a later decision', async () => {
@@ -144,7 +144,7 @@ describe('BatchMigration', () => {
     await expect(migration.flush()).resolves.toBeUndefined();
 
     expect(fs.rename).not.toHaveBeenCalledWith(pendingPath, expect.anything());
-    expect(fs.rename).toHaveBeenCalledWith(authorized.store.path, stagingPath);
+    expect(fs.rename).toHaveBeenCalledWith(authorized.store.path, authorizedPath);
 
     failDelete = false;
     await migration.flush();
@@ -166,7 +166,7 @@ describe('BatchMigration', () => {
 
     await migration.flush();
 
-    expect(fs.rename).toHaveBeenCalledWith(pendingPath, stagingPath);
+    expect(fs.rename).toHaveBeenCalledWith(pendingPath, authorizedPath);
   });
 
   it('cleans up a period whose producer could not be created', async () => {
@@ -227,7 +227,7 @@ describe('BatchMigration', () => {
     );
   });
 
-  it('serializes concurrent recovery calls so a staged batch is moved only once', async () => {
+  it('serializes concurrent recovery calls so an authorized batch is moved only once', async () => {
     let remaining = true;
     let finishMove!: () => void;
     vi.mocked(fs.readdir).mockImplementation((directoryPath) =>

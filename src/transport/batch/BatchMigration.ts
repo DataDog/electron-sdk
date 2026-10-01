@@ -22,7 +22,7 @@ export class BatchMigration {
     this.schedule({
       store,
       decision: 'authorize',
-      stagingPath: path.join(this.trackPath, `${AUTHORIZED_PENDING_DIRECTORY_PREFIX}${generateUUID()}`),
+      authorizedPath: path.join(this.trackPath, `${AUTHORIZED_PENDING_DIRECTORY_PREFIX}${generateUUID()}`),
     });
   }
 
@@ -78,13 +78,13 @@ export class BatchMigration {
       } else {
         await fs.mkdir(this.trackPath, { recursive: true });
         try {
-          await fs.rename(job.store.path, job.stagingPath);
+          await fs.rename(job.store.path, job.authorizedPath);
         } catch (error) {
           if (!isMissingPath(error)) {
             throw error;
           }
         }
-        await migrateAuthorizedDirectory(job.stagingPath, this.trackPath);
+        await migrateAuthorizedDirectory(job.authorizedPath, this.trackPath);
       }
       this.jobs.delete(job.store.path);
     } catch (error) {
@@ -93,14 +93,14 @@ export class BatchMigration {
   }
 
   private async recoverAuthorizedDirectories(): Promise<void> {
-    const activeStagingPaths = new Set(
-      [...this.jobs.values()].flatMap((job) => (job.decision === 'authorize' ? [job.stagingPath] : []))
+    const activeAuthorizedPaths = new Set(
+      [...this.jobs.values()].flatMap((job) => (job.decision === 'authorize' ? [job.authorizedPath] : []))
     );
     for (const entry of await readDirectories(this.trackPath)) {
-      const stagingPath = path.join(this.trackPath, entry.name);
-      if (entry.name.startsWith(AUTHORIZED_PENDING_DIRECTORY_PREFIX) && !activeStagingPaths.has(stagingPath)) {
+      const authorizedPath = path.join(this.trackPath, entry.name);
+      if (entry.name.startsWith(AUTHORIZED_PENDING_DIRECTORY_PREFIX) && !activeAuthorizedPaths.has(authorizedPath)) {
         try {
-          await migrateAuthorizedDirectory(stagingPath, this.trackPath);
+          await migrateAuthorizedDirectory(authorizedPath, this.trackPath);
         } catch (error) {
           display.error('Failed to recover authorized batches', error);
         }
@@ -120,7 +120,7 @@ export class BatchMigration {
 }
 
 type MigrationJob =
-  | { readonly store: PendingBatchStore; readonly decision: 'authorize'; readonly stagingPath: string }
+  | { readonly store: PendingBatchStore; readonly decision: 'authorize'; readonly authorizedPath: string }
   | { readonly store: PendingBatchStore; readonly decision: 'discard' };
 
 async function readDirectories(directory: string) {
@@ -134,22 +134,22 @@ async function readDirectories(directory: string) {
   }
 }
 
-async function migrateAuthorizedDirectory(stagingPath: string, trackPath: string): Promise<void> {
+async function migrateAuthorizedDirectory(authorizedPath: string, trackPath: string): Promise<void> {
   let files;
   try {
-    files = (await fs.readdir(stagingPath)).filter((file) => /\.(?:log|tmp)$/.test(file));
+    files = (await fs.readdir(authorizedPath)).filter((file) => /\.(?:log|tmp)$/.test(file));
   } catch (error) {
     if (isMissingPath(error)) {
       return;
     }
     throw error;
   }
-  const migrationId = path.basename(stagingPath).slice(AUTHORIZED_PENDING_DIRECTORY_PREFIX.length);
+  const migrationId = path.basename(authorizedPath).slice(AUTHORIZED_PENDING_DIRECTORY_PREFIX.length);
   for (const file of files) {
     // Avoid overwriting other producers' batches and keep destinations stable across retries.
-    await fs.rename(path.join(stagingPath, file), path.join(trackPath, `${file}-pending-${migrationId}.log`));
+    await fs.rename(path.join(authorizedPath, file), path.join(trackPath, `${file}-pending-${migrationId}.log`));
   }
-  await fs.rm(stagingPath, { recursive: true, force: true });
+  await fs.rm(authorizedPath, { recursive: true, force: true });
 }
 
 function isMissingPath(error: unknown): boolean {
