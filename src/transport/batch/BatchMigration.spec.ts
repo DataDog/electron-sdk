@@ -122,7 +122,7 @@ describe('BatchMigration', () => {
     await migration.flush();
 
     expect(fs.rename).toHaveBeenCalledWith(pendingPath, authorizedPath);
-    expect(fs.rm).toHaveBeenCalledWith(next.store.path, { recursive: true, force: true });
+    expect(fs.rm).toHaveBeenCalledWith(next.store.pendingPath, { recursive: true, force: true });
     expect(fs.rm).not.toHaveBeenCalledWith(pendingPath, expect.anything());
     expect(fs.rm).toHaveBeenCalledWith(authorizedPath, { recursive: true, force: true });
   });
@@ -144,7 +144,7 @@ describe('BatchMigration', () => {
     await expect(migration.flush()).resolves.toBeUndefined();
 
     expect(fs.rename).not.toHaveBeenCalledWith(pendingPath, expect.anything());
-    expect(fs.rename).toHaveBeenCalledWith(authorized.store.path, authorizedPath);
+    expect(fs.rename).toHaveBeenCalledWith(authorized.store.pendingPath, authorizedPath);
 
     failDelete = false;
     await migration.flush();

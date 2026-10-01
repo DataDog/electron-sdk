@@ -52,11 +52,11 @@ export class BatchMigration {
 
   private schedule(job: MigrationJob): void {
     // Keep the first grant or refusal; later consent changes do not apply to this store.
-    if (this.jobs.has(job.store.path)) {
+    if (this.jobs.has(job.store.pendingPath)) {
       return;
     }
     job.store.close();
-    this.jobs.set(job.store.path, job);
+    this.jobs.set(job.store.pendingPath, job);
     void this.enqueue(() => this.runJob(job));
   }
 
@@ -68,17 +68,17 @@ export class BatchMigration {
   }
 
   private async runJob(job: MigrationJob): Promise<void> {
-    if (this.jobs.get(job.store.path) !== job) {
+    if (this.jobs.get(job.store.pendingPath) !== job) {
       return;
     }
     try {
       await job.store.flush();
       if (job.decision === 'discard') {
-        await fs.rm(job.store.path, { recursive: true, force: true });
+        await fs.rm(job.store.pendingPath, { recursive: true, force: true });
       } else {
         await fs.mkdir(this.trackPath, { recursive: true });
         try {
-          await fs.rename(job.store.path, job.authorizedPath);
+          await fs.rename(job.store.pendingPath, job.authorizedPath);
         } catch (error) {
           if (!isMissingPath(error)) {
             throw error;
@@ -86,7 +86,7 @@ export class BatchMigration {
         }
         await migrateAuthorizedDirectory(job.authorizedPath, this.trackPath);
       }
-      this.jobs.delete(job.store.path);
+      this.jobs.delete(job.store.pendingPath);
     } catch (error) {
       display.error('Failed to migrate pending batches', error);
     }

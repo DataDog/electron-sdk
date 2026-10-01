@@ -8,7 +8,7 @@ import { PENDING_DIRECTORY_PREFIX } from './batchPaths';
 
 /** Owns one pending period's directory and writer, including asynchronous creation and retries. */
 export class PendingBatchStore {
-  readonly path: string;
+  readonly pendingPath: string;
   private producer: Promise<BatchProducer | undefined>;
   private closed = false;
 
@@ -16,7 +16,7 @@ export class PendingBatchStore {
     trackPath: string,
     private readonly createProducer: (directory: string) => Promise<BatchProducer>
   ) {
-    this.path = path.join(trackPath, `${PENDING_DIRECTORY_PREFIX}${generateUUID()}`);
+    this.pendingPath = path.join(trackPath, `${PENDING_DIRECTORY_PREFIX}${generateUUID()}`);
     this.producer = this.initializeProducer();
   }
 
@@ -43,7 +43,7 @@ export class PendingBatchStore {
   }
 
   private initializeProducer(): Promise<BatchProducer | undefined> {
-    return this.createProducer(this.path).catch(
+    return this.createProducer(this.pendingPath).catch(
       monitor((error) => {
         display.error('Failed to create pending batch storage', error);
         return undefined;
