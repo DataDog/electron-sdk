@@ -29,6 +29,9 @@ describe.each([false, true])('consent lifecycle with execution contexts enabled:
   let hooks: FormatHooks;
   let events: RawRumEvent[];
   let eventContexts: unknown[];
+  let router: ConsentAwareBatchRouter;
+  const grantedPost = vi.fn<(event: ServerEvent) => void>();
+  const pendingPost = vi.fn<(event: ServerEvent) => void>();
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -40,9 +43,13 @@ describe.each([false, true])('consent lifecycle with execution contexts enabled:
     hooks = createFormatHooks();
     events = [];
     eventContexts = [];
+    grantedPost.mockClear();
+    pendingPost.mockClear();
+    mfs.readdir.mockResolvedValue([]);
   });
 
   afterEach(() => {
+    router.stop();
     histories.stop();
     collection.stop();
     session.stop();
@@ -53,7 +60,21 @@ describe.each([false, true])('consent lifecycle with execution contexts enabled:
   async function start(initialConsent: TrackingConsent = 'granted') {
     consent.update(initialConsent);
     const eventManager = new EventManager();
+    router = await ConsentAwareBatchRouter.create(
+      '/mock/rum',
+      (directory) =>
+        Promise.resolve({
+          post: directory === '/mock/rum' ? grantedPost : pendingPost,
+          flush: () => Promise.resolve(),
+        } as unknown as BatchProducer),
+      consent
+    );
+    eventManager.registerHandler<ServerEvent>({
+      canHandle: (event): event is ServerEvent => event.kind === EventKind.SERVER,
+      handle: (event) => router.post(event),
+    });
     session = await SessionManager.start(eventManager, hooks, createTestConfiguration(), histories, consent);
+    new MainAssembly(eventManager, hooks, new BeforeSend());
     eventManager.registerHandler<RawRumEvent>({
       canHandle: (event): event is RawRumEvent => event.kind === EventKind.RAW && event.format === EventFormat.RUM,
       handle: (event) => {
@@ -103,57 +124,51 @@ describe.each([false, true])('consent lifecycle with execution contexts enabled:
     }
   });
 
-  it('keeps terminal granted updates authorized when the following pending period is rejected', async () => {
-    const grantedPost = vi.fn<(event: ServerEvent) => void>();
-    const pendingPost = vi.fn<(event: ServerEvent) => void>();
-    const eventManager = new EventManager();
-    session = await SessionManager.start(eventManager, hooks, createTestConfiguration(), histories, consent);
-    new MainAssembly(eventManager, hooks, new BeforeSend());
-    // Match initialization order: transport observes consent before the collections emit their final updates.
-    const router = await ConsentAwareBatchRouter.create(
-      '/mock/rum',
-      (directory) =>
-        Promise.resolve({
-          post: directory === '/mock/rum' ? grantedPost : pendingPost,
-          flush: () => Promise.resolve(),
-        } as unknown as BatchProducer),
-      consent
-    );
-    eventManager.registerHandler<ServerEvent>({
-      canHandle: (event): event is ServerEvent => event.kind === EventKind.SERVER,
-      handle: (event) => router.post(event),
-    });
-    mfs.readdir.mockResolvedValue([]);
+  it.each([0, 10])('preserves granted terminal updates after %i ms when pending is rejected', async (duration) => {
+    await start();
+    grantedPost.mockClear();
 
-    try {
-      collection = executionContexts
-        ? await ExecutionContextCollection.start(eventManager, hooks, session, histories, consent)
-        : await ViewCollection.start(eventManager, hooks, histories, consent);
+    vi.setSystemTime(1000 + duration);
+    consent.update('pending');
+    await router.flush();
+    vi.setSystemTime(1010 + duration);
+    consent.update('not-granted');
+    await router.flush();
+
+    const terminalUpdates = [
+      {
+        storageConsent: 'granted',
+        data: { type: 'view', date: 1000, view: { is_active: false, time_spent: duration * 1_000_000 } },
+      },
+    ];
+    expect(grantedPost.mock.calls.map(([event]) => event)).toMatchObject(
+      executionContexts
+        ? [...terminalUpdates, { storageConsent: 'granted', data: { type: 'execution_context', date: 1000 } }]
+        : terminalUpdates
+    );
+    expect(pendingPost).toHaveBeenCalledTimes(executionContexts ? 2 : 1);
+  });
+
+  it.each(['refused', 'expired'])(
+    'stores opening documents when the %s session resumes into pending',
+    async (reason) => {
+      await start();
+      vi.setSystemTime(1010);
+      if (reason === 'refused') consent.update('not-granted');
+      else session.expire();
       grantedPost.mockClear();
 
-      vi.setSystemTime(1010);
+      vi.setSystemTime(1020);
       consent.update('pending');
       await router.flush();
-      vi.setSystemTime(1020);
-      consent.update('not-granted');
-      await router.flush();
 
-      const terminalUpdates = [
-        {
-          storageConsent: 'granted',
-          data: { type: 'view', date: 1000, view: { is_active: false, time_spent: 10_000_000 } },
-        },
-      ];
-      expect(grantedPost.mock.calls.map(([event]) => event)).toMatchObject(
-        executionContexts
-          ? [...terminalUpdates, { storageConsent: 'granted', data: { type: 'execution_context', date: 1000 } }]
-          : terminalUpdates
-      );
-      expect(pendingPost).toHaveBeenCalledTimes(executionContexts ? 2 : 1);
-    } finally {
-      router.stop();
+      expect(grantedPost).not.toHaveBeenCalled();
+      expect(pendingPost.mock.calls.map(([event]) => event.data)).toMatchObject([
+        { type: 'view', date: 1020, session: { id: session.getSession().id }, _dd: { document_version: 1 } },
+        ...(executionContexts ? [{ type: 'execution_context', date: 1020, _dd: { document_version: 1 } }] : []),
+      ]);
     }
-  });
+  );
 
   it('does not persist a pending view created by synchronous session renewal', async () => {
     await start();
