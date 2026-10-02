@@ -198,6 +198,20 @@ The existing best-effort limit of 100 completed batches applies to the authorize
 of 100 applies across all remaining pending and migration directories together, so creating new periods
 does not multiply the allowance. Open files and filesystem failures can temporarily exceed these limits.
 
+### Consent and context history
+
+Delayed events need the context that was active when they occurred, rather than the application's
+latest user, session or view. Saved history also lets a later process attribute recovered crash reports;
+loading it must not restore the application's current context.
+
+`TrackingConsentHistory` keeps undecided changes in memory so they cannot survive a refusal or restart.
+A grant saves them; a refusal restores the previously authorized history. The latest configured value
+remains available for a new tracking period without filling the refused period.
+
+`ContextHistoryFactory` owns the histories and subscribes before their consumers. This ordering lets
+session and collector callbacks read or change history without each history reconciling the same
+consent transition. `DiskStorage` only loads JSON and serializes writes; consent decisions stay in the history.
+
 ## Error Reporting
 
 Failures are routed by _who can act on them_:
