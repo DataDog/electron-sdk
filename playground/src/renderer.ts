@@ -1,5 +1,6 @@
 import { datadogLogs } from '@datadog/browser-logs';
 import { datadogRum } from '@datadog/browser-rum';
+import { generateError } from './renderer/generateError';
 
 interface DurationVitalOptions {
   vitalKey?: string;
@@ -160,6 +161,12 @@ rendererLogButton.addEventListener('click', () => {
 const uncaughtExceptionButton = document.getElementById('generate-uncaught-exception') as HTMLButtonElement;
 uncaughtExceptionButton.addEventListener('click', () => {
   void window.electronAPI.generateUncaughtException();
+});
+
+// Throws in the renderer itself, so the stack carries renderer URLs (app://, file:// or http://).
+const rendererErrorButton = document.getElementById('generate-renderer-error') as HTMLButtonElement;
+rendererErrorButton.addEventListener('click', () => {
+  generateError();
 });
 
 // Handle unhandled rejection button click

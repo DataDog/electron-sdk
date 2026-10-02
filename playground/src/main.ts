@@ -3,7 +3,6 @@ import '@datadog/electron-sdk/instrument';
 
 import { app, BrowserWindow, ipcMain, net, protocol, shell } from 'electron';
 import * as path from 'node:path';
-import * as fs from 'node:fs';
 import * as https from 'node:https';
 import {
   init,
@@ -39,12 +38,16 @@ import { setupHotReload } from './main/hotReload';
 import { buildRumExplorerUrl } from './main/utils';
 import { readPlaygroundVersion } from './main/version';
 import { getActiveConf } from './main/conf';
+import { getRendererProtocol, setupRendererProtocol } from './main/rendererProtocol';
+import { generateError } from './main/generateError';
 
 const activeConf = getActiveConf();
+const rendererProtocol = getRendererProtocol();
 const isTestMode = process.env.DD_TEST_MODE === '1';
 
 let mainWindow: BrowserWindow | null = null;
 let secondaryWindow: BrowserWindow | null = null;
+let rendererBaseUrl = 'app://app/';
 
 // Serving the renderer over a custom scheme (instead of file://) lets us attach the `Document-Policy: js-profiling`
 // response header, which is required to enable the JS Self-Profiling API. The scheme must be registered as
@@ -52,28 +55,6 @@ let secondaryWindow: BrowserWindow | null = null;
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
-
-function serveRendererOverAppProtocol(): void {
-  protocol.handle('app', (request) => {
-    const { pathname } = new URL(request.url);
-    const fileName = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '');
-    const ext = fileName.split('.').pop();
-    const contentType =
-      ext === 'html'
-        ? 'text/html'
-        : ext === 'js'
-          ? 'application/javascript'
-          : ext === 'map'
-            ? 'application/json'
-            : 'application/octet-stream';
-    const headers: Record<string, string> = { 'Content-Type': contentType };
-    // Only the HTML document needs the policy that enables the profiler.
-    if (ext === 'html') {
-      headers['Document-Policy'] = 'js-profiling';
-    }
-    return new Response(fs.readFileSync(path.join(__dirname, fileName)), { headers });
-  });
-}
 
 function createWindow() {
   const savedState = loadWindowState();
@@ -91,7 +72,7 @@ function createWindow() {
     },
   });
 
-  void mainWindow.loadURL('app://app/');
+  void mainWindow.loadURL(`${rendererBaseUrl}index.html`);
 
   // Save window state before reload or close
   mainWindow.on('close', () => {
@@ -129,7 +110,7 @@ ipcMain.handle('generateTelemetryError', () => {
 // IPC handler to generate uncaught exception
 ipcMain.handle('generateUncaughtException', () => {
   setTimeout(() => {
-    throw new Error('test uncaught exception');
+    generateError();
   });
 });
 
@@ -284,53 +265,59 @@ ipcMain.handle('main:open-secondary-window', () => {
     title: 'Secondary Renderer Process',
     webPreferences: { contextIsolation: true, nodeIntegration: false },
   });
-  void secondaryWindow.loadURL('app://app/secondary.html');
+  void secondaryWindow.loadURL(`${rendererBaseUrl}secondary.html`);
   secondaryWindow.on('closed', () => {
     secondaryWindow = null;
   });
 });
 
-void app.whenReady().then(async () => {
-  // Initialize SDK on app ready (before window creation)
-  console.log('Initializing SDK from main process...');
-  const result = await init({
-    ...activeConf,
-    service: 'playground-main',
-    version: readPlaygroundVersion(),
-    env: 'dev',
-    traceSamplingRules: [{ name: 'electron.main.handle', resource: 'main:fetch-api-net-drop', sampleRate: 0 }],
-    sessionReplaySampleRate: 100,
-    profilingSampleRate: 100,
-    beforeSendRum: (event) => {
-      if (event.context?.beforeSend === 'filter') {
-        return false;
-      }
-      if (event.type === 'error' && event.context?.beforeSend === 'scrub') {
-        event.error.message = '[REDACTED by beforeSendRum]';
-        event.error.stack = '[REDACTED by beforeSendRum]';
-        event.context = { email: '[REDACTED]' };
-      }
-      return true;
-    },
-    telemetrySampleRate: 100,
-    telemetryConfigurationSampleRate: 100,
-    telemetryUsageSampleRate: 100,
-    allowedRendererHosts: ['*'],
-    defaultPrivacyLevel: 'allow',
-    enableExecutionContext: true,
-    ...(process.env.DD_SDK_PROXY ? { proxy: process.env.DD_SDK_PROXY } : {}),
-  });
-  console.log('SDK init result:', result);
+void app
+  .whenReady()
+  .then(async () => {
+    // Initialize SDK on app ready (before window creation)
+    console.log('Initializing SDK from main process...');
+    const result = await init({
+      ...activeConf,
+      service: 'playground-main',
+      version: readPlaygroundVersion(),
+      env: 'dev',
+      traceSamplingRules: [{ name: 'electron.main.handle', resource: 'main:fetch-api-net-drop', sampleRate: 0 }],
+      sessionReplaySampleRate: 100,
+      profilingSampleRate: 100,
+      beforeSendRum: (event) => {
+        if (event.context?.beforeSend === 'filter') {
+          return false;
+        }
+        if (event.type === 'error' && event.context?.beforeSend === 'scrub') {
+          event.error.message = '[REDACTED by beforeSendRum]';
+          event.error.stack = '[REDACTED by beforeSendRum]';
+          event.context = { email: '[REDACTED]' };
+        }
+        return true;
+      },
+      telemetrySampleRate: 100,
+      telemetryConfigurationSampleRate: 100,
+      telemetryUsageSampleRate: 100,
+      allowedRendererHosts: ['*'],
+      defaultPrivacyLevel: 'allow',
+      enableExecutionContext: true,
+      ...(process.env.DD_SDK_PROXY ? { proxy: process.env.DD_SDK_PROXY } : {}),
+    });
+    console.log('SDK init result:', result);
 
-  serveRendererOverAppProtocol();
-  createWindow();
+    rendererBaseUrl = await setupRendererProtocol(rendererProtocol);
+    createWindow();
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+      }
+    });
+  })
+  .catch((err: unknown) => {
+    console.error(err);
+    app.quit();
   });
-});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
