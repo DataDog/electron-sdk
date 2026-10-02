@@ -32,6 +32,31 @@ Test files live in `test/` and must match `*.scenario.ts`. They use Playwright's
 
 `test/local/` is gitignored — use it for throwaway scenarios without affecting CI.
 
+## Source maps
+
+The main process reports under the `playground-main` service, renderers under `playground-renderer`. The version is
+resolved at build time (`PLAYGROUND_VERSION` if set, otherwise the current git SHA, or `dev` when git is unavailable)
+and recorded in `dist/version.json`, so running the app never needs the variable.
+
+`PLAYGROUND_ENV=staging|prod` (default `staging`) selects the Datadog org, both for the app and for the upload.
+
+The renderer can be served over three protocols, to check source map resolution for each:
+
+```bash
+RENDERER_PROTOCOL=app yarn start    # default, app://app/
+RENDERER_PROTOCOL=file yarn start   # file://
+RENDERER_PROTOCOL=http yarn start   # http://127.0.0.1:8765 (RENDERER_HTTP_PORT to change)
+```
+
+To upload source maps manually, use a fresh version for each iteration and an API key from the selected org:
+
+```bash
+PLAYGROUND_VERSION=0.1.3 DATADOG_API_KEY=<key> yarn upload-sourcemaps   # builds, then uploads; --dry-run to check
+yarn electron .   # runs the build that was just uploaded (pass the same PLAYGROUND_ENV as the upload)
+```
+
+`yarn start` rebuilds first, so it resolves the version again (git SHA without `PLAYGROUND_VERSION`).
+
 ## Architecture
 
 ### Module System Split
