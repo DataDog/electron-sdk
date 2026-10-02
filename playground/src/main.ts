@@ -38,7 +38,9 @@ import { loadWindowState, saveWindowState } from './main/windowState';
 import { setupHotReload } from './main/hotReload';
 import { buildRumExplorerUrl } from './main/utils';
 import { readPlaygroundVersion } from './main/version';
+import { getActiveConf } from './main/conf';
 
+const activeConf = getActiveConf();
 const isTestMode = process.env.DD_TEST_MODE === '1';
 
 let mainWindow: BrowserWindow | null = null;
@@ -263,20 +265,6 @@ ipcMain.handle(
   }
 );
 
-const ACTIVE_ENV = 'staging';
-const CONF = {
-  staging: {
-    applicationId: '6efd3722-af0a-4070-994c-0e87076d4814',
-    clientToken: 'pub2a7307cdec74934cacb411a193f632f8',
-    site: 'datad0g.com',
-  },
-  prod: {
-    applicationId: '0f574f27-317e-4223-b5b6-c935b4c83700',
-    clientToken: 'pub09a54e493460355ef58c0c617d577e19',
-    site: 'datadoghq.com',
-  },
-};
-
 // needed for automated tests
 ipcMain.handle('flush-transport', async () => {
   await _flushTransport();
@@ -285,7 +273,7 @@ ipcMain.handle('flush-transport', async () => {
 ipcMain.handle('open-rum-explorer', () => {
   const ctx = getInternalContext();
   if (!ctx) return;
-  void shell.openExternal(buildRumExplorerUrl(CONF[ACTIVE_ENV], ctx.session_id));
+  void shell.openExternal(buildRumExplorerUrl(activeConf, ctx.session_id));
 });
 
 ipcMain.handle('main:open-secondary-window', () => {
@@ -306,7 +294,7 @@ void app.whenReady().then(async () => {
   // Initialize SDK on app ready (before window creation)
   console.log('Initializing SDK from main process...');
   const result = await init({
-    ...CONF[ACTIVE_ENV],
+    ...activeConf,
     service: 'playground-main',
     version: readPlaygroundVersion(),
     env: 'dev',
