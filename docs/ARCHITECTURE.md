@@ -215,8 +215,8 @@ consent transition. `DiskStorage` only loads JSON and serializes writes; consent
 ### Consent and session lifecycle
 
 A session can continue while consent is undecided, but a cumulative view must not combine periods
-that may receive different decisions. Views and execution contexts therefore start a new document
-at each consent boundary, even when the session remains the same.
+that may receive different decisions. Main-process views and execution contexts therefore start a new
+document at each consent boundary, even when the session remains the same.
 
 | Transition                             | Session                                                              | Main-process views and execution context      |
 | -------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------- |
@@ -224,7 +224,8 @@ at each consent boundary, even when the session remains the same.
 | Any state → `not-granted`              | Expire the session and ignore activity.                              | Close the period and stop periodic updates.   |
 | `not-granted` → `granted` or `pending` | Create a fresh session.                                              | Start new periods.                            |
 
-Session and history boundaries use the same timestamp so events cannot fall between their contexts.
+Transport subscribes before the session manager so pending storage is ready when session renewal
+emits opening documents. Session and history boundaries use the same timestamp.
 The final update of an authorized period retains its authorization when routing changes, preserving
 its duration and counters if the next pending period is refused.
 

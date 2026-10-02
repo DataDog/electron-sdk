@@ -158,15 +158,13 @@ export class MainProcessContext {
   private endState(endTime = timeStampNow()): void {
     if (!this.state?.isActive) return;
     this.clearHeartbeat();
-    // Close both histories at the exact same instant (same reasoning as startState's shared
-    // startTime): otherwise main-process telemetry timestamped in the gap before the next
-    // SESSION_RENEW would still resolve to this now-expired state.
-    this.viewContext.close(endTime);
-    this.mainHistory.set(undefined, endTime);
     this.state.documentVersion++;
     this.state.isActive = false;
+    // Emit before closing so a period started at endTime still resolves its own context.
     this.emitViewEvent(this.state, false, endTime);
     this.emitExecutionContextEvent(this.state, endTime);
+    this.viewContext.close(endTime);
+    this.mainHistory.set(undefined, endTime);
   }
 
   private onConsentChange(change: TrackingConsentChange): void {
