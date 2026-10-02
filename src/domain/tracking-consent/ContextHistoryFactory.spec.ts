@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContextHistoryFactory, TrackingConsentManager, type TrackingConsent } from './index';
+import { display } from '../../tools/display';
 
 vi.mock('node:fs/promises');
 
@@ -155,6 +156,62 @@ describe('ContextHistoryFactory', () => {
     vi.setSystemTime(1400);
     history.set(undefined, timeStampNow());
     expect(await persisted()).toEqual([]);
+  });
+
+  it.each([
+    null,
+    { value: 'invalid', startTime: '100', endTime: 200 },
+    { value: 'invalid', startTime: 100 },
+    { value: 'invalid', startTime: 200, endTime: 100 },
+  ])('ignores malformed saved entries: %j', async (entry) => {
+    disk.set('/data/history', JSON.stringify([entry]));
+
+    const history = await factory.create<string>('history', expireDelay);
+
+    expect(history.find(150 as TimeStamp)).toBeUndefined();
+    expect(await persisted()).toEqual([]);
+    history.set('current', timeStampNow());
+    expect(history.find(timeStampNow())).toBe('current');
+  });
+
+  it.each<TrackingConsent>(['granted', 'not-granted'])(
+    'prunes closed history when a long pending period becomes %s',
+    async (state) => {
+      const history = await factory.create<string>('history', expireDelay);
+      history.set('Alice', timeStampNow());
+      vi.setSystemTime(2000);
+      consent.update('pending');
+      vi.setSystemTime(2500);
+      history.set('Bob', timeStampNow());
+      vi.setSystemTime(64_000);
+
+      consent.update(state);
+
+      expect(history.find(1500 as TimeStamp)).toBeUndefined();
+      expect(history.find(2200 as TimeStamp)).toBeUndefined();
+      expect(await persisted()).toEqual(state === 'granted' ? [{ value: 'Bob', startTime: 2500, endTime: null }] : []);
+    }
+  );
+
+  it('retries the authorized snapshot on refusal after a failed pending-boundary write', async () => {
+    const history = await factory.create<string>('history', expireDelay);
+    history.set('Alice', timeStampNow());
+    await persisted();
+    vi.spyOn(display, 'error').mockImplementation(() => undefined);
+    vi.mocked(fs.writeFile).mockRejectedValueOnce(new Error('disk unavailable'));
+    vi.setSystemTime(2000);
+    consent.update('pending');
+    expect(await persisted()).toEqual([{ value: 'Alice', startTime: 1000, endTime: null }]);
+
+    vi.setSystemTime(3000);
+    consent.update('not-granted');
+
+    expect(await persisted()).toEqual([{ value: 'Alice', startTime: 1000, endTime: 2000 }]);
+    factory.stop();
+    vi.setSystemTime(4000);
+    factory = new ContextHistoryFactory(consent, '/data');
+    const restarted = await factory.create<string>('history', expireDelay);
+    expect(restarted.find(2500 as TimeStamp)).toBeUndefined();
   });
 
   it('updates every history before a collector can record a value during the transition', async () => {

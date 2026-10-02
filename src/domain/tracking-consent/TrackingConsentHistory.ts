@@ -1,7 +1,10 @@
 import type { TimeStamp } from '@datadog/js-core/time';
+import { isIndexableObject } from '@datadog/js-core/util';
 import { TimeStampValueHistory, type TimeStampHistoryEntry } from '../../tools/TimeStampValueHistory';
 import type { DiskStorage } from '../../tools/DiskStorage';
 import type { TrackingConsent, TrackingConsentChange } from './TrackingConsentManager';
+
+type StoredHistoryEntry<T> = Omit<TimeStampHistoryEntry<T>, 'endTime'> & { endTime: TimeStamp | null };
 
 /**
  * Keeps context available for delayed events without persisting undecided changes.
@@ -16,7 +19,7 @@ export class TrackingConsentHistory<T> {
   constructor(
     private readonly storage: DiskStorage<readonly TimeStampHistoryEntry<T>[]>,
     options: {
-      entries: readonly TimeStampHistoryEntry<T>[] | undefined;
+      entries: unknown;
       expireDelay: number;
       consent: TrackingConsent;
       startTime: TimeStamp;
@@ -24,10 +27,9 @@ export class TrackingConsentHistory<T> {
   ) {
     this.history = new TimeStampValueHistory({ expireDelay: options.expireDelay });
     this.consent = options.consent;
-    if (Array.isArray(options.entries)) {
+    if (Array.isArray(options.entries) && options.entries.every(isStoredHistoryEntry<T>)) {
       // JSON stores the open-ended Infinity bound as null. Restore the existing file format.
-      const entries = options.entries as readonly TimeStampHistoryEntry<T>[];
-      for (const entry of [...entries].reverse()) {
+      for (const entry of [...options.entries].reverse()) {
         this.history.add(entry.value, entry.startTime);
         if (entry.endTime !== null) this.history.closeActive(entry.endTime);
       }
@@ -59,6 +61,7 @@ export class TrackingConsentHistory<T> {
     this.consent = change.current;
     if (change.previous === 'granted') {
       this.history.closeActive(change.time);
+      this.history.pruneExpired();
       this.authorizedEntries = this.copyEntries();
       if (change.current === 'pending' && this.latestValue !== undefined) {
         this.history.add(this.latestValue, change.time);
@@ -66,17 +69,30 @@ export class TrackingConsentHistory<T> {
       // Finish the in-memory transition first: serialization failure must not enable pending writes.
       this.storage.save(this.authorizedEntries);
     } else if (change.previous === 'pending' && change.current === 'granted') {
+      this.history.pruneExpired();
       this.storage.save(this.history.getEntries());
     } else {
       this.history.replaceEntries(this.authorizedEntries);
+      this.history.pruneExpired();
       if (change.current !== 'not-granted' && this.latestValue !== undefined) {
         this.history.add(this.latestValue, change.time);
       }
-      if (change.current === 'granted') this.storage.save(this.history.getEntries());
+      if (change.current !== 'pending') this.storage.save(this.history.getEntries());
     }
   }
 
   private copyEntries(): TimeStampHistoryEntry<T>[] {
     return this.history.getEntries().map((entry) => ({ ...entry }));
   }
+}
+
+function isStoredHistoryEntry<T>(entry: unknown): entry is StoredHistoryEntry<T> {
+  return (
+    isIndexableObject(entry) &&
+    'value' in entry &&
+    typeof entry.startTime === 'number' &&
+    Number.isFinite(entry.startTime) &&
+    (entry.endTime === null ||
+      (typeof entry.endTime === 'number' && Number.isFinite(entry.endTime) && entry.endTime >= entry.startTime))
+  );
 }
