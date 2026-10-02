@@ -40,9 +40,8 @@ export class StandardBatchProducer extends BatchProducer {
     return producer;
   }
 
-  /** Drains pending writes and rotates the current batch file to `.log`. */
-  override async flush() {
-    await this.writeQueue;
+  /** Rotates the current batch file once earlier writes in the producer queue have drained. */
+  protected override async flushData() {
     await this.rotateBatch();
   }
 

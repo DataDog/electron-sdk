@@ -30,7 +30,7 @@ export abstract class BatchConsumer {
     this.clientToken = config.clientToken;
   }
 
-  /** Uploads all pending `.log` files to the intake endpoint. */
+  /** Uploads completed authorized `.log` files to the intake endpoint. */
   async upload() {
     if (!this.userAgent) {
       this.userAgent = getUserAgent();

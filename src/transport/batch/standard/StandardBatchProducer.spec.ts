@@ -239,6 +239,37 @@ describe('StandardBatchProducer', () => {
     });
   });
 
+  describe('flush ordering', () => {
+    it('finishes a flush before writing events posted after it', async () => {
+      const producer = await StandardBatchProducer.create(config);
+      let releaseRotation!: () => void;
+      const rotation = new Promise<void>((resolve) => (releaseRotation = resolve));
+      let notifyRotationStarted!: () => void;
+      const rotationStarted = new Promise<void>((resolve) => (notifyRotationStarted = resolve));
+      fsMocks.rename.mockImplementationOnce(() => {
+        notifyRotationStarted();
+        return rotation;
+      });
+
+      producer.post({ data: { order: 1 } });
+      const flush = producer.flush();
+      producer.post({ data: { order: 2 } });
+      await rotationStarted;
+      expect(fsMocks.appendFile).toHaveBeenCalledTimes(1);
+
+      releaseRotation();
+      await flush;
+      await producer.flush();
+
+      expect(fsMocks.appendFile).toHaveBeenNthCalledWith(
+        2,
+        path.join(config.trackPath, 'batch-1234567890-2.tmp'),
+        '{"order":2}\n',
+        'utf8'
+      );
+    });
+  });
+
   describe('directory handling', () => {
     it('calls mkdir recursively when directory is missing during a write', async () => {
       // create() consumes one ensureTrackDirectory call and we want the failure to happen during writeData().
@@ -270,7 +301,7 @@ describe('StandardBatchProducer', () => {
       fsMocks.unlink.mockResolvedValue(undefined);
 
       const producer = await StandardBatchProducer.create(config);
-      fsMocks.readdir.mockResolvedValue(logFiles);
+      fsMocks.readdir.mockResolvedValueOnce(logFiles);
 
       producer.post({ data: { event: 'test' } });
       await producer.flush();
@@ -287,7 +318,7 @@ describe('StandardBatchProducer', () => {
       fsMocks.unlink.mockResolvedValue(undefined);
 
       const producer = await StandardBatchProducer.create(config);
-      fsMocks.readdir.mockResolvedValue(logFiles);
+      fsMocks.readdir.mockResolvedValueOnce(logFiles);
       fsMocks.appendFile.mockRejectedValue(new Error('ENOSPC'));
 
       producer.post({ data: { event: 'test' } });
@@ -304,7 +335,7 @@ describe('StandardBatchProducer', () => {
       fsMocks.unlink.mockResolvedValue(undefined);
 
       const producer = await StandardBatchProducer.create(config);
-      fsMocks.readdir.mockResolvedValue(logFiles);
+      fsMocks.readdir.mockResolvedValueOnce(logFiles);
 
       producer.post({ data: { event: 'test' } });
       await producer.flush();
@@ -313,6 +344,22 @@ describe('StandardBatchProducer', () => {
       expect(fsMocks.unlink).toHaveBeenCalledWith(path.join(config.trackPath, 'batch-100-1.log'));
       expect(fsMocks.unlink).toHaveBeenCalledWith(path.join(config.trackPath, 'batch-100-2.log'));
       expect(fsMocks.unlink).not.toHaveBeenCalledWith(path.join(config.trackPath, 'batch-100-10.log'));
+    });
+
+    it('flushes migrated completed files down to the cap without requiring a new event', async () => {
+      const producer = await StandardBatchProducer.create(config);
+      const logFiles = Array.from({ length: 102 }, (_, i) => `batch-100-${i + 1}.log`);
+      const files = new Set([...logFiles, 'batch-101-1.tmp']);
+      fsMocks.readdir.mockImplementation(() => Promise.resolve([...files]));
+      fsMocks.unlink.mockImplementation((filePath: string) => {
+        files.delete(path.basename(filePath));
+        return Promise.resolve();
+      });
+
+      await producer.flush();
+
+      expect([...files]).toEqual([...logFiles.slice(2), 'batch-101-1.tmp']);
+      expect(fsMocks.appendFile).not.toHaveBeenCalled();
     });
 
     it('does not evict when the pending count is within the cap', async () => {
