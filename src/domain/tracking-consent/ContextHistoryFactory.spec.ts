@@ -193,14 +193,39 @@ describe('ContextHistoryFactory', () => {
     }
   );
 
+  it('retries the boundary write while consent remains pending', async () => {
+    const history = await factory.create<string>('history', expireDelay);
+    history.set('Alice', timeStampNow());
+    await persisted();
+    vi.mocked(fs.writeFile).mockRejectedValueOnce(new Error('disk busy'));
+    vi.setSystemTime(2000);
+    consent.update('pending');
+    history.set('Bob', timeStampNow());
+
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(consent.get()).toBe('pending');
+    expect(await persisted()).toEqual([{ value: 'Alice', startTime: 1000, endTime: 2000 }]);
+    factory.stop();
+    vi.setSystemTime(4000);
+    factory = new ContextHistoryFactory(consent, '/data');
+    const restarted = await factory.create<string>('history', expireDelay);
+    expect(restarted.find(1500 as TimeStamp)).toBe('Alice');
+    expect(restarted.find(2500 as TimeStamp)).toBeUndefined();
+  });
+
   it('retries the authorized snapshot on refusal after a failed pending-boundary write', async () => {
     const history = await factory.create<string>('history', expireDelay);
     history.set('Alice', timeStampNow());
     await persisted();
     vi.spyOn(display, 'error').mockImplementation(() => undefined);
-    vi.mocked(fs.writeFile).mockRejectedValueOnce(new Error('disk unavailable'));
+    vi.mocked(fs.writeFile)
+      .mockRejectedValueOnce(new Error('disk unavailable'))
+      .mockRejectedValueOnce(new Error('disk unavailable'))
+      .mockRejectedValueOnce(new Error('disk unavailable'));
     vi.setSystemTime(2000);
     consent.update('pending');
+    await vi.advanceTimersByTimeAsync(200);
     expect(await persisted()).toEqual([{ value: 'Alice', startTime: 1000, endTime: null }]);
 
     vi.setSystemTime(3000);

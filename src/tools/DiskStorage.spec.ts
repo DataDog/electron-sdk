@@ -41,14 +41,30 @@ describe('DiskStorage', () => {
     expect(vi.mocked(fs.writeFile).mock.calls.map((call) => call[1])).toEqual(['["first"]', '["first","second"]']);
   });
 
-  it('reports a failed write without preventing later snapshots from being saved', async () => {
+  it('finishes retrying an older snapshot before writing a newer one', async () => {
+    const storage = new DiskStorage<string>('/history');
+    vi.mocked(fs.writeFile).mockRejectedValueOnce(new Error('busy')).mockResolvedValue(undefined);
+    storage.save('first');
+    await vi.waitFor(() => expect(fs.writeFile).toHaveBeenCalledOnce());
+
+    storage.save('second');
+
+    await vi.waitFor(() => expect(fs.writeFile).toHaveBeenCalledTimes(3));
+    expect(vi.mocked(fs.writeFile).mock.calls.map((call) => call[1])).toEqual(['"first"', '"first"', '"second"']);
+  });
+
+  it('reports exhausted retries without preventing later snapshots from being saved', async () => {
     const storage = new DiskStorage<string[]>('/history');
     const error = new Error('disk unavailable');
-    vi.mocked(fs.writeFile).mockRejectedValueOnce(error).mockResolvedValue(undefined);
+    vi.mocked(fs.writeFile)
+      .mockRejectedValueOnce(error)
+      .mockRejectedValueOnce(error)
+      .mockRejectedValueOnce(error)
+      .mockResolvedValue(undefined);
     const report = vi.spyOn(display, 'error').mockImplementation(() => undefined);
     storage.save(['first']);
     storage.save(['second']);
-    await vi.waitFor(() => expect(fs.writeFile).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(fs.writeFile).toHaveBeenCalledTimes(4));
     expect(report).toHaveBeenCalledWith('Failed to persist context history:', error);
     expect(fs.writeFile).toHaveBeenLastCalledWith('/history', '["second"]', 'utf-8');
   });
