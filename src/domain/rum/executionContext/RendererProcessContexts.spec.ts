@@ -19,8 +19,16 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { app, webContents } from 'electron';
 import { RendererProcessContexts, RENDERER_DISPOSAL_GRACE_PERIOD } from './RendererProcessContexts';
 import { PROCESS_UPDATE_INTERVAL } from './executionContext.constants';
-import { EventManager, EventKind, EventFormat, EventSource, LifecycleKind, type RawRumEvent } from '../../../event';
-import { createFormatHooks } from '../../../assembly';
+import {
+  EventManager,
+  EventKind,
+  EventFormat,
+  EventSource,
+  LifecycleKind,
+  type RawRumEvent,
+  type ServerEvent,
+} from '../../../event';
+import { BeforeSend, createFormatHooks, MainAssembly } from '../../../assembly';
 import type { RawRumExecutionContext } from '../types';
 import { ContextHistoryFactory, TrackingConsentManager } from '../../tracking-consent';
 import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
@@ -194,6 +202,42 @@ describe('RendererProcessContexts', () => {
 
       expect(rawRumEvents).toHaveLength(2);
       expect(rawRumEvents[1]).not.toHaveProperty('storageConsent');
+    });
+
+    it('does not attribute a window opened between sessions to the renewed session', async () => {
+      collection.stop();
+      histories = new ContextHistoryFactory(consentManager, '/mock/user/data');
+      sessionManager = await SessionManager.start(
+        eventManager,
+        hooks,
+        createTestConfiguration(),
+        histories,
+        consentManager
+      );
+      new MainAssembly(eventManager, hooks, new BeforeSend());
+      const serverEvents: ServerEvent[] = [];
+      eventManager.registerHandler<ServerEvent>({
+        canHandle: (event): event is ServerEvent => event.kind === EventKind.SERVER,
+        handle: (event) => serverEvents.push(event),
+      });
+      collection = RendererProcessContexts.start(eventManager, hooks, consentManager);
+      sessionManager.expire();
+      vi.advanceTimersByTime(10);
+
+      webContentsCreatedHandler({}, makeWebContents(1));
+      const gapStart = rawRumEvents[rawRumEvents.length - 1].startTime!;
+      expect(serverEvents).toEqual([]);
+
+      vi.advanceTimersByTime(10);
+      consentManager.update('pending');
+
+      expect(serverEvents).toMatchObject([
+        { data: { type: 'execution_context', date: 20, session: { id: sessionManager.getSession().id } } },
+      ]);
+      // A terminal update for the gap would still have no session at its capture time.
+      expect(hooks.triggerRum({ eventType: 'execution_context', startTime: gapStart, source: EventSource.MAIN })).toBe(
+        DISCARDED
+      );
     });
 
     it.each(['before grant', 'after grant'] as const)(
