@@ -30,7 +30,7 @@ export class ExecutionContextCollection {
       histories,
       trackingConsentManager
     );
-    const rendererProcessContexts = RendererProcessContexts.start(eventManager, hooks);
+    const rendererProcessContexts = RendererProcessContexts.start(eventManager, hooks, trackingConsentManager);
     return new ExecutionContextCollection(mainProcessContext, rendererProcessContexts);
   }
 
