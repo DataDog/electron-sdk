@@ -37,6 +37,7 @@ import {
 import { loadWindowState, saveWindowState } from './main/windowState';
 import { setupHotReload } from './main/hotReload';
 import { buildRumExplorerUrl } from './main/utils';
+import { readPlaygroundVersion } from './main/version';
 
 const isTestMode = process.env.DD_TEST_MODE === '1';
 
@@ -306,7 +307,8 @@ void app.whenReady().then(async () => {
   console.log('Initializing SDK from main process...');
   const result = await init({
     ...CONF[ACTIVE_ENV],
-    service: 'electron-playground',
+    service: 'playground-main',
+    version: readPlaygroundVersion(),
     env: 'dev',
     traceSamplingRules: [{ name: 'electron.main.handle', resource: 'main:fetch-api-net-drop', sampleRate: 0 }],
     sessionReplaySampleRate: 100,

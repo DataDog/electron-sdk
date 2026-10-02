@@ -20,7 +20,8 @@ datadogRum.init({
   applicationId: '6efd3722-af0a-4070-994c-0e87076d4814',
   clientToken: 'pub2a7307cdec74934cacb411a193f632f8',
   site: 'datad0g.com',
-  service: 'electron-playground',
+  service: 'playground-renderer',
+  version: __PLAYGROUND_VERSION__,
   env: 'dev',
   sessionSampleRate: 100,
   sessionReplaySampleRate: 100,
@@ -37,9 +38,9 @@ datadogRum.init({
 datadogLogs.init({
   clientToken: 'pub2a7307cdec74934cacb411a193f632f8',
   site: 'datad0g.com',
-  service: 'electron-playground',
+  service: 'playground-renderer',
   env: 'dev',
-  version: '1.0.0',
+  version: __PLAYGROUND_VERSION__,
   sessionSampleRate: 100,
   forwardErrorsToLogs: true,
 });
