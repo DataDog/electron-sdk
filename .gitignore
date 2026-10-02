@@ -36,3 +36,6 @@ logs/
 
 # macOS Finder metadata
 .DS_Store
+
+# Windows container artifacts
+windows-test-artifacts/

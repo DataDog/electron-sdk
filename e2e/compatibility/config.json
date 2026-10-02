@@ -1,17 +1,4 @@
 {
-  "environments": [
-    {
-      "id": "linux",
-      "runnerTags": ["arch:amd64"],
-      "image": "$CI_IMAGE",
-      "testCommandPrefix": ["xvfb-run", "-a"]
-    },
-    {
-      "id": "macos",
-      "runnerTags": ["macos:sequoia-arm64", "specific:true"],
-      "testCommandPrefix": []
-    }
-  ],
   "targets": [
     {
       "id": "electron-39",

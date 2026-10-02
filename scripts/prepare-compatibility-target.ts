@@ -28,6 +28,9 @@ runMain(async () => {
     .withLogs()
     .run();
 
+  // Reject missing platform-specific chunks before installing or packaging any test apps.
+  command`node scripts/check-package-content.ts`.withCurrentWorkingDirectory(root).withLogs().run();
+
   printLog(`Prefetching Electron ${target.version} for ${process.platform}/${process.arch}`);
   await downloadArtifact({
     version: target.version,
