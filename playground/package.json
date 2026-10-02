@@ -10,6 +10,7 @@
     "build:watch": "node ../scripts/playground/build.ts --watch",
     "start": "yarn build && electron .",
     "dev": "yarn build && concurrently \"yarn build:watch\" \"electron .\"",
+    "upload-sourcemaps": "node ../scripts/playground/upload-sourcemaps.ts",
     "test": "yarn build && playwright test -c test/playwright.config.ts"
   },
   "dependencies": {
@@ -18,6 +19,7 @@
     "@datadog/electron-sdk": "portal:.."
   },
   "devDependencies": {
+    "@datadog/datadog-ci": "5.24.1",
     "@playwright/test": "1.61.1",
     "@types/node": "25.9.5",
     "chokidar": "5.0.0",

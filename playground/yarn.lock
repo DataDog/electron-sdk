@@ -55,6 +55,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@datadog/datadog-ci@npm:5.24.1":
+  version: 5.24.1
+  resolution: "@datadog/datadog-ci@npm:5.24.1"
+  bin:
+    datadog-ci: dist/bundle.js
+  checksum: 10c0/337ebd0bcadde5705f1855da05a5006aaa4a07c398b234e7f08da7ca53e235d99fad8c8422fbeccdb310ea06d97ad3558755972523b78e349bc98fdc532aa8ba
+  languageName: node
+  linkType: hard
+
 "@datadog/electron-sdk@portal:..::locator=electron-sdk-playground%40workspace%3A.":
   version: 0.0.0-use.local
   resolution: "@datadog/electron-sdk@portal:..::locator=electron-sdk-playground%40workspace%3A."
@@ -1096,6 +1105,7 @@ __metadata:
   dependencies:
     "@datadog/browser-logs": "npm:7.14.0"
     "@datadog/browser-rum": "npm:7.14.0"
+    "@datadog/datadog-ci": "npm:5.24.1"
     "@datadog/electron-sdk": "portal:.."
     "@playwright/test": "npm:1.61.1"
     "@types/node": "npm:25.9.5"
