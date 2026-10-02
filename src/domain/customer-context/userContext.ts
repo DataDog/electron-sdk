@@ -1,14 +1,10 @@
-import { SKIPPED } from '@datadog/js-core/assembly';
-import { isEmptyObject } from '@datadog/browser-core';
-import {
-  ContextManager,
-  toSpanMeta,
-  initContextWithHistory,
-  type ContextHistory,
-  type PropertiesConfig,
-} from './contextManager';
-import { display } from '../../tools/display';
+import { timeStampNow } from '@datadog/js-core/time';
+import { ContextManager, type Context, type PropertiesConfig } from './contextManager';
 import type { FormatHooks } from '../../assembly';
+import type { ContextHistoryFactory } from '../tracking-consent';
+import { SESSION_TIME_OUT_DELAY } from '../session';
+import { registerContextHooks, type ContextHistory } from './registerContextHooks';
+import { display } from '../../tools/display';
 
 export interface UserInfo {
   id?: string;
@@ -33,23 +29,14 @@ export const USER_CONTEXT_HISTORY_FILE_NAME = '_dd_user_context_history';
  * Stores user information and injects it as `usr` into RUM events and `usr.*` tags into spans.
  */
 export class UserContext extends ContextManager<UserInfo> {
-  static init(hooks: FormatHooks): Promise<UserContext> {
-    return initContextWithHistory((history) => new UserContext(hooks, history), USER_CONTEXT_HISTORY_FILE_NAME);
+  static async init(hooks: FormatHooks, histories: ContextHistoryFactory): Promise<UserContext> {
+    const history = await histories.create<Context>(USER_CONTEXT_HISTORY_FILE_NAME, SESSION_TIME_OUT_DELAY);
+    return new UserContext(hooks, history);
   }
 
-  constructor(hooks: FormatHooks, history?: ContextHistory) {
-    super('user', USER_PROPERTIES, history);
-    this.registerRumHook(hooks, 'usr');
-    hooks.registerLogs(({ startTime }) => {
-      const context = this.getContext(startTime);
-      if (isEmptyObject(context)) return SKIPPED;
-      return { usr: context };
-    });
-    hooks.registerSpan(({ startTime }) => {
-      const context = this.getContext(startTime);
-      if (isEmptyObject(context)) return SKIPPED;
-      return { meta: toSpanMeta('usr', context) };
-    });
+  constructor(hooks: FormatHooks, history: ContextHistory) {
+    super('user', USER_PROPERTIES, (context) => history.set(context, timeStampNow()));
+    registerContextHooks(hooks, history, () => this.getContext(), 'usr');
   }
 
   /**

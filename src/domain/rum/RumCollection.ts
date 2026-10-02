@@ -7,6 +7,7 @@ import { VitalCollection } from './vital';
 import { OperationCollection } from './operation';
 import { ViewCollection } from './view';
 import { ExecutionContextCollection } from './executionContext';
+import type { ContextHistoryFactory, TrackingConsentManager } from '../tracking-consent';
 
 export class RumCollection {
   private constructor(
@@ -20,12 +21,13 @@ export class RumCollection {
     eventManager: EventManager,
     hooks: FormatHooks,
     sessionManager: SessionManager,
-    configuration: Configuration
+    configuration: Configuration,
+    histories: ContextHistoryFactory,
+    trackingConsentManager: TrackingConsentManager
   ): Promise<RumCollection> {
     const viewCollection: ViewCollection | ExecutionContextCollection = configuration.enableExecutionContext
-      ? await ExecutionContextCollection.start(eventManager, hooks, sessionManager)
-      : await ViewCollection.start(eventManager, hooks);
-
+      ? await ExecutionContextCollection.start(eventManager, hooks, sessionManager, histories, trackingConsentManager)
+      : await ViewCollection.start(eventManager, hooks, histories, trackingConsentManager);
     const errorCollection = new ErrorCollection(eventManager);
     const vitalCollection = new VitalCollection(eventManager);
     const operationCollection = new OperationCollection(eventManager);

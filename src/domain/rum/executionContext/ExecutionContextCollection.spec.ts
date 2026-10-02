@@ -23,6 +23,7 @@ import { EventManager, EventKind, EventFormat, EventSource, type RawRumEvent } f
 import { createFormatHooks } from '../../../assembly';
 import type { SessionManager } from '../../session';
 import type { RawRumExecutionContext } from '../types';
+import { ContextHistoryFactory, TrackingConsentManager } from '../../tracking-consent';
 
 vi.mock('node:fs/promises');
 const mfs = mockFs();
@@ -33,6 +34,7 @@ describe('ExecutionContextCollection', () => {
   let rawRumEvents: RawRumEvent[];
   let sessionManager: SessionManager;
   let collection: ExecutionContextCollection;
+  let histories: ContextHistoryFactory;
   let webContentsCreatedHandler: (event: unknown, webContents: unknown) => void;
 
   beforeEach(async () => {
@@ -58,10 +60,13 @@ describe('ExecutionContextCollection', () => {
       return app;
     });
 
-    collection = await ExecutionContextCollection.start(eventManager, hooks, sessionManager);
+    const consent = new TrackingConsentManager();
+    histories = new ContextHistoryFactory(consent, '/mock/user/data');
+    collection = await ExecutionContextCollection.start(eventManager, hooks, sessionManager, histories, consent);
   });
 
   afterEach(() => {
+    histories.stop();
     vi.useRealTimers();
     vi.clearAllMocks();
     mfs.reset();

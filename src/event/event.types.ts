@@ -15,6 +15,8 @@ export interface RawRumEvent {
   kind: typeof EventKind.RAW;
   format: typeof EventFormat.RUM;
   data: RawRumData;
+  /** Keeps a cumulative period authorized when its terminal update follows a consent change. */
+  storageConsent?: 'granted';
   startTime?: TimeStamp;
 }
 
@@ -56,6 +58,7 @@ export interface ServerMainRumEvent {
   track: typeof EventTrack.RUM;
   source: typeof EventSource.MAIN;
   data: MainRumEvent;
+  storageConsent?: 'granted';
 }
 
 export type ServerRumEvent = ServerRendererRumEvent | ServerMainRumEvent;
@@ -110,11 +113,15 @@ export interface EndUserActivityEvent {
 export interface SessionExpiredEvent {
   kind: typeof EventKind.LIFECYCLE;
   lifecycle: typeof LifecycleKind.SESSION_EXPIRED;
+  /** Shared boundary for session and view histories when expiry follows a consent change. */
+  time?: TimeStamp;
 }
 
 export interface SessionRenewEvent {
   kind: typeof EventKind.LIFECYCLE;
   lifecycle: typeof LifecycleKind.SESSION_RENEW;
+  /** Shared boundary for session and view histories when renewal follows a consent change. */
+  time?: TimeStamp;
 }
 
 export type LifecycleEvent = EndUserActivityEvent | SessionExpiredEvent | SessionRenewEvent;

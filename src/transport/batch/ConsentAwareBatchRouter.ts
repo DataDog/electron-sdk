@@ -41,7 +41,7 @@ export class ConsentAwareBatchRouter {
 
   /** Selects the store now, so asynchronous creation cannot assign an event to a later consent period. */
   post(event: ServerEvent): void {
-    if (this.consentManager.get() === 'granted') {
+    if (('storageConsent' in event && event.storageConsent === 'granted') || this.consentManager.get() === 'granted') {
       this.grantedProducer.post(event);
     } else if (this.pendingStore) {
       this.pendingStore.post(event);
