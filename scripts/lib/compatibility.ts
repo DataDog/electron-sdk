@@ -6,14 +6,7 @@ export interface CompatibilityTarget {
   dependency: string;
   version: string;
 }
-export interface CompatibilityEnvironment {
-  id: string;
-  runnerTags: string[];
-  image?: string;
-  testCommandPrefix: string[];
-}
 export interface CompatibilityConfig {
-  environments: CompatibilityEnvironment[];
   targets: CompatibilityTarget[];
 }
 

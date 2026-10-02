@@ -4,7 +4,7 @@ import path from 'node:path';
 import { expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { loadCompatibilityConfig, materializeApp } from './compatibility.ts';
-import { generateCompatibilityCi, parseCompatibilityCiFilters } from './compatibilityCi.ts';
+import { environments, generateCompatibilityCi, parseCompatibilityCiFilters } from './compatibilityCi.ts';
 
 it.each(['electron', 'electron-nightly'])(
   'materializes %s without changing the template or copying build artifacts',
@@ -46,8 +46,8 @@ it('generates structured jobs for every platform and preserves failure reporting
   const config = loadCompatibilityConfig();
   const pipeline = parse(generateCompatibilityCi(config));
   expect(pipeline.stages).toEqual(['test']);
-  expect(Object.keys(pipeline)).toHaveLength(1 + config.targets.length * config.environments.length);
-  for (const environment of config.environments) {
+  expect(Object.keys(pipeline)).toHaveLength(1 + config.targets.length * environments.length);
+  for (const environment of environments) {
     for (const target of config.targets) {
       const job = pipeline[`${environment.id}:${target.id}`];
       expect(job).toMatchObject({ stage: 'test', interruptible: true, timeout: '2h', tags: environment.runnerTags });
@@ -108,15 +108,17 @@ it('filters jobs and rejects unknown CI selections', () => {
   expect(() => parseCompatibilityCiFilters(config, { DD_ELECTRON_COMPATIBILITY_TARGETS: '../unknown' })).toThrow(
     'Unknown compatibility selection'
   );
+  expect(() => parseCompatibilityCiFilters(config, { DD_ELECTRON_COMPATIBILITY_ENVIRONMENTS: 'unknown' })).toThrow(
+    'Unknown compatibility selection'
+  );
 });
 
 it('preserves strings requiring YAML quoting in both YAML versions', () => {
   const config = loadCompatibilityConfig();
   const environment = {
-    id: 'linux',
+    ...environments[0],
     runnerTags: ['on', 'true', '001', "runner's tag: #1"],
     image: 'registry.example/image:tag #literal',
-    testCommandPrefix: [],
   };
   const yaml = generateCompatibilityCi(config, { environments: [environment], targets: [config.targets[0]] });
   for (const version of ['1.1', '1.2'] as const) {

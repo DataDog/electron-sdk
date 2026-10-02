@@ -44,6 +44,8 @@ Optional comma-separated filters limit the matrix:
 - `DD_ELECTRON_COMPATIBILITY_TARGETS=electron-41`
 
 Generate the child pipeline locally with `yarn test:compatibility:ci:generate`.
+Electron targets are defined in `config.json`; runner tags, images, and platform-specific jobs are
+defined together in `scripts/lib/compatibilityCi.ts`.
 The complete matrix contains 21 jobs: seven Electron targets on three platforms.
 Linux uses the existing CI image with Xvfb. macOS uses the Sequoia ARM64 runner and a job-local npm
 cache to avoid permissions on the runner's shared cache. Logs, Playwright results and target metadata

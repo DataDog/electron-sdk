@@ -50,9 +50,12 @@ try {
         'run', '--name', $containerName, '--isolation', $Isolation, '--memory', $Memory,
         '--mount', "type=bind,source=$checkout,target=C:\source,readonly",
         '--mount', "type=bind,source=$artifacts,target=C:\artifacts",
-        '--env', "DD_ELECTRON_TEST_SUITE=$Suite", '--env', "DD_ELECTRON_COMPATIBILITY_TARGET=$Target",
+        '--env', "DD_ELECTRON_TEST_SUITE=$Suite",
         '--env', 'DEBUG='
     )
+    if ($Suite -eq 'compatibility') {
+        $dockerArguments += @('--env', "DD_ELECTRON_COMPATIBILITY_TARGET=$Target")
+    }
     # Pass only the settings needed by this job, rather than the runner's complete environment.
     foreach ($name in @('CI', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY')) {
         if (Test-Path "Env:$name") { $dockerArguments += @('--env', $name) }

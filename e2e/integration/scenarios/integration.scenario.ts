@@ -3,7 +3,7 @@
  *
  * Each test runs once per Playwright project (app × mode, including configured variants).
  */
-import { dirname, join } from 'node:path';
+import { dirname, join, posix, sep } from 'node:path';
 import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -61,7 +61,7 @@ test.describe('electron-builder runtime dependency packaging @integration', () =
     const { listPackage } = requireFromApp('@electron/asar') as {
       listPackage: (archivePath: string, options: { isPack: boolean }) => string[];
     };
-    const archiveEntries = listPackage(archivePath, { isPack: false }).map((entry) => entry.split('\\').join('/'));
+    const archiveEntries = listPackage(archivePath, { isPack: false }).map((entry) => entry.split(sep).join(posix.sep));
 
     if (app === 'electron-builder-vite') {
       expect(archiveEntries).toContain('/node_modules/@datadog/electron-sdk/package.json');

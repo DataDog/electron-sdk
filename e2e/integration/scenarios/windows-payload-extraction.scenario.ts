@@ -27,16 +27,18 @@ test.describe('Windows unsigned payload extraction @integration @windows', () =>
     try {
       const extractionRoot = createLongExtractionRoot(temporaryDirectory);
 
-      // The default plugin copy must reproduce the PR's loose dd-trace path-length hazard.
-      const defaultAppDirectory = getIntegrationAppDirectory(app, null);
-      const defaultOutput = dirname(findDevMainScript(defaultAppDirectory, null));
-      const defaultFiles = await listPayloadFiles(defaultOutput);
-      const overlongDependencies = defaultFiles.filter(
+      // Reproduce the loose dd-trace MAX_PATH hazard from https://github.com/DataDog/electron-sdk/pull/182.
+      // The fixture explicitly enables copying, preserving this check across the default change in
+      // https://github.com/DataDog/electron-sdk/pull/216.
+      const pluginCopyAppDirectory = getIntegrationAppDirectory(app, null);
+      const pluginCopyOutput = dirname(findDevMainScript(pluginCopyAppDirectory, null));
+      const pluginCopyFiles = await listPayloadFiles(pluginCopyOutput);
+      const overlongDependencies = pluginCopyFiles.filter(
         (file) =>
           file.startsWith(join('node_modules', 'dd-trace') + sep) &&
           join(extractionRoot, file).length >= LEGACY_WINDOWS_MAX_PATH
       );
-      expect(overlongDependencies.length, 'Default copy must exceed MAX_PATH at this extraction root').toBeGreaterThan(
+      expect(overlongDependencies.length, 'Plugin copy must exceed MAX_PATH at this extraction root').toBeGreaterThan(
         0
       );
 
