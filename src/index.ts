@@ -57,13 +57,14 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   userContext = await UserContext.init(hooks, histories);
   accountContext = await AccountContext.init(hooks, histories);
   setGlobalContextApi(await GlobalContext.init(hooks, histories));
+  // Assemble telemetry before transport timers can report startup errors.
+  new MainAssembly(eventManager, hooks, new BeforeSend(config.beforeSendRum));
   startTelemetry(eventManager, config);
   // Prepare stores before session renewal can emit a new consent period's opening events.
   // All tracks must also be ready before RendererPipeline starts receiving IPC events.
   transport = await Transport.create(config, eventManager, trackingConsentManager);
   sessionManager = await SessionManager.start(eventManager, hooks, config, histories, trackingConsentManager);
 
-  new MainAssembly(eventManager, hooks, new BeforeSend(config.beforeSendRum));
   new ProfilingCollection(eventManager, sessionManager, config, hooks);
   replayCollection = new ReplayCollection(eventManager, config, sessionManager, hooks);
 
