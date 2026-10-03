@@ -1,13 +1,9 @@
-import { SKIPPED } from '@datadog/js-core/assembly';
-import { isEmptyObject } from '@datadog/browser-core';
-import {
-  ContextManager,
-  toSpanMeta,
-  initContextWithHistory,
-  type ContextHistory,
-  type PropertiesConfig,
-} from './contextManager';
+import { timeStampNow } from '@datadog/js-core/time';
+import { ContextManager, type Context, type PropertiesConfig } from './contextManager';
 import type { FormatHooks } from '../../assembly';
+import type { ContextHistoryFactory } from '../tracking-consent';
+import { SESSION_TIME_OUT_DELAY } from '../session';
+import { registerContextHooks, type ContextHistory } from './registerContextHooks';
 
 export interface AccountInfo {
   id: string;
@@ -26,22 +22,13 @@ export const ACCOUNT_CONTEXT_HISTORY_FILE_NAME = '_dd_account_context_history';
  * Stores account information and injects it as `account` into RUM events and `account.*` tags into spans.
  */
 export class AccountContext extends ContextManager<AccountInfo> {
-  static init(hooks: FormatHooks): Promise<AccountContext> {
-    return initContextWithHistory((history) => new AccountContext(hooks, history), ACCOUNT_CONTEXT_HISTORY_FILE_NAME);
+  static async init(hooks: FormatHooks, histories: ContextHistoryFactory): Promise<AccountContext> {
+    const history = await histories.create<Context>(ACCOUNT_CONTEXT_HISTORY_FILE_NAME, SESSION_TIME_OUT_DELAY);
+    return new AccountContext(hooks, history);
   }
 
-  constructor(hooks: FormatHooks, history?: ContextHistory) {
-    super('account', ACCOUNT_PROPERTIES, history);
-    this.registerRumHook(hooks, 'account');
-    hooks.registerLogs(({ startTime }) => {
-      const context = this.getContext(startTime);
-      if (isEmptyObject(context)) return SKIPPED;
-      return { account: context };
-    });
-    hooks.registerSpan(({ startTime }) => {
-      const context = this.getContext(startTime);
-      if (isEmptyObject(context)) return SKIPPED;
-      return { meta: toSpanMeta('account', context) };
-    });
+  constructor(hooks: FormatHooks, history: ContextHistory) {
+    super('account', ACCOUNT_PROPERTIES, (context) => history.set(context, timeStampNow()));
+    registerContextHooks(hooks, history, () => this.getContext(), 'account');
   }
 }

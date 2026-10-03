@@ -84,7 +84,7 @@ export class ProfilingCollection {
   // session never produces profiles, so its quota is irrelevant).
   private maybeCheckQuota(): void {
     const session = this.sessionManager.getSession();
-    if (this.isProfilingSampled(session.id)) {
+    if (session.status === 'active' && this.isProfilingSampled(session.id)) {
       this.triggerQuotaCheck(session.id);
     }
   }

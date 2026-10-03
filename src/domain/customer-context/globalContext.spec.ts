@@ -3,7 +3,7 @@ import { type TimeStamp } from '@datadog/js-core/time';
 import { EventSource } from '../../event';
 import { createFormatHooks, type FormatHooks, type RumEventType } from '../../assembly';
 import { GlobalContext } from './globalContext';
-import type { ContextHistory } from './contextManager';
+import type { ContextHistory } from './registerContextHooks';
 
 const T0 = 0 as TimeStamp;
 
@@ -17,7 +17,10 @@ describe('GlobalContext', () => {
 
   beforeEach(() => {
     hooks = createFormatHooks();
-    globalContext = new GlobalContext(hooks);
+    globalContext = new GlobalContext(
+      hooks,
+      createHistory(() => globalContext.getContext())
+    );
   });
 
   describe('when no context is set', () => {
@@ -188,10 +191,7 @@ describe('GlobalContext', () => {
 
 function createHistory(find: ContextHistory['find']): ContextHistory {
   return {
-    add: vi.fn(),
-    closeActive: vi.fn(),
-    closeAndAdd: vi.fn(),
-    pruneAndPersist: vi.fn(),
+    set: vi.fn(),
     find,
   };
 }

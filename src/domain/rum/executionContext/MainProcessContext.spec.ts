@@ -9,14 +9,15 @@ vi.mock('../../../tools/display', () => ({
 }));
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { timeStampNow } from '@datadog/js-core/time';
+import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED } from '@datadog/js-core/assembly';
-import { MainProcessContext } from './MainProcessContext';
+import { MainProcessContext, MAIN_EXECUTION_CONTEXT_HISTORY_FILE_NAME } from './MainProcessContext';
 import { PROCESS_UPDATE_INTERVAL } from './executionContext.constants';
 import { EventManager, EventKind, EventFormat, EventSource, LifecycleKind, type RawRumEvent } from '../../../event';
 import { createFormatHooks, type FormatHooks } from '../../../assembly';
 import type { SessionManager } from '../../session';
 import type { RawRumExecutionContext, RawRumView } from '../types';
+import { ContextHistoryFactory, TrackingConsentManager } from '../../tracking-consent';
 
 vi.mock('node:fs/promises');
 const mfs = mockFs();
@@ -28,9 +29,13 @@ describe('MainProcessContext', () => {
   let currentSessionId: string;
   let sessionManager: SessionManager;
   let context: MainProcessContext;
+  let trackingConsentManager: TrackingConsentManager;
+  let histories: ContextHistoryFactory;
 
   beforeEach(async () => {
     vi.useFakeTimers();
+    trackingConsentManager = new TrackingConsentManager();
+    histories = new ContextHistoryFactory(trackingConsentManager, '/mock/user/data');
     mfs.readFile.mockRejectedValue(new Error('ENOENT'));
     mfs.writeFile.mockResolvedValue(undefined);
 
@@ -45,17 +50,18 @@ describe('MainProcessContext', () => {
     currentSessionId = 'session-1';
     sessionManager = { getSession: () => ({ id: currentSessionId, status: 'tracked' }) } as unknown as SessionManager;
 
-    context = await MainProcessContext.start(eventManager, hooks, sessionManager);
+    context = await MainProcessContext.start(eventManager, hooks, sessionManager, histories, trackingConsentManager);
   });
 
   afterEach(() => {
+    histories.stop();
     vi.useRealTimers();
     vi.clearAllMocks();
     mfs.reset();
     context.stop();
   });
 
-  it('emits a view and an execution_context event on start, cross-tagged with each other', () => {
+  it('emits a view and an execution_context event on start, cross-tagged with each other', async () => {
     expect(rawRumEvents).toHaveLength(2);
 
     const view = rawRumEvents.find((e) => e.data.type === 'view')!;
@@ -79,6 +85,13 @@ describe('MainProcessContext', () => {
         source: EventSource.MAIN,
       })
     ).toMatchObject({ view: { id: 'session-1' } });
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mfs.writeFile).toHaveBeenCalledWith(
+      `/mock/user/data/${MAIN_EXECUTION_CONTEXT_HISTORY_FILE_NAME}`,
+      expect.stringContaining(contextData.execution_context.id),
+      'utf-8'
+    );
   });
 
   it('does not tag an execution_context event with its own execution_context field', () => {
@@ -143,6 +156,7 @@ describe('MainProcessContext', () => {
     // SESSION_EXPIRED actually fires (after the clock has already moved).
     expect(view.startTime).toBe(originalStartTime);
     expect(executionContext.startTime).toBe(originalStartTime);
+    expect(rawRumEvents.map((event) => event.storageConsent)).toEqual(['granted', 'granted']);
   });
 
   it('closes the view and execution_context histories on SESSION_EXPIRED, so telemetry during the gap resolves to neither', () => {
@@ -186,6 +200,101 @@ describe('MainProcessContext', () => {
     expect(rawRumEvents).toHaveLength(0);
   });
 
+  it('creates no state or heartbeat until initially denied consent becomes enabled', async () => {
+    context.stop();
+    trackingConsentManager.update('not-granted');
+    hooks = createFormatHooks();
+    rawRumEvents.length = 0;
+    context = await MainProcessContext.start(eventManager, hooks, sessionManager, histories, trackingConsentManager);
+
+    eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+    vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+    expect(rawRumEvents).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
+
+    const acceptedAt = timeStampNow();
+    trackingConsentManager.update('granted');
+
+    expect(rawRumEvents).toHaveLength(2);
+    expect(rawRumEvents.map((event) => event.startTime)).toEqual([acceptedAt, acceptedAt]);
+    rawRumEvents.length = 0;
+    vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+    expect(rawRumEvents).toHaveLength(1);
+  });
+
+  it.each(['pending', 'granted'] as const)('starts a distinct cumulative period when consent becomes %s', (next) => {
+    if (next === 'granted') trackingConsentManager.update('pending');
+    const previousView = rawRumEvents.filter((event) => event.data.type === 'view').slice(-1)[0].data as RawRumView;
+    const previousContext = rawRumEvents.filter((event) => event.data.type === 'execution_context').slice(-1)[0]
+      .data as RawRumExecutionContext;
+    rawRumEvents.length = 0;
+    vi.advanceTimersByTime(10);
+    const boundary = timeStampNow();
+
+    trackingConsentManager.update(next);
+
+    expect(rawRumEvents).toHaveLength(4);
+    expect(rawRumEvents.map((event) => event.storageConsent)).toEqual(
+      next === 'pending' ? ['granted', 'granted', undefined, undefined] : [undefined, undefined, undefined, undefined]
+    );
+    expect(rawRumEvents[0].data).toMatchObject({
+      view: { id: previousView.view.id, is_active: false, time_spent: 10e6 },
+    });
+    expect(rawRumEvents[1].data).toMatchObject({
+      execution_context: { id: previousContext.execution_context.id, duration: 10e6 },
+    });
+    const nextView = rawRumEvents[2].data as RawRumView;
+    const nextContext = rawRumEvents[3].data as RawRumExecutionContext;
+    expect(nextView.view.id).not.toBe(previousView.view.id);
+    expect(nextView.view.id).not.toBe(currentSessionId);
+    expect(nextContext.execution_context.id).not.toBe(previousContext.execution_context.id);
+    expect(nextView._dd.document_version).toBe(1);
+    expect(nextContext.execution_context.duration).toBe(0);
+    expect(hooks.triggerRum({ eventType: 'error', source: EventSource.MAIN, startTime: boundary })).toMatchObject({
+      view: { id: nextView.view.id },
+      execution_context: { id: nextContext.execution_context.id },
+    });
+
+    rawRumEvents.length = 0;
+    vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+    expect(rawRumEvents).toHaveLength(1);
+  });
+
+  it('closes at the supplied session boundary and ignores repeated expiry', () => {
+    const boundary = (timeStampNow() + 10) as TimeStamp;
+    vi.advanceTimersByTime(20);
+    rawRumEvents.length = 0;
+    eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED, time: boundary });
+    eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+
+    expect(rawRumEvents).toHaveLength(2);
+    expect(rawRumEvents[0].data).toMatchObject({ view: { time_spent: 10e6, is_active: false } });
+    expect(rawRumEvents[1].data).toMatchObject({ execution_context: { duration: 10e6 } });
+  });
+
+  it('does not rotate twice when an earlier consent observer renews the session', async () => {
+    context.stop();
+    hooks = createFormatHooks();
+    trackingConsentManager = new TrackingConsentManager();
+    histories = new ContextHistoryFactory(trackingConsentManager, '/mock/user/data');
+    trackingConsentManager.subscribe((change) => {
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW, time: change.time });
+    });
+    context = await MainProcessContext.start(eventManager, hooks, sessionManager, histories, trackingConsentManager);
+    eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+    rawRumEvents.length = 0;
+
+    trackingConsentManager.update('pending');
+
+    expect(rawRumEvents).toHaveLength(2);
+    expect(
+      rawRumEvents.map((event) => (event.data as RawRumView | RawRumExecutionContext)._dd.document_version)
+    ).toEqual([1, 1]);
+    rawRumEvents.length = 0;
+    vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+    expect(rawRumEvents).toHaveLength(1);
+  });
+
   it('resolves execution_context by time even after a SESSION_RENEW, matching what a replayed crash file needs', () => {
     const originalEvent = rawRumEvents.find((e) => e.data.type === 'execution_context')!;
     const originalStartTime = originalEvent.startTime!;
@@ -207,6 +316,31 @@ describe('MainProcessContext', () => {
     ).toMatchObject({ execution_context: { id: renewedContextId } });
   });
 
+  it('keeps both pending histories off disk and discards their RUM and span attribution on refusal', async () => {
+    vi.advanceTimersByTime(10);
+    const pendingStart = timeStampNow();
+    trackingConsentManager.update('pending');
+    await vi.advanceTimersByTimeAsync(0);
+    mfs.writeFile.mockClear();
+
+    currentSessionId = 'pending-session';
+    eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+    const pendingEvent = rawRumEvents.filter((event) => event.data.type === 'execution_context').slice(-1)[0];
+    const pendingId = (pendingEvent.data as RawRumExecutionContext).execution_context.id;
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(hooks.triggerRum({ eventType: 'error', startTime: pendingStart, source: EventSource.MAIN })).toMatchObject({
+      view: { id: 'pending-session' },
+      execution_context: { id: pendingId },
+    });
+    expect(mfs.writeFile).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(10);
+    trackingConsentManager.update('not-granted');
+    expect(hooks.triggerRum({ eventType: 'error', startTime: pendingStart, source: EventSource.MAIN })).toBe(DISCARDED);
+    expect(hooks.triggerSpan({ startTime: pendingStart, source: EventSource.MAIN })).toBe(DISCARDED);
+  });
+
   describe('with a pre-existing history file left open by a previous run', () => {
     it('does not tag the new pair with the stale entry', async () => {
       context.stop();
@@ -225,7 +359,13 @@ describe('MainProcessContext', () => {
         getSession: () => ({ id: 'session-new', status: 'tracked' }),
       } as unknown as SessionManager;
 
-      const localContext = await MainProcessContext.start(localEventManager, localHooks, localSessionManager);
+      const localContext = await MainProcessContext.start(
+        localEventManager,
+        localHooks,
+        localSessionManager,
+        histories,
+        trackingConsentManager
+      );
 
       const newContextEvent = localRawRumEvents.find((e) => e.data.type === 'execution_context')!;
       const newContextId = (newContextEvent.data as RawRumExecutionContext).execution_context.id;

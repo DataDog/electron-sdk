@@ -16,6 +16,7 @@ import * as Sampler from '../../tools/Sampler';
 import { SESSION_EXPIRATION_DELAY, SessionManager } from './SessionManager';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
 import { isCurrentSessionSampled } from '../../common';
+import { ContextHistoryFactory, TrackingConsentManager } from '../tracking-consent';
 
 const T0 = 0 as TimeStamp;
 
@@ -28,11 +29,15 @@ describe('sessionManager', () => {
   let eventManager: EventManager;
   let hooks: FormatHooks;
   let sessionManager: SessionManager;
+  let trackingConsentManager: TrackingConsentManager;
+  let histories: ContextHistoryFactory;
   let lifecycleEvents: string[];
 
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
+    trackingConsentManager = new TrackingConsentManager();
+    histories = new ContextHistoryFactory(trackingConsentManager, '/mock/user/data');
     mfs.writeFile.mockResolvedValue(undefined);
     eventManager = new EventManager();
     lifecycleEvents = [];
@@ -44,15 +49,16 @@ describe('sessionManager', () => {
   });
 
   afterEach(() => {
+    histories.stop();
+    sessionManager.stop();
     vi.useRealTimers();
     vi.clearAllMocks();
     mfs.reset();
-    sessionManager.stop();
   });
 
   describe('session creation', () => {
     it('creates new session on start', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), histories, trackingConsentManager);
 
       expect(sessionManager.getSession().id).toMatch(/^[0-9a-f-]+$/);
       expect(sessionManager.getSession().status).toBe('active');
@@ -63,12 +69,14 @@ describe('sessionManager', () => {
 
     it('closes previous session history entry on new launch', async () => {
       vi.setSystemTime(1000);
+      histories.stop();
+      histories = new ContextHistoryFactory(trackingConsentManager, '/mock/user/data');
       const now = Date.now();
       mfs.readFile.mockResolvedValueOnce(
         JSON.stringify([{ startTime: 0, endTime: null, value: 'previous-session-id' }])
       ); // _dd_session_history
 
-      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), histories, trackingConsentManager);
 
       const newSessionId = sessionManager.getSession().id;
       expect(newSessionId).not.toBe('previous-session-id');
@@ -89,7 +97,7 @@ describe('sessionManager', () => {
 
   describe('session expiration', () => {
     it('expires session after inactivity delay', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), histories, trackingConsentManager);
 
       expect(sessionManager.getSession().status).toBe('active');
 
@@ -101,7 +109,7 @@ describe('sessionManager', () => {
     });
 
     it('resets inactivity timer on activity', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), histories, trackingConsentManager);
 
       const sessionId = sessionManager.getSession().id;
 
@@ -122,7 +130,7 @@ describe('sessionManager', () => {
     });
 
     it('expires session after session timeout regardless of activity', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), histories, trackingConsentManager);
 
       const sessionId = sessionManager.getSession().id;
       expect(sessionId).toBeDefined();
@@ -151,7 +159,7 @@ describe('sessionManager', () => {
     });
 
     it('creates new session on activity when expired', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), histories, trackingConsentManager);
 
       const originalSessionId = sessionManager.getSession().id;
       expect(sessionManager.getSession().status).toBe('active');
@@ -178,7 +186,7 @@ describe('sessionManager', () => {
 
   describe('expire', () => {
     it('sets session status to expired and clears timers', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), histories, trackingConsentManager);
 
       expect(sessionManager.getSession().status).toBe('active');
 
@@ -189,7 +197,7 @@ describe('sessionManager', () => {
     });
 
     it('emits the expiration event only once', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), histories, trackingConsentManager);
 
       sessionManager.expire();
       sessionManager.expire();
@@ -200,14 +208,14 @@ describe('sessionManager', () => {
 
   describe('hook registration', () => {
     it('RUM hook returns session id immediately after start()', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), histories, trackingConsentManager);
 
       const result = hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN });
       expect(result).toMatchObject({ session: { id: sessionManager.getSession().id } });
     });
 
     it('telemetry hook returns session id immediately after start()', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), histories, trackingConsentManager);
 
       const result = hooks.triggerTelemetry({ startTime: T0, source: EventSource.MAIN });
       expect(result).toMatchObject({ session: { id: sessionManager.getSession().id } });
@@ -216,7 +224,7 @@ describe('sessionManager', () => {
 
   describe('getSession', () => {
     it('should not allow to mutate the current session', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), histories, trackingConsentManager);
 
       const session = sessionManager.getSession();
       session.id = 'new-id';
@@ -225,9 +233,168 @@ describe('sessionManager', () => {
     });
   });
 
+  describe('tracking consent', () => {
+    it('starts denied without a tracked session or timers and ignores activity', async () => {
+      trackingConsentManager.update('not-granted');
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), histories, trackingConsentManager);
+      const initialSession = sessionManager.getSession();
+
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.END_USER_ACTIVITY });
+
+      expect(initialSession.status).toBe('expired');
+      expect(sessionManager.getSession()).toEqual(initialSession);
+      expect(sessionManager.getTrackedSessionId()).toBeUndefined();
+      expect(isCurrentSessionSampled()).toBe(false);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(lifecycleEvents).not.toContain(LifecycleKind.SESSION_RENEW);
+    });
+
+    it('starts an active tracked session while pending', async () => {
+      trackingConsentManager.update('pending');
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), histories, trackingConsentManager);
+
+      expect(sessionManager.getSession().status).toBe('active');
+      expect(sessionManager.getTrackedSessionId()).toBe(sessionManager.getSession().id);
+      expect(isCurrentSessionSampled()).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(SESSION_EXPIRATION_DELAY);
+
+      expect(sessionManager.getSession().status).toBe('expired');
+    });
+
+    it('preserves an active session and its inactivity deadline between granted and pending', async () => {
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), histories, trackingConsentManager);
+      const initialSession = sessionManager.getSession();
+
+      await vi.advanceTimersByTimeAsync(SESSION_EXPIRATION_DELAY - 10);
+      trackingConsentManager.update('pending');
+      trackingConsentManager.update('granted');
+
+      expect(sessionManager.getSession()).toEqual(initialSession);
+      expect(lifecycleEvents).not.toContain(LifecycleKind.SESSION_RENEW);
+
+      await vi.advanceTimersByTimeAsync(10);
+
+      expect(sessionManager.getSession().status).toBe('expired');
+    });
+
+    it.each(['granted', 'pending'] as const)(
+      'expires on refusal and creates a fresh session when %s resumes',
+      async (consent) => {
+        sessionManager = await SessionManager.start(
+          eventManager,
+          hooks,
+          makeConfig(),
+          histories,
+          trackingConsentManager
+        );
+        const firstId = sessionManager.getSession().id;
+        vi.advanceTimersByTime(10);
+
+        trackingConsentManager.update('not-granted');
+        eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.END_USER_ACTIVITY });
+
+        expect(sessionManager.getSession()).toEqual({ id: firstId, status: 'expired' });
+        expect(sessionManager.getTrackedSessionId()).toBeUndefined();
+        expect(sessionManager.getTrackedSessionId(T0)).toBe(firstId);
+        expect(isCurrentSessionSampled()).toBe(false);
+        expect(vi.getTimerCount()).toBe(0);
+
+        vi.advanceTimersByTime(10);
+        trackingConsentManager.update(consent);
+        trackingConsentManager.update(consent);
+
+        expect(sessionManager.getSession().status).toBe('active');
+        expect(sessionManager.getSession().id).not.toBe(firstId);
+        expect(sessionManager.getTrackedSessionId()).toBe(sessionManager.getSession().id);
+        expect(sessionManager.getTrackedSessionId(15 as TimeStamp)).toBeUndefined();
+        expect(lifecycleEvents.filter((event) => event === LifecycleKind.SESSION_RENEW)).toHaveLength(1);
+      }
+    );
+
+    it.each(['granted', 'pending'] as const)(
+      'renews an expired %s session once when the other enabled state is selected',
+      async (initialConsent) => {
+        trackingConsentManager.update(initialConsent);
+        sessionManager = await SessionManager.start(
+          eventManager,
+          hooks,
+          makeConfig(),
+          histories,
+          trackingConsentManager
+        );
+        const firstId = sessionManager.getSession().id;
+        sessionManager.expire();
+
+        trackingConsentManager.update(initialConsent === 'granted' ? 'pending' : 'granted');
+        eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.END_USER_ACTIVITY });
+
+        expect(sessionManager.getSession().status).toBe('active');
+        expect(sessionManager.getSession().id).not.toBe(firstId);
+        expect(sessionManager.getTrackedSessionId()).toBe(sessionManager.getSession().id);
+        expect(lifecycleEvents.filter((event) => event === LifecycleKind.SESSION_RENEW)).toHaveLength(1);
+      }
+    );
+
+    it('does not restore a rejected pending session when refusal and grant share a timestamp', async () => {
+      trackingConsentManager.update('pending');
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), histories, trackingConsentManager);
+      const rejectedId = sessionManager.getSession().id;
+      vi.advanceTimersByTime(10);
+
+      trackingConsentManager.update('not-granted');
+      trackingConsentManager.update('granted');
+
+      expect(sessionManager.getSession().id).not.toBe(rejectedId);
+      expect(sessionManager.getTrackedSessionId(T0)).toBeUndefined();
+      expect(sessionManager.getTrackedSessionId()).toBe(sessionManager.getSession().id);
+      expect(lifecycleEvents).toEqual([LifecycleKind.SESSION_EXPIRED, LifecycleKind.SESSION_RENEW]);
+    });
+
+    it('uses consent transition timestamps even when earlier observers take time', async () => {
+      const subscription = trackingConsentManager.subscribe(() => vi.setSystemTime(Date.now() + 5));
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), histories, trackingConsentManager);
+      const notify = vi.spyOn(eventManager, 'notify');
+
+      vi.setSystemTime(100);
+      trackingConsentManager.update('not-granted');
+      vi.setSystemTime(200);
+      trackingConsentManager.update('granted');
+
+      expect(sessionManager.getTrackedSessionId(100 as TimeStamp)).toBeUndefined();
+      expect(sessionManager.getTrackedSessionId(200 as TimeStamp)).toBe(sessionManager.getSession().id);
+      expect(notify).toHaveBeenCalledWith({
+        kind: EventKind.LIFECYCLE,
+        lifecycle: LifecycleKind.SESSION_EXPIRED,
+        time: 100,
+      });
+      expect(notify).toHaveBeenCalledWith({
+        kind: EventKind.LIFECYCLE,
+        lifecycle: LifecycleKind.SESSION_RENEW,
+        time: 200,
+      });
+      subscription.unsubscribe();
+    });
+
+    it('releases its consent and activity subscriptions on stop', async () => {
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), histories, trackingConsentManager);
+      trackingConsentManager.update('not-granted');
+      const expiredSession = sessionManager.getSession();
+      lifecycleEvents.length = 0;
+      sessionManager.stop();
+
+      trackingConsentManager.update('granted');
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.END_USER_ACTIVITY });
+
+      expect(sessionManager.getSession()).toEqual(expiredSession);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(lifecycleEvents).not.toContain(LifecycleKind.SESSION_RENEW);
+    });
+  });
+
   describe('sessionSampleRate', () => {
     it('session is sampled when sampleRate is 100', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), histories, trackingConsentManager);
 
       expect(isCurrentSessionSampled()).toBe(true);
       // A sampled session is tracked, so getInternalContext()/correlation can resolve its id.
@@ -236,7 +403,13 @@ describe('sessionManager', () => {
     });
 
     it('session is not sampled when sampleRate is 0', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig({ sessionSampleRate: 0 }));
+      sessionManager = await SessionManager.start(
+        eventManager,
+        hooks,
+        makeConfig({ sessionSampleRate: 0 }),
+        histories,
+        trackingConsentManager
+      );
 
       expect(isCurrentSessionSampled()).toBe(false);
       // A non-sampled session is not tracked, so getInternalContext() resolves to undefined —
@@ -246,35 +419,37 @@ describe('sessionManager', () => {
     });
 
     it('getTrackedSessionId returns undefined once the session has expired', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), histories, trackingConsentManager);
       expect(sessionManager.getTrackedSessionId()).toBeDefined();
 
       await vi.advanceTimersByTimeAsync(SESSION_EXPIRATION_DELAY);
       expect(sessionManager.getSession().status).toBe('expired');
 
-      // The history entry is closed at the expiry timestamp and find() is inclusive of endTime,
-      // so the session stops being tracked once time moves past the close — matching how the
-      // RUM/span/telemetry hooks attribute boundary events (single source of truth).
-      await vi.advanceTimersByTimeAsync(1);
       expect(sessionManager.getTrackedSessionId()).toBeUndefined();
     });
 
     it('RUM hook returns session id when session is sampled', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), histories, trackingConsentManager);
 
       const result = hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN });
       expect(result).toMatchObject({ session: { id: sessionManager.getSession().id } });
     });
 
     it('RUM hook returns DISCARDED when session is not sampled', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig({ sessionSampleRate: 0 }));
+      sessionManager = await SessionManager.start(
+        eventManager,
+        hooks,
+        makeConfig({ sessionSampleRate: 0 }),
+        histories,
+        trackingConsentManager
+      );
 
       const result = hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN });
       expect(result).toBe(DISCARDED);
     });
 
     it('renewed session gets its own sampling decision', async () => {
-      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig());
+      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), histories, trackingConsentManager);
 
       await vi.advanceTimersByTimeAsync(SESSION_EXPIRATION_DELAY);
 
@@ -295,10 +470,9 @@ describe('sessionManager', () => {
         .mockReturnValueOnce(false) // session #2
         .mockReturnValueOnce(true); // session #3
 
-      // Events fall strictly inside each session's window (find() treats endTime as inclusive).
-      const DURING_FIRST = T0; // session #1: [0, EXPIRATION]
-      const DURING_SECOND = (SESSION_EXPIRATION_DELAY + 1) as TimeStamp; // session #2: (EXPIRATION, 2*EXPIRATION]
-      const DURING_THIRD = (2 * SESSION_EXPIRATION_DELAY + 1) as TimeStamp; // session #3: (2*EXPIRATION, ...]
+      const DURING_FIRST = T0;
+      const DURING_SECOND = (SESSION_EXPIRATION_DELAY + 1) as TimeStamp;
+      const DURING_THIRD = (2 * SESSION_EXPIRATION_DELAY + 1) as TimeStamp;
 
       const renewActivity = async () => {
         eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.END_USER_ACTIVITY });
@@ -307,7 +481,13 @@ describe('sessionManager', () => {
       const renewCount = () => lifecycleEvents.filter((e) => e === LifecycleKind.SESSION_RENEW).length;
 
       // --- Session #1 (sampled): RUM hook returns its id until expiration ---
-      sessionManager = await SessionManager.start(eventManager, hooks, makeConfig({ sessionSampleRate: 50 }));
+      sessionManager = await SessionManager.start(
+        eventManager,
+        hooks,
+        makeConfig({ sessionSampleRate: 50 }),
+        histories,
+        trackingConsentManager
+      );
       const firstId = sessionManager.getSession().id;
       expect(hooks.triggerRum({ eventType: 'view', startTime: DURING_FIRST, source: EventSource.MAIN })).toMatchObject({
         session: { id: firstId },

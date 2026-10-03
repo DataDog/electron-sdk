@@ -1,17 +1,16 @@
-import { app } from 'electron';
-import * as path from 'node:path';
 import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED, SKIPPED } from '@datadog/js-core/assembly';
 import type { FormatHooks } from '../../assembly';
-import { DiskValueHistory } from '../../tools/DiskValueHistory';
+import { type TrackingConsentHistory, type ContextHistoryFactory } from '../tracking-consent';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
 
 export const SESSION_HISTORY_FILE_NAME = '_dd_session_history';
 
+/** Enriches events with the session at capture time and persists only authorized history. */
 export class SessionContext {
-  private readonly history: DiskValueHistory<string>;
+  private readonly history: TrackingConsentHistory<string>;
 
-  private constructor(history: DiskValueHistory<string>, hooks: FormatHooks) {
+  private constructor(history: TrackingConsentHistory<string>, hooks: FormatHooks) {
     this.history = history;
 
     hooks.registerRum((params) => {
@@ -47,14 +46,17 @@ export class SessionContext {
     });
   }
 
-  static async init(hooks: FormatHooks, expireDelay = SESSION_TIME_OUT_DELAY): Promise<SessionContext> {
-    const filePath = path.join(app.getPath('userData'), SESSION_HISTORY_FILE_NAME);
-    const history = await DiskValueHistory.init<string>({ filePath, expireDelay });
+  static async init(
+    hooks: FormatHooks,
+    histories: ContextHistoryFactory,
+    expireDelay = SESSION_TIME_OUT_DELAY
+  ): Promise<SessionContext> {
+    const history = await histories.create<string>(SESSION_HISTORY_FILE_NAME, expireDelay);
     return new SessionContext(history, hooks);
   }
 
-  add(sessionId: string): void {
-    this.history.add(sessionId, timeStampNow());
+  add(sessionId: string, atTime: TimeStamp = timeStampNow()): void {
+    this.history.set(sessionId, atTime);
   }
 
   // Returns the tracked session id covering the given time (defaults to now), or undefined if there is none.
@@ -64,7 +66,7 @@ export class SessionContext {
     return this.history.find(at);
   }
 
-  close(): void {
-    this.history.closeActive(timeStampNow());
+  close(atTime: TimeStamp = timeStampNow()): void {
+    this.history.set(undefined, atTime);
   }
 }

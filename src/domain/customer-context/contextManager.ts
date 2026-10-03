@@ -1,20 +1,8 @@
 import { combine, deepClone } from '@datadog/js-core/util';
-import { SKIPPED } from '@datadog/js-core/assembly';
-import { type TimeStamp, timeStampNow } from '@datadog/js-core/time';
 import { isEmptyObject } from '@datadog/browser-core';
 import { display } from '../../tools/display';
-import { initContextHistory } from './contextHistory';
-import type { FormatHooks } from '../../assembly';
 
 export type Context = Record<string, unknown>;
-
-export interface ContextHistory {
-  add(value: Context, startTime: TimeStamp): void;
-  closeActive(endTime: TimeStamp): void;
-  closeAndAdd(value: Context, atTime: TimeStamp): void;
-  pruneAndPersist(): void;
-  find(startTime: TimeStamp): Context | undefined;
-}
 
 /**
  * Declares which context properties are required and/or constrained to a given format.
@@ -30,15 +18,15 @@ export type PropertiesConfig = Record<
 >;
 
 /**
- * Generic store for a context that injects it into events.
+ * Validates and stores the customer's current context, independently of event history.
  *
  * It keeps the standard fields (validated, e.g. `id`/`name`) and the free-form `extraInfo`
  * attributes in two separate stores, so it never has to flatten/unflatten between the public
  * "info" shape and the flat shape sent on events. Keys declared as standard fields are excluded
  * from `extraInfo`, so they can only be set through the validated top-level properties.
  *
- * It owns the cloning and validation concerns shared by every context (user, account, and global
- * context), so each context only needs to register its hook and declare its config.
+ * Mutations notify the owning context after validation and cloning; rejected telemetry history
+ * never clears this live application configuration.
  *
  * A context with an empty `propertiesConfig` has no standard fields at all: nothing is reserved, so
  * every attribute is customer-defined and `extraInfo` stays unused. Such a context replaces its
@@ -52,17 +40,14 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
   constructor(
     private readonly name: string,
     private readonly propertiesConfig: PropertiesConfig = {},
-    private readonly history?: ContextHistory
+    private readonly onChange: (context: Context | undefined) => void = () => undefined
   ) {}
 
   /**
    * Returns the flat context (standard fields plus extra attributes). Used by format hooks to
    * inject into events. Standard fields take precedence when a key appears in both stores.
    */
-  getContext(startTime?: TimeStamp): Context {
-    if (startTime !== undefined && this.history) {
-      return this.history.find(startTime) ?? {};
-    }
+  getContext(): Context {
     return this.getCurrentContext();
   }
 
@@ -78,20 +63,6 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
     return info as T;
   }
 
-  /**
-   * Registers the format hook that injects this context into RUM events, under `key` when the
-   * context is namespaced (`usr`, `account`) or at `context` when it is free-form.
-   */
-  protected registerRumHook(hooks: FormatHooks, key?: 'usr' | 'account'): void {
-    hooks.registerRum(({ eventType, startTime }) => {
-      // View updates retain the view's original start time, but should reflect the customer context
-      // active when the update is emitted. Other events use history for start-time attribution.
-      const context = this.getContext(eventType === 'view' ? undefined : startTime);
-      if (isEmptyObject(context)) return SKIPPED;
-      return key ? { [key]: context } : { context };
-    });
-  }
-
   isEmpty(): boolean {
     return isEmptyObject(this.standardFields) && isEmptyObject(this.extraInfo);
   }
@@ -103,7 +74,7 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
 
     this.standardFields = candidate;
     this.extraInfo = this.filterReservedKeys(extraInfo ?? {});
-    this.recordCurrentContext();
+    this.notifyChange();
   }
 
   /**
@@ -117,7 +88,7 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
   addExtraInfo(extraInfo: Context): void {
     if (!this.validateProperties(this.standardFields)) return;
     this.extraInfo = mergeExtraInfo(this.extraInfo, this.filterReservedKeys(extraInfo));
-    this.recordCurrentContext();
+    this.notifyChange();
   }
 
   /**
@@ -128,7 +99,7 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
   protected setFlatContext(context: Context): void {
     this.standardFields = pickNonNullish(deepClone(context));
     this.extraInfo = {};
-    this.recordCurrentContext();
+    this.notifyChange();
   }
 
   /**
@@ -139,7 +110,7 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
    */
   protected setProperty(key: string, value: unknown): void {
     this.standardFields = pickNonNullish({ ...this.standardFields, [key]: deepClone(value) });
-    this.recordCurrentContext();
+    this.notifyChange();
   }
 
   /** Removes a single property set through {@link setContext} or {@link setProperty}. */
@@ -147,13 +118,13 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
     const candidate = { ...this.standardFields };
     delete candidate[key];
     this.standardFields = candidate;
-    this.recordCurrentContext();
+    this.notifyChange();
   }
 
   clearContext(): void {
     this.standardFields = {};
     this.extraInfo = {};
-    this.recordCurrentContext();
+    this.notifyChange();
   }
 
   /**
@@ -190,16 +161,8 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
     return filtered;
   }
 
-  private recordCurrentContext(): void {
-    if (!this.history) return;
-
-    const now = timeStampNow();
-    if (this.isEmpty()) {
-      this.history.closeActive(now);
-      this.history.pruneAndPersist();
-    } else {
-      this.history.closeAndAdd(deepClone(this.getCurrentContext()), now);
-    }
+  private notifyChange(): void {
+    this.onChange(this.isEmpty() ? undefined : deepClone(this.getCurrentContext()));
   }
 }
 
@@ -212,18 +175,6 @@ export function toSpanMeta(prefix: 'usr' | 'account', context: Context): Record<
     }
   }
   return meta;
-}
-
-/**
- * Creates a context instance with a disk-backed crash-attribution history.
- * Extracts the shared history initialization boilerplate from each context subclass.
- */
-export async function initContextWithHistory<T>(
-  construct: (history: ContextHistory) => T,
-  historyFileName: string
-): Promise<T> {
-  const history = await initContextHistory(historyFileName);
-  return construct(history);
 }
 
 function toSpanMetaValue(value: unknown): string | undefined {
