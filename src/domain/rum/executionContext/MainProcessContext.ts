@@ -1,4 +1,3 @@
-import { app } from 'electron';
 import * as path from 'node:path';
 import { elapsed, timeStampNow, toServerDuration, type TimeStamp } from '@datadog/js-core/time';
 import { generateUUID, type Subscription } from '@datadog/browser-core';
@@ -17,6 +16,7 @@ import type { RawRumExecutionContext, RawRumView } from '../types';
 import { setInterval, clearInterval } from '../../telemetry';
 import { ViewContext } from '../view';
 import { DiskValueHistory } from '../../../tools/DiskValueHistory';
+import { sdkPaths } from '../../../tools/sdkPaths';
 import { PROCESS_UPDATE_INTERVAL } from './executionContext.constants';
 
 export const MAIN_EXECUTION_CONTEXT_HISTORY_FILE_NAME = '_dd_execution_context_history';
@@ -63,7 +63,7 @@ export class MainProcessContext {
     sessionManager: SessionManager
   ): Promise<MainProcessContext> {
     const viewContext = await ViewContext.init(hooks, undefined, { isExecutionContextEnabled: true });
-    const filePath = path.join(app.getPath('userData'), MAIN_EXECUTION_CONTEXT_HISTORY_FILE_NAME);
+    const filePath = path.join(sdkPaths.userData(), MAIN_EXECUTION_CONTEXT_HISTORY_FILE_NAME);
     const mainHistory = await DiskValueHistory.init<MainExecutionContextDiskEntry>({
       filePath,
       expireDelay: SESSION_TIME_OUT_DELAY,

@@ -8,6 +8,7 @@ import type { CrashReport } from '../../../wasm';
 import type { RawRumError, RumErrorEvent } from '../types';
 import { display } from '../../../tools/display';
 import { addError, monitor } from '../../telemetry';
+import { sdkPaths } from '../../../tools/sdkPaths';
 
 /**
  * Collect RUM error events for native crashes.
@@ -29,8 +30,7 @@ export class CrashCollection {
   }
 
   private async processCrashFiles(): Promise<void> {
-    const crashDumpsPath = app.getPath('crashDumps');
-    const dmpFiles = await getFilesRecursive(crashDumpsPath, '.dmp');
+    const dmpFiles = await getFilesRecursive(sdkPaths.crashDumps(), '.dmp');
 
     if (dmpFiles.length === 0) {
       return;

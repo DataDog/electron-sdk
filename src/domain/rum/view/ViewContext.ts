@@ -1,10 +1,10 @@
-import { app } from 'electron';
 import * as path from 'node:path';
 import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED, SKIPPED } from '@datadog/js-core/assembly';
 import type { FormatHooks } from '../../../assembly';
 import { EventSource } from '../../../event';
 import { DiskValueHistory } from '../../../tools/DiskValueHistory';
+import { sdkPaths } from '../../../tools/sdkPaths';
 import { SESSION_TIME_OUT_DELAY } from '../../session';
 
 export const VIEW_HISTORY_FILE_NAME = '_dd_view_history';
@@ -64,7 +64,7 @@ export class ViewContext {
     expireDelay = SESSION_TIME_OUT_DELAY,
     options?: { isExecutionContextEnabled?: boolean }
   ): Promise<ViewContext> {
-    const filePath = path.join(app.getPath('userData'), VIEW_HISTORY_FILE_NAME);
+    const filePath = path.join(sdkPaths.userData(), VIEW_HISTORY_FILE_NAME);
     const history = await DiskValueHistory.init<string>({ filePath, expireDelay });
     return new ViewContext(history, hooks, options?.isExecutionContextEnabled ?? false);
   }

@@ -30,6 +30,10 @@ await fs.unlink(filePath);
 
 **Note:** The playground uses sync APIs for simplicity, but SDK code should use async APIs.
 
+## System Paths
+
+Read system paths (`app.getPath`, `app.getAppPath`) through `src/tools/sdkPaths.ts` only. It is the single list of paths the SDK knows about, so each of them can be scrubbed from payloads before they leave the machine. A new path goes into `sdkPaths` first.
+
 ## Browser-Core Utilities
 
 Prefer utilities from `@datadog/browser-core` over custom implementations. Examples:

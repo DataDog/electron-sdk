@@ -1,9 +1,9 @@
-import { app } from 'electron';
 import * as path from 'node:path';
 import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED, SKIPPED } from '@datadog/js-core/assembly';
 import type { FormatHooks } from '../../assembly';
 import { DiskValueHistory } from '../../tools/DiskValueHistory';
+import { sdkPaths } from '../../tools/sdkPaths';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
 
 export const SESSION_HISTORY_FILE_NAME = '_dd_session_history';
@@ -48,7 +48,7 @@ export class SessionContext {
   }
 
   static async init(hooks: FormatHooks, expireDelay = SESSION_TIME_OUT_DELAY): Promise<SessionContext> {
-    const filePath = path.join(app.getPath('userData'), SESSION_HISTORY_FILE_NAME);
+    const filePath = path.join(sdkPaths.userData(), SESSION_HISTORY_FILE_NAME);
     const history = await DiskValueHistory.init<string>({ filePath, expireDelay });
     return new SessionContext(history, hooks);
   }

@@ -1,9 +1,8 @@
-import { app } from 'electron';
-
 import { resolveBatchSize, resolveUploadFrequency, type Configuration } from '../config';
 import type { TrackingConsentManager } from '../domain/tracking-consent';
 import { EventKind, EventTrack, type EventManager, type ServerEvent } from '../event';
 import { BatchManager, BatchMigration, getTrackPath } from './batch';
+import { sdkPaths } from '../tools/sdkPaths';
 
 /**
  * Orchestrates event transport by routing server events from registered domains
@@ -18,7 +17,7 @@ export class Transport {
     private readonly eventManager: EventManager,
     private readonly trackingConsentManager: TrackingConsentManager
   ) {
-    this.basePath = app.getPath('userData');
+    this.basePath = sdkPaths.userData();
   }
 
   /** Creates and fully initializes a Transport instance. */
