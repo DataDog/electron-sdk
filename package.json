@@ -147,7 +147,7 @@
     "yaml": "2.9.0"
   },
   "dependencies": {
-    "dd-trace": "6.10.0"
+    "dd-trace-electron": "6.11.0"
   },
   "peerDependencies": {
     "electron": ">=39"
