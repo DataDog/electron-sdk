@@ -9,7 +9,7 @@ import { TrackingConsentHistory } from './TrackingConsentHistory';
 
 /**
  * Owns context histories and their shared consent subscription.
- * Create before session and collector subscriptions so their callbacks see every history already updated.
+ * Subscribe before session and collector callbacks so values they write use the new consent policy.
  */
 export class ContextHistoryFactory {
   private readonly startTime = timeStampNow();

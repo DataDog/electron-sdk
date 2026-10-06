@@ -7,8 +7,8 @@ import type { TrackingConsent, TrackingConsentChange } from './TrackingConsentMa
 type StoredHistoryEntry<T> = Omit<TimeStampHistoryEntry<T>, 'endTime'> & { endTime: TimeStamp | null };
 
 /**
- * Keeps context available for delayed events without persisting undecided changes.
- * Refusal removes pending history; the latest configured value can still be used when tracking resumes.
+ * Applies consent to context history, independently of event batches.
+ * Pending entries stay in memory; refusal drops them without clearing the latest configured value.
  */
 export class TrackingConsentHistory<T> {
   private readonly history: TimeStampValueHistory<T>;

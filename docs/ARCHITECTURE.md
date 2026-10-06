@@ -200,17 +200,30 @@ does not multiply the allowance. Open files and filesystem failures can temporar
 
 ### Consent and context history
 
-Delayed events need the context that was active when they occurred, rather than the application's
-latest user, session or view. Saved history also lets a later process attribute recovered crash reports;
-loading it must not restore the application's current context.
+Context histories are saved separately from event batches. Withholding batches from upload does not
+control which session, view or customer context is retained in those history files.
 
-`TrackingConsentHistory` keeps undecided changes in memory so they cannot survive a refusal or restart.
-A grant saves them; a refusal restores the previously authorized history. The latest configured value
-remains available for a new tracking period without filling the refused period.
+For example, an app can first start in `pending`, crash before the user's decision, then restart in
+`granted`. If the pending session and view were saved, crash recovery could find them and send a crash
+from a period that was never authorized. Keeping pending history in memory prevents that period from
+being recovered after restart; a new grant does not authorize the previous launch's undecided data.
 
-`ContextHistoryFactory` owns the histories and subscribes before their consumers. This ordering lets
-session and collector callbacks read or change history without each history reconciling the same
-consent transition. `DiskStorage` only loads JSON and serializes writes; consent decisions stay in the history.
+`TrackingConsentHistory` saves granted history and keeps pending changes in memory until a grant.
+Refusal removes the pending entries while preserving earlier authorized history. Values set during
+`not-granted` are not added to history. For user, account and global context, this controls retained
+metadata; filtering events by consent is a separate responsibility.
+
+Removing a refused period does not clear the application's current customer configuration. For example,
+if Alice is set during `pending` and that period is refused, a later grant can record Alice starting at
+the new grant's time, without restoring her entry from the refused period.
+
+`ContextHistoryFactory` subscribes before session and collector callbacks so histories adopt the new
+consent policy before those callbacks write new values. For example, a session created on a grant must
+be recorded under `granted`, rather than the previous consent state.
+
+`DiskStorage` queues JSON writes asynchronously. A failed or interrupted write closing a granted entry
+can leave its old open entry on disk. These histories alone are therefore not a durable record of
+consent for recovered crashes.
 
 ## Error Reporting
 
