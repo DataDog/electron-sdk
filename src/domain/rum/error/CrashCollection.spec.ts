@@ -44,6 +44,7 @@ import type { CrashReport } from '../../../wasm';
 import type { RawRumError } from '../types';
 import { display } from '../../../tools/display';
 import { addError } from '../../telemetry';
+import { TrackingConsentManager, type TrackingConsent } from '../../tracking-consent';
 
 vi.mock('node:fs/promises');
 const mfs = mockFs();
@@ -86,25 +87,29 @@ function createMinidumpResult(overrides?: Partial<CrashReport>): CrashReport {
   };
 }
 
-function mockDmpFile(name = 'crash.dmp', birthtimeMs = 0) {
+function mockDmpFile(name = 'crash.dmp', birthtimeMs = 1000) {
   mfs.readdir.mockResolvedValue([{ name, isFile: () => true, isDirectory: () => false }]);
   mfs.stat.mockResolvedValue({ birthtimeMs });
   mfs.readFile.mockResolvedValue(new Uint8Array([1]));
   mfs.unlink.mockResolvedValue(undefined);
 }
 
-async function startAndFlush(eventManager: EventManager) {
-  CrashCollection.start(eventManager);
-  resolveWhenReady();
-  await vi.advanceTimersToNextTimerAsync();
-}
-
 describe('CrashCollection', () => {
   let eventManager: EventManager;
   let rawRumEvents: RawRumEvent[];
+  let consentManager: TrackingConsentManager;
+
+  async function startAndFlush(eventManager: EventManager) {
+    CrashCollection.start(eventManager, consentManager);
+    resolveWhenReady();
+    await vi.advanceTimersToNextTimerAsync();
+  }
 
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    consentManager = new TrackingConsentManager();
+    vi.spyOn(consentManager, 'isAuthorizedAt').mockReturnValue(true);
     eventManager = new EventManager();
     rawRumEvents = [];
 
@@ -123,7 +128,7 @@ describe('CrashCollection', () => {
   });
 
   it('starts the native crash reporter', () => {
-    CrashCollection.start(eventManager);
+    CrashCollection.start(eventManager, consentManager);
 
     // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(crashReporter.start).toHaveBeenCalledWith({ uploadToServer: false, ignoreSystemCrashHandler: true });
@@ -143,27 +148,79 @@ describe('CrashCollection', () => {
     expect(rawRumEvents).toHaveLength(0);
   });
 
-  it('processes a .dmp file and emits a crash error event', async () => {
-    const crashTime = 1000 as TimeStamp;
-    mockDmpFile('crash.dmp', crashTime);
-    vi.mocked(processMinidump).mockResolvedValue(createMinidumpResult());
+  it.each([
+    { birthtimeMs: 1000, mtimeMs: 2000, crashTime: 1000 },
+    { birthtimeMs: 0, mtimeMs: 2000, crashTime: 2000 },
+  ])(
+    'checks authorization at $crashTime before emitting a crash error event',
+    async ({ birthtimeMs, mtimeMs, crashTime }) => {
+      mockDmpFile();
+      mfs.stat.mockResolvedValue({ birthtimeMs, mtimeMs });
+      vi.mocked(processMinidump).mockResolvedValue(createMinidumpResult());
+
+      await startAndFlush(eventManager);
+
+      expect(rawRumEvents).toHaveLength(1);
+      const event = rawRumEvents[0];
+      expect(event.startTime).toBe(crashTime);
+      expect(event.storageConsent).toBe('granted');
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(consentManager.isAuthorizedAt).toHaveBeenCalledWith(crashTime);
+
+      const data = event.data as RawRumError;
+      expect(data.date).toBe(crashTime);
+      expect(data.type).toBe('error');
+      expect(data.error.is_crash).toBe(true);
+      expect(data.error.category).toBe('Exception');
+      expect(data.error.handling).toBe('unhandled');
+      expect(data.error.source).toBe('source');
+      expect(data.error.type).toBe('SIGSEGV');
+      expect(data.error.message).toBe('Application crashed');
+    }
+  );
+
+  it.each<{ consent: TrackingConsent; crashTime: number }>([
+    { consent: 'pending', crashTime: 1500 },
+    { consent: 'not-granted', crashTime: 1500 },
+    { consent: 'granted', crashTime: 500 },
+    { consent: 'granted', crashTime: Infinity },
+    { consent: 'granted', crashTime: NaN },
+  ])('removes an unauthorized dump ($consent at $crashTime) without parsing it', async ({ consent, crashTime }) => {
+    consentManager = new TrackingConsentManager(consent);
+    mockDmpFile();
+    mfs.stat.mockResolvedValue({ birthtimeMs: 0, mtimeMs: crashTime });
 
     await startAndFlush(eventManager);
 
-    expect(rawRumEvents).toHaveLength(1);
-    const event = rawRumEvents[0];
-    expect(event.startTime).toBe(crashTime);
-
-    const data = event.data as RawRumError;
-    expect(data.date).toBe(crashTime);
-    expect(data.type).toBe('error');
-    expect(data.error.is_crash).toBe(true);
-    expect(data.error.category).toBe('Exception');
-    expect(data.error.handling).toBe('unhandled');
-    expect(data.error.source).toBe('source');
-    expect(data.error.type).toBe('SIGSEGV');
-    expect(data.error.message).toBe('Application crashed');
+    expect(rawRumEvents).toEqual([]);
+    expect(processMinidump).not.toHaveBeenCalled();
+    expect(mfs.readFile).not.toHaveBeenCalled();
+    expect(mfs.unlink).toHaveBeenCalledWith('/mock/crash/dumps/crash.dmp');
   });
+
+  it.each<TrackingConsent>(['granted', 'not-granted'])(
+    'keeps the first %s decision for a pending crash after another consent change',
+    async (decision) => {
+      consentManager = new TrackingConsentManager('pending');
+      const crashTime = 1500 as TimeStamp;
+      vi.setSystemTime(2000);
+      consentManager.update(decision);
+      vi.setSystemTime(3000);
+      consentManager.update(decision === 'granted' ? 'not-granted' : 'granted');
+      mockDmpFile('crash.dmp', crashTime);
+      vi.mocked(processMinidump).mockResolvedValue(createMinidumpResult());
+
+      await startAndFlush(eventManager);
+
+      expect(rawRumEvents).toHaveLength(decision === 'granted' ? 1 : 0);
+      if (decision === 'granted') {
+        expect(rawRumEvents[0].storageConsent).toBe('granted');
+      } else {
+        expect(processMinidump).not.toHaveBeenCalled();
+      }
+      expect(mfs.unlink).toHaveBeenCalledWith('/mock/crash/dumps/crash.dmp');
+    }
+  );
 
   it('maps mac os to macos source_type', async () => {
     mockDmpFile();

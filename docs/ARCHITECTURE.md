@@ -157,13 +157,14 @@ When `enableExecutionContext` is set, `ExecutionContextCollection` (`src/domain/
 
 ## Internal Tracking Consent State
 
-`TrackingConsentManager` starts in `granted` when explicitly constructed. Its timestamp history
-is kept in memory from construction onward; it neither persists consent nor infers consent from an earlier process.
+`TrackingConsentManager` defaults to `granted`. SDK initialization loads consent history from the previous
+launch before saving the new launch's state. Previous consent is used for historical lookups, not as the
+current consent of the new launch.
 Changes notify monitored subscribers synchronously after updating the state.
 Consumers own their subscriptions and unsubscribe when stopped.
 
-History lookups return the state active at the requested time. For example, a past `pending` period still returns
-`pending` after the current state changes to `granted` or `not-granted`.
+`getAt()` returns the original state at a time within the current launch. A past `pending` period still returns
+`pending` after a grant or refusal. Crash recovery uses `isAuthorizedAt()` to also consult the previous launch.
 
 ### Consent and batch storage
 
@@ -197,6 +198,25 @@ succeeds leaves undecided storage, which `Transport` clears at startup for **all
 The existing best-effort limit of 100 completed batches applies to the authorized root. A separate limit
 of 100 applies across all remaining pending and migration directories together, so creating new periods
 does not multiply the allowance. Open files and filesystem failures can temporarily exceed these limits.
+
+### Consent and crash recovery
+
+Context histories retain their existing attribution behavior. Crash recovery checks consent explicitly
+before reading a dump: saved session, view or customer context is not proof that a crash was authorized.
+
+`TrackingConsentManager` keeps timestamped state changes for the current launch and persists them to
+`_dd_tracking_consent_history`. On startup it reads the previous launch's timeline separately, so a new
+`granted` state cannot authorize an earlier launch's unresolved `pending` period. A pending period is
+accepted only if followed by a grant within the same launch. Missing or invalid consent history rejects
+the recovered crash. Only the new launch's timeline is written back; older unprocessed dumps without
+matching consent history are discarded.
+
+`CrashCollection` deletes rejected dumps without parsing or emitting them. Accepted crashes carry their
+established authorization through assembly to the authorized batch store, even if current consent has
+changed. Session/view/user histories still supply attribution through the existing format hooks.
+
+Consent snapshots are written asynchronously in order. A failed or interrupted write can leave an older
+`granted` state on disk; this history does not guarantee correct authorization after such a failure.
 
 ## Error Reporting
 

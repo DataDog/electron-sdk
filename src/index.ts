@@ -46,7 +46,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
     return false;
   }
 
-  const trackingConsentManager = new TrackingConsentManager();
+  const trackingConsentManager = await TrackingConsentManager.start(app.getPath('userData'));
   tracing = new Tracing(config);
 
   eventManager = new EventManager();
@@ -74,7 +74,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   new RendererPipeline(eventManager, hooks, config);
 
-  const rum = await RumCollection.start(eventManager, hooks, sessionManager, config);
+  const rum = await RumCollection.start(eventManager, hooks, sessionManager, config, trackingConsentManager);
   rumApi = rum.getApi();
   setDurationVitalApi(rumApi);
 
