@@ -6,9 +6,9 @@ import { EventFormat, EventKind, EventManager, EventSource, type RawRumEvent, ty
 import { createTestConfiguration, mockFs } from '../../mocks.specUtil';
 import { ConsentAwareBatchRouter, type BatchProducer } from '../../transport/batch';
 import { SessionManager } from '../session';
-import { ContextHistoryFactory, TrackingConsentManager, type TrackingConsent } from '../tracking-consent';
+import { TrackingConsentManager, type TrackingConsent } from '../tracking-consent';
 import { ExecutionContextCollection } from './executionContext';
-import { ViewCollection, VIEW_HISTORY_FILE_NAME } from './view';
+import { ViewCollection } from './view';
 import type { RawRumView } from './types';
 
 vi.mock('electron', async () => {
@@ -23,7 +23,6 @@ const mfs = mockFs();
 
 describe.each([false, true])('consent lifecycle with execution contexts enabled: %s', (executionContexts) => {
   let consent: TrackingConsentManager;
-  let histories: ContextHistoryFactory;
   let session: SessionManager;
   let collection: ViewCollection | ExecutionContextCollection;
   let hooks: FormatHooks;
@@ -39,7 +38,6 @@ describe.each([false, true])('consent lifecycle with execution contexts enabled:
     mfs.readFile.mockRejectedValue(new Error('ENOENT'));
     mfs.writeFile.mockResolvedValue(undefined);
     consent = new TrackingConsentManager();
-    histories = new ContextHistoryFactory(consent, '/mock/user/data');
     hooks = createFormatHooks();
     events = [];
     eventContexts = [];
@@ -50,7 +48,6 @@ describe.each([false, true])('consent lifecycle with execution contexts enabled:
 
   afterEach(() => {
     router.stop();
-    histories.stop();
     collection.stop();
     session.stop();
     mfs.reset();
@@ -73,7 +70,7 @@ describe.each([false, true])('consent lifecycle with execution contexts enabled:
       canHandle: (event): event is ServerEvent => event.kind === EventKind.SERVER,
       handle: (event) => router.post(event),
     });
-    session = await SessionManager.start(eventManager, hooks, createTestConfiguration(), histories, consent);
+    session = await SessionManager.start(eventManager, hooks, createTestConfiguration(), consent);
     new MainAssembly(eventManager, hooks, new BeforeSend());
     eventManager.registerHandler<RawRumEvent>({
       canHandle: (event): event is RawRumEvent => event.kind === EventKind.RAW && event.format === EventFormat.RUM,
@@ -85,8 +82,8 @@ describe.each([false, true])('consent lifecycle with execution contexts enabled:
       },
     });
     collection = executionContexts
-      ? await ExecutionContextCollection.start(eventManager, hooks, session, histories, consent)
-      : await ViewCollection.start(eventManager, hooks, histories, consent);
+      ? await ExecutionContextCollection.start(eventManager, hooks, session, consent)
+      : await ViewCollection.start(eventManager, hooks, consent);
   }
 
   function views(): RawRumView[] {
@@ -170,35 +167,27 @@ describe.each([false, true])('consent lifecycle with execution contexts enabled:
     }
   );
 
-  it('does not persist a pending view created by synchronous session renewal', async () => {
+  it('stops pending collection on refusal and resumes with a new view', async () => {
     await start();
     vi.setSystemTime(1010);
     session.expire();
-    await vi.advanceTimersByTimeAsync(0);
-    mfs.writeFile.mockClear();
-
     vi.setSystemTime(1020);
     consent.update('pending');
     const pendingView = views()[2];
     expect(views()).toHaveLength(3);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(JSON.stringify(mfs.writeFile.mock.calls)).not.toContain(pendingView.view.id);
 
     vi.setSystemTime(1030);
     consent.update('not-granted');
     const eventCount = events.length;
     vi.advanceTimersByTime(60_000);
     expect(events).toHaveLength(eventCount);
-    expect(hooks.triggerRum({ eventType: 'error', startTime: 1020 as TimeStamp, source: EventSource.MAIN })).toBe(
+    expect(hooks.triggerRum({ eventType: 'error', startTime: 1040 as TimeStamp, source: EventSource.MAIN })).toBe(
       DISCARDED
     );
 
     consent.update('granted');
-    await vi.advanceTimersByTimeAsync(0);
 
     expect(views()).toHaveLength(5);
-    const writes = mfs.writeFile.mock.calls.filter(([file]) => String(file).endsWith(VIEW_HISTORY_FILE_NAME));
-    expect(String(writes[writes.length - 1][1])).not.toContain(pendingView.view.id);
     expect(views()[4].view.id).not.toBe(pendingView.view.id);
   });
 

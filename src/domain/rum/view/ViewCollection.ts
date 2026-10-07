@@ -14,12 +14,7 @@ import type { FormatHooks } from '../../../assembly';
 import { setInterval, throttle } from '../../telemetry';
 import type { RawRumView } from '../types';
 import { ViewContext } from './ViewContext';
-import type {
-  ContextHistoryFactory,
-  TrackingConsent,
-  TrackingConsentChange,
-  TrackingConsentManager,
-} from '../../tracking-consent';
+import type { TrackingConsent, TrackingConsentChange, TrackingConsentManager } from '../../tracking-consent';
 
 export const SESSION_KEEP_ALIVE_INTERVAL = 5 * ONE_MINUTE;
 // throttle view updates to avoid bursts
@@ -56,17 +51,15 @@ export class ViewCollection {
   constructor(
     private readonly eventManager: EventManager,
     private readonly hooks: FormatHooks,
-    private readonly histories: ContextHistoryFactory,
     private readonly trackingConsentManager: TrackingConsentManager
   ) {}
 
   static async start(
     eventManager: EventManager,
     hooks: FormatHooks,
-    histories: ContextHistoryFactory,
     trackingConsentManager: TrackingConsentManager
   ): Promise<ViewCollection> {
-    const collection = new ViewCollection(eventManager, hooks, histories, trackingConsentManager);
+    const collection = new ViewCollection(eventManager, hooks, trackingConsentManager);
     await collection.init();
     return collection;
   }
@@ -76,9 +69,11 @@ export class ViewCollection {
     this.scheduleViewUpdate = throttled;
     this.cancelScheduledViewUpdate = cancel;
 
-    this.viewContext = await ViewContext.init(this.hooks, this.histories);
+    this.viewContext = await ViewContext.init(this.hooks);
     if (this.trackingConsentManager.get() !== 'not-granted') {
       this.createNewView();
+    } else {
+      this.viewContext.close();
     }
 
     this.lifecycleSubscription = this.eventManager.registerHandler<LifecycleEvent>({

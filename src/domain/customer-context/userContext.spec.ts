@@ -3,7 +3,7 @@ import { type TimeStamp } from '@datadog/js-core/time';
 import { EventSource } from '../../event';
 import { createFormatHooks, type FormatHooks, type RumEventType } from '../../assembly';
 import { UserContext, type UserInfo } from './userContext';
-import type { ContextHistory } from './registerContextHooks';
+import type { ContextHistory } from './contextManager';
 
 const T0 = 0 as TimeStamp;
 
@@ -21,10 +21,7 @@ describe('UserContext', () => {
 
   beforeEach(() => {
     hooks = createFormatHooks();
-    userContext = new UserContext(
-      hooks,
-      createHistory(() => userContext.getContext())
-    );
+    userContext = new UserContext(hooks);
   });
 
   describe('when user is not set', () => {
@@ -321,7 +318,10 @@ describe('UserContext', () => {
 
 function createHistory(find: ContextHistory['find']): ContextHistory {
   return {
-    set: vi.fn(),
+    add: vi.fn(),
+    closeActive: vi.fn(),
+    closeAndAdd: vi.fn(),
+    pruneAndPersist: vi.fn(),
     find,
   };
 }

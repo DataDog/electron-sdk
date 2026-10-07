@@ -1,7 +1,7 @@
 import type { EventManager } from '../../../event';
 import type { FormatHooks } from '../../../assembly';
 import type { SessionManager } from '../../session';
-import type { ContextHistoryFactory, TrackingConsentManager } from '../../tracking-consent';
+import type { TrackingConsentManager } from '../../tracking-consent';
 import { MainProcessContext } from './MainProcessContext';
 import { RendererProcessContexts } from './RendererProcessContexts';
 
@@ -20,14 +20,12 @@ export class ExecutionContextCollection {
     eventManager: EventManager,
     hooks: FormatHooks,
     sessionManager: SessionManager,
-    histories: ContextHistoryFactory,
     trackingConsentManager: TrackingConsentManager
   ): Promise<ExecutionContextCollection> {
     const mainProcessContext = await MainProcessContext.start(
       eventManager,
       hooks,
       sessionManager,
-      histories,
       trackingConsentManager
     );
     const rendererProcessContexts = RendererProcessContexts.start(eventManager, hooks);

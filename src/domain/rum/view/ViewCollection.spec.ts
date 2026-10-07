@@ -12,6 +12,7 @@ vi.mock('../../../tools/display', () => ({
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { TimeStamp } from '@datadog/js-core/time';
+import { DISCARDED } from '@datadog/js-core/assembly';
 import { ViewCollection, SESSION_KEEP_ALIVE_INTERVAL, VIEW_UPDATE_THROTTLE_DELAY } from './ViewCollection';
 import { ViewContext } from './ViewContext';
 import {
@@ -26,7 +27,7 @@ import {
 import { createFormatHooks, type FormatHooks } from '../../../assembly';
 import { createServerRumEvent, createServerRumView } from '../../../mocks.specUtil';
 import { RawRumView, MainRumEvent, RumErrorEvent } from '../types';
-import { ContextHistoryFactory, TrackingConsentManager } from '../../tracking-consent';
+import { TrackingConsentManager } from '../../tracking-consent';
 
 vi.mock('node:fs/promises');
 const mfs = mockFs();
@@ -39,14 +40,12 @@ describe('ViewCollection', () => {
   let hooks: FormatHooks;
   let viewCollection: ViewCollection;
   let trackingConsentManager: TrackingConsentManager;
-  let histories: ContextHistoryFactory;
   let rawRumEvents: RawRumEvent[];
 
   beforeEach(async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
     trackingConsentManager = new TrackingConsentManager();
-    histories = new ContextHistoryFactory(trackingConsentManager, '/mock/user/data');
     mfs.readFile.mockRejectedValue(new Error('ENOENT'));
     mfs.writeFile.mockResolvedValue(undefined);
     eventManager = new EventManager();
@@ -58,11 +57,10 @@ describe('ViewCollection', () => {
       handle: (event) => rawRumEvents.push(event),
     });
 
-    viewCollection = await ViewCollection.start(eventManager, hooks, histories, trackingConsentManager);
+    viewCollection = await ViewCollection.start(eventManager, hooks, trackingConsentManager);
   });
 
   afterEach(() => {
-    histories.stop();
     viewCollection.stop();
     vi.useRealTimers();
     vi.clearAllMocks();
@@ -108,7 +106,7 @@ describe('ViewCollection', () => {
           viewCollection.stop();
           hooks = createFormatHooks();
           rawRumEvents.length = 0;
-          viewCollection = await ViewCollection.start(eventManager, hooks, histories, trackingConsentManager);
+          viewCollection = await ViewCollection.start(eventManager, hooks, trackingConsentManager);
         } else {
           eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
           rawRumEvents.length = 0;
@@ -296,6 +294,21 @@ describe('ViewCollection', () => {
   });
 
   describe('consent boundaries', () => {
+    it("closes a previous launch's open view at initially denied consent", async () => {
+      viewCollection.stop();
+      vi.setSystemTime(10);
+      trackingConsentManager.update('not-granted');
+      hooks = createFormatHooks();
+      mfs.readFile.mockResolvedValue(JSON.stringify([{ value: 'previous-view', startTime: 0, endTime: null }]));
+
+      viewCollection = await ViewCollection.start(eventManager, hooks, trackingConsentManager);
+
+      expect(hooks.triggerRum({ eventType: 'error', startTime: T0, source: EventSource.MAIN })).toMatchObject({
+        view: { id: 'previous-view' },
+      });
+      expect(hooks.triggerRum({ eventType: 'error', startTime: T10, source: EventSource.MAIN })).toBe(DISCARDED);
+    });
+
     it('closes accumulated counters, resets the replacement view and ignores events attributed to the old view', () => {
       const originalView = (rawRumEvents[0].data as RawRumView).view;
       const resource = createServerRumEvent<MainRumEvent>('resource', { view: originalView });

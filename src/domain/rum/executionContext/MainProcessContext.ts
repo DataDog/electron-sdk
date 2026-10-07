@@ -1,3 +1,5 @@
+import { app } from 'electron';
+import * as path from 'node:path';
 import { elapsed, timeStampNow, toServerDuration, type TimeStamp } from '@datadog/js-core/time';
 import { generateUUID, type Subscription } from '@datadog/browser-core';
 import { DISCARDED, SKIPPED } from '@datadog/js-core/assembly';
@@ -14,13 +16,8 @@ import { SESSION_TIME_OUT_DELAY, type SessionManager } from '../../session';
 import type { RawRumExecutionContext, RawRumView } from '../types';
 import { setInterval, clearInterval } from '../../telemetry';
 import { ViewContext } from '../view';
-import {
-  type TrackingConsentHistory,
-  type ContextHistoryFactory,
-  type TrackingConsent,
-  type TrackingConsentChange,
-  type TrackingConsentManager,
-} from '../../tracking-consent';
+import { DiskValueHistory } from '../../../tools/DiskValueHistory';
+import type { TrackingConsent, TrackingConsentChange, TrackingConsentManager } from '../../tracking-consent';
 import { PROCESS_UPDATE_INTERVAL } from './executionContext.constants';
 
 export const MAIN_EXECUTION_CONTEXT_HISTORY_FILE_NAME = '_dd_execution_context_history';
@@ -49,7 +46,7 @@ interface MainProcessState {
  * execution_context event's instance_id is always the OS process pid, constant across every session
  * the process lives through. Also registers the format hooks that tag every other main-process RUM
  * event and span with the execution context active at that event's timestamp, using
- * authorized history retained from the current and previous process. Consent changes close cumulative periods;
+ * disk-persisted history retained from the current and previous process. Consent changes close cumulative periods;
  * denied consent leaves no active state or heartbeat.
  */
 export class MainProcessContext {
@@ -61,7 +58,7 @@ export class MainProcessContext {
   private constructor(
     private readonly eventManager: EventManager,
     private readonly viewContext: ViewContext,
-    private readonly mainHistory: TrackingConsentHistory<MainExecutionContextDiskEntry>,
+    private readonly mainHistory: DiskValueHistory<MainExecutionContextDiskEntry>,
     private readonly sessionManager: SessionManager,
     private readonly consentManager: TrackingConsentManager
   ) {}
@@ -70,16 +67,16 @@ export class MainProcessContext {
     eventManager: EventManager,
     hooks: FormatHooks,
     sessionManager: SessionManager,
-    histories: ContextHistoryFactory,
     trackingConsentManager: TrackingConsentManager
   ): Promise<MainProcessContext> {
-    const viewContext = await ViewContext.init(hooks, histories, undefined, {
+    const viewContext = await ViewContext.init(hooks, undefined, {
       isExecutionContextEnabled: true,
     });
-    const mainHistory = await histories.create<MainExecutionContextDiskEntry>(
-      MAIN_EXECUTION_CONTEXT_HISTORY_FILE_NAME,
-      SESSION_TIME_OUT_DELAY
-    );
+    const filePath = path.join(app.getPath('userData'), MAIN_EXECUTION_CONTEXT_HISTORY_FILE_NAME);
+    const mainHistory = await DiskValueHistory.init<MainExecutionContextDiskEntry>({
+      filePath,
+      expireDelay: SESSION_TIME_OUT_DELAY,
+    });
     const context = new MainProcessContext(
       eventManager,
       viewContext,
@@ -106,7 +103,13 @@ export class MainProcessContext {
       return { meta: { '_dd.execution_context.id': entry.id } };
     });
 
-    context.startState();
+    const startTime = timeStampNow();
+    if (trackingConsentManager.get() === 'not-granted') {
+      viewContext.close(startTime);
+      mainHistory.closeActive(startTime);
+    } else {
+      context.startState(startTime);
+    }
 
     context.lifecycleSubscription = eventManager.registerHandler<LifecycleEvent>({
       canHandle: (event): event is LifecycleEvent => event.kind === EventKind.LIFECYCLE,
@@ -148,7 +151,7 @@ export class MainProcessContext {
     // registering this one. Safe to call unconditionally: closing an already-closed entry is a
     // no-op.
     this.viewContext.add(viewId, startTime);
-    this.mainHistory.set({ id: executionContextId, type: 'main-process' }, startTime);
+    this.mainHistory.closeAndAdd({ id: executionContextId, type: 'main-process' }, startTime);
 
     this.emitViewEvent(this.state, true, startTime);
     this.emitExecutionContextEvent(this.state, startTime);
@@ -164,7 +167,7 @@ export class MainProcessContext {
     this.emitViewEvent(this.state, false, endTime);
     this.emitExecutionContextEvent(this.state, endTime);
     this.viewContext.close(endTime);
-    this.mainHistory.set(undefined, endTime);
+    this.mainHistory.closeActive(endTime);
   }
 
   private onConsentChange(change: TrackingConsentChange): void {

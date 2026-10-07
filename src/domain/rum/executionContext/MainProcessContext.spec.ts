@@ -17,7 +17,7 @@ import { EventManager, EventKind, EventFormat, EventSource, LifecycleKind, type 
 import { createFormatHooks, type FormatHooks } from '../../../assembly';
 import type { SessionManager } from '../../session';
 import type { RawRumExecutionContext, RawRumView } from '../types';
-import { ContextHistoryFactory, TrackingConsentManager } from '../../tracking-consent';
+import { TrackingConsentManager } from '../../tracking-consent';
 
 vi.mock('node:fs/promises');
 const mfs = mockFs();
@@ -30,12 +30,10 @@ describe('MainProcessContext', () => {
   let sessionManager: SessionManager;
   let context: MainProcessContext;
   let trackingConsentManager: TrackingConsentManager;
-  let histories: ContextHistoryFactory;
 
   beforeEach(async () => {
     vi.useFakeTimers();
     trackingConsentManager = new TrackingConsentManager();
-    histories = new ContextHistoryFactory(trackingConsentManager, '/mock/user/data');
     mfs.readFile.mockRejectedValue(new Error('ENOENT'));
     mfs.writeFile.mockResolvedValue(undefined);
 
@@ -50,11 +48,10 @@ describe('MainProcessContext', () => {
     currentSessionId = 'session-1';
     sessionManager = { getSession: () => ({ id: currentSessionId, status: 'tracked' }) } as unknown as SessionManager;
 
-    context = await MainProcessContext.start(eventManager, hooks, sessionManager, histories, trackingConsentManager);
+    context = await MainProcessContext.start(eventManager, hooks, sessionManager, trackingConsentManager);
   });
 
   afterEach(() => {
-    histories.stop();
     vi.useRealTimers();
     vi.clearAllMocks();
     mfs.reset();
@@ -205,7 +202,7 @@ describe('MainProcessContext', () => {
     trackingConsentManager.update('not-granted');
     hooks = createFormatHooks();
     rawRumEvents.length = 0;
-    context = await MainProcessContext.start(eventManager, hooks, sessionManager, histories, trackingConsentManager);
+    context = await MainProcessContext.start(eventManager, hooks, sessionManager, trackingConsentManager);
 
     eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
     vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
@@ -276,11 +273,10 @@ describe('MainProcessContext', () => {
     context.stop();
     hooks = createFormatHooks();
     trackingConsentManager = new TrackingConsentManager();
-    histories = new ContextHistoryFactory(trackingConsentManager, '/mock/user/data');
     trackingConsentManager.subscribe((change) => {
       eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW, time: change.time });
     });
-    context = await MainProcessContext.start(eventManager, hooks, sessionManager, histories, trackingConsentManager);
+    context = await MainProcessContext.start(eventManager, hooks, sessionManager, trackingConsentManager);
     eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
     rawRumEvents.length = 0;
 
@@ -316,32 +312,59 @@ describe('MainProcessContext', () => {
     ).toMatchObject({ execution_context: { id: renewedContextId } });
   });
 
-  it('keeps both pending histories off disk and discards their RUM and span attribution on refusal', async () => {
+  it('closes both histories at refusal while preserving attribution during the pending period', () => {
     vi.advanceTimersByTime(10);
     const pendingStart = timeStampNow();
     trackingConsentManager.update('pending');
-    await vi.advanceTimersByTimeAsync(0);
-    mfs.writeFile.mockClear();
 
     currentSessionId = 'pending-session';
     eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
     const pendingEvent = rawRumEvents.filter((event) => event.data.type === 'execution_context').slice(-1)[0];
     const pendingId = (pendingEvent.data as RawRumExecutionContext).execution_context.id;
-    await vi.advanceTimersByTimeAsync(0);
+
+    vi.advanceTimersByTime(10);
+    const refusedAt = timeStampNow();
+    trackingConsentManager.update('not-granted');
 
     expect(hooks.triggerRum({ eventType: 'error', startTime: pendingStart, source: EventSource.MAIN })).toMatchObject({
       view: { id: 'pending-session' },
       execution_context: { id: pendingId },
     });
-    expect(mfs.writeFile).not.toHaveBeenCalled();
-
-    vi.advanceTimersByTime(10);
-    trackingConsentManager.update('not-granted');
-    expect(hooks.triggerRum({ eventType: 'error', startTime: pendingStart, source: EventSource.MAIN })).toBe(DISCARDED);
-    expect(hooks.triggerSpan({ startTime: pendingStart, source: EventSource.MAIN })).toBe(DISCARDED);
+    expect(hooks.triggerSpan({ startTime: pendingStart, source: EventSource.MAIN })).toMatchObject({
+      meta: { '_dd.view.id': 'pending-session', '_dd.execution_context.id': pendingId },
+    });
+    expect(hooks.triggerRum({ eventType: 'error', startTime: refusedAt, source: EventSource.MAIN })).toBe(DISCARDED);
+    expect(hooks.triggerSpan({ startTime: refusedAt, source: EventSource.MAIN })).toBe(DISCARDED);
   });
 
   describe('with a pre-existing history file left open by a previous run', () => {
+    it('closes both histories at initially denied consent while retaining past attribution', async () => {
+      context.stop();
+      const previousStart = timeStampNow();
+      vi.advanceTimersByTime(10);
+      const deniedAt = timeStampNow();
+      trackingConsentManager.update('not-granted');
+      hooks = createFormatHooks();
+      mfs.readFile
+        .mockResolvedValueOnce(JSON.stringify([{ value: 'previous-view', startTime: previousStart, endTime: null }]))
+        .mockResolvedValueOnce(
+          JSON.stringify([
+            { value: { id: 'previous-context', type: 'main-process' }, startTime: previousStart, endTime: null },
+          ])
+        );
+
+      context = await MainProcessContext.start(eventManager, hooks, sessionManager, trackingConsentManager);
+
+      expect(
+        hooks.triggerRum({ eventType: 'error', startTime: previousStart, source: EventSource.MAIN })
+      ).toMatchObject({
+        view: { id: 'previous-view' },
+        execution_context: { id: 'previous-context' },
+      });
+      expect(hooks.triggerRum({ eventType: 'error', startTime: deniedAt, source: EventSource.MAIN })).toBe(DISCARDED);
+      expect(hooks.triggerSpan({ startTime: deniedAt, source: EventSource.MAIN })).toBe(DISCARDED);
+    });
+
     it('does not tag the new pair with the stale entry', async () => {
       context.stop();
       mfs.readFile.mockResolvedValue(
@@ -363,7 +386,6 @@ describe('MainProcessContext', () => {
         localEventManager,
         localHooks,
         localSessionManager,
-        histories,
         trackingConsentManager
       );
 
