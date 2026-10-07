@@ -6,7 +6,7 @@ import { EventKind, EventTrack, type ServerEvent } from './event';
 import { createTestConfiguration } from './mocks.specUtil';
 
 vi.mock('node:fs/promises');
-vi.mock('electron', () => ({ app: { getPath: () => '/mock/user/data' } }));
+vi.mock('electron', () => ({ app: { getPath: () => '/mock/user/data', getAppPath: () => '/mock/app' } }));
 vi.mock('./domain/tracing/Tracing', () => ({ Tracing: vi.fn() }));
 
 const { createBatchManager, post } = vi.hoisted(() => ({
