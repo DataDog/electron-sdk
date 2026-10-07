@@ -64,7 +64,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   // events, so that their events are not dropped and a consent change reaches storage before the session reacts.
   new MainAssembly(eventManager, hooks, new BeforeSend(config.beforeSendRum));
   startTelemetry(eventManager, config);
-  transport = await Transport.create(config, eventManager, trackingConsentManager);
+  transport = await Transport.create(config, eventManager, trackingConsentManager, pathScrubber);
   sessionManager = await SessionManager.start(eventManager, hooks, config, trackingConsentManager);
 
   new ProfilingCollection(eventManager, sessionManager, config, hooks, trackingConsentManager);
