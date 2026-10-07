@@ -254,4 +254,141 @@ describe('PathScrubber', () => {
       expect((vi.mocked(addError).mock.calls[0][0] as Error).message).toBe('Path scrubbing failed');
     });
   });
+
+  describe('contract', () => {
+    // Deterministic pseudo-random generator (mulberry32): reproducible failures without a property-testing dependency.
+    function random(seed: number) {
+      let state = seed;
+      return () => {
+        state = (state + 0x6d2b79f5) | 0;
+        let t = Math.imul(state ^ (state >>> 15), 1 | state);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    const FRAGMENTS = [
+      APP,
+      `${APP}/dist/x.js`,
+      `${APP}.unpacked`,
+      WINDOWS_APP,
+      `${WINDOWS_APP}\\x`,
+      `\\\\?\\${WINDOWS_APP}`,
+      'file://',
+      'file:///',
+      '%20',
+      '%C3%A9',
+      'é',
+      '日',
+      '😀',
+      '\n',
+      '\t',
+      '"',
+      "'",
+      '\\',
+      '\\\\',
+      '/',
+      ' ',
+      'n',
+      '(',
+      ')',
+      ':',
+      '#',
+      '?',
+      'C:',
+      'abc',
+      '\x1c',
+      '\x1f',
+      '\x0b',
+      '\ud83c',
+      'ile:///',
+      WINDOWS_APP.slice(1),
+    ];
+    const SAFE_FRAGMENTS = [
+      'abc',
+      ' ',
+      '\n',
+      '"',
+      '\\',
+      'é',
+      '日',
+      '😀',
+      '(',
+      ')',
+      ':',
+      'C:',
+      'file://',
+      '/tmp',
+      '%20',
+      '\\\\',
+    ];
+
+    function randomString(next: () => number, fragments: string[]): string {
+      const length = 1 + Math.floor(next() * 15);
+      return Array.from({ length }, () => fragments[Math.floor(next() * fragments.length)]).join('');
+    }
+
+    function randomPayload(next: () => number, fragments: string[]) {
+      return {
+        message: randomString(next, fragments),
+        error: { stack: randomString(next, fragments) },
+        list: [randomString(next, fragments), randomString(next, fragments)],
+      };
+    }
+
+    const NEAR_MISSES = [
+      `${APP}2/x`,
+      `${APP}.backup/x`,
+      `${APP}-x`,
+      APP.slice(0, -1),
+      APP.replace('alice', 'Alice'),
+      '/Users/alice/My App.app/Contents/Resources/other/x.js',
+    ];
+    const WINDOWS_NEAR_MISSES = [
+      `${WINDOWS_APP}X\\y`,
+      WINDOWS_APP.replace('C:', 'D:'),
+      `${WINDOWS_APP}2`,
+      `${WINDOWS_APP}.backup\\y`,
+      `${WINDOWS_APP}-x`,
+    ];
+
+    it('always returns valid JSON', async () => {
+      const scrubbers = [await createScrubber(), await windowsScrubber()];
+      const next = random(42);
+      for (let i = 0; i < 2000; i++) {
+        const serialized = JSON.stringify(randomPayload(next, FRAGMENTS));
+        for (const scrubber of scrubbers) {
+          const scrubbed = scrubber.scrub(serialized);
+          expect(() => JSON.parse(scrubbed) as unknown, scrubbed).not.toThrow();
+        }
+      }
+    });
+
+    it('leaves payloads without real occurrences unchanged, even with near misses', async () => {
+      const cases: [PathScrubber, string[]][] = [
+        [await createScrubber(), [...SAFE_FRAGMENTS, ...NEAR_MISSES]],
+        [await windowsScrubber(), [...SAFE_FRAGMENTS, ...WINDOWS_NEAR_MISSES]],
+      ];
+      for (const [scrubber, fragments] of cases) {
+        const next = random(7);
+        for (let i = 0; i < 2000; i++) {
+          const serialized = JSON.stringify(randomPayload(next, fragments));
+          expect(scrubber.scrub(serialized)).toBe(serialized);
+        }
+      }
+    });
+
+    it.each([
+      ['POSIX', createScrubber],
+      ['Windows', windowsScrubber],
+    ])('scrubs long backslash runs in linear time (%s)', async (_, scrubberFactory) => {
+      const scrubber = await scrubberFactory();
+      for (const value of ['\\'.repeat(100_000), `${'\\'.repeat(99_999)}x`]) {
+        const serialized = JSON.stringify(value);
+        const start = performance.now();
+        scrubber.scrub(serialized);
+        expect(performance.now() - start).toBeLessThan(100);
+      }
+    });
+  });
 });

@@ -10,7 +10,7 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
       include: ['src/**/*.ts', 'scripts/lib/*.ts', 'scripts/playground/lib/*.ts'],
-      exclude: ['src/**/*.spec.ts', 'scripts/**/*.spec.ts'],
+      exclude: ['src/**/*.spec.ts', 'src/**/*.bench.ts', 'scripts/**/*.spec.ts'],
     },
   },
 });
