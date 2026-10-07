@@ -1,9 +1,5 @@
-import { timeStampNow } from '@datadog/js-core/time';
-import { ContextManager, type Context } from './contextManager';
+import { ContextManager, initContextWithHistory, type Context, type ContextHistory } from './contextManager';
 import type { FormatHooks } from '../../assembly';
-import type { ContextHistoryFactory } from '../tracking-consent';
-import { SESSION_TIME_OUT_DELAY } from '../session';
-import { registerContextHooks, type ContextHistory } from './registerContextHooks';
 
 export const GLOBAL_CONTEXT_HISTORY_FILE_NAME = '_dd_global_context_history';
 
@@ -18,14 +14,13 @@ export const GLOBAL_CONTEXT_HISTORY_FILE_NAME = '_dd_global_context_history';
  * it sets win (see `RendererPipeline`).
  */
 export class GlobalContext extends ContextManager<Context> {
-  static async init(hooks: FormatHooks, histories: ContextHistoryFactory): Promise<GlobalContext> {
-    const history = await histories.create<Context>(GLOBAL_CONTEXT_HISTORY_FILE_NAME, SESSION_TIME_OUT_DELAY);
-    return new GlobalContext(hooks, history);
+  static init(hooks: FormatHooks): Promise<GlobalContext> {
+    return initContextWithHistory((history) => new GlobalContext(hooks, history), GLOBAL_CONTEXT_HISTORY_FILE_NAME);
   }
 
-  constructor(hooks: FormatHooks, history: ContextHistory) {
-    super('global context', {}, (context) => history.set(context, timeStampNow()));
-    registerContextHooks(hooks, history, () => this.getContext());
+  constructor(hooks: FormatHooks, history?: ContextHistory) {
+    super('global context', {}, history);
+    this.registerRumHook(hooks);
   }
 
   /** Every key is customer-defined, so `extraInfo` is stored as an ordinary attribute. */

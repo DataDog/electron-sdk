@@ -9,7 +9,7 @@ import { SessionContext } from './SessionContext';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
 import { isSessionSampled } from '../../tools/Sampler';
 import { setCurrentSessionSampled } from '../../common';
-import type { ContextHistoryFactory, TrackingConsentChange, TrackingConsentManager } from '../tracking-consent';
+import type { TrackingConsentChange, TrackingConsentManager } from '../tracking-consent';
 
 export const SESSION_EXPIRATION_DELAY = 15 * ONE_MINUTE;
 
@@ -40,7 +40,6 @@ export class SessionManager {
     private readonly eventManager: EventManager,
     private readonly hooks: FormatHooks,
     private readonly configuration: Configuration,
-    private readonly histories: ContextHistoryFactory,
     private readonly trackingConsentManager: TrackingConsentManager
   ) {}
 
@@ -48,10 +47,9 @@ export class SessionManager {
     eventManager: EventManager,
     hooks: FormatHooks,
     configuration: Configuration,
-    histories: ContextHistoryFactory,
     trackingConsentManager: TrackingConsentManager
   ): Promise<SessionManager> {
-    const manager = new SessionManager(eventManager, hooks, configuration, histories, trackingConsentManager);
+    const manager = new SessionManager(eventManager, hooks, configuration, trackingConsentManager);
     await manager.init();
     return manager;
   }
@@ -86,7 +84,8 @@ export class SessionManager {
   }
 
   private async init(): Promise<void> {
-    this.sessionContext = await SessionContext.init(this.hooks, this.histories);
+    this.sessionContext = await SessionContext.init(this.hooks);
+    this.sessionContext.close();
     if (this.trackingConsentManager.get() === 'not-granted') {
       this.currentSession = { id: generateUUID(), status: 'expired' };
       setCurrentSessionSampled(false);
@@ -131,15 +130,20 @@ export class SessionManager {
       return;
     }
 
+    const closeTime = atTime ?? timeStampNow();
     this.clearTimers();
     this.currentSession.status = 'expired';
     setCurrentSessionSampled(false);
-    this.sessionContext.close(atTime);
-    this.eventManager.notify({
-      kind: EventKind.LIFECYCLE,
-      lifecycle: LifecycleKind.SESSION_EXPIRED,
-      ...(atTime === undefined ? {} : { time: atTime }),
-    });
+    try {
+      // Final view documents still need attribution when the session starts and ends in the same millisecond.
+      this.eventManager.notify({
+        kind: EventKind.LIFECYCLE,
+        lifecycle: LifecycleKind.SESSION_EXPIRED,
+        ...(atTime === undefined ? {} : { time: atTime }),
+      });
+    } finally {
+      this.sessionContext.close(closeTime);
+    }
   }
 
   private updateActivity(): void {

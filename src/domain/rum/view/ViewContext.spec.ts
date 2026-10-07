@@ -14,7 +14,6 @@ import { DISCARDED } from '@datadog/js-core/assembly';
 import { createFormatHooks } from '../../../assembly';
 import { EventSource } from '../../../event';
 import { ViewContext } from './ViewContext';
-import { ContextHistoryFactory, TrackingConsentManager } from '../../tracking-consent';
 
 vi.mock('node:fs/promises');
 const mfs = mockFs();
@@ -25,21 +24,16 @@ const VIEW_ID = 'view-1';
 const EXPIRE_DELAY = 1000;
 
 describe('ViewContext', () => {
-  let trackingConsentManager: TrackingConsentManager;
-  let histories: ContextHistoryFactory;
   let context: ViewContext;
 
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
-    trackingConsentManager = new TrackingConsentManager();
-    histories = new ContextHistoryFactory(trackingConsentManager, '/mock/user/data');
     mfs.readFile.mockRejectedValue(new Error('ENOENT'));
     mfs.writeFile.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
-    histories.stop();
     vi.useRealTimers();
     vi.clearAllMocks();
     mfs.reset();
@@ -48,21 +42,21 @@ describe('ViewContext', () => {
   describe('before add()', () => {
     it('RUM hook returns DISCARDED', async () => {
       const hooks = createFormatHooks();
-      context = await ViewContext.init(hooks, histories, EXPIRE_DELAY);
+      context = await ViewContext.init(hooks, EXPIRE_DELAY);
 
       expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toBe(DISCARDED);
     });
 
     it('span hook returns DISCARDED', async () => {
       const hooks = createFormatHooks();
-      context = await ViewContext.init(hooks, histories, EXPIRE_DELAY);
+      context = await ViewContext.init(hooks, EXPIRE_DELAY);
 
       expect(hooks.triggerSpan({ startTime: T0, source: EventSource.MAIN })).toBe(DISCARDED);
     });
 
     it('telemetry hook returns SKIPPED (undefined)', async () => {
       const hooks = createFormatHooks();
-      context = await ViewContext.init(hooks, histories, EXPIRE_DELAY);
+      context = await ViewContext.init(hooks, EXPIRE_DELAY);
 
       expect(hooks.triggerTelemetry({ startTime: T0, source: EventSource.MAIN })).toBeUndefined();
     });
@@ -71,7 +65,7 @@ describe('ViewContext', () => {
   describe('after add()', () => {
     it('RUM hook returns id, name, url for main source', async () => {
       const hooks = createFormatHooks();
-      context = await ViewContext.init(hooks, histories, EXPIRE_DELAY);
+      context = await ViewContext.init(hooks, EXPIRE_DELAY);
 
       context.add(VIEW_ID);
 
@@ -82,7 +76,7 @@ describe('ViewContext', () => {
 
     it('RUM hook returns container.view.id for renderer source', async () => {
       const hooks = createFormatHooks();
-      context = await ViewContext.init(hooks, histories, EXPIRE_DELAY);
+      context = await ViewContext.init(hooks, EXPIRE_DELAY);
 
       context.add(VIEW_ID);
 
@@ -93,7 +87,7 @@ describe('ViewContext', () => {
 
     it('RUM hook does not include view.name/url for renderer source', async () => {
       const hooks = createFormatHooks();
-      context = await ViewContext.init(hooks, histories, EXPIRE_DELAY);
+      context = await ViewContext.init(hooks, EXPIRE_DELAY);
 
       context.add(VIEW_ID);
 
@@ -104,7 +98,7 @@ describe('ViewContext', () => {
 
     it('span hook returns view id', async () => {
       const hooks = createFormatHooks();
-      context = await ViewContext.init(hooks, histories, EXPIRE_DELAY);
+      context = await ViewContext.init(hooks, EXPIRE_DELAY);
 
       context.add(VIEW_ID);
 
@@ -117,7 +111,7 @@ describe('ViewContext', () => {
 
     it('telemetry hook returns only id', async () => {
       const hooks = createFormatHooks();
-      context = await ViewContext.init(hooks, histories, EXPIRE_DELAY);
+      context = await ViewContext.init(hooks, EXPIRE_DELAY);
 
       context.add(VIEW_ID);
 
@@ -126,7 +120,7 @@ describe('ViewContext', () => {
 
     it('telemetry hook contributes no view for renderer events, which keep the view they reported', async () => {
       const hooks = createFormatHooks();
-      context = await ViewContext.init(hooks, histories, EXPIRE_DELAY);
+      context = await ViewContext.init(hooks, EXPIRE_DELAY);
 
       context.add(VIEW_ID);
 
@@ -135,7 +129,7 @@ describe('ViewContext', () => {
 
     it('tags MAIN events with the fake view shape when isExecutionContextEnabled is true', async () => {
       const hooks = createFormatHooks();
-      context = await ViewContext.init(hooks, histories, EXPIRE_DELAY, {
+      context = await ViewContext.init(hooks, EXPIRE_DELAY, {
         isExecutionContextEnabled: true,
       });
 
@@ -148,7 +142,7 @@ describe('ViewContext', () => {
 
     it('reflects the latest add()', async () => {
       const hooks = createFormatHooks();
-      context = await ViewContext.init(hooks, histories, EXPIRE_DELAY);
+      context = await ViewContext.init(hooks, EXPIRE_DELAY);
       const newViewId = 'view-2';
 
       context.add(VIEW_ID); // at T0
@@ -166,7 +160,7 @@ describe('ViewContext', () => {
   describe('after close()', () => {
     it('RUM hook still attributes events during the view period', async () => {
       const hooks = createFormatHooks();
-      context = await ViewContext.init(hooks, histories, EXPIRE_DELAY);
+      context = await ViewContext.init(hooks, EXPIRE_DELAY);
 
       context.add(VIEW_ID); // at T0 = 0
       vi.advanceTimersByTime(10); // time is now 10
@@ -180,7 +174,7 @@ describe('ViewContext', () => {
 
     it('RUM hook returns DISCARDED for events before the view started', async () => {
       const hooks = createFormatHooks();
-      context = await ViewContext.init(hooks, histories, EXPIRE_DELAY);
+      context = await ViewContext.init(hooks, EXPIRE_DELAY);
 
       vi.advanceTimersByTime(10); // advance to T10
       context.add(VIEW_ID); // view started at T10
@@ -192,7 +186,7 @@ describe('ViewContext', () => {
 
     it('span hook still attributes events during the view period', async () => {
       const hooks = createFormatHooks();
-      context = await ViewContext.init(hooks, histories, EXPIRE_DELAY);
+      context = await ViewContext.init(hooks, EXPIRE_DELAY);
 
       context.add(VIEW_ID); // at T0 = 0
       vi.advanceTimersByTime(10); // time is now 10
@@ -208,7 +202,7 @@ describe('ViewContext', () => {
 
     it('span hook returns DISCARDED for events before the view started', async () => {
       const hooks = createFormatHooks();
-      context = await ViewContext.init(hooks, histories, EXPIRE_DELAY);
+      context = await ViewContext.init(hooks, EXPIRE_DELAY);
 
       vi.advanceTimersByTime(10); // advance to T10
       context.add(VIEW_ID); // view started at T10
@@ -220,7 +214,7 @@ describe('ViewContext', () => {
 
     it('logs hook attributes MAIN logs to the view but leaves a renderer log its own', async () => {
       const hooks = createFormatHooks();
-      context = await ViewContext.init(hooks, histories, EXPIRE_DELAY);
+      context = await ViewContext.init(hooks, EXPIRE_DELAY);
 
       context.add(VIEW_ID); // at T0 = 0
       vi.advanceTimersByTime(10);
@@ -234,7 +228,7 @@ describe('ViewContext', () => {
 
     it('telemetry hook still attributes events during the view period', async () => {
       const hooks = createFormatHooks();
-      context = await ViewContext.init(hooks, histories, EXPIRE_DELAY);
+      context = await ViewContext.init(hooks, EXPIRE_DELAY);
 
       context.add(VIEW_ID); // at T0 = 0
       vi.advanceTimersByTime(10);
@@ -243,46 +237,6 @@ describe('ViewContext', () => {
       expect(hooks.triggerTelemetry({ startTime: T0, source: EventSource.MAIN })).toMatchObject({
         view: { id: VIEW_ID },
       });
-    });
-  });
-  describe('tracking consent', () => {
-    it('attributes main and renderer events to a pending view without persisting it', async () => {
-      trackingConsentManager.update('pending');
-      const hooks = createFormatHooks();
-      context = await ViewContext.init(hooks, histories, EXPIRE_DELAY);
-      await vi.advanceTimersByTimeAsync(0);
-      mfs.writeFile.mockClear();
-
-      context.add('pending-view');
-
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toMatchObject({
-        view: { id: 'pending-view' },
-      });
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.RENDERER })).toMatchObject({
-        container: { view: { id: 'pending-view' } },
-      });
-      await vi.advanceTimersByTimeAsync(0);
-      expect(mfs.writeFile).not.toHaveBeenCalled();
-    });
-
-    it('discards a rejected pending view while retaining earlier authorized attribution', async () => {
-      const hooks = createFormatHooks();
-      context = await ViewContext.init(hooks, histories, EXPIRE_DELAY);
-      context.add('authorized-view');
-      vi.advanceTimersByTime(10);
-      context.close();
-      trackingConsentManager.update('pending');
-      context.add('pending-view');
-      vi.advanceTimersByTime(10);
-
-      trackingConsentManager.update('not-granted');
-
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toMatchObject({
-        view: { id: 'authorized-view' },
-      });
-      expect(hooks.triggerRum({ eventType: 'view', startTime: 15 as TimeStamp, source: EventSource.MAIN })).toBe(
-        DISCARDED
-      );
     });
   });
 });

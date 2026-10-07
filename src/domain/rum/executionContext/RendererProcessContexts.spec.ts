@@ -30,7 +30,7 @@ import {
 } from '../../../event';
 import { BeforeSend, createFormatHooks, MainAssembly } from '../../../assembly';
 import type { RawRumExecutionContext } from '../types';
-import { ContextHistoryFactory, TrackingConsentManager } from '../../tracking-consent';
+import { TrackingConsentManager } from '../../tracking-consent';
 import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED } from '@datadog/js-core/assembly';
 import { SessionManager } from '../../session';
@@ -44,7 +44,6 @@ describe('RendererProcessContexts', () => {
   let rawRumEvents: RawRumEvent[];
   let collection: RendererProcessContexts;
   let sessionManager: SessionManager | undefined;
-  let histories: ContextHistoryFactory | undefined;
   let consentManager: TrackingConsentManager;
   let webContentsCreatedHandler: (event: unknown, webContents: unknown) => void;
 
@@ -76,8 +75,6 @@ describe('RendererProcessContexts', () => {
     collection.stop();
     sessionManager?.stop();
     sessionManager = undefined;
-    histories?.stop();
-    histories = undefined;
     vi.useRealTimers();
     vi.clearAllMocks();
     mfs.reset();
@@ -158,14 +155,7 @@ describe('RendererProcessContexts', () => {
 
     it('preserves an authorized final update when refusal expires the session, then stays inactive while denied', async () => {
       collection.stop();
-      histories = new ContextHistoryFactory(consentManager, '/mock/user/data');
-      sessionManager = await SessionManager.start(
-        eventManager,
-        hooks,
-        createTestConfiguration(),
-        histories,
-        consentManager
-      );
+      sessionManager = await SessionManager.start(eventManager, hooks, createTestConfiguration(), consentManager);
       collection = RendererProcessContexts.start(eventManager, hooks, consentManager);
       const wc = makeWebContents(1);
       webContentsCreatedHandler({}, wc);
@@ -206,14 +196,7 @@ describe('RendererProcessContexts', () => {
 
     it('does not attribute a window opened between sessions to the renewed session', async () => {
       collection.stop();
-      histories = new ContextHistoryFactory(consentManager, '/mock/user/data');
-      sessionManager = await SessionManager.start(
-        eventManager,
-        hooks,
-        createTestConfiguration(),
-        histories,
-        consentManager
-      );
+      sessionManager = await SessionManager.start(eventManager, hooks, createTestConfiguration(), consentManager);
       new MainAssembly(eventManager, hooks, new BeforeSend());
       const serverEvents: ServerEvent[] = [];
       eventManager.registerHandler<ServerEvent>({

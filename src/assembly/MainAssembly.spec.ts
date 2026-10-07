@@ -140,10 +140,10 @@ describe('MainAssembly', () => {
     expect((serverEvents[0] as ServerRumEvent).source).toBe(EventSource.MAIN);
   });
 
-  it('preserves storage consent on the internal envelope without adding it to the payload', () => {
+  it('preserves recovered crash authorization outside the event payload', () => {
     notifyRawRumEvent({ storageConsent: 'granted' });
 
-    expect(serverEvents[0]).toHaveProperty('storageConsent', 'granted');
+    expect(serverEvents[0]).toMatchObject({ storageConsent: 'granted' });
     expect(serverEvents[0].data).not.toHaveProperty('storageConsent');
   });
 

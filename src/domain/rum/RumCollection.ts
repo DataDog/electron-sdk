@@ -1,3 +1,4 @@
+import type { TrackingConsentManager } from '../tracking-consent';
 import { EventManager } from '../../event';
 import type { FormatHooks } from '../../assembly';
 import type { Configuration } from '../../config';
@@ -7,7 +8,6 @@ import { VitalCollection } from './vital';
 import { OperationCollection } from './operation';
 import { ViewCollection } from './view';
 import { ExecutionContextCollection } from './executionContext';
-import type { ContextHistoryFactory, TrackingConsentManager } from '../tracking-consent';
 
 export class RumCollection {
   private constructor(
@@ -22,16 +22,15 @@ export class RumCollection {
     hooks: FormatHooks,
     sessionManager: SessionManager,
     configuration: Configuration,
-    histories: ContextHistoryFactory,
     trackingConsentManager: TrackingConsentManager
   ): Promise<RumCollection> {
     const viewCollection: ViewCollection | ExecutionContextCollection = configuration.enableExecutionContext
-      ? await ExecutionContextCollection.start(eventManager, hooks, sessionManager, histories, trackingConsentManager)
-      : await ViewCollection.start(eventManager, hooks, histories, trackingConsentManager);
+      ? await ExecutionContextCollection.start(eventManager, hooks, sessionManager, trackingConsentManager)
+      : await ViewCollection.start(eventManager, hooks, trackingConsentManager);
     const errorCollection = new ErrorCollection(eventManager);
     const vitalCollection = new VitalCollection(eventManager);
     const operationCollection = new OperationCollection(eventManager);
-    CrashCollection.start(eventManager);
+    CrashCollection.start(eventManager, trackingConsentManager);
     return new RumCollection(viewCollection, errorCollection, vitalCollection, operationCollection);
   }
 

@@ -1,17 +1,19 @@
+import { app } from 'electron';
+import * as path from 'node:path';
 import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED, SKIPPED } from '@datadog/js-core/assembly';
 import type { FormatHooks } from '../../../assembly';
 import { EventSource } from '../../../event';
-import { type TrackingConsentHistory, type ContextHistoryFactory } from '../../tracking-consent';
+import { DiskValueHistory } from '../../../tools/DiskValueHistory';
 import { SESSION_TIME_OUT_DELAY } from '../../session';
 
 export const VIEW_HISTORY_FILE_NAME = '_dd_view_history';
 
-/** Enriches events with the main-process view at capture time and persists only authorized history. */
+/** Associates event timestamps with persisted main-process view history. */
 export class ViewContext {
-  private readonly history: TrackingConsentHistory<string>;
+  private readonly history: DiskValueHistory<string>;
 
-  private constructor(history: TrackingConsentHistory<string>, hooks: FormatHooks, isExecutionContextEnabled: boolean) {
+  private constructor(history: DiskValueHistory<string>, hooks: FormatHooks, isExecutionContextEnabled: boolean) {
     this.history = history;
 
     hooks.registerRum(({ source, startTime }) => {
@@ -59,21 +61,21 @@ export class ViewContext {
 
   static async init(
     hooks: FormatHooks,
-    histories: ContextHistoryFactory,
     expireDelay = SESSION_TIME_OUT_DELAY,
     options?: { isExecutionContextEnabled?: boolean }
   ): Promise<ViewContext> {
-    const history = await histories.create<string>(VIEW_HISTORY_FILE_NAME, expireDelay);
+    const filePath = path.join(app.getPath('userData'), VIEW_HISTORY_FILE_NAME);
+    const history = await DiskValueHistory.init<string>({ filePath, expireDelay });
     return new ViewContext(history, hooks, options?.isExecutionContextEnabled ?? false);
   }
 
   /** Registers the view at its event timestamp, even if registration happens later. */
   add(id: string, atTime: TimeStamp = timeStampNow()): void {
-    this.history.set(id, atTime);
+    this.history.closeAndAdd(id, atTime);
   }
 
   /** Closes the active view at the supplied transition time, or now on expiry. */
   close(atTime: TimeStamp = timeStampNow()): void {
-    this.history.set(undefined, atTime);
+    this.history.closeActive(atTime);
   }
 }

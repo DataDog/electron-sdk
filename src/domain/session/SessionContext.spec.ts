@@ -14,7 +14,6 @@ import { DISCARDED } from '@datadog/js-core/assembly';
 import { createFormatHooks } from '../../assembly';
 import { EventSource } from '../../event';
 import { SessionContext } from './SessionContext';
-import { ContextHistoryFactory, TrackingConsentManager } from '../tracking-consent';
 
 vi.mock('node:fs/promises');
 const mfs = mockFs();
@@ -24,21 +23,14 @@ const T0 = 0 as TimeStamp;
 const EXPIRE_DELAY = 1000;
 
 describe('SessionContext', () => {
-  let trackingConsentManager: TrackingConsentManager;
-  let histories: ContextHistoryFactory;
-  let context: SessionContext;
-
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
-    trackingConsentManager = new TrackingConsentManager();
-    histories = new ContextHistoryFactory(trackingConsentManager, '/mock/user/data');
     mfs.readFile.mockRejectedValue(new Error('ENOENT'));
     mfs.writeFile.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
-    histories.stop();
     vi.useRealTimers();
     vi.clearAllMocks();
     mfs.reset();
@@ -47,21 +39,21 @@ describe('SessionContext', () => {
   describe('before add()', () => {
     it('RUM hook returns DISCARDED', async () => {
       const hooks = createFormatHooks();
-      context = await SessionContext.init(hooks, histories, EXPIRE_DELAY);
+      await SessionContext.init(hooks, EXPIRE_DELAY);
 
       expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toBe(DISCARDED);
     });
 
     it('span hook returns DISCARDED', async () => {
       const hooks = createFormatHooks();
-      context = await SessionContext.init(hooks, histories, EXPIRE_DELAY);
+      await SessionContext.init(hooks, EXPIRE_DELAY);
 
       expect(hooks.triggerSpan({ startTime: T0, source: EventSource.MAIN })).toBe(DISCARDED);
     });
 
     it('telemetry hook returns SKIPPED (undefined)', async () => {
       const hooks = createFormatHooks();
-      context = await SessionContext.init(hooks, histories, EXPIRE_DELAY);
+      await SessionContext.init(hooks, EXPIRE_DELAY);
 
       expect(hooks.triggerTelemetry({ startTime: T0, source: EventSource.MAIN })).toBeUndefined();
     });
@@ -70,7 +62,7 @@ describe('SessionContext', () => {
   describe('after add()', () => {
     it('RUM hook returns the session id', async () => {
       const hooks = createFormatHooks();
-      context = await SessionContext.init(hooks, histories, EXPIRE_DELAY);
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
       context.add('session-abc');
 
@@ -81,7 +73,7 @@ describe('SessionContext', () => {
 
     it('RUM hook returns the session id for renderer source', async () => {
       const hooks = createFormatHooks();
-      context = await SessionContext.init(hooks, histories, EXPIRE_DELAY);
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
       context.add('session-abc');
 
@@ -92,7 +84,7 @@ describe('SessionContext', () => {
 
     it('span hook returns the session id', async () => {
       const hooks = createFormatHooks();
-      context = await SessionContext.init(hooks, histories, EXPIRE_DELAY);
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
       context.add('session-abc');
 
@@ -105,7 +97,7 @@ describe('SessionContext', () => {
 
     it('telemetry hook returns the session id', async () => {
       const hooks = createFormatHooks();
-      context = await SessionContext.init(hooks, histories, EXPIRE_DELAY);
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
       context.add('session-abc');
 
@@ -116,7 +108,7 @@ describe('SessionContext', () => {
 
     it('reflects the latest add()', async () => {
       const hooks = createFormatHooks();
-      context = await SessionContext.init(hooks, histories, EXPIRE_DELAY);
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
       context.add('session-first'); // at T0
       vi.advanceTimersByTime(10); // advance to T10
@@ -133,7 +125,7 @@ describe('SessionContext', () => {
   describe('after close()', () => {
     it('RUM hook still attributes events during the session period (crash attribution)', async () => {
       const hooks = createFormatHooks();
-      context = await SessionContext.init(hooks, histories, EXPIRE_DELAY);
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
       context.add('session-abc'); // at T0 = 0
       vi.advanceTimersByTime(10); // time is now 10
@@ -147,7 +139,7 @@ describe('SessionContext', () => {
 
     it('RUM hook returns DISCARDED for events before the session started', async () => {
       const hooks = createFormatHooks();
-      context = await SessionContext.init(hooks, histories, EXPIRE_DELAY);
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
       vi.advanceTimersByTime(10); // advance to T10
       context.add('session-abc'); // session started at T10
@@ -159,7 +151,7 @@ describe('SessionContext', () => {
 
     it('span hook still attributes events during the session period (crash attribution)', async () => {
       const hooks = createFormatHooks();
-      context = await SessionContext.init(hooks, histories, EXPIRE_DELAY);
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
       context.add('session-abc'); // at T0 = 0
       vi.advanceTimersByTime(10); // time is now 10
@@ -175,7 +167,7 @@ describe('SessionContext', () => {
 
     it('span hook returns DISCARDED for events before the session started', async () => {
       const hooks = createFormatHooks();
-      context = await SessionContext.init(hooks, histories, EXPIRE_DELAY);
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
       vi.advanceTimersByTime(10); // advance to T10
       context.add('session-abc'); // session started at T10
@@ -187,7 +179,7 @@ describe('SessionContext', () => {
 
     it('telemetry hook still attributes events during the session period', async () => {
       const hooks = createFormatHooks();
-      context = await SessionContext.init(hooks, histories, EXPIRE_DELAY);
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
       context.add('session-abc'); // at T0 = 0
       vi.advanceTimersByTime(10);
@@ -200,7 +192,7 @@ describe('SessionContext', () => {
 
     it('logs hook still attributes logs during the session period', async () => {
       const hooks = createFormatHooks();
-      context = await SessionContext.init(hooks, histories, EXPIRE_DELAY);
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
       context.add('session-abc'); // at T0 = 0
       vi.advanceTimersByTime(10);
@@ -214,7 +206,7 @@ describe('SessionContext', () => {
 
     it('logs hook nulls the ids rather than discarding when no session covers the log', async () => {
       const hooks = createFormatHooks();
-      context = await SessionContext.init(hooks, histories, EXPIRE_DELAY);
+      await SessionContext.init(hooks, EXPIRE_DELAY);
 
       // No session was ever added, so the renderer's stub id must not survive.
       expect(hooks.triggerLogs({ startTime: T0, source: EventSource.RENDERER })).toEqual({
@@ -223,9 +215,28 @@ describe('SessionContext', () => {
       });
     });
 
+    it('uses explicit boundaries and persists the closed session without covering the gap', async () => {
+      const context = await SessionContext.init(createFormatHooks(), EXPIRE_DELAY);
+      vi.setSystemTime(100);
+
+      context.add('first-session', 10 as TimeStamp);
+      context.close(20 as TimeStamp);
+      context.add('next-session', 30 as TimeStamp);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(context.getTrackedSessionId(10 as TimeStamp)).toBe('first-session');
+      expect(context.getTrackedSessionId(20 as TimeStamp)).toBeUndefined();
+      expect(context.getTrackedSessionId(29 as TimeStamp)).toBeUndefined();
+      expect(context.getTrackedSessionId(30 as TimeStamp)).toBe('next-session');
+      expect(JSON.parse(mfs.writeFile.mock.lastCall![1] as string)).toEqual([
+        { startTime: 30, endTime: null, value: 'next-session' },
+        { startTime: 10, endTime: 20, value: 'first-session' },
+      ]);
+    });
+
     it('RUM hook returns DISCARDED for events after the session ended', async () => {
       const hooks = createFormatHooks();
-      context = await SessionContext.init(hooks, histories, EXPIRE_DELAY);
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
 
       context.add('session-abc'); // at T0
       vi.advanceTimersByTime(10); // now T10
@@ -233,52 +244,6 @@ describe('SessionContext', () => {
 
       // Event at T20 (after session ended at T10) → DISCARDED
       expect(hooks.triggerRum({ eventType: 'view', startTime: 20 as TimeStamp, source: EventSource.MAIN })).toBe(
-        DISCARDED
-      );
-    });
-  });
-  describe('tracking consent', () => {
-    it('enriches pending events in memory without persisting their session', async () => {
-      trackingConsentManager.update('pending');
-      const hooks = createFormatHooks();
-      context = await SessionContext.init(hooks, histories, EXPIRE_DELAY);
-      await vi.advanceTimersByTimeAsync(0);
-      mfs.writeFile.mockClear();
-
-      context.add('pending-session');
-
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toMatchObject({
-        session: { id: 'pending-session' },
-      });
-      expect(hooks.triggerSpan({ startTime: T0, source: EventSource.MAIN })).toMatchObject({
-        meta: { '_dd.session.id': 'pending-session' },
-      });
-      await vi.advanceTimersByTimeAsync(0);
-      expect(mfs.writeFile).not.toHaveBeenCalled();
-    });
-
-    it('restores authorized sessions after a restart without restoring pending sessions', async () => {
-      context = await SessionContext.init(createFormatHooks(), histories, EXPIRE_DELAY);
-      context.add('authorized-session');
-      vi.advanceTimersByTime(10);
-      context.close();
-      trackingConsentManager.update('pending');
-      context.add('pending-session');
-      await vi.advanceTimersByTimeAsync(0);
-      const persistedHistory = mfs.writeFile.mock.lastCall![1] as string;
-      histories.stop();
-
-      vi.advanceTimersByTime(10);
-      mfs.readFile.mockResolvedValueOnce(persistedHistory);
-      const hooks = createFormatHooks();
-      trackingConsentManager = new TrackingConsentManager();
-      histories = new ContextHistoryFactory(trackingConsentManager, '/mock/user/data');
-      context = await SessionContext.init(hooks, histories, EXPIRE_DELAY);
-
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toMatchObject({
-        session: { id: 'authorized-session' },
-      });
-      expect(hooks.triggerRum({ eventType: 'view', startTime: 15 as TimeStamp, source: EventSource.MAIN })).toBe(
         DISCARDED
       );
     });

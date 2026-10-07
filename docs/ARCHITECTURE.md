@@ -157,13 +157,14 @@ When `enableExecutionContext` is set, `ExecutionContextCollection` (`src/domain/
 
 ## Internal Tracking Consent State
 
-`TrackingConsentManager` starts in `granted` when explicitly constructed. Its timestamp history
-is kept in memory from construction onward; it neither persists consent nor infers consent from an earlier process.
+`TrackingConsentManager` defaults to `granted`. SDK initialization loads consent history from the previous
+launch before saving the new launch's state. Previous consent is used for historical lookups, not as the
+current consent of the new launch.
 Changes notify monitored subscribers synchronously after updating the state.
 Consumers own their subscriptions and unsubscribe when stopped.
 
-History lookups return the state active at the requested time. For example, a past `pending` period still returns
-`pending` after the current state changes to `granted` or `not-granted`.
+`getAt()` returns the original state at a time within the current launch. A past `pending` period still returns
+`pending` after a grant or refusal. Crash recovery uses `isAuthorizedAt()` to also consult the previous launch.
 
 ### Consent and batch storage
 
@@ -198,19 +199,24 @@ The existing best-effort limit of 100 completed batches applies to the authorize
 of 100 applies across all remaining pending and migration directories together, so creating new periods
 does not multiply the allowance. Open files and filesystem failures can temporarily exceed these limits.
 
-### Consent and context history
+### Consent and crash recovery
 
-Delayed events need the context that was active when they occurred, rather than the application's
-latest user, session or view. Saved history also lets a later process attribute recovered crash reports;
-loading it must not restore the application's current context.
+Context histories retain their existing attribution behavior. Crash recovery checks consent explicitly
+before reading a dump: saved session, view or customer context is not proof that a crash was authorized.
 
-`TrackingConsentHistory` keeps undecided changes in memory so they cannot survive a refusal or restart.
-A grant saves them; a refusal restores the previously authorized history. The latest configured value
-remains available for a new tracking period without filling the refused period.
+`TrackingConsentManager` keeps timestamped state changes for the current launch and persists them to
+`_dd_tracking_consent_history`. On startup it reads the previous launch's timeline separately, so a new
+`granted` state cannot authorize an earlier launch's unresolved `pending` period. A pending period is
+accepted only if followed by a grant within the same launch. Missing or invalid consent history rejects
+the recovered crash. Only the new launch's timeline is written back; older unprocessed dumps without
+matching consent history are discarded.
 
-`ContextHistoryFactory` owns the histories and subscribes before their consumers. This ordering lets
-session and collector callbacks read or change history without each history reconciling the same
-consent transition. `DiskStorage` only loads JSON and serializes writes; consent decisions stay in the history.
+`CrashCollection` deletes rejected dumps without parsing or emitting them. Accepted crashes carry their
+established authorization through assembly to the authorized batch store, even if current consent has
+changed. Session/view/user histories still supply attribution through the existing format hooks.
+
+Consent snapshots are written asynchronously in order. A failed or interrupted write can leave an older
+`granted` state on disk; this history does not guarantee correct authorization after such a failure.
 
 ### Consent and session lifecycle
 
@@ -228,10 +234,6 @@ Transport subscribes before the session manager so pending storage is ready when
 emits opening documents. Session and history boundaries use the same timestamp.
 The final update of an authorized period retains its authorization when routing changes, preserving
 its duration and counters if the next pending period is refused.
-
-Customer context remains application configuration: rejecting its telemetry history does not clear
-`getUserInfo()` or `getAccountInfo()`. Shared format hooks use historical context for delayed events
-and current context for cumulative view updates.
 
 A renderer window can remain open while consent is refused. Its lifecycle listeners stay installed
 while context reporting stops, so resuming tracking neither revives a crashed window nor assigns an

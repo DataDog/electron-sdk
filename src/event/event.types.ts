@@ -12,11 +12,11 @@ export type { BrowserProfileEvent, BrowserProfilerTrace };
 export type RawEvent = RawRumEvent | RawTelemetryEvent | RawProfileEvent | RawReplayEvent;
 
 export interface RawRumEvent {
+  /** Preserves authorization for recovered crashes and terminal updates from granted periods. */
+  storageConsent?: 'granted';
   kind: typeof EventKind.RAW;
   format: typeof EventFormat.RUM;
   data: RawRumData;
-  /** Keeps a cumulative period authorized when its terminal update follows a consent change. */
-  storageConsent?: 'granted';
   startTime?: TimeStamp;
 }
 
@@ -54,11 +54,11 @@ export interface ServerRendererRumEvent {
 }
 
 export interface ServerMainRumEvent {
+  storageConsent?: 'granted';
   kind: typeof EventKind.SERVER;
   track: typeof EventTrack.RUM;
   source: typeof EventSource.MAIN;
   data: MainRumEvent;
-  storageConsent?: 'granted';
 }
 
 export type ServerRumEvent = ServerRendererRumEvent | ServerMainRumEvent;
