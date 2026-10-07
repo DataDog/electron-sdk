@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { Intake } from '../../lib/intake';
+import { Intake, registerSdkPaths } from '../../lib/intake';
 import { TestServer } from '../../lib/testServer';
 import { assertExpectedElectronVersion, getCompatibilityRun } from '../../lib/compatibility';
 import type { IntegrationApp, IntegrationMode, IntegrationVariant } from '../../playwright.config';
@@ -42,7 +42,11 @@ export const test = base.extend<IntegrationFixtures>({
       const intake = new Intake();
       await intake.start();
       await use(intake);
-      await intake.stop();
+      try {
+        intake.assertNoSdkPath();
+      } finally {
+        await intake.stop();
+      }
     },
     { option: true },
   ],
@@ -87,7 +91,23 @@ export async function launchApp(
   userDataDir: string,
   variant: IntegrationVariant = null
 ): Promise<ElectronApplication> {
-  const config = buildSdkConfig(intake);
+  const electronApp = await launchAppProcess(appDir, mode, buildSdkConfig(intake), userDataDir, variant);
+  try {
+    await registerSdkPaths(intake, electronApp);
+    return electronApp;
+  } catch (error) {
+    await electronApp.close();
+    throw error;
+  }
+}
+
+async function launchAppProcess(
+  appDir: string,
+  mode: IntegrationMode,
+  config: InitConfiguration,
+  userDataDir: string,
+  variant: IntegrationVariant
+): Promise<ElectronApplication> {
   const userDataArgs = [`--user-data-dir=${userDataDir}`];
 
   if (mode === 'packaged') {

@@ -155,6 +155,14 @@ When `enableExecutionContext` is set, `ExecutionContextCollection` (`src/domain/
 
 **Fake views.** Every RUM event needs a `view.id` to resolve against, but the main process has no real navigable page to attach one to. Fake views are synthetically created by the SDK to carry execution-context events during the transition phase where execution-context events still require a `view.id`. Every event type associated with a fake view carries `view.is_fake: true`, so the backend and frontend can filter it out. `ViewContext` (`src/domain/rum/view/ViewContext.ts`) is what tags main-process events with this fake view instead of a real one when execution-context tracking is enabled — pointing at the same `id` `MainProcessContext` maintains as an actual `view` RUM document.
 
+### Payload Scrubbing
+
+`PathScrubber` (`src/tools/pathScrubber.ts`) replaces the app path (and its `.unpacked` folder) with `/` in serialized payloads, so stack frames and URLs match uploaded source maps. Data folders (`userData`, `crashDumps`) are not masked.
+
+- Built once in `init()` and injected into the three exit points (`StandardBatchProducer`, `ProfileBatchProducer`, `Segment.flush`), after `beforeSendRum`. Batch rotation and the replay raw size (`raw_segment_size`) are computed on the scrubbed text.
+- Contract: valid JSON in and out, never throws; an unscrubbed payload is sent rather than lost.
+- Best effort: known limits are listed in the class JSDoc.
+
 ## Internal Tracking Consent State
 
 `TrackingConsentManager` starts in `granted` when explicitly constructed. Its timestamp history

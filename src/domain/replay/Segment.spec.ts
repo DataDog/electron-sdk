@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { identityPathScrubber } from '../../mocks.specUtil';
 import { CreationReason, Segment, type BrowserRecord } from './Segment';
 
 const CONTEXT = { application: { id: 'app-1' }, session: { id: 'sess-1' }, view: { id: 'view-1' } };
@@ -10,7 +11,7 @@ function makeRecord(overrides: Partial<BrowserRecord> = {}): BrowserRecord {
 describe('Segment', () => {
   describe('initial state', () => {
     it('starts empty', () => {
-      const segment = new Segment(CONTEXT, CreationReason.INIT, 0);
+      const segment = new Segment(CONTEXT, CreationReason.INIT, 0, identityPathScrubber);
       expect(segment.isEmpty).toBe(true);
       expect(segment.recordsCount).toBe(0);
     });
@@ -18,7 +19,7 @@ describe('Segment', () => {
 
   describe('addRecord()', () => {
     it('tracks record count', () => {
-      const segment = new Segment(CONTEXT, CreationReason.INIT, 0);
+      const segment = new Segment(CONTEXT, CreationReason.INIT, 0, identityPathScrubber);
       segment.addRecord(makeRecord());
       segment.addRecord(makeRecord());
       expect(segment.recordsCount).toBe(2);
@@ -26,7 +27,7 @@ describe('Segment', () => {
     });
 
     it('tracks start and end timestamps across out-of-order records', () => {
-      const segment = new Segment(CONTEXT, CreationReason.INIT, 0);
+      const segment = new Segment(CONTEXT, CreationReason.INIT, 0, identityPathScrubber);
       segment.addRecord(makeRecord({ timestamp: 500 }));
       segment.addRecord(makeRecord({ timestamp: 300 }));
       segment.addRecord(makeRecord({ timestamp: 700 }));
@@ -36,31 +37,31 @@ describe('Segment', () => {
     });
 
     it('does not set has_full_snapshot for non-snapshot records', () => {
-      const segment = new Segment(CONTEXT, CreationReason.INIT, 0);
+      const segment = new Segment(CONTEXT, CreationReason.INIT, 0, identityPathScrubber);
       segment.addRecord(makeRecord({ type: 3 }));
       expect(segment.flush().metadata.has_full_snapshot).toBe(false);
     });
 
     it('sets has_full_snapshot when a type-2 record is added', () => {
-      const segment = new Segment(CONTEXT, CreationReason.INIT, 0);
+      const segment = new Segment(CONTEXT, CreationReason.INIT, 0, identityPathScrubber);
       segment.addRecord(makeRecord({ type: 2 }));
       expect(segment.flush().metadata.has_full_snapshot).toBe(true);
     });
 
     it('sets has_full_snapshot for a change-format record (type 12) on the first segment of a view', () => {
-      const segment = new Segment(CONTEXT, CreationReason.INIT, 0);
+      const segment = new Segment(CONTEXT, CreationReason.INIT, 0, identityPathScrubber);
       segment.addRecord(makeRecord({ type: 12 }));
       expect(segment.flush().metadata.has_full_snapshot).toBe(true);
     });
 
     it('does not treat a change-format record (type 12) as a full snapshot on later segments', () => {
-      const segment = new Segment(CONTEXT, CreationReason.VIEW_CHANGE, 2);
+      const segment = new Segment(CONTEXT, CreationReason.VIEW_CHANGE, 2, identityPathScrubber);
       segment.addRecord(makeRecord({ type: 12 }));
       expect(segment.flush().metadata.has_full_snapshot).toBe(false);
     });
 
     it('accumulates estimated size proportional to record count', () => {
-      const segment = new Segment(CONTEXT, CreationReason.INIT, 0);
+      const segment = new Segment(CONTEXT, CreationReason.INIT, 0, identityPathScrubber);
       expect(segment.estimatedSize).toBe(0);
       segment.addRecord(makeRecord());
       const sizeAfterOne = segment.estimatedSize;
@@ -71,7 +72,7 @@ describe('Segment', () => {
 
   describe('flush()', () => {
     it('embeds context and segment config in metadata', () => {
-      const segment = new Segment(CONTEXT, CreationReason.VIEW_CHANGE, 3);
+      const segment = new Segment(CONTEXT, CreationReason.VIEW_CHANGE, 3, identityPathScrubber);
       segment.addRecord(makeRecord());
       const { metadata } = segment.flush();
       expect(metadata.application.id).toBe('app-1');
@@ -83,7 +84,7 @@ describe('Segment', () => {
     });
 
     it('produces valid JSON with records array merged with metadata', () => {
-      const segment = new Segment(CONTEXT, CreationReason.INIT, 0);
+      const segment = new Segment(CONTEXT, CreationReason.INIT, 0, identityPathScrubber);
       const record = makeRecord({ timestamp: 1000 });
       segment.addRecord(record);
 
@@ -99,31 +100,45 @@ describe('Segment', () => {
     });
 
     it('serialized segment ends with a newline', () => {
-      const segment = new Segment(CONTEXT, CreationReason.INIT, 0);
+      const segment = new Segment(CONTEXT, CreationReason.INIT, 0, identityPathScrubber);
       segment.addRecord(makeRecord());
       const { serializedSegment } = segment.flush();
       expect(serializedSegment.endsWith('\n')).toBe(true);
     });
 
     it('rawBytesCount matches the byte length of the serialized segment', () => {
-      const segment = new Segment(CONTEXT, CreationReason.INIT, 0);
+      const segment = new Segment(CONTEXT, CreationReason.INIT, 0, identityPathScrubber);
       segment.addRecord(makeRecord());
       const { serializedSegment, rawBytesCount } = segment.flush();
       expect(rawBytesCount).toBe(Buffer.byteLength(serializedSegment, 'utf8'));
     });
 
     it('returns a snapshot of metadata (not a live reference)', () => {
-      const segment = new Segment(CONTEXT, CreationReason.INIT, 0);
+      const segment = new Segment(CONTEXT, CreationReason.INIT, 0, identityPathScrubber);
       segment.addRecord(makeRecord({ timestamp: 1000 }));
       const first = segment.flush();
 
       // After flush, adding more records to a new segment should not affect the snapshot
-      const segment2 = new Segment(CONTEXT, CreationReason.INIT, 0);
+      const segment2 = new Segment(CONTEXT, CreationReason.INIT, 0, identityPathScrubber);
       segment2.addRecord(makeRecord({ timestamp: 9999 }));
       const second = segment2.flush();
 
       expect(first.metadata.start).toBe(1000);
       expect(second.metadata.start).toBe(9999);
+    });
+  });
+
+  describe('flush() scrubbing', () => {
+    it('scrubs the serialized segment and counts the scrubbed bytes', () => {
+      const pathScrubber = { scrub: (serialized: string) => serialized.replace(/\/secret\/app/g, '') };
+      const segment = new Segment(CONTEXT, CreationReason.INIT, 0, pathScrubber);
+      segment.addRecord(makeRecord({ data: { href: 'file:///secret/app/index.html' } }));
+
+      const { serializedSegment, rawBytesCount } = segment.flush();
+
+      expect(serializedSegment).toContain('"href":"file:///index.html"');
+      expect(serializedSegment).not.toContain('/secret/app');
+      expect(rawBytesCount).toBe(Buffer.byteLength(serializedSegment, 'utf8'));
     });
   });
 });

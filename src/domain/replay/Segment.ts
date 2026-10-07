@@ -6,6 +6,8 @@
  * and the metadata object separately (for the multipart 'event' part).
  */
 
+import type { PathScrubber } from '../../tools/pathScrubber';
+
 export interface SegmentContext {
   application: { id: string };
   session: { id: string };
@@ -79,7 +81,12 @@ export class Segment {
   private metadata: SegmentMetadata;
   private _estimatedSize = 0;
 
-  constructor(context: SegmentContext, creationReason: CreationReason, indexInView: number) {
+  constructor(
+    context: SegmentContext,
+    creationReason: CreationReason,
+    indexInView: number,
+    private readonly pathScrubber: Pick<PathScrubber, 'scrub'>
+  ) {
     this.metadata = {
       ...context,
       start: Infinity,
@@ -135,7 +142,10 @@ export class Segment {
     // the player sees one large blob and can only parse segment 0.
     const metadataJson = JSON.stringify(this.metadata);
     // metadataJson = '{"start":...}' — drop the opening '{' to splice into the records object
-    const serializedSegment = `{"records":${JSON.stringify(this.records)},${metadataJson.slice(1)}\n`;
+    // Scrubbed before measuring: rawBytesCount is sent as raw_segment_size and must match the uploaded bytes.
+    const serializedSegment = this.pathScrubber.scrub(
+      `{"records":${JSON.stringify(this.records)},${metadataJson.slice(1)}\n`
+    );
 
     return {
       serializedSegment,

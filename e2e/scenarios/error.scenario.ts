@@ -18,6 +18,8 @@ test('emits an error event on uncaught exception', async ({ mainPage, intake }) 
   expect(error.error.handling).toBe('unhandled');
   expect(error.error.type).toBe('Error');
   expect(error.error.stack).toBeDefined();
+  // The app path is scrubbed to `/`: main-process frames are root-relative, matching uploaded source maps.
+  expect(error.error.stack).toMatch(/\(\/main\.js:\d+:\d+\)/);
   expect(error.error.id).toBeDefined();
   expect(error.session.id).toBe(view.session.id);
   expect(error.view.id).toBe(view.view.id);
