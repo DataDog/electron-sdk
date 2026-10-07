@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { ServerProfileEvent } from '../../../event';
+import type { PathScrubber } from '../../../tools/pathScrubber';
 import { BatchProducer } from '../BatchProducer';
 import type { BatchProducerConfig } from '../BatchProducer';
 
@@ -12,7 +13,10 @@ import type { BatchProducerConfig } from '../BatchProducer';
 export class ProfileBatchProducer extends BatchProducer {
   protected override fileNamePrefix = 'profile';
 
-  private constructor(config: BatchProducerConfig) {
+  private constructor(
+    config: BatchProducerConfig,
+    private readonly pathScrubber: Pick<PathScrubber, 'scrub'>
+  ) {
     super(config);
   }
 
@@ -21,19 +25,24 @@ export class ProfileBatchProducer extends BatchProducer {
    * Ensures the track directory exists and rotates any orphaned `.tmp` files
    * left from previous sessions.
    */
-  static async create(config: BatchProducerConfig): Promise<BatchProducer> {
-    const producer = new ProfileBatchProducer(config);
+  static async create(config: BatchProducerConfig, pathScrubber: Pick<PathScrubber, 'scrub'>): Promise<BatchProducer> {
+    const producer = new ProfileBatchProducer(config, pathScrubber);
     await producer.initialize();
     return producer;
   }
 
-  /** Serializes the profile as two JSON lines (`event` then `trace`) and writes it as a complete `.log` batch. */
+  /**
+   * Serializes the profile as two path-scrubbed JSON lines (`event` then `trace`) and writes it as a complete `.log`
+   * batch.
+   */
   protected async writeData(event: ServerProfileEvent) {
     await this.ensureTrackDirectoryExists();
 
     const fileName = this.generateBatchFileName();
     const tmpPath = path.join(this.trackPath, fileName);
-    const content = `${JSON.stringify(event.data)}\n${JSON.stringify(event.trace)}\n`;
+    const content = [event.data, event.trace]
+      .map((line) => `${this.pathScrubber.scrub(JSON.stringify(line))}\n`)
+      .join('');
 
     await fs.writeFile(tmpPath, content, 'utf8');
     await this.renameBatchFile(fileName);

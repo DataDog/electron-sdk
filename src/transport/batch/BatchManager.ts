@@ -3,6 +3,7 @@ import { addError, clearTimeout, monitor, setTimeout } from '../../domain/teleme
 import type { TrackingConsentManager } from '../../domain/tracking-consent';
 import { EventTrack } from '../../event';
 import type { ServerEvent } from '../../event';
+import type { PathScrubber } from '../../tools/pathScrubber';
 import { computeIntakeUrlForTrack } from '../utils';
 import { BatchConsumer } from './BatchConsumer';
 import type { BatchConsumerConfig } from './BatchConsumer';
@@ -41,12 +42,17 @@ export class BatchManager {
   }
 
   /** Creates and fully initializes a BatchManager instance. */
-  static async create(config: Configuration, batchConfig: BatchConfig, consentManager: TrackingConsentManager) {
+  static async create(
+    config: Configuration,
+    batchConfig: BatchConfig,
+    consentManager: TrackingConsentManager,
+    pathScrubber: Pick<PathScrubber, 'scrub'>
+  ) {
     const { uploadFrequency } = batchConfig;
     const trackPath = getTrackPath(batchConfig.path, batchConfig.trackType);
     const router = await ConsentAwareBatchRouter.create(
       trackPath,
-      (directory) => BatchManager.createProducer(batchConfig, directory),
+      (directory) => BatchManager.createProducer(batchConfig, directory, pathScrubber),
       consentManager
     );
     const consumer = BatchManager.createConsumer(config, batchConfig.trackType, trackPath);
@@ -145,14 +151,18 @@ export class BatchManager {
   /**
    * Uses the same serialization and file limits for both consent stores of a track.
    */
-  private static createProducer(batchConfig: BatchConfig, trackPath: string): Promise<BatchProducer> {
+  private static createProducer(
+    batchConfig: BatchConfig,
+    trackPath: string,
+    pathScrubber: Pick<PathScrubber, 'scrub'>
+  ): Promise<BatchProducer> {
     const { trackType, batchSize } = batchConfig;
     if (trackType === EventTrack.REPLAY) {
       return ReplayBatchProducer.create({ trackPath });
     }
 
     if (trackType === EventTrack.PROFILE) {
-      return ProfileBatchProducer.create({ trackPath });
+      return ProfileBatchProducer.create({ trackPath }, pathScrubber);
     }
 
     const standardProducerConfig: StandardBatchProducerConfig = {
@@ -160,7 +170,7 @@ export class BatchManager {
       batchSize,
       ...(trackType === EventTrack.LOGS ? { maxEventsPerBatch: MAX_LOGS_EVENTS_PER_BATCH } : {}),
     };
-    return StandardBatchProducer.create(standardProducerConfig);
+    return StandardBatchProducer.create(standardProducerConfig, pathScrubber);
   }
 
   /** The consumer scans the track root, never pending stores or migration directories. */

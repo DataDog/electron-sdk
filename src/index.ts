@@ -74,7 +74,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   // EventManager does not queue events that have no matching handler. Finish registering every
   // transport track before opening the renderer IPC listener, so an event received during init
   // cannot fall into the gap between RendererPipeline and Transport initialization.
-  transport = await Transport.create(config, eventManager, trackingConsentManager);
+  transport = await Transport.create(config, eventManager, trackingConsentManager, pathScrubber);
 
   new RendererPipeline(eventManager, hooks, config);
 
