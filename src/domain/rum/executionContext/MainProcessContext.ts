@@ -17,6 +17,7 @@ import type { RawRumExecutionContext, RawRumView } from '../types';
 import { setInterval, clearInterval } from '../../telemetry';
 import { ViewContext } from '../view';
 import { DiskValueHistory } from '../../../tools/DiskValueHistory';
+import type { TrackingConsent, TrackingConsentChange, TrackingConsentManager } from '../../tracking-consent';
 import { PROCESS_UPDATE_INTERVAL } from './executionContext.constants';
 
 export const MAIN_EXECUTION_CONTEXT_HISTORY_FILE_NAME = '_dd_execution_context_history';
@@ -30,45 +31,59 @@ interface MainExecutionContextDiskEntry {
 
 interface MainProcessState {
   sessionId: string;
+  viewId: string;
   executionContextId: string;
   startTime: TimeStamp;
   documentVersion: number;
+  consent: TrackingConsent;
+  isActive: boolean;
 }
 
 /**
- * Owns the fake main-process view and the main execution context as one session-scoped state:
- * both are created together on SDK init and on every SESSION_RENEW, and closed together on
- * SESSION_EXPIRED. Each new state gets a fresh execution_context.id and view.id, but the emitted
+ * Owns the fake main-process view and main execution context for each session and consent period.
+ * Both start and end together at session and consent boundaries, and stay inactive while denied.
+ * Each new state gets a fresh execution_context.id and view.id, but the emitted
  * execution_context event's instance_id is always the OS process pid, constant across every session
  * the process lives through. Also registers the format hooks that tag every other main-process RUM
- * event and span with the execution context active at that event's timestamp, backed by a
- * disk-persisted history so a crash file replayed from a previous run still resolves to the
- * context that was active when the crash happened.
+ * event and span with the execution context active at that event's timestamp, using
+ * disk-persisted history retained from the current and previous process. Consent changes close cumulative periods;
+ * denied consent leaves no active state or heartbeat.
  */
 export class MainProcessContext {
-  private state!: MainProcessState;
+  private state: MainProcessState | undefined;
   private heartbeatId: ReturnType<typeof setInterval> | undefined;
   private lifecycleSubscription!: Subscription;
+  private consentSubscription!: Subscription;
 
   private constructor(
     private readonly eventManager: EventManager,
     private readonly viewContext: ViewContext,
     private readonly mainHistory: DiskValueHistory<MainExecutionContextDiskEntry>,
-    private readonly sessionManager: SessionManager
+    private readonly sessionManager: SessionManager,
+    private readonly consentManager: TrackingConsentManager
   ) {}
 
   static async start(
     eventManager: EventManager,
     hooks: FormatHooks,
-    sessionManager: SessionManager
+    sessionManager: SessionManager,
+    trackingConsentManager: TrackingConsentManager
   ): Promise<MainProcessContext> {
-    const viewContext = await ViewContext.init(hooks, undefined, { isExecutionContextEnabled: true });
+    const viewContext = await ViewContext.init(hooks, undefined, {
+      isExecutionContextEnabled: true,
+    });
     const filePath = path.join(app.getPath('userData'), MAIN_EXECUTION_CONTEXT_HISTORY_FILE_NAME);
     const mainHistory = await DiskValueHistory.init<MainExecutionContextDiskEntry>({
       filePath,
       expireDelay: SESSION_TIME_OUT_DELAY,
     });
-    const context = new MainProcessContext(eventManager, viewContext, mainHistory, sessionManager);
+    const context = new MainProcessContext(
+      eventManager,
+      viewContext,
+      mainHistory,
+      sessionManager,
+      trackingConsentManager
+    );
 
     hooks.registerRum(({ source, eventType, startTime }) => {
       // execution_context events (main's own and every renderer's) are fully self-authored —
@@ -88,18 +103,25 @@ export class MainProcessContext {
       return { meta: { '_dd.execution_context.id': entry.id } };
     });
 
-    context.startState();
+    const startTime = timeStampNow();
+    if (trackingConsentManager.get() === 'not-granted') {
+      viewContext.close(startTime);
+      mainHistory.closeActive(startTime);
+    } else {
+      context.startState(startTime);
+    }
 
     context.lifecycleSubscription = eventManager.registerHandler<LifecycleEvent>({
       canHandle: (event): event is LifecycleEvent => event.kind === EventKind.LIFECYCLE,
       handle: (event) => {
         if (event.lifecycle === LifecycleKind.SESSION_EXPIRED) {
-          context.endState();
+          context.endState(event.time);
         } else if (event.lifecycle === LifecycleKind.SESSION_RENEW) {
-          context.startState();
+          context.startState(event.time);
         }
       },
     });
+    context.consentSubscription = trackingConsentManager.subscribe((change) => context.onConsentChange(change));
 
     return context;
   }
@@ -107,49 +129,59 @@ export class MainProcessContext {
   stop(): void {
     this.clearHeartbeat();
     this.lifecycleSubscription.unsubscribe();
+    this.consentSubscription.unsubscribe();
   }
 
-  private startState(): void {
+  private startState(startTime = timeStampNow()): void {
+    const consent = this.consentManager.get();
+    if (consent === 'not-granted') return;
+    this.clearHeartbeat();
     // One shared startTime for every registration below: the view and execution_context events
-    // cross-tag each other by looking up the other's DiskValueHistory at their own startTime, so
+    // cross-tag each other by looking up the other's history at their own startTime, so
     // both entries must be registered at the exact same instant — two independent timeStampNow()
     // reads, even microseconds apart, could land on opposite sides of a lookup boundary and miss.
-    const startTime = timeStampNow();
     const sessionId = this.sessionManager.getSession().id;
+    // A consent split needs a distinct view document even when the session is unchanged.
+    const viewId = this.state?.sessionId === sessionId ? generateUUID() : sessionId;
     const executionContextId = generateUUID();
-    this.state = { sessionId, executionContextId, startTime, documentVersion: 1 };
+    this.state = { sessionId, viewId, executionContextId, startTime, documentVersion: 1, consent, isActive: true };
 
     // Close whatever the previous state (this run's prior session, or — on the very first call —
     // whatever a previous, since-exited process instance left open) left active, before
     // registering this one. Safe to call unconditionally: closing an already-closed entry is a
     // no-op.
-    this.viewContext.close(startTime);
-    this.viewContext.add(sessionId, startTime);
-    this.mainHistory.closeActive(startTime);
-    this.mainHistory.add({ id: executionContextId, type: 'main-process' }, startTime);
+    this.viewContext.add(viewId, startTime);
+    this.mainHistory.closeAndAdd({ id: executionContextId, type: 'main-process' }, startTime);
 
-    this.emitViewEvent(true);
-    this.emitExecutionContextEvent();
+    this.emitViewEvent(this.state, true, startTime);
+    this.emitExecutionContextEvent(this.state, startTime);
     this.startHeartbeat();
   }
 
-  private endState(): void {
+  private endState(endTime = timeStampNow()): void {
+    if (!this.state?.isActive) return;
     this.clearHeartbeat();
-    // Close both histories at the exact same instant (same reasoning as startState's shared
-    // startTime): otherwise main-process telemetry timestamped in the gap before the next
-    // SESSION_RENEW would still resolve to this now-expired state.
-    const endTime = timeStampNow();
+    this.state.documentVersion++;
+    this.state.isActive = false;
+    // Emit before closing so a period started at endTime still resolves its own context.
+    this.emitViewEvent(this.state, false, endTime);
+    this.emitExecutionContextEvent(this.state, endTime);
     this.viewContext.close(endTime);
     this.mainHistory.closeActive(endTime);
-    this.state.documentVersion++;
-    this.emitViewEvent(false);
-    this.emitExecutionContextEvent();
+  }
+
+  private onConsentChange(change: TrackingConsentChange): void {
+    // Session renewal can already have started this consent period synchronously.
+    if (this.state?.isActive && this.state.consent === change.current) return;
+    this.endState(change.time);
+    if (change.current !== 'not-granted') this.startState(change.time);
   }
 
   private startHeartbeat(): void {
     this.heartbeatId = setInterval(() => {
-      this.state.documentVersion++;
-      this.emitExecutionContextEvent();
+      const state = this.state!;
+      state.documentVersion++;
+      this.emitExecutionContextEvent(state);
     }, PROCESS_UPDATE_INTERVAL);
   }
 
@@ -160,50 +192,51 @@ export class MainProcessContext {
     }
   }
 
-  private emitViewEvent(isActive: boolean): void {
+  private emitViewEvent(state: MainProcessState, isActive: boolean, atTime = timeStampNow()): void {
     const viewEvent: RawRumView = {
       type: 'view',
-      date: this.state.startTime,
+      date: state.startTime,
       view: {
-        // use session id for fake view id
-        id: this.state.sessionId,
+        id: state.viewId,
         is_fake: true,
-        time_spent: toServerDuration(elapsed(this.state.startTime, timeStampNow())),
+        time_spent: toServerDuration(elapsed(state.startTime, atTime)),
         is_active: isActive,
         action: { count: 0 },
         error: { count: 0 },
         resource: { count: 0 },
       },
-      _dd: { document_version: this.state.documentVersion },
+      _dd: { document_version: state.documentVersion },
     };
 
     this.eventManager.notify({
       kind: EventKind.RAW,
       format: EventFormat.RUM,
       data: viewEvent,
-      startTime: this.state.startTime,
+      startTime: state.startTime,
+      ...(!state.isActive && state.consent === 'granted' ? { storageConsent: 'granted' as const } : {}),
     });
   }
 
-  private emitExecutionContextEvent(): void {
+  private emitExecutionContextEvent(state: MainProcessState, atTime = timeStampNow()): void {
     const data: RawRumExecutionContext = {
       type: 'execution_context',
-      date: this.state.startTime,
+      date: state.startTime,
       execution_context: {
-        id: this.state.executionContextId,
+        id: state.executionContextId,
         type: 'main-process',
         name: MAIN_PROCESS_EXECUTION_CONTEXT_NAME,
         instance_id: String(process.pid),
-        duration: toServerDuration(elapsed(this.state.startTime, timeStampNow())),
+        duration: toServerDuration(elapsed(state.startTime, atTime)),
       },
-      _dd: { document_version: this.state.documentVersion },
+      _dd: { document_version: state.documentVersion },
     };
 
     this.eventManager.notify({
       kind: EventKind.RAW,
       format: EventFormat.RUM,
       data,
-      startTime: this.state.startTime,
+      startTime: state.startTime,
+      ...(!state.isActive && state.consent === 'granted' ? { storageConsent: 'granted' as const } : {}),
     });
   }
 }

@@ -149,7 +149,7 @@ See `src/assembly/` and `src/assembly/commonContext.ts`.
 
 When `enableExecutionContext` is set, `ExecutionContextCollection` (`src/domain/rum/executionContext/`) replaces `ViewCollection` and composes the lifecycle of two independent trackers:
 
-- **`MainProcessContext`** owns a session-scoped fake view and main execution context for the main process: both are created together on init and on every session renewal, and closed together on session expiry, sharing one `instance_id` (the OS process pid) across every session the process lives through. It registers its own format hooks, tagging main-process RUM events with `execution_context.id`/`type` and spans with `_dd.execution_context.id`, backed by a disk-persisted history so a crash replayed at the next launch (see Error Reporting) still resolves to the execution context of the process that actually crashed.
+- **`MainProcessContext`** owns a fake view and execution context for each main-process tracking period. Session and consent boundaries separate their cumulative durations, while `instance_id` (the OS process pid) stays the same throughout the process lifetime. It registers its own format hooks, tagging main-process RUM events with `execution_context.id`/`type` and spans with `_dd.execution_context.id`, backed by a disk-persisted history so a crash replayed at the next launch (see Error Reporting) still resolves to the execution context of the process that actually crashed.
 - **`RendererProcessContexts`** tracks one execution context per renderer webContents, created at `web-contents-created` — plus a backfill from `webContents.getAllWebContents()` at start, for any webContents already open when tracking begins (e.g. a deferred `init()` called after a window opened) — rotated on the same session expiry/renewal boundaries, and ended on real process destruction: `destroyed` (`exit_reason: 'clean-exit'`) or `render-process-gone` (the real crash/kill/OOM reason). A crashed webContents that the app reloads is re-registered from the reload's own `did-start-navigation` (on its main frame), before any of the reloaded page's scripts run, since Electron reuses the same webContents object across a crash and never re-fires `web-contents-created` for it. It tags renderer RUM events from its own in-memory state via a separate format hook.
   Each context also carries a `name` derived from `webContents.getURL()` (see `deriveExecutionContextName`), resolved on `dom-ready` rather than waiting for the periodic heartbeat, then frozen for the context's lifetime. Because a crash revival's `did-start-navigation` fires before the new navigation commits, `getURL()` there can still return the pre-crash URL — a `pendingNavigation` flag blocks that state from resolving its name until its own `dom-ready` fires, carried through a session renewal if one lands first.
 
@@ -217,6 +217,23 @@ changed. Session/view/user histories still supply attribution through the existi
 
 Consent snapshots are written asynchronously in order. A failed or interrupted write can leave an older
 `granted` state on disk; this history does not guarantee correct authorization after such a failure.
+
+### Consent and session lifecycle
+
+A session can continue while consent is undecided, but a cumulative view must not combine periods
+that may receive different decisions. Main-process views and execution contexts therefore start a new
+document at each consent boundary, even when the session remains the same.
+
+| Transition                             | Session                                                              | Main-process views and execution context      |
+| -------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------- |
+| `granted` ↔ `pending`                  | Keep the active session and its deadlines; renew an expired session. | Close the current period and start a new one. |
+| Any state → `not-granted`              | Expire the session and ignore activity.                              | Close the period and stop periodic updates.   |
+| `not-granted` → `granted` or `pending` | Create a fresh session.                                              | Start new periods.                            |
+
+Transport subscribes before the session manager so pending storage is ready when session renewal
+emits opening documents. Session and history boundaries use the same timestamp.
+The final update of an authorized period retains its authorization when routing changes, preserving
+its duration and counters if the next pending period is refused.
 
 ## Error Reporting
 

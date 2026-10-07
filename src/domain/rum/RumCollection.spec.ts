@@ -34,9 +34,11 @@ describe('RumCollection', () => {
   let hooks: FormatHooks;
   let rawRumEvents: RawRumEvent[];
   let sessionManager: SessionManager;
+  let trackingConsentManager: TrackingConsentManager;
 
   beforeEach(() => {
     vi.useFakeTimers();
+    trackingConsentManager = new TrackingConsentManager();
     mfs.readFile.mockRejectedValue(new Error('ENOENT'));
     mfs.writeFile.mockResolvedValue(undefined);
 
@@ -59,13 +61,7 @@ describe('RumCollection', () => {
 
   it('uses ViewCollection when enableExecutionContext is false', async () => {
     const configuration = { enableExecutionContext: false } as Configuration;
-    const rum = await RumCollection.start(
-      eventManager,
-      hooks,
-      sessionManager,
-      configuration,
-      new TrackingConsentManager()
-    );
+    const rum = await RumCollection.start(eventManager, hooks, sessionManager, configuration, trackingConsentManager);
     // ViewCollection.start emits the real generateUUID-based view id, not the session id
     expect((rawRumEvents[0].data as RawRumView).view.id).not.toBe(sessionManager.getSession().id);
     // ExecutionContextCollection must stay unstarted on the disabled path — no execution_context event
@@ -75,13 +71,7 @@ describe('RumCollection', () => {
 
   it('uses MainProcessContext and starts ExecutionContextCollection when enableExecutionContext is true', async () => {
     const configuration = { enableExecutionContext: true } as Configuration;
-    const rum = await RumCollection.start(
-      eventManager,
-      hooks,
-      sessionManager,
-      configuration,
-      new TrackingConsentManager()
-    );
+    const rum = await RumCollection.start(eventManager, hooks, sessionManager, configuration, trackingConsentManager);
 
     const viewEvent = rawRumEvents.find((e) => e.data.type === 'view');
     expect((viewEvent!.data as RawRumView).view.id).toBe(sessionManager.getSession().id);
@@ -95,13 +85,7 @@ describe('RumCollection', () => {
 
   it('stop() also stops ExecutionContextCollection when enableExecutionContext is true', async () => {
     const configuration = { enableExecutionContext: true } as Configuration;
-    const rum = await RumCollection.start(
-      eventManager,
-      hooks,
-      sessionManager,
-      configuration,
-      new TrackingConsentManager()
-    );
+    const rum = await RumCollection.start(eventManager, hooks, sessionManager, configuration, trackingConsentManager);
 
     rum.stop();
     rawRumEvents.length = 0;

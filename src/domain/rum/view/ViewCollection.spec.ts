@@ -12,6 +12,7 @@ vi.mock('../../../tools/display', () => ({
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { TimeStamp } from '@datadog/js-core/time';
+import { DISCARDED } from '@datadog/js-core/assembly';
 import { ViewCollection, SESSION_KEEP_ALIVE_INTERVAL, VIEW_UPDATE_THROTTLE_DELAY } from './ViewCollection';
 import { ViewContext } from './ViewContext';
 import {
@@ -26,6 +27,7 @@ import {
 import { createFormatHooks, type FormatHooks } from '../../../assembly';
 import { createServerRumEvent, createServerRumView } from '../../../mocks.specUtil';
 import { RawRumView, MainRumEvent, RumErrorEvent } from '../types';
+import { TrackingConsentManager } from '../../tracking-consent';
 
 vi.mock('node:fs/promises');
 const mfs = mockFs();
@@ -37,11 +39,13 @@ describe('ViewCollection', () => {
   let eventManager: EventManager;
   let hooks: FormatHooks;
   let viewCollection: ViewCollection;
+  let trackingConsentManager: TrackingConsentManager;
   let rawRumEvents: RawRumEvent[];
 
   beforeEach(async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
+    trackingConsentManager = new TrackingConsentManager();
     mfs.readFile.mockRejectedValue(new Error('ENOENT'));
     mfs.writeFile.mockResolvedValue(undefined);
     eventManager = new EventManager();
@@ -53,7 +57,7 @@ describe('ViewCollection', () => {
       handle: (event) => rawRumEvents.push(event),
     });
 
-    viewCollection = await ViewCollection.start(eventManager, hooks);
+    viewCollection = await ViewCollection.start(eventManager, hooks, trackingConsentManager);
   });
 
   afterEach(() => {
@@ -102,7 +106,7 @@ describe('ViewCollection', () => {
           viewCollection.stop();
           hooks = createFormatHooks();
           rawRumEvents.length = 0;
-          viewCollection = await ViewCollection.start(eventManager, hooks);
+          viewCollection = await ViewCollection.start(eventManager, hooks, trackingConsentManager);
         } else {
           eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
           rawRumEvents.length = 0;
@@ -242,7 +246,7 @@ describe('ViewCollection', () => {
         kind: EventKind.SERVER,
         track: EventTrack.RUM,
         source: EventSource.MAIN,
-        data: createServerRumEvent<MainRumEvent>(type),
+        data: createServerRumEvent<MainRumEvent>(type, { view: (rawRumEvents[0].data as RawRumView).view }),
       });
 
       expect(rawRumEvents).toHaveLength(2);
@@ -282,9 +286,71 @@ describe('ViewCollection', () => {
 
       vi.advanceTimersByTime(SESSION_KEEP_ALIVE_INTERVAL);
       eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+      trackingConsentManager.update('pending');
 
       // Only the initial event, nothing else
       expect(rawRumEvents).toHaveLength(1);
+    });
+  });
+
+  describe('consent boundaries', () => {
+    it("closes a previous launch's open view at initially denied consent", async () => {
+      viewCollection.stop();
+      vi.setSystemTime(10);
+      trackingConsentManager.update('not-granted');
+      hooks = createFormatHooks();
+      mfs.readFile.mockResolvedValue(JSON.stringify([{ value: 'previous-view', startTime: 0, endTime: null }]));
+
+      viewCollection = await ViewCollection.start(eventManager, hooks, trackingConsentManager);
+
+      expect(hooks.triggerRum({ eventType: 'error', startTime: T0, source: EventSource.MAIN })).toMatchObject({
+        view: { id: 'previous-view' },
+      });
+      expect(hooks.triggerRum({ eventType: 'error', startTime: T10, source: EventSource.MAIN })).toBe(DISCARDED);
+    });
+
+    it('closes accumulated counters, resets the replacement view and ignores events attributed to the old view', () => {
+      const originalView = (rawRumEvents[0].data as RawRumView).view;
+      const resource = createServerRumEvent<MainRumEvent>('resource', { view: originalView });
+      eventManager.notify({ kind: EventKind.SERVER, track: EventTrack.RUM, source: EventSource.MAIN, data: resource });
+      vi.setSystemTime(10);
+
+      trackingConsentManager.update('pending');
+
+      const closedView = rawRumEvents[rawRumEvents.length - 2].data as RawRumView;
+      const pendingView = rawRumEvents[rawRumEvents.length - 1].data as RawRumView;
+      expect(rawRumEvents[rawRumEvents.length - 2].storageConsent).toBe('granted');
+      expect(rawRumEvents[rawRumEvents.length - 1].storageConsent).toBeUndefined();
+      expect(closedView.view).toMatchObject({
+        id: originalView.id,
+        is_active: false,
+        time_spent: 10 * 1e6,
+        resource: { count: 1 },
+      });
+      expect(pendingView.view.resource.count).toBe(0);
+      const eventCount = rawRumEvents.length;
+
+      eventManager.notify({ kind: EventKind.SERVER, track: EventTrack.RUM, source: EventSource.MAIN, data: resource });
+      vi.advanceTimersByTime(VIEW_UPDATE_THROTTLE_DELAY);
+
+      expect(rawRumEvents).toHaveLength(eventCount);
+      expect(pendingView.view.resource.count).toBe(0);
+    });
+
+    it('creates separate views even when two consent changes share a timestamp', () => {
+      trackingConsentManager.update('pending');
+      trackingConsentManager.update('granted');
+
+      const views = rawRumEvents.map((event) => event.data as RawRumView);
+      expect(views.map((view) => view.view.is_active)).toEqual([true, false, true, false, true]);
+      expect(rawRumEvents.map((event) => event.storageConsent)).toEqual([
+        undefined,
+        'granted',
+        undefined,
+        undefined,
+        undefined,
+      ]);
+      expect(new Set(views.filter((view) => view.view.is_active).map((view) => view.view.id)).size).toBe(3);
     });
   });
 
@@ -294,7 +360,7 @@ describe('ViewCollection', () => {
         kind: EventKind.SERVER,
         track: EventTrack.RUM,
         source: EventSource.MAIN,
-        data: createServerRumEvent<MainRumEvent>(type),
+        data: createServerRumEvent<MainRumEvent>(type, { view: (rawRumEvents[0].data as RawRumView).view }),
       });
     }
 

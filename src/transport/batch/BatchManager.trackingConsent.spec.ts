@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TrackingConsentManager, type TrackingConsent } from '../../domain/tracking-consent';
-import { EventKind, EventTrack, type ServerEvent } from '../../event';
+import { EventKind, EventSource, EventTrack, type ServerEvent, type ServerMainRumEvent } from '../../event';
 import { createTestConfiguration } from '../../mocks.specUtil';
 import { BatchManager } from './BatchManager';
 import type { BatchConfig } from './batchConfig.types';
@@ -71,7 +71,12 @@ describe('BatchManager tracking consent storage', () => {
   });
 
   const event = (value: string) =>
-    ({ kind: EventKind.SERVER, track: EventTrack.RUM, data: { value } }) as unknown as ServerEvent;
+    ({
+      kind: EventKind.SERVER,
+      track: EventTrack.RUM,
+      source: EventSource.MAIN,
+      data: { value },
+    }) as unknown as ServerMainRumEvent;
 
   const replayEvent = (start: number) =>
     ({
@@ -145,7 +150,7 @@ describe('BatchManager tracking consent storage', () => {
         uploaded.push(...(await storedValues(authorizedPath)));
       });
 
-      manager.post({ ...event('recovered-crash'), storageConsent: 'granted' } as ServerEvent);
+      manager.post({ ...event('recovered-crash'), storageConsent: 'granted' });
       manager.post(event('current-event'));
       state.update('not-granted');
       await manager.flush();
@@ -385,6 +390,19 @@ describe('BatchManager tracking consent storage', () => {
     await manager.flush();
 
     expect((await storedValues(path.join(basePath, 'rum'))).sort()).toEqual(['accepted', 'authorized']);
+    expect(await pendingDirectories(path.join(basePath, 'rum'))).toEqual([]);
+  });
+
+  it('keeps an authorized terminal update when the following pending period is rejected', async () => {
+    const state = createConsentManager('granted');
+    manager = await BatchManager.create(config, createBatchConfig(), state);
+    state.update('pending');
+    manager.post({ ...event('terminal'), storageConsent: 'granted' });
+    manager.post(event('pending'));
+    state.update('not-granted');
+    await manager.flush();
+
+    expect(await storedValues(path.join(basePath, 'rum'))).toEqual(['terminal']);
     expect(await pendingDirectories(path.join(basePath, 'rum'))).toEqual([]);
   });
 

@@ -1,2 +1,2 @@
 export * from './ViewCollection';
-export { ViewContext } from './ViewContext';
+export { ViewContext, VIEW_HISTORY_FILE_NAME } from './ViewContext';
