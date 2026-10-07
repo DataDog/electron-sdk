@@ -7,6 +7,7 @@ import { display } from './display';
 import { PathScrubber } from './pathScrubber';
 
 const APP = '/Users/alice/My App.app/Contents/Resources/app.asar';
+const WINDOWS_APP = 'C:\\Users\\alice\\AppData\\Local\\Programs\\My App\\resources\\app.asar';
 
 const ELECTRON_APP = '/opt/Electron Default/app.asar';
 
@@ -19,6 +20,10 @@ function createScrubber(
   realpath: (path: string) => Promise<string> = (path) => Promise.resolve(path)
 ) {
   return PathScrubber.init(typeof appPath === 'function' ? appPath : () => appPath, realpath);
+}
+
+function windowsScrubber() {
+  return createScrubber(WINDOWS_APP);
 }
 
 // Scrubs a string the way payloads are scrubbed: serialized, then parsed back to compare readable values.
@@ -95,6 +100,69 @@ describe('PathScrubber', () => {
     });
   });
 
+  describe('Windows paths', () => {
+    it.each([
+      ['raw path in a stack frame', `at f (${WINDOWS_APP}\\dist\\main.js:3:1)`, 'at f (/dist/main.js:3:1)'],
+      ['lowercase drive letter', `c${WINDOWS_APP.slice(1)}\\dist\\main.js`, '/dist/main.js'],
+      ['different case', 'C:\\Users\\Alice\\AppData\\Local\\Programs\\My App\\resources\\app.asar\\x', '/x'],
+      ['all lowercase', `${WINDOWS_APP.toLowerCase()}\\x`, '/x'],
+      [
+        'different case with forward slashes',
+        'c:/users/alice/appdata/local/programs/my app/resources/app.asar/x',
+        '/x',
+      ],
+      [
+        'file URL with a different case',
+        'file:///c:/users/ALICE/AppData/Local/Programs/My%20App/resources/app.asar/x.png',
+        '/x.png',
+      ],
+      ['forward slashes', `${WINDOWS_APP.replace(/\\/g, '/')}/dist/main.js`, '/dist/main.js'],
+      ['long-path prefix', `\\\\?\\${WINDOWS_APP}.unpacked\\x.node`, '/x.node'],
+      ['long-path prefix after an extra backslash', `x\\\\\\?\\${WINDOWS_APP}\\y`, 'x\\/y'],
+      [
+        'file URL',
+        'file:///C:/Users/alice/AppData/Local/Programs/My%20App/resources/app.asar/dist/renderer.js',
+        '/dist/renderer.js',
+      ],
+      ['path followed by an escaped newline', `${WINDOWS_APP}\\dist\\x.js\nnext`, '/dist/x.js\nnext'],
+      ['folder starting with n', `${WINDOWS_APP}\\dist\\new.js`, '/dist/new.js'],
+      ['bare app path', WINDOWS_APP, '/'],
+      ['JSON-sensitive characters in the rest of the path', `${WINDOWS_APP}\\a\\"q`, '/a/"q'],
+      ['different drive', `${WINDOWS_APP.replace('C:', 'D:')}\\x`, `${WINDOWS_APP.replace('C:', 'D:')}\\x`],
+      ['longer folder name', `${WINDOWS_APP}2\\x`, `${WINDOWS_APP}2\\x`],
+      [
+        'file URL with an encoded drive colon',
+        'file:///C%3A/Users/alice/AppData/Local/Programs/My%20App/resources/app.asar/x.png',
+        '/x.png',
+      ],
+      // Accepted trade-off: spaces don't end a path, so backslashes keep being converted until a boundary character.
+      ['unquoted message after a path', `open ${WINDOWS_APP}\\x and logs\\y`, 'open /x and logs/y'],
+      ['colon ends the rest of the path', `open ${WINDOWS_APP}\\x from C:\\Windows`, 'open /x from C:\\Windows'],
+      [
+        'escaped control character ending in a drive letter',
+        `\x1c${WINDOWS_APP.slice(1)}\\x`,
+        `\x1c${WINDOWS_APP.slice(1)}\\x`,
+      ],
+      [
+        'escaped lone surrogate ending in a drive letter',
+        `\ud83c${WINDOWS_APP.slice(1)}`,
+        `\ud83c${WINDOWS_APP.slice(1)}`,
+      ],
+      [
+        'raw path after an escaped control character ending in f',
+        `\x1file:///${WINDOWS_APP.replace(/\\/g, '/')}/x`,
+        '\x1file:////x',
+      ],
+    ])('scrubs %s', async (_, input, expected) => {
+      expect(scrubString(await windowsScrubber(), input)).toBe(expected);
+    });
+
+    it('matches a different case of a non-ASCII letter', async () => {
+      const scrubber = await createScrubber('C:\\Users\\José\\app.asar');
+      expect(scrubString(scrubber, 'C:\\Users\\JOSÉ\\app.asar\\x')).toBe('/x');
+    });
+  });
+
   describe('app path', () => {
     it('reads the app path from Electron by default', async () => {
       const scrubber = await PathScrubber.init(undefined, (path) => Promise.resolve(path));
@@ -140,6 +208,8 @@ describe('PathScrubber', () => {
 
     it.each([
       ['root', '/'],
+      ['drive root', 'C:\\'],
+      ['single folder on a Windows drive', 'C:\\Users'],
       ['single segment', '/Users'],
       ['empty', ''],
     ])(

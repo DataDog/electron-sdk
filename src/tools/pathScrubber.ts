@@ -6,13 +6,24 @@ import { display } from './display';
 // Regex sources below match the *serialized* (JSON) payload: one backslash of the original string is two backslashes
 // in JSON, so `\\\\` matches one original backslash. A scrubbed path is replaced wherever it appears, even inside a
 // longer path; the only left-side requirement is structural: an even number of backslashes before it, and no unfinished
-// `\uXXXX` escape (the `f` of `file:` is a hex digit), so a match never starts inside a JSON escape.
+// `\uXXXX` escape (drive letters `a`-`f` and the `f` of `file:` are hex digits), so a match never starts inside a JSON
+// escape.
 const NOT_INSIDE_JSON_ESCAPE = String.raw`(?<=(?:^|[^\\])(?:\\\\)*)(?<!(?:^|[^\\])(?:\\\\)*\\u[0-9A-Fa-f]{0,3})`;
 // Without a separator, a scrubbed path must not be glued to a longer file or folder name (`MyApp2`, `app-update.yml`,
 // `MyApp.backup`); a sentence-ending dot is fine.
 const NOT_FOLLOWED_BY_NAME = String.raw`(?![\w-]|\.[\w-])`;
 // First character of a POSIX path in a payload: `/` for a raw path, `f` for a file:// URL.
 const POSIX_START = '[/f]';
+// First character of a Windows path in a payload, besides its drive letter: `f` for a file:// URL, or the `\\?\`
+// long-path prefix as serialized in JSON.
+const WINDOWS_START = String.raw`f|\\\\\\\\\?`;
+const WINDOWS_PATH = /^([A-Za-z]):[\\/]/;
+const WINDOWS_SEPARATOR = String.raw`(?:\\\\|/)`;
+// `\\?\` long-path prefix, as serialized in JSON: consumed with the match.
+const WINDOWS_LONG_PATH_PREFIX = String.raw`(?:\\\\\\\\\?\\\\)?`;
+// Rest of a Windows path: escaped backslashes or characters that can continue a path. A lone backslash starts another
+// JSON escape (`\n`, `\"`) and ends the path.
+const WINDOWS_REST = String.raw`(?:\\\\|[^\\"')\]>,;?#:])*`;
 const URL_SAFE_CHARACTER = /[A-Za-z0-9\-._~/]/;
 
 /**
@@ -21,13 +32,17 @@ const URL_SAFE_CHARACTER = /[A-Za-z0-9\-._~/]/;
  *
  * Strategy: it works on the serialized JSON, right before payloads are written, so every field of every payload type
  * is covered. Each scrubbed path (the app path, its unpacked folder and their realpaths) compiles one regex matching
- * all its notations (raw path and file:// URL with or without percent-encoding), never glued to a longer file or
- * folder name, but replaced even inside a longer path.
+ * all its notations (raw path, JSON-escaped on Windows, and file:// URL with or without percent-encoding), never glued
+ * to a longer file or folder name, but replaced even inside a longer path.
  *
  * Known limits:
  * - Data folders (`userData`, `crashDumps`) are not masked.
  * - URLs percent-encoding unreserved characters (`%61`) are not matched.
  * - A non-ASCII character ends a path (`MyAppé` becomes `/é`).
+ * - UNC paths (`\\server\share`) are not matched.
+ * - In a raw Windows path, the conversion to `/` stops at punctuation ending a path in messages (`'`, `)`, `]`, `,`,
+ *   `;`, `#`...), even inside a folder name.
+ * - Case-insensitivity does not cover percent-encoded non-ASCII characters (`%C3%89` for `É` vs `%C3%A9` for `é`).
  */
 export class PathScrubber {
   private failureReported = false;
@@ -51,7 +66,10 @@ export class PathScrubber {
   /** Valid JSON in, valid JSON out, identical outside the matched paths. Never throws. */
   scrub(serialized: string): string {
     try {
-      return this.patterns.reduce((text, pattern) => text.replace(pattern, '/'), serialized);
+      return this.patterns.reduce(
+        (text, pattern) => text.replace(pattern, (_match, rest?: string) => `/${(rest ?? '').replace(/\\\\/g, '/')}`),
+        serialized
+      );
     } catch {
       // An unscrubbed payload is better than a lost one: send it as is and report once.
       if (!this.failureReported) {
@@ -84,9 +102,14 @@ function withoutTrailingSeparators(path: string): string {
   return path.replace(/[\\/]+$/, '');
 }
 
-// Empty, root or single-segment paths would rewrite almost every absolute path.
+// Empty, root, drive root or single-segment paths would rewrite almost every absolute path.
 function isDegenerate(path: string): boolean {
-  return path.split(/[\\/]/).filter(Boolean).length < 2;
+  return (
+    path
+      .replace(/^[A-Za-z]:/, '')
+      .split(/[\\/]/)
+      .filter(Boolean).length < 2
+  );
 }
 
 // Node reports realpath'd filenames in stacks while Electron paths are not resolved (macOS `/var` vs `/private/var`).
@@ -111,18 +134,43 @@ async function withRealpaths(paths: string[], realpath: (path: string) => Promis
   return result;
 }
 
-// A path appears raw (Node stacks, error messages) or as a file URL (renderer URLs, replay, profiles).
+// A path appears raw (Node stacks, error messages; JSON-escaped backslashes or forward slashes on Windows) or as a file
+// URL (renderer URLs, replay, profiles).
 function compilePattern(path: string): RegExp {
-  return pathPattern(POSIX_START, regexEscape(jsonText(path)), '/', `file://${urlPath(path)}`);
+  const windowsPath = WINDOWS_PATH.exec(path);
+  if (!windowsPath) {
+    return pathPattern(POSIX_START, regexEscape(jsonText(path)), '/', '', `file://${urlPath(path)}`, 'g');
+  }
+  const drive = windowsPath[1];
+  const segments = path.slice(3).split(/[\\/]/);
+  const raw = `${WINDOWS_LONG_PATH_PREFIX}${drive}:${segments
+    .map((segment) => WINDOWS_SEPARATOR + regexEscape(jsonText(segment)))
+    .join('')}`;
+  return pathPattern(
+    `${drive}|${WINDOWS_START}`,
+    raw,
+    WINDOWS_SEPARATOR,
+    WINDOWS_REST,
+    `file:///${drive}(?::|%3A)${segments.map((segment) => `/${urlPath(segment)}`).join('')}`,
+    // Windows filesystems are case-insensitive.
+    'gi'
+  );
 }
 
-// Without a separator, a right boundary is required. The cheap lookahead on the possible first characters runs before
-// the variable-length lookbehinds, which would otherwise scan back over a whole backslash run at each of its positions
-// (quadratic time).
-function pathPattern(start: string, raw: string, rawSeparator: string, url: string): RegExp {
+// Capture group 1 is the rest of the path to normalize (Windows raw paths only, empty otherwise). Without a separator,
+// a right boundary is required. The cheap lookahead on the possible first characters runs before the variable-length
+// lookbehinds, which would otherwise scan back over a whole backslash run at each of its positions (quadratic time).
+function pathPattern(
+  start: string,
+  raw: string,
+  rawSeparator: string,
+  rest: string,
+  url: string,
+  flags: 'g' | 'gi'
+): RegExp {
   return new RegExp(
-    `(?=${start})${NOT_INSIDE_JSON_ESCAPE}(?:${raw}(?:${rawSeparator}|${NOT_FOLLOWED_BY_NAME})|${url}(?:/|${NOT_FOLLOWED_BY_NAME}))`,
-    'g'
+    `(?=${start})${NOT_INSIDE_JSON_ESCAPE}(?:${raw}(?:${rawSeparator}(${rest})|${NOT_FOLLOWED_BY_NAME})|${url}(?:/|${NOT_FOLLOWED_BY_NAME}))`,
+    flags
   );
 }
 
