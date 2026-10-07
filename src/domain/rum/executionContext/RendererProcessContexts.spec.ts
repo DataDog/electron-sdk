@@ -1,4 +1,4 @@
-import { mockFs } from '../../../mocks.specUtil';
+import { createTestConfiguration, mockFs } from '../../../mocks.specUtil';
 
 vi.mock('electron', () => ({
   app: {
@@ -19,9 +19,21 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { app, webContents } from 'electron';
 import { RendererProcessContexts, RENDERER_DISPOSAL_GRACE_PERIOD } from './RendererProcessContexts';
 import { PROCESS_UPDATE_INTERVAL } from './executionContext.constants';
-import { EventManager, EventKind, EventFormat, EventSource, LifecycleKind, type RawRumEvent } from '../../../event';
-import { createFormatHooks } from '../../../assembly';
+import {
+  EventManager,
+  EventKind,
+  EventFormat,
+  EventSource,
+  LifecycleKind,
+  type RawRumEvent,
+  type ServerEvent,
+} from '../../../event';
+import { BeforeSend, createFormatHooks, MainAssembly } from '../../../assembly';
 import type { RawRumExecutionContext } from '../types';
+import { TrackingConsentManager } from '../../tracking-consent';
+import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
+import { DISCARDED } from '@datadog/js-core/assembly';
+import { SessionManager } from '../../session';
 
 vi.mock('node:fs/promises');
 const mfs = mockFs();
@@ -31,11 +43,14 @@ describe('RendererProcessContexts', () => {
   let hooks: ReturnType<typeof createFormatHooks>;
   let rawRumEvents: RawRumEvent[];
   let collection: RendererProcessContexts;
+  let sessionManager: SessionManager | undefined;
+  let consentManager: TrackingConsentManager;
   let webContentsCreatedHandler: (event: unknown, webContents: unknown) => void;
 
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
+    consentManager = new TrackingConsentManager();
     mfs.readFile.mockRejectedValue(new Error('ENOENT'));
     mfs.writeFile.mockResolvedValue(undefined);
 
@@ -53,10 +68,13 @@ describe('RendererProcessContexts', () => {
       return app;
     });
 
-    collection = RendererProcessContexts.start(eventManager, hooks);
+    collection = RendererProcessContexts.start(eventManager, hooks, consentManager);
   });
 
   afterEach(() => {
+    collection.stop();
+    sessionManager?.stop();
+    sessionManager = undefined;
     vi.useRealTimers();
     vi.clearAllMocks();
     mfs.reset();
@@ -102,6 +120,168 @@ describe('RendererProcessContexts', () => {
       expect(rendererStart.execution_context.type).toBe('renderer-process');
       expect(rendererStart.execution_context.instance_id).toBe('1');
       expect(rendererStart._dd.document_version).toBe(1);
+      expect(rawRumEvents[base]).not.toHaveProperty('storageConsent');
+    });
+
+    it.each(['pending', 'granted'] as const)('splits renderer durations when consent becomes %s', (next) => {
+      const wc = makeWebContents(1);
+      webContentsCreatedHandler({}, wc);
+      if (next === 'granted') consentManager.update('pending');
+      const previous = rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext;
+      rawRumEvents.length = 0;
+      vi.advanceTimersByTime(10);
+
+      consentManager.update(next);
+
+      expect(rawRumEvents).toHaveLength(2);
+      expect(rawRumEvents[0].data).toMatchObject({
+        execution_context: { id: previous.execution_context.id, duration: 10e6 },
+      });
+      if (next === 'pending') {
+        expect(rawRumEvents[0]).toMatchObject({ storageConsent: 'granted' });
+      } else {
+        expect(rawRumEvents[0]).not.toHaveProperty('storageConsent');
+      }
+      const started = rawRumEvents[1].data as RawRumExecutionContext;
+      expect(started.execution_context.id).not.toBe(previous.execution_context.id);
+      expect(started.execution_context.instance_id).toBe('1');
+      expect(started.execution_context.duration).toBe(0);
+      expect(started._dd.document_version).toBe(1);
+      rawRumEvents.length = 0;
+      vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+      expect(rawRumEvents).toHaveLength(1);
+      expect(rawRumEvents[0]).not.toHaveProperty('storageConsent');
+    });
+
+    it('preserves an authorized final update when refusal expires the session, then stays inactive while denied', async () => {
+      collection.stop();
+      sessionManager = await SessionManager.start(eventManager, hooks, createTestConfiguration(), consentManager);
+      collection = RendererProcessContexts.start(eventManager, hooks, consentManager);
+      const wc = makeWebContents(1);
+      webContentsCreatedHandler({}, wc);
+      const initialId = (rawRumEvents[0].data as RawRumExecutionContext).execution_context.id;
+      vi.advanceTimersByTime(10);
+      const boundary = timeStampNow();
+      consentManager.update('not-granted');
+
+      expect(rawRumEvents).toHaveLength(2);
+      expect(rawRumEvents[1].data).toMatchObject({
+        execution_context: { id: initialId, duration: 10e6 },
+      });
+      expect(rawRumEvents[1]).toMatchObject({ storageConsent: 'granted' });
+      rawRumEvents.length = 0;
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+      vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+      expect(rawRumEvents).toEqual([]);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(
+        hooks.triggerRum({ eventType: 'error', source: EventSource.RENDERER, webContentsId: 1, startTime: boundary })
+      ).toBe(DISCARDED);
+
+      consentManager.update('granted');
+      expect(rawRumEvents).toHaveLength(1);
+      expect((rawRumEvents[0].data as RawRumExecutionContext).execution_context.id).not.toBe(initialId);
+    });
+
+    it('does not authorize the final update of a rejected pending renderer period', () => {
+      consentManager.update('pending');
+      webContentsCreatedHandler({}, makeWebContents(1));
+      vi.advanceTimersByTime(10);
+
+      consentManager.update('not-granted');
+
+      expect(rawRumEvents).toHaveLength(2);
+      expect(rawRumEvents[1]).not.toHaveProperty('storageConsent');
+    });
+
+    it('does not attribute a window opened between sessions to the renewed session', async () => {
+      collection.stop();
+      sessionManager = await SessionManager.start(eventManager, hooks, createTestConfiguration(), consentManager);
+      new MainAssembly(eventManager, hooks, new BeforeSend());
+      const serverEvents: ServerEvent[] = [];
+      eventManager.registerHandler<ServerEvent>({
+        canHandle: (event): event is ServerEvent => event.kind === EventKind.SERVER,
+        handle: (event) => serverEvents.push(event),
+      });
+      collection = RendererProcessContexts.start(eventManager, hooks, consentManager);
+      sessionManager.expire();
+      vi.advanceTimersByTime(10);
+
+      webContentsCreatedHandler({}, makeWebContents(1));
+      const gapStart = rawRumEvents[rawRumEvents.length - 1].startTime!;
+      expect(serverEvents).toEqual([]);
+
+      vi.advanceTimersByTime(10);
+      consentManager.update('pending');
+
+      expect(serverEvents).toMatchObject([
+        { data: { type: 'execution_context', date: 20, session: { id: sessionManager.getSession().id } } },
+      ]);
+      // A terminal update for the gap would still have no session at its capture time.
+      expect(hooks.triggerRum({ eventType: 'execution_context', startTime: gapStart, source: EventSource.MAIN })).toBe(
+        DISCARDED
+      );
+    });
+
+    it.each(['before grant', 'after grant'] as const)(
+      'tracks windows created while denied only when alive and ready, with reload %s',
+      (reload) => {
+        consentManager.update('not-granted');
+        const live = makeWebContents(1);
+        const destroyed = makeWebContents(2);
+        const crashed = makeWebContents(3);
+        webContentsCreatedHandler({}, live);
+        webContentsCreatedHandler({}, destroyed);
+        webContentsCreatedHandler({}, crashed);
+        destroyed._emit('destroyed');
+        crashed._emit('render-process-gone', {}, { reason: 'crashed' });
+        if (reload === 'before grant') crashed._emit('did-start-navigation', { isMainFrame: true });
+        vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+        expect(rawRumEvents).toEqual([]);
+        expect(vi.getTimerCount()).toBe(0);
+
+        consentManager.update('granted');
+        expect(rawRumEvents).toHaveLength(reload === 'before grant' ? 2 : 1);
+        if (reload === 'after grant') crashed._emit('did-start-navigation', { isMainFrame: true });
+
+        expect(
+          rawRumEvents.map((event) => (event.data as RawRumExecutionContext).execution_context.instance_id)
+        ).toEqual(['1', '3']);
+        rawRumEvents.length = 0;
+        vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+        expect(rawRumEvents).toHaveLength(2);
+      }
+    );
+
+    it('does not rotate a renderer again after a synchronous session renewal for the new consent', () => {
+      collection.stop();
+      consentManager.subscribe((change) => {
+        eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW, time: change.time });
+      });
+      collection = RendererProcessContexts.start(eventManager, hooks, consentManager);
+      webContentsCreatedHandler({}, makeWebContents(1));
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+      rawRumEvents.length = 0;
+
+      consentManager.update('pending');
+
+      expect(rawRumEvents).toHaveLength(1);
+      expect((rawRumEvents[0].data as RawRumExecutionContext)._dd.document_version).toBe(1);
+      rawRumEvents.length = 0;
+      vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+      expect(rawRumEvents).toHaveLength(1);
+    });
+
+    it('uses the supplied session-expiry boundary for renderer duration', () => {
+      webContentsCreatedHandler({}, makeWebContents(1));
+      vi.advanceTimersByTime(20);
+      eventManager.notify({
+        kind: EventKind.LIFECYCLE,
+        lifecycle: LifecycleKind.SESSION_EXPIRED,
+        time: 10 as TimeStamp,
+      });
+
+      expect(rawRumEvents[1].data).toMatchObject({ execution_context: { duration: 10e6 } });
     });
 
     it('leaves the name unset when web-contents-created fires before any navigation', () => {
@@ -159,7 +339,7 @@ describe('RendererProcessContexts', () => {
         handle: (e) => freshEvents.push(e),
       });
 
-      RendererProcessContexts.start(freshEventManager, freshHooks);
+      const freshCollection = RendererProcessContexts.start(freshEventManager, freshHooks, consentManager);
 
       expect(freshEvents).toHaveLength(1);
       const started = freshEvents[0].data as RawRumExecutionContext;
@@ -174,6 +354,7 @@ describe('RendererProcessContexts', () => {
           webContentsId: 9,
         })
       ).toMatchObject({ execution_context: { id: started.execution_context.id, type: 'renderer-process' } });
+      freshCollection.stop();
     });
 
     it('tags subsequent RENDERER events with the matching execution context', () => {
@@ -338,6 +519,62 @@ describe('RendererProcessContexts', () => {
       expect(afterDomReady.execution_context.name).toBe('https://example.com/reloaded-page');
     });
 
+    it.each(['pending', 'granted'] as const)('keeps a reload name unresolved across a consent split to %s', (next) => {
+      if (next === 'granted') consentManager.update('pending');
+      const wc = makeWebContents(1);
+      wc.getURL.mockReturnValue('https://example.com/crashed-page');
+      webContentsCreatedHandler({}, wc);
+      wc._emit('render-process-gone', {}, { reason: 'crashed' });
+      wc._emit('did-start-navigation', { isMainFrame: true });
+
+      consentManager.update(next);
+      const replacement = rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext;
+      expect(replacement.execution_context.name).toBeUndefined();
+      vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+      expect(
+        (rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext).execution_context.name
+      ).toBeUndefined();
+
+      wc.getURL.mockReturnValue('https://example.com/reloaded-page');
+      wc._emit('dom-ready');
+      expect(rawRumEvents[rawRumEvents.length - 1].data).toMatchObject({
+        execution_context: { id: replacement.execution_context.id, name: 'https://example.com/reloaded-page' },
+      });
+    });
+
+    it.each(['before grant', 'after grant'] as const)(
+      'resolves a renderer reloaded while denied when dom-ready arrives %s',
+      (domReady) => {
+        consentManager.update('not-granted');
+        const wc = makeWebContents(1);
+        wc.getURL.mockReturnValue('https://example.com/crashed-page');
+        webContentsCreatedHandler({}, wc);
+        wc._emit('render-process-gone', {}, { reason: 'crashed' });
+        wc._emit('did-start-navigation', { isMainFrame: true });
+        if (domReady === 'before grant') {
+          wc.getURL.mockReturnValue('https://example.com/reloaded-page');
+          wc._emit('dom-ready');
+        }
+        expect(rawRumEvents).toEqual([]);
+
+        consentManager.update('granted');
+        expect(rawRumEvents).toHaveLength(1);
+        if (domReady === 'after grant') {
+          const initial = rawRumEvents[0].data as RawRumExecutionContext;
+          expect(initial.execution_context.name).toBeUndefined();
+          vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL);
+          expect(
+            (rawRumEvents[rawRumEvents.length - 1].data as RawRumExecutionContext).execution_context.name
+          ).toBeUndefined();
+          wc.getURL.mockReturnValue('https://example.com/reloaded-page');
+          wc._emit('dom-ready');
+        }
+        expect(rawRumEvents[rawRumEvents.length - 1].data).toMatchObject({
+          execution_context: { name: 'https://example.com/reloaded-page' },
+        });
+      }
+    );
+
     it('ignores a same-document navigation as a revival signal, since it would never get a dom-ready to clear pendingNavigation', () => {
       const base = rawRumEvents.length;
       const wc = makeWebContents(1);
@@ -386,12 +623,10 @@ describe('RendererProcessContexts', () => {
       wc._emit('render-process-gone', {}, { reason: 'crashed' });
       wc._emit('did-start-navigation', { isMainFrame: true }); // revival, pendingNavigation: true
 
-      // Session expires before the revival's own navigation commits — closeForSessionExpiry
-      // closes the entry while pendingNavigation is still true.
+      // Session expires before the revival's own navigation commits.
       eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
 
-      // The navigation finally commits during the sessionless gap: getState() excludes the now-
-      // closed entry, so dom-ready must still clear pendingNavigation on it directly.
+      // The navigation commits with no active entry; its readiness must still be remembered.
       wc.getURL.mockReturnValue('https://example.com/reloaded-page');
       wc._emit('dom-ready');
 
