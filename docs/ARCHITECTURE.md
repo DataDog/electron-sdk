@@ -157,13 +157,14 @@ When `enableExecutionContext` is set, `ExecutionContextCollection` (`src/domain/
 
 ## Internal Tracking Consent State
 
-`TrackingConsentManager` starts in `granted` when explicitly constructed. Its timestamp history
-is kept in memory from construction onward; it neither persists consent nor infers consent from an earlier process.
+`TrackingConsentManager` defaults to `granted`. SDK initialization loads consent history from the previous
+launch before saving the new launch's state. Previous consent is used for historical lookups, not as the
+current consent of the new launch.
 Changes notify monitored subscribers synchronously after updating the state.
 Consumers own their subscriptions and unsubscribe when stopped.
 
-History lookups return the state active at the requested time. For example, a past `pending` period still returns
-`pending` after the current state changes to `granted` or `not-granted`.
+`getAt()` returns the original state at a time within the current launch. A past `pending` period still returns
+`pending` after a grant or refusal. Crash recovery uses `isAuthorizedAt()` to also consult the previous launch.
 
 ### Consent and batch storage
 
@@ -198,32 +199,24 @@ The existing best-effort limit of 100 completed batches applies to the authorize
 of 100 applies across all remaining pending and migration directories together, so creating new periods
 does not multiply the allowance. Open files and filesystem failures can temporarily exceed these limits.
 
-### Consent and context history
+### Consent and crash recovery
 
-Context histories are saved separately from event batches. Withholding batches from upload does not
-control which session, view or customer context is retained in those history files.
+Context histories retain their existing attribution behavior. Crash recovery checks consent explicitly
+before reading a dump: saved session, view or customer context is not proof that a crash was authorized.
 
-For example, an app can first start in `pending`, crash before the user's decision, then restart in
-`granted`. If the pending session and view were saved, crash recovery could find them and send a crash
-from a period that was never authorized. Keeping pending history in memory prevents that period from
-being recovered after restart; a new grant does not authorize the previous launch's undecided data.
+`TrackingConsentManager` keeps timestamped state changes for the current launch and persists them to
+`_dd_tracking_consent_history`. On startup it reads the previous launch's timeline separately, so a new
+`granted` state cannot authorize an earlier launch's unresolved `pending` period. A pending period is
+accepted only if followed by a grant within the same launch. Missing or invalid consent history rejects
+the recovered crash. Only the new launch's timeline is written back; older unprocessed dumps without
+matching consent history are discarded.
 
-`TrackingConsentHistory` saves granted history and keeps pending changes in memory until a grant.
-Refusal removes the pending entries while preserving earlier authorized history. Values set during
-`not-granted` are not added to history. For user, account and global context, this controls retained
-metadata; filtering events by consent is a separate responsibility.
+`CrashCollection` deletes rejected dumps without parsing or emitting them. Accepted crashes carry their
+established authorization through assembly to the authorized batch store, even if current consent has
+changed. Session/view/user histories still supply attribution through the existing format hooks.
 
-Removing a refused period does not clear the application's current customer configuration. For example,
-if Alice is set during `pending` and that period is refused, a later grant can record Alice starting at
-the new grant's time, without restoring her entry from the refused period.
-
-`ContextHistoryFactory` subscribes before session and collector callbacks so histories adopt the new
-consent policy before those callbacks write new values. For example, a session created on a grant must
-be recorded under `granted`, rather than the previous consent state.
-
-`DiskStorage` queues JSON writes asynchronously. A failed or interrupted write closing a granted entry
-can leave its old open entry on disk. These histories alone are therefore not a durable record of
-consent for recovered crashes.
+Consent snapshots are written asynchronously in order. A failed or interrupted write can leave an older
+`granted` state on disk; this history does not guarantee correct authorization after such a failure.
 
 ## Error Reporting
 
