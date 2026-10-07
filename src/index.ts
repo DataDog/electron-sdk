@@ -16,6 +16,7 @@ import { ProfilingCollection } from './domain/profiling';
 import { TrackingConsentManager } from './domain/tracking-consent';
 import { EventManager } from './event';
 import { BeforeQuitHandler } from './tools/BeforeQuitHandler';
+import { PathScrubber } from './tools/pathScrubber';
 import { Transport } from './transport';
 
 let sessionManager: SessionManager | undefined;
@@ -46,6 +47,9 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
     return false;
   }
 
+  // Built before anything that serializes payloads.
+  const pathScrubber = new PathScrubber();
+
   tracing = new Tracing(config);
 
   eventManager = new EventManager();
@@ -64,7 +68,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   sessionManager = await SessionManager.start(eventManager, hooks, config, trackingConsentManager);
 
   new ProfilingCollection(eventManager, sessionManager, config, hooks);
-  replayCollection = new ReplayCollection(eventManager, config, sessionManager, hooks);
+  replayCollection = new ReplayCollection(eventManager, config, sessionManager, hooks, pathScrubber);
 
   if (tracing.enabled) {
     new SpanProcessor(eventManager, hooks, config);
