@@ -61,6 +61,10 @@ Integration scenarios inherit a 60-second test timeout from `e2e/playwright.conf
 The minimal E2E project keeps its 30-second timeout; the session-renewal scenario allows 60 seconds overall
 and 30 seconds for renewed-session telemetry. Other intake waits retain their existing limits.
 
+At teardown, the intake fails the test if any captured payload (every endpoint, with replay and profile parts decoded)
+contains the app path of an app launched during the test (and its realpath, read at launch), in raw, `/`-separated or
+decoded URL form.
+
 #### `rumBrowserSdk` option
 
 By default, no browser-sdk runs in the main window renderer. Tests that need real user-activity tracking (e.g. session renewal via click) opt in per-describe or per file:
