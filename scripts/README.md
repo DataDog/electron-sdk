@@ -9,6 +9,7 @@ scripts/
 │   ├── command.ts    # Shell-injection-safe command runner
 │   ├── executionUtils.ts  # runMain, printLog, printError
 │   └── filesUtils.ts     # findPackageJsonFiles
+├── playground/       # Playground build and source map upload (same layout: entry points + lib/)
 └── cli               # Bash commands (cmd_<name> pattern)
 ```
 
