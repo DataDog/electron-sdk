@@ -1,5 +1,7 @@
 import * as http from 'node:http';
+import { realpathSync } from 'node:fs';
 import zlib from 'node:zlib';
+import type { ElectronApplication } from '@playwright/test';
 import type {
   LogsEvent,
   RumActionEvent,
@@ -84,6 +86,12 @@ export interface ProfilingRequest {
   timestamp: number;
   contentType: string;
   headers: Record<string, string>;
+}
+
+interface PayloadText {
+  /** Intake route the payload came from (e.g. `/api/v2/rum`), to name it in a failure. */
+  source: string;
+  text: string;
 }
 
 const byType = (type: string) => (event: ReceivedEvent) => (event.body as { type?: string }).type === type;
@@ -176,6 +184,8 @@ export class Intake {
   private replaySegments: ReplaySegment[] = [];
   private traces: Trace[] = [];
   private profilingRequests: ProfilingRequest[] = [];
+  private payloadTexts: PayloadText[] = [];
+  private sdkPaths = new Set<string>();
   private port = 0;
   private quotaDecision: 'quota_ok' | 'quota_ko' = 'quota_ok';
 
@@ -191,7 +201,7 @@ export class Intake {
     }
   }
 
-  private storeReplaySegment(rawBody: Buffer, headers: Record<string, string>) {
+  private storeReplaySegment(rawBody: Buffer, headers: Record<string, string>, source: string) {
     const contentType = headers['content-type'] ?? '';
     const boundaryMatch = /boundary=([^\s;]+)/.exec(contentType);
     if (!boundaryMatch) return;
@@ -209,13 +219,10 @@ export class Intake {
       if (headerEnd === -1) continue;
 
       const partHeaders = part.subarray(0, headerEnd).toString('utf8');
-      let body = part.subarray(headerEnd + 4);
-      // Strip the trailing CRLF that precedes the next delimiter.
-      if (body.length >= 2 && body[body.length - 2] === 0x0d && body[body.length - 1] === 0x0a) {
-        body = body.subarray(0, body.length - 2);
-      }
+      const body = stripTrailingCrlf(part.subarray(headerEnd + 4));
 
       if (partHeaders.includes('name="event"')) {
+        this.payloadTexts.push({ source, text: body.toString('utf8') });
         try {
           metadata = JSON.parse(body.toString('utf8')) as Record<string, unknown>;
         } catch {
@@ -231,19 +238,41 @@ export class Intake {
     const segment: ReplaySegment = { timestamp: Date.now(), metadata, headers };
 
     if (compressed) {
-      try {
-        // A single segment is a self-contained ZLIB stream (header + full-flush body +
-        // final block + Adler-32), so it inflates standalone. Continuation segments carry
-        // a cumulative Adler-32 that won't match a lone stream — those stay undecoded.
-        const inflated = zlib.inflateSync(compressed);
-        const parsed = JSON.parse(inflated.toString('utf8')) as { records?: unknown[] };
-        segment.records = parsed.records ?? [];
-      } catch {
-        // segment blob not standalone-inflatable — leave records undefined
+      const inflated = inflateSegment(compressed);
+      if (inflated !== undefined) {
+        this.payloadTexts.push({ source, text: inflated });
+        try {
+          const parsed = JSON.parse(inflated) as { records?: unknown[] };
+          segment.records = parsed.records ?? [];
+        } catch {
+          // segment blob is not JSON: leave records undefined
+        }
       }
     }
 
     this.replaySegments.push(segment);
+  }
+
+  private storeProfilePayloads(rawBody: Buffer, contentType: string, source: string) {
+    const boundary = /boundary=([^\s;]+)/.exec(contentType)?.[1];
+    if (!boundary) return;
+
+    for (const part of splitBuffer(rawBody, Buffer.from(`--${boundary}`))) {
+      const headerEnd = part.indexOf('\r\n\r\n');
+      if (headerEnd === -1) continue;
+
+      const partHeaders = part.subarray(0, headerEnd).toString('utf8');
+      const body = stripTrailingCrlf(part.subarray(headerEnd + 4));
+      if (partHeaders.includes('name="event"')) {
+        this.payloadTexts.push({ source, text: body.toString('utf8') });
+      } else if (partHeaders.includes('name="wall-time.json"')) {
+        try {
+          this.payloadTexts.push({ source, text: zlib.inflateSync(body).toString('utf8') });
+        } catch {
+          // not a deflated profile: nothing to scan
+        }
+      }
+    }
   }
 
   /**
@@ -300,12 +329,12 @@ export class Intake {
         });
 
         if (ddforward.startsWith('/api/v2/profile')) {
-          req.resume();
           req.on('end', () => {
             const headers: Record<string, string> = {};
             for (const [key, value] of Object.entries(req.headers)) {
               if (typeof value === 'string') headers[key.toLowerCase()] = value;
             }
+            this.storeProfilePayloads(Buffer.concat(chunks), req.headers['content-type'] ?? '', ddforward);
             this.profilingRequests.push({
               timestamp: Date.now(),
               contentType: req.headers['content-type'] ?? '',
@@ -332,12 +361,13 @@ export class Intake {
           const isMultipart = (headers['content-type'] ?? '').includes('multipart/form-data');
 
           if (ddforward.startsWith('/api/v2/replay') || isMultipart) {
-            this.storeReplaySegment(rawBody, headers);
+            this.storeReplaySegment(rawBody, headers, ddforward);
             res.writeHead(202, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ status: 'accepted' }));
             return;
           }
 
+          this.payloadTexts.push({ source: ddforward, text: rawBody.toString() });
           try {
             const parsedBody: unknown = JSON.parse(rawBody.toString());
             if (ddforward.startsWith('/api/v2/spans')) {
@@ -595,7 +625,104 @@ export class Intake {
     this.quotaDecision = 'quota_ok';
   }
 
+  registerSdkPaths(paths: string[]): void {
+    for (const path of paths) {
+      this.sdkPaths.add(path);
+      try {
+        this.sdkPaths.add(realpathSync(path));
+      } catch {
+        // not on disk (e.g. crashDumps before the first crash): the declared path is enough
+      }
+    }
+  }
+
+  /** Fails if any string value of any captured payload contains a registered SDK path, in any notation. */
+  assertNoSdkPath(): void {
+    const forms = [...this.sdkPaths].flatMap((path) => [path, path.replace(/\\/g, '/')]).map(normalizeCase);
+    const leaks: string[] = [];
+    for (const { source, text } of this.payloadTexts) {
+      for (const value of stringValues(text)) {
+        const candidates = [value, safeDecodeURI(value)].map(normalizeCase);
+        const leaked = forms.find((form) => candidates.some((candidate) => candidate.includes(form)));
+        if (leaked) {
+          leaks.push(`${source}: ${leaked} in ${JSON.stringify(value.slice(0, 200))}`);
+        }
+      }
+    }
+    if (leaks.length > 0) {
+      throw new Error(`Payloads contain absolute SDK paths:\n${leaks.join('\n')}`);
+    }
+  }
+
   getPort(): number {
     return this.port;
+  }
+}
+
+/** Records the SDK paths of a launched app, so the intake can check no payload leaks them. */
+export async function registerSdkPaths(intake: Intake, electronApp: ElectronApplication): Promise<void> {
+  const paths = await electronApp.evaluate(({ app }) =>
+    [() => app.getAppPath(), () => app.getPath('userData'), () => app.getPath('crashDumps')].flatMap((read) => {
+      try {
+        return [read()];
+      } catch {
+        return [];
+      }
+    })
+  );
+  intake.registerSdkPaths(paths);
+}
+
+// The first segment is a self-contained ZLIB stream. A continuation has a prepended header and a cumulative
+// Adler-32 that a lone stream rejects, but its body is raw deflate once the header and trailer are stripped.
+function inflateSegment(compressed: Buffer): string | undefined {
+  try {
+    return zlib.inflateSync(compressed).toString('utf8');
+  } catch {
+    // not a standalone ZLIB stream: try as a continuation segment
+  }
+  try {
+    return zlib.inflateRawSync(compressed.subarray(2, -4)).toString('utf8');
+  } catch {
+    return undefined;
+  }
+}
+
+function stripTrailingCrlf(body: Buffer): Buffer {
+  return body.length >= 2 && body[body.length - 2] === 0x0d && body[body.length - 1] === 0x0a
+    ? body.subarray(0, body.length - 2)
+    : body;
+}
+
+// Windows paths are case-insensitive.
+function normalizeCase(value: string): string {
+  return process.platform === 'win32' ? value.toLowerCase() : value;
+}
+
+// Every string value of a JSON (or NDJSON) payload; a non-JSON payload is checked as a whole.
+function stringValues(text: string): string[] {
+  const values: string[] = [];
+  const visit = (value: unknown) => {
+    if (typeof value === 'string') {
+      values.push(value);
+    } else if (value && typeof value === 'object') {
+      Object.values(value).forEach(visit);
+    }
+  };
+  for (const line of text.split('\n').filter(Boolean)) {
+    try {
+      visit(JSON.parse(line));
+    } catch {
+      values.push(line);
+    }
+  }
+  return values;
+}
+
+function safeDecodeURI(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
   }
 }

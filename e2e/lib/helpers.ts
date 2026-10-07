@@ -2,7 +2,7 @@ import { test as base, _electron as electron, type ElectronApplication, type Pag
 import { join } from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { Intake } from './intake';
+import { Intake, registerSdkPaths } from './intake';
 import { TestServer } from './testServer';
 import { MainPage } from './mainPage';
 import { assertExpectedElectronVersion, getCompatibilityRun } from './compatibility';
@@ -60,7 +60,11 @@ export const test = base.extend<TestFixtures>({
       await intake.start();
       intake.setQuotaResponse(initialIntakeQuotaDecision);
       await use(intake);
-      await intake.stop();
+      try {
+        intake.assertNoSdkPath();
+      } finally {
+        await intake.stop();
+      }
     },
     { option: true },
   ],
@@ -164,6 +168,7 @@ async function launchApp(
   });
   try {
     await assertExpectedElectronVersion(electronApp);
+    await registerSdkPaths(intake, electronApp);
     return electronApp;
   } catch (error) {
     await electronApp.close();
