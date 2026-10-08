@@ -65,7 +65,6 @@ export class MainAssembly {
           kind: EventKind.SERVER,
           track: EventTrack.RUM,
           source: EventSource.MAIN,
-          ...(event.storageConsent ? { storageConsent: event.storageConsent } : {}),
           data,
         };
       }

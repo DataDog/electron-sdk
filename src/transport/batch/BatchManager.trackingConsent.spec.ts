@@ -134,30 +134,6 @@ describe('BatchManager tracking consent storage', () => {
     expect(await logFiles(authorizedPath)).toHaveLength(1);
   });
 
-  it.each(['pending', 'not-granted'] as const)(
-    'uploads an authorized recovered crash while current consent is %s',
-    async (consent) => {
-      const state = createConsentManager(consent);
-      manager = await BatchManager.create(config, createBatchConfig(), state);
-      const authorizedPath = path.join(basePath, 'rum');
-      const uploaded: string[] = [];
-      mockConsumerUpload.mockImplementation(async () => {
-        uploaded.push(...(await storedValues(authorizedPath)));
-      });
-
-      manager.post({ ...event('recovered-crash'), storageConsent: 'granted' } as ServerEvent);
-      manager.post(event('current-event'));
-      state.update('not-granted');
-      await manager.flush();
-
-      expect(uploaded).toEqual(['recovered-crash']);
-      expect(await pendingDirectories(authorizedPath)).toEqual([]);
-      for (const file of await logFiles(authorizedPath)) {
-        expect(await fs.readFile(path.join(authorizedPath, file), 'utf8')).not.toContain('storageConsent');
-      }
-    }
-  );
-
   it('deletes pending events when consent is rejected', async () => {
     const state = createConsentManager('pending');
     manager = await BatchManager.create(config, createBatchConfig(), state);

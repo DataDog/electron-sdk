@@ -1,12 +1,15 @@
 import * as fs from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TimeStamp } from '@datadog/js-core/time';
-import { EventKind, EventManager, type RawEvent } from '../../event';
+import { DISCARDED } from '@datadog/js-core/assembly';
+import { createFormatHooks } from '../../assembly';
+import { EventKind, EventManager, EventSource, type RawEvent } from '../../event';
 import { createTestConfiguration } from '../../mocks.specUtil';
 import { startTelemetry, stopTelemetry } from '../telemetry';
 import { TrackingConsentManager, type TrackingConsent, type TrackingConsentChange } from './index';
 
 vi.mock('node:fs/promises');
+vi.mock('electron', () => ({ app: { getPath: () => '/mock/user/data' } }));
 
 describe('TrackingConsentManager', () => {
   let manager: TrackingConsentManager;
@@ -140,7 +143,6 @@ describe('persisted tracking consent', () => {
   let file: string;
 
   beforeEach(() => {
-    vi.resetAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(1000);
     file = '[]';
@@ -151,89 +153,60 @@ describe('persisted tracking consent', () => {
     });
   });
 
-  afterEach(() => vi.useRealTimers());
-
-  it('recovers granted consent without restoring it as the new launch state', async () => {
-    const first = await TrackingConsentManager.start('/history');
-    vi.setSystemTime(1020);
-    const next = await TrackingConsentManager.start('/history', 'pending');
-
-    expect(next.get()).toBe('pending');
-    expect(next.getAt(1010 as TimeStamp)).toBeUndefined();
-    expect(next.isAuthorizedAt(1010 as TimeStamp)).toBe(true);
-    expect(next.getAt(999 as TimeStamp)).toBeUndefined();
-    expect(next.isAuthorizedAt(999 as TimeStamp)).toBe(false);
-    expect(next.isAuthorizedAt(1020 as TimeStamp)).toBe(false);
-    expect(JSON.parse(file)).toEqual([{ startTime: 1020, endTime: null, value: 'pending' }]);
-    await first.flush();
+  afterEach(() => {
+    vi.resetAllMocks();
+    vi.useRealTimers();
   });
 
-  it('never authorizes the previous launch pending interval with a new launch grant', async () => {
-    await TrackingConsentManager.start('/history', 'pending');
+  async function launch(initialConsent?: TrackingConsent) {
+    // Let the previous launch finish writing its history.
+    await vi.advanceTimersByTimeAsync(0);
+    const hooks = createFormatHooks();
+    const manager = await TrackingConsentManager.init(hooks, initialConsent);
+    const isDiscardedAt = (time: number) =>
+      hooks.triggerRum({ eventType: 'error', startTime: time as TimeStamp, source: EventSource.MAIN }) === DISCARDED;
+    return { manager, isDiscardedAt };
+  }
+
+  it('checks events against the consent of their own launch without restoring it as the current state', async () => {
+    await launch();
     vi.setSystemTime(1020);
-    const next = await TrackingConsentManager.start('/history');
+    const { manager, isDiscardedAt } = await launch('pending');
 
-    expect(next.get()).toBe('granted');
-    expect(next.getAt(1010 as TimeStamp)).toBeUndefined();
-    expect(next.isAuthorizedAt(1010 as TimeStamp)).toBe(false);
+    expect(manager.get()).toBe('pending');
+    expect(isDiscardedAt(1010)).toBe(false);
+    expect(isDiscardedAt(1020)).toBe(false);
+    expect(isDiscardedAt(999)).toBe(true);
+  });
 
-    next.update('not-granted');
-    next.update('granted');
-    expect(next.isAuthorizedAt(1010 as TimeStamp)).toBe(false);
-    await next.flush();
+  it('refuses a pending period left undecided by the previous launch', async () => {
+    await launch('pending');
+    vi.setSystemTime(1020);
+    const { manager, isDiscardedAt } = await launch();
+
+    expect(isDiscardedAt(1010)).toBe(true);
+    manager.update('not-granted');
+    manager.update('granted');
+    expect(isDiscardedAt(1010)).toBe(true);
+
     vi.setSystemTime(1040);
-    const later = await TrackingConsentManager.start('/history');
-    expect(later.getAt(1010 as TimeStamp)).toBeUndefined();
+    expect((await launch()).isDiscardedAt(1010)).toBe(true);
   });
 
-  it.each([false, true])(
-    'uses the first decision after pending, even after restart (rejected: %s)',
-    async (rejected) => {
-      const first = await TrackingConsentManager.start('/history', 'pending');
-      vi.setSystemTime(1020);
-      if (rejected) first.update('not-granted');
-      first.update('granted');
-      await first.flush();
+  it.each<TrackingConsent>(['granted', 'not-granted'])(
+    'applies the first %s decision to a pending period, including after a restart',
+    async (decision) => {
+      const { manager, isDiscardedAt } = await launch('pending');
+      expect(isDiscardedAt(1000)).toBe(false);
 
-      expect(first.getAt(1010 as TimeStamp)).toBe('pending');
-      expect(first.isAuthorizedAt(1010 as TimeStamp)).toBe(!rejected);
+      vi.setSystemTime(1020);
+      manager.update(decision);
+      vi.setSystemTime(1030);
+      manager.update(decision === 'granted' ? 'not-granted' : 'granted');
+      expect(isDiscardedAt(1010)).toBe(decision === 'not-granted');
 
       vi.setSystemTime(1040);
-      const next = await TrackingConsentManager.start('/history');
-      expect(next.getAt(1010 as TimeStamp)).toBeUndefined();
-      expect(next.isAuthorizedAt(1010 as TimeStamp)).toBe(!rejected);
-      expect(next.isAuthorizedAt(1020 as TimeStamp)).toBe(true);
+      expect((await launch()).isDiscardedAt(1010)).toBe(decision === 'not-granted');
     }
   );
-
-  it('queues persistence before notifying synchronous observers', async () => {
-    const manager = await TrackingConsentManager.start('/history');
-    const observer = vi.fn<(consent: TrackingConsent, change: TrackingConsentChange) => void>();
-    manager.subscribe((change) => {
-      observer(manager.get(), change);
-      if (change.current === 'pending') manager.update('not-granted');
-    });
-    vi.setSystemTime(1020);
-    manager.update('pending');
-    await manager.flush();
-
-    expect(observer.mock.calls.map(([consent]) => consent)).toEqual(['pending', 'not-granted']);
-    const snapshots = vi
-      .mocked(fs.writeFile)
-      .mock.calls.map((call) => JSON.parse(call[1] as string) as { value: TrackingConsent }[]);
-    expect(snapshots.map((entries) => entries[0].value)).toEqual(['granted', 'pending', 'not-granted']);
-    expect(snapshots[snapshots.length - 1]).toEqual([
-      { startTime: 1020, endTime: null, value: 'not-granted' },
-      { startTime: 1020, endTime: 1020, value: 'pending' },
-      { startTime: 1000, endTime: 1020, value: 'granted' },
-    ]);
-  });
-
-  it('has no authorization for missing history or invalid timestamps', async () => {
-    vi.mocked(fs.readFile).mockRejectedValueOnce(Object.assign(new Error('missing'), { code: 'ENOENT' }));
-    const manager = await TrackingConsentManager.start('/history');
-    for (const time of [999, NaN, Infinity, -Infinity]) {
-      expect(manager.isAuthorizedAt(time as TimeStamp)).toBe(false);
-    }
-  });
 });

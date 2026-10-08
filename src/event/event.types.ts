@@ -12,8 +12,6 @@ export type { BrowserProfileEvent, BrowserProfilerTrace };
 export type RawEvent = RawRumEvent | RawTelemetryEvent | RawProfileEvent | RawReplayEvent;
 
 export interface RawRumEvent {
-  /** Authorization of a recovered crash, independent of the current consent. */
-  storageConsent?: 'granted';
   kind: typeof EventKind.RAW;
   format: typeof EventFormat.RUM;
   data: RawRumData;
@@ -54,7 +52,6 @@ export interface ServerRendererRumEvent {
 }
 
 export interface ServerMainRumEvent {
-  storageConsent?: 'granted';
   kind: typeof EventKind.SERVER;
   track: typeof EventTrack.RUM;
   source: typeof EventSource.MAIN;
