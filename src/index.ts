@@ -46,11 +46,11 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
     return false;
   }
 
-  const trackingConsentManager = new TrackingConsentManager();
   tracing = new Tracing(config);
 
   eventManager = new EventManager();
   const hooks = createFormatHooks();
+  const trackingConsentManager = await TrackingConsentManager.init(hooks);
 
   registerCommonContext(config, hooks);
   userContext = await UserContext.init(hooks);

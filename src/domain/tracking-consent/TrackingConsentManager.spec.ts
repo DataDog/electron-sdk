@@ -1,9 +1,15 @@
+import * as fs from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TimeStamp } from '@datadog/js-core/time';
-import { EventKind, EventManager, type RawEvent } from '../../event';
+import { DISCARDED } from '@datadog/js-core/assembly';
+import { createFormatHooks } from '../../assembly';
+import { EventKind, EventManager, EventSource, type RawEvent } from '../../event';
 import { createTestConfiguration } from '../../mocks.specUtil';
 import { startTelemetry, stopTelemetry } from '../telemetry';
 import { TrackingConsentManager, type TrackingConsent, type TrackingConsentChange } from './index';
+
+vi.mock('node:fs/promises');
+vi.mock('electron', () => ({ app: { getPath: () => '/mock/user/data' } }));
 
 describe('TrackingConsentManager', () => {
   let manager: TrackingConsentManager;
@@ -131,4 +137,76 @@ describe('TrackingConsentManager', () => {
     expect(other.getAt(1010 as TimeStamp)).toBe('granted');
     expect(otherObserver).not.toHaveBeenCalled();
   });
+});
+
+describe('persisted tracking consent', () => {
+  let file: string;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    file = '[]';
+    vi.mocked(fs.readFile).mockImplementation(() => Promise.resolve(file));
+    vi.mocked(fs.writeFile).mockImplementation((_path, data) => {
+      file = data as string;
+      return Promise.resolve();
+    });
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+    vi.useRealTimers();
+  });
+
+  async function launch(initialConsent?: TrackingConsent) {
+    // Let the previous launch finish writing its history.
+    await vi.advanceTimersByTimeAsync(0);
+    const hooks = createFormatHooks();
+    const manager = await TrackingConsentManager.init(hooks, initialConsent);
+    const isDiscardedAt = (time: number) =>
+      hooks.triggerRum({ eventType: 'error', startTime: time as TimeStamp, source: EventSource.MAIN }) === DISCARDED;
+    return { manager, isDiscardedAt };
+  }
+
+  it('checks events against the consent of their own launch without restoring it as the current state', async () => {
+    await launch();
+    vi.setSystemTime(1020);
+    const { manager, isDiscardedAt } = await launch('pending');
+
+    expect(manager.get()).toBe('pending');
+    expect(isDiscardedAt(1010)).toBe(false);
+    expect(isDiscardedAt(1020)).toBe(false);
+    expect(isDiscardedAt(999)).toBe(true);
+  });
+
+  it('refuses a pending period left undecided by the previous launch', async () => {
+    await launch('pending');
+    vi.setSystemTime(1020);
+    const { manager, isDiscardedAt } = await launch();
+
+    expect(isDiscardedAt(1010)).toBe(true);
+    manager.update('not-granted');
+    manager.update('granted');
+    expect(isDiscardedAt(1010)).toBe(true);
+
+    vi.setSystemTime(1040);
+    expect((await launch()).isDiscardedAt(1010)).toBe(true);
+  });
+
+  it.each<TrackingConsent>(['granted', 'not-granted'])(
+    'applies the first %s decision to a pending period, including after a restart',
+    async (decision) => {
+      const { manager, isDiscardedAt } = await launch('pending');
+      expect(isDiscardedAt(1000)).toBe(false);
+
+      vi.setSystemTime(1020);
+      manager.update(decision);
+      vi.setSystemTime(1030);
+      manager.update(decision === 'granted' ? 'not-granted' : 'granted');
+      expect(isDiscardedAt(1010)).toBe(decision === 'not-granted');
+
+      vi.setSystemTime(1040);
+      expect((await launch()).isDiscardedAt(1010)).toBe(decision === 'not-granted');
+    }
+  );
 });
