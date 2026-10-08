@@ -12,7 +12,7 @@ export type { BrowserProfileEvent, BrowserProfilerTrace };
 export type RawEvent = RawRumEvent | RawTelemetryEvent | RawProfileEvent | RawReplayEvent;
 
 export interface RawRumEvent {
-  /** Preserves authorization for recovered crashes and terminal updates from granted periods. */
+  /** Authorization of a recovered crash, independent of the current consent. */
   storageConsent?: 'granted';
   kind: typeof EventKind.RAW;
   format: typeof EventFormat.RUM;
@@ -113,15 +113,11 @@ export interface EndUserActivityEvent {
 export interface SessionExpiredEvent {
   kind: typeof EventKind.LIFECYCLE;
   lifecycle: typeof LifecycleKind.SESSION_EXPIRED;
-  /** Shared boundary for session and view histories when expiry follows a consent change. */
-  time?: TimeStamp;
 }
 
 export interface SessionRenewEvent {
   kind: typeof EventKind.LIFECYCLE;
   lifecycle: typeof LifecycleKind.SESSION_RENEW;
-  /** Shared boundary for session and view histories when renewal follows a consent change. */
-  time?: TimeStamp;
 }
 
 export type LifecycleEvent = EndUserActivityEvent | SessionExpiredEvent | SessionRenewEvent;

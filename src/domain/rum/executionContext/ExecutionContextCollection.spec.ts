@@ -23,7 +23,6 @@ import { EventManager, EventKind, EventFormat, EventSource, type RawRumEvent } f
 import { createFormatHooks } from '../../../assembly';
 import type { SessionManager } from '../../session';
 import type { RawRumExecutionContext } from '../types';
-import { TrackingConsentManager } from '../../tracking-consent';
 
 vi.mock('node:fs/promises');
 const mfs = mockFs();
@@ -50,7 +49,7 @@ describe('ExecutionContextCollection', () => {
       handle: (e) => rawRumEvents.push(e),
     });
 
-    sessionManager = { getSession: () => ({ id: 'session-1', status: 'tracked' }) } as unknown as SessionManager;
+    sessionManager = { getSession: () => ({ id: 'session-1', status: 'active' }) } as unknown as SessionManager;
 
     vi.mocked(app).on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
       if (event === 'web-contents-created') {
@@ -59,8 +58,7 @@ describe('ExecutionContextCollection', () => {
       return app;
     });
 
-    const consent = new TrackingConsentManager();
-    collection = await ExecutionContextCollection.start(eventManager, hooks, sessionManager, consent);
+    collection = await ExecutionContextCollection.start(eventManager, hooks, sessionManager);
   });
 
   afterEach(() => {

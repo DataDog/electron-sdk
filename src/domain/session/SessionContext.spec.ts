@@ -215,25 +215,6 @@ describe('SessionContext', () => {
       });
     });
 
-    it('uses explicit boundaries and persists the closed session without covering the gap', async () => {
-      const context = await SessionContext.init(createFormatHooks(), EXPIRE_DELAY);
-      vi.setSystemTime(100);
-
-      context.add('first-session', 10 as TimeStamp);
-      context.close(20 as TimeStamp);
-      context.add('next-session', 30 as TimeStamp);
-      await vi.advanceTimersByTimeAsync(0);
-
-      expect(context.getTrackedSessionId(10 as TimeStamp)).toBe('first-session');
-      expect(context.getTrackedSessionId(20 as TimeStamp)).toBeUndefined();
-      expect(context.getTrackedSessionId(29 as TimeStamp)).toBeUndefined();
-      expect(context.getTrackedSessionId(30 as TimeStamp)).toBe('next-session');
-      expect(JSON.parse(mfs.writeFile.mock.lastCall![1] as string)).toEqual([
-        { startTime: 30, endTime: null, value: 'next-session' },
-        { startTime: 10, endTime: 20, value: 'first-session' },
-      ]);
-    });
-
     it('RUM hook returns DISCARDED for events after the session ended', async () => {
       const hooks = createFormatHooks();
       const context = await SessionContext.init(hooks, EXPIRE_DELAY);

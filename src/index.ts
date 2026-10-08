@@ -59,8 +59,8 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   // Assemble telemetry before transport timers can report startup errors.
   new MainAssembly(eventManager, hooks, new BeforeSend(config.beforeSendRum));
   startTelemetry(eventManager, config);
-  // Prepare stores before session renewal can emit a new consent period's opening events.
-  // All tracks must also be ready before RendererPipeline starts receiving IPC events.
+  // Storage applies a consent change before the session manager, so the documents opened when tracking resumes
+  // into pending find their pending store. All tracks must also be ready before RendererPipeline receives IPC events.
   transport = await Transport.create(config, eventManager, trackingConsentManager);
   sessionManager = await SessionManager.start(eventManager, hooks, config, trackingConsentManager);
 

@@ -8,7 +8,6 @@ import { SESSION_TIME_OUT_DELAY } from './session.constants';
 
 export const SESSION_HISTORY_FILE_NAME = '_dd_session_history';
 
-/** Enriches events with their capture-time session using persisted history. */
 export class SessionContext {
   private readonly history: DiskValueHistory<string>;
 
@@ -54,8 +53,8 @@ export class SessionContext {
     return new SessionContext(history, hooks);
   }
 
-  add(sessionId: string, atTime: TimeStamp = timeStampNow()): void {
-    this.history.add(sessionId, atTime);
+  add(sessionId: string): void {
+    this.history.add(sessionId, timeStampNow());
   }
 
   // Returns the tracked session id covering the given time (defaults to now), or undefined if there is none.
@@ -65,7 +64,7 @@ export class SessionContext {
     return this.history.find(at);
   }
 
-  close(atTime: TimeStamp = timeStampNow()): void {
-    this.history.closeActive(atTime);
+  close(): void {
+    this.history.closeActive(timeStampNow());
   }
 }

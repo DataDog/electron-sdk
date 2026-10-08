@@ -71,7 +71,7 @@ export class ViewContext {
 
   /** Registers the view at its event timestamp, even if registration happens later. */
   add(id: string, atTime: TimeStamp = timeStampNow()): void {
-    this.history.closeAndAdd(id, atTime);
+    this.history.add(id, atTime);
   }
 
   /** Closes the active view at the supplied transition time, or now on expiry. */

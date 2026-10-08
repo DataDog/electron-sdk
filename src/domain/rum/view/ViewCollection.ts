@@ -12,9 +12,9 @@ import {
 } from '../../../event';
 import type { FormatHooks } from '../../../assembly';
 import { setInterval, throttle } from '../../telemetry';
+import type { SessionManager } from '../../session';
 import type { RawRumView } from '../types';
 import { ViewContext } from './ViewContext';
-import type { TrackingConsent, TrackingConsentChange, TrackingConsentManager } from '../../tracking-consent';
 
 export const SESSION_KEEP_ALIVE_INTERVAL = 5 * ONE_MINUTE;
 // throttle view updates to avoid bursts
@@ -25,41 +25,38 @@ interface ViewState {
   startTime: TimeStamp;
   documentVersion: number;
   isActive: boolean;
-  consent: TrackingConsent;
   counters: { action: { count: number }; error: { count: number }; resource: { count: number } };
 }
 
 /**
- * Tracks the main view while consent is granted or pending.
- * - on creation, emit an initial view event
+ * Track the main view lifecycle
+ * - on creation, emit an initial view event if a session is active
  * - keep session alive by regularly send view updates
  * - on SESSION_EXPIRED, emit a final inactive view update
  * - on SESSION_RENEW, create a new view
- * - on consent changes, close the cumulative view and replace it unless consent is refused
  * - on main-process RUM server event (error, resource), increment view counters (throttled)
  */
 export class ViewCollection {
-  private currentView: ViewState | undefined;
+  private currentView!: ViewState;
   private viewContext!: ViewContext;
   private keepAliveIntervalId: ReturnType<typeof setInterval> | undefined;
   private scheduleViewUpdate!: () => void;
   private cancelScheduledViewUpdate!: () => void;
   private lifecycleSubscription!: Subscription;
   private serverEventSubscription!: Subscription;
-  private consentSubscription!: Subscription;
 
   constructor(
     private readonly eventManager: EventManager,
     private readonly hooks: FormatHooks,
-    private readonly trackingConsentManager: TrackingConsentManager
+    private readonly sessionManager: Pick<SessionManager, 'getSession'>
   ) {}
 
   static async start(
     eventManager: EventManager,
     hooks: FormatHooks,
-    trackingConsentManager: TrackingConsentManager
+    sessionManager: Pick<SessionManager, 'getSession'>
   ): Promise<ViewCollection> {
-    const collection = new ViewCollection(eventManager, hooks, trackingConsentManager);
+    const collection = new ViewCollection(eventManager, hooks, sessionManager);
     await collection.init();
     return collection;
   }
@@ -70,7 +67,7 @@ export class ViewCollection {
     this.cancelScheduledViewUpdate = cancel;
 
     this.viewContext = await ViewContext.init(this.hooks);
-    if (this.trackingConsentManager.get() !== 'not-granted') {
+    if (this.sessionManager.getSession().status === 'active') {
       this.createNewView();
     } else {
       this.viewContext.close();
@@ -80,9 +77,9 @@ export class ViewCollection {
       canHandle: (event): event is LifecycleEvent => event.kind === EventKind.LIFECYCLE,
       handle: (event) => {
         if (event.lifecycle === LifecycleKind.SESSION_EXPIRED) {
-          this.closeCurrentView(event.time);
+          this.onSessionExpired();
         } else if (event.lifecycle === LifecycleKind.SESSION_RENEW) {
-          this.onSessionRenew(event.time);
+          this.onSessionRenew();
         }
       },
     });
@@ -91,7 +88,6 @@ export class ViewCollection {
       canHandle: (event): event is ServerRumEvent => event.kind === EventKind.SERVER && event.track === EventTrack.RUM,
       handle: (event) => this.onServerRumEvent(event),
     });
-    this.consentSubscription = this.trackingConsentManager.subscribe((change) => this.onConsentChange(change));
   }
 
   stop(): void {
@@ -99,37 +95,33 @@ export class ViewCollection {
     this.stopSessionKeepAlive();
     this.lifecycleSubscription.unsubscribe();
     this.serverEventSubscription.unsubscribe();
-    this.consentSubscription.unsubscribe();
   }
 
-  private createNewView(atTime: TimeStamp = timeStampNow()): void {
+  private createNewView(): void {
     const viewId = generateUUID();
     this.currentView = {
       id: viewId,
-      startTime: atTime,
+      startTime: timeStampNow(),
       documentVersion: 1,
       isActive: true,
-      consent: this.trackingConsentManager.get(),
       counters: { action: { count: 0 }, error: { count: 0 }, resource: { count: 0 } },
     };
 
     // Use the event timestamp for both history boundaries. A later clock reading
     // could make this view event predate its own history entry and get discarded.
+    this.viewContext.close(this.currentView.startTime);
     this.viewContext.add(viewId, this.currentView.startTime);
     this.emitViewUpdate();
     this.keepSessionAlive();
   }
 
-  private emitViewUpdate(atTime: TimeStamp = timeStampNow()): void {
-    if (!this.currentView) {
-      return;
-    }
+  private emitViewUpdate(): void {
     const viewEvent: RawRumView = {
       type: 'view',
       date: this.currentView.startTime,
       view: {
         id: this.currentView.id,
-        time_spent: toServerDuration(elapsed(this.currentView.startTime, atTime)),
+        time_spent: toServerDuration(elapsed(this.currentView.startTime, timeStampNow())),
         is_active: this.currentView.isActive,
         ...this.currentView.counters,
       },
@@ -141,14 +133,11 @@ export class ViewCollection {
       format: EventFormat.RUM,
       data: viewEvent,
       startTime: this.currentView.startTime,
-      ...(!this.currentView.isActive && this.currentView.consent === 'granted'
-        ? { storageConsent: 'granted' as const }
-        : {}),
     });
   }
 
-  private closeCurrentView(atTime: TimeStamp = timeStampNow()): void {
-    if (!this.currentView?.isActive) {
+  private onSessionExpired(): void {
+    if (!this.currentView.isActive) {
       return;
     }
 
@@ -156,36 +145,23 @@ export class ViewCollection {
     this.stopSessionKeepAlive();
     this.currentView.isActive = false;
     this.currentView.documentVersion++;
-    this.emitViewUpdate(atTime);
-    this.viewContext.close(atTime);
+    this.emitViewUpdate();
+    this.viewContext.close();
   }
 
-  private onSessionRenew(atTime?: TimeStamp): void {
-    if (this.trackingConsentManager.get() === 'not-granted') {
-      return;
-    }
+  private onSessionRenew(): void {
     this.cancelScheduledViewUpdate();
-    this.createNewView(atTime);
-  }
-
-  private onConsentChange(change: TrackingConsentChange): void {
-    // Session renewal may already have created a view under the new consent.
-    if (this.currentView?.isActive && this.currentView.consent === change.current) {
-      return;
-    }
-    this.closeCurrentView(change.time);
-    if (change.current !== 'not-granted') {
-      this.createNewView(change.time);
-    }
+    this.createNewView();
   }
 
   private onServerRumEvent(event: ServerRumEvent): void {
-    if (event.source === EventSource.RENDERER || !this.currentView?.isActive) {
+    // Without a session since startup, there is no view to count events from an earlier launch, such as a crash.
+    if (event.source === EventSource.RENDERER || !this.currentView) {
       return;
     }
 
     const type = event.data.type;
-    if ((type === 'error' || type === 'resource') && event.data.view.id === this.currentView.id) {
+    if (type === 'error' || type === 'resource') {
       this.currentView.counters[type].count++;
       this.currentView.documentVersion++;
       this.scheduleViewUpdate();
@@ -195,9 +171,6 @@ export class ViewCollection {
   private keepSessionAlive(): void {
     this.stopSessionKeepAlive();
     this.keepAliveIntervalId = setInterval(() => {
-      if (!this.currentView?.isActive) {
-        return;
-      }
       this.currentView.documentVersion++;
       this.emitViewUpdate();
       this.keepSessionAlive();
