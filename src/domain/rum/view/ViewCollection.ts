@@ -12,6 +12,7 @@ import {
 } from '../../../event';
 import type { FormatHooks } from '../../../assembly';
 import { setInterval, throttle } from '../../telemetry';
+import type { SessionManager } from '../../session';
 import type { RawRumView } from '../types';
 import { ViewContext } from './ViewContext';
 
@@ -29,7 +30,7 @@ interface ViewState {
 
 /**
  * Track the main view lifecycle
- * - on creation, emit an initial view event
+ * - on creation, emit an initial view event if a session is active
  * - keep session alive by regularly send view updates
  * - on SESSION_EXPIRED, emit a final inactive view update
  * - on SESSION_RENEW, create a new view
@@ -46,11 +47,16 @@ export class ViewCollection {
 
   constructor(
     private readonly eventManager: EventManager,
-    private readonly hooks: FormatHooks
+    private readonly hooks: FormatHooks,
+    private readonly sessionManager: Pick<SessionManager, 'getSession'>
   ) {}
 
-  static async start(eventManager: EventManager, hooks: FormatHooks): Promise<ViewCollection> {
-    const collection = new ViewCollection(eventManager, hooks);
+  static async start(
+    eventManager: EventManager,
+    hooks: FormatHooks,
+    sessionManager: Pick<SessionManager, 'getSession'>
+  ): Promise<ViewCollection> {
+    const collection = new ViewCollection(eventManager, hooks, sessionManager);
     await collection.init();
     return collection;
   }
@@ -61,7 +67,11 @@ export class ViewCollection {
     this.cancelScheduledViewUpdate = cancel;
 
     this.viewContext = await ViewContext.init(this.hooks);
-    this.createNewView();
+    if (this.sessionManager.getSession().status === 'active') {
+      this.createNewView();
+    } else {
+      this.viewContext.close();
+    }
 
     this.lifecycleSubscription = this.eventManager.registerHandler<LifecycleEvent>({
       canHandle: (event): event is LifecycleEvent => event.kind === EventKind.LIFECYCLE,
@@ -145,7 +155,8 @@ export class ViewCollection {
   }
 
   private onServerRumEvent(event: ServerRumEvent): void {
-    if (event.source === EventSource.RENDERER) {
+    // Without a session since startup, there is no view to count events from an earlier launch, such as a crash.
+    if (event.source === EventSource.RENDERER || !this.currentView) {
       return;
     }
 

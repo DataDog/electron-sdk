@@ -37,7 +37,7 @@ interface MainProcessState {
 
 /**
  * Owns the fake main-process view and the main execution context as one session-scoped state:
- * both are created together on SDK init and on every SESSION_RENEW, and closed together on
+ * both are created together on SDK init with an active session and on every SESSION_RENEW, and closed together on
  * SESSION_EXPIRED. Each new state gets a fresh execution_context.id and view.id, but the emitted
  * execution_context event's instance_id is always the OS process pid, constant across every session
  * the process lives through. Also registers the format hooks that tag every other main-process RUM
@@ -88,7 +88,14 @@ export class MainProcessContext {
       return { meta: { '_dd.execution_context.id': entry.id } };
     });
 
-    context.startState();
+    if (sessionManager.getSession().status === 'active') {
+      context.startState();
+    } else {
+      // Close what a previous, since-exited process left active, as startState() would.
+      const now = timeStampNow();
+      viewContext.close(now);
+      mainHistory.closeActive(now);
+    }
 
     context.lifecycleSubscription = eventManager.registerHandler<LifecycleEvent>({
       canHandle: (event): event is LifecycleEvent => event.kind === EventKind.LIFECYCLE,

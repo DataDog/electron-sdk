@@ -24,7 +24,7 @@ export class RumCollection {
   ): Promise<RumCollection> {
     const viewCollection: ViewCollection | ExecutionContextCollection = configuration.enableExecutionContext
       ? await ExecutionContextCollection.start(eventManager, hooks, sessionManager)
-      : await ViewCollection.start(eventManager, hooks);
+      : await ViewCollection.start(eventManager, hooks, sessionManager);
 
     const errorCollection = new ErrorCollection(eventManager);
     const vitalCollection = new VitalCollection(eventManager);

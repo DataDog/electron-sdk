@@ -56,21 +56,20 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   userContext = await UserContext.init(hooks);
   accountContext = await AccountContext.init(hooks);
   setGlobalContextApi(await GlobalContext.init(hooks));
-  startTelemetry(eventManager, config);
-  sessionManager = await SessionManager.start(eventManager, hooks, config);
-
+  // Assemble telemetry before transport timers can report startup errors.
   new MainAssembly(eventManager, hooks, new BeforeSend(config.beforeSendRum));
+  startTelemetry(eventManager, config);
+  // Storage applies a consent change before the session manager, so the documents opened when tracking resumes
+  // into pending find their pending store. All tracks must also be ready before RendererPipeline receives IPC events.
+  transport = await Transport.create(config, eventManager, trackingConsentManager);
+  sessionManager = await SessionManager.start(eventManager, hooks, config, trackingConsentManager);
+
   new ProfilingCollection(eventManager, sessionManager, config, hooks);
   replayCollection = new ReplayCollection(eventManager, config, sessionManager, hooks);
 
   if (tracing.enabled) {
     new SpanProcessor(eventManager, hooks, config);
   }
-
-  // EventManager does not queue events that have no matching handler. Finish registering every
-  // transport track before opening the renderer IPC listener, so an event received during init
-  // cannot fall into the gap between RendererPipeline and Transport initialization.
-  transport = await Transport.create(config, eventManager, trackingConsentManager);
 
   new RendererPipeline(eventManager, hooks, config);
 

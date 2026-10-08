@@ -12,6 +12,7 @@ vi.mock('../../../tools/display', () => ({
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { TimeStamp } from '@datadog/js-core/time';
+import { DISCARDED } from '@datadog/js-core/assembly';
 import { ViewCollection, SESSION_KEEP_ALIVE_INTERVAL, VIEW_UPDATE_THROTTLE_DELAY } from './ViewCollection';
 import { ViewContext } from './ViewContext';
 import {
@@ -26,12 +27,15 @@ import {
 import { createFormatHooks, type FormatHooks } from '../../../assembly';
 import { createServerRumEvent, createServerRumView } from '../../../mocks.specUtil';
 import { RawRumView, MainRumEvent, RumErrorEvent } from '../types';
+import type { SessionStatus } from '../../session';
 
 vi.mock('node:fs/promises');
 const mfs = mockFs();
 
 const T0 = 0 as TimeStamp;
 const T10 = 10 as TimeStamp;
+
+const sessionWith = (status: SessionStatus) => ({ getSession: () => ({ id: 'session-1', status }) });
 
 describe('ViewCollection', () => {
   let eventManager: EventManager;
@@ -53,7 +57,7 @@ describe('ViewCollection', () => {
       handle: (event) => rawRumEvents.push(event),
     });
 
-    viewCollection = await ViewCollection.start(eventManager, hooks);
+    viewCollection = await ViewCollection.start(eventManager, hooks, sessionWith('active'));
   });
 
   afterEach(() => {
@@ -102,7 +106,7 @@ describe('ViewCollection', () => {
           viewCollection.stop();
           hooks = createFormatHooks();
           rawRumEvents.length = 0;
-          viewCollection = await ViewCollection.start(eventManager, hooks);
+          viewCollection = await ViewCollection.start(eventManager, hooks, sessionWith('active'));
         } else {
           eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
           rawRumEvents.length = 0;
@@ -175,6 +179,41 @@ describe('ViewCollection', () => {
 
       // Only initial + final, no periodic update
       expect(rawRumEvents).toHaveLength(2);
+    });
+  });
+
+  describe('without an active session at start', () => {
+    beforeEach(async () => {
+      viewCollection.stop();
+      mfs.readFile.mockResolvedValue(JSON.stringify([{ value: 'previous-view', startTime: 0, endTime: null }]));
+      vi.setSystemTime(10);
+      hooks = createFormatHooks();
+      rawRumEvents.length = 0;
+      viewCollection = await ViewCollection.start(eventManager, hooks, sessionWith('expired'));
+    });
+
+    it('closes the previous launch view and starts none', () => {
+      expect(rawRumEvents).toEqual([]);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(hooks.triggerRum({ eventType: 'error', startTime: T0, source: EventSource.MAIN })).toMatchObject({
+        view: { id: 'previous-view' },
+      });
+      expect(hooks.triggerRum({ eventType: 'error', startTime: T10, source: EventSource.MAIN })).toBe(DISCARDED);
+    });
+
+    it('ignores events from an earlier launch and starts a view on session renew', () => {
+      eventManager.notify({
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        source: EventSource.MAIN,
+        data: createServerRumEvent<MainRumEvent>('error'),
+      });
+      expect(rawRumEvents).toEqual([]);
+
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+
+      expect(rawRumEvents).toHaveLength(1);
+      expect((rawRumEvents[0].data as RawRumView).view).toMatchObject({ is_active: true, error: { count: 0 } });
     });
   });
 

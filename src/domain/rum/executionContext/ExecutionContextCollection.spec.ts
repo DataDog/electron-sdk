@@ -49,7 +49,7 @@ describe('ExecutionContextCollection', () => {
       handle: (e) => rawRumEvents.push(e),
     });
 
-    sessionManager = { getSession: () => ({ id: 'session-1', status: 'tracked' }) } as unknown as SessionManager;
+    sessionManager = { getSession: () => ({ id: 'session-1', status: 'active' }) } as unknown as SessionManager;
 
     vi.mocked(app).on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
       if (event === 'web-contents-created') {

@@ -3,3 +3,4 @@ export { BatchManager } from './BatchManager';
 export { BatchProducer } from './BatchProducer';
 export { BatchMigration } from './BatchMigration';
 export { getTrackPath } from './batchPaths';
+export { ConsentAwareBatchRouter } from './ConsentAwareBatchRouter';

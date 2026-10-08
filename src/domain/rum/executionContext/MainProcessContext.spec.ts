@@ -43,7 +43,7 @@ describe('MainProcessContext', () => {
     });
 
     currentSessionId = 'session-1';
-    sessionManager = { getSession: () => ({ id: currentSessionId, status: 'tracked' }) } as unknown as SessionManager;
+    sessionManager = { getSession: () => ({ id: currentSessionId, status: 'active' }) } as unknown as SessionManager;
 
     context = await MainProcessContext.start(eventManager, hooks, sessionManager);
   });
@@ -207,6 +207,24 @@ describe('MainProcessContext', () => {
     ).toMatchObject({ execution_context: { id: renewedContextId } });
   });
 
+  it('creates no state or heartbeat without an active session at start, until SESSION_RENEW', async () => {
+    context.stop();
+    rawRumEvents.length = 0;
+    let status = 'expired';
+    const expiredSessionManager = { getSession: () => ({ id: 'session-2', status }) } as unknown as SessionManager;
+
+    context = await MainProcessContext.start(eventManager, createFormatHooks(), expiredSessionManager);
+
+    expect(rawRumEvents).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
+
+    status = 'active';
+    eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+
+    expect(rawRumEvents.map((e) => e.data.type)).toEqual(['view', 'execution_context']);
+    expect((rawRumEvents[0].data as RawRumView).view.id).toBe('session-2');
+  });
+
   describe('with a pre-existing history file left open by a previous run', () => {
     it('does not tag the new pair with the stale entry', async () => {
       context.stop();
@@ -222,7 +240,7 @@ describe('MainProcessContext', () => {
         handle: (e) => localRawRumEvents.push(e),
       });
       const localSessionManager = {
-        getSession: () => ({ id: 'session-new', status: 'tracked' }),
+        getSession: () => ({ id: 'session-new', status: 'active' }),
       } as unknown as SessionManager;
 
       const localContext = await MainProcessContext.start(localEventManager, localHooks, localSessionManager);

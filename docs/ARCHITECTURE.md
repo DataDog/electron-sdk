@@ -213,6 +213,18 @@ like other events.
 Consent changes reach the disk asynchronously: a crash that follows a refusal before it is written is accepted at
 the next launch.
 
+### Consent and session lifecycle
+
+A refusal ends tracking rather than pausing it: the session expires, main-process views and execution contexts
+close with it, and user activity cannot start a new session while consent is refused. Leaving `not-granted` starts
+a new session. The final updates emitted when a refusal ends the session are not stored.
+
+Moving between `granted` and `pending` keeps the session and its documents. Their updates are stored with the
+consent current when they are written, so those written while `pending` follow that period's decision.
+
+Transport applies consent changes before the session manager, so the documents opened when tracking resumes into
+`pending` find their pending store.
+
 ## Error Reporting
 
 Failures are routed by _who can act on them_:
