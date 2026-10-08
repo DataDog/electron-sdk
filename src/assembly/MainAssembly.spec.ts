@@ -140,13 +140,6 @@ describe('MainAssembly', () => {
     expect((serverEvents[0] as ServerRumEvent).source).toBe(EventSource.MAIN);
   });
 
-  it('preserves recovered crash authorization outside the event payload', () => {
-    notifyRawRumEvent({ storageConsent: 'granted' });
-
-    expect(serverEvents[0]).toMatchObject({ storageConsent: 'granted' });
-    expect(serverEvents[0].data).not.toHaveProperty('storageConsent');
-  });
-
   it('applies beforeSendRum to fully assembled RUM events after hooks', () => {
     hooks.registerRum(() => ({ session: { id: 'hook-session' } }));
     const applySpy = vi.spyOn(beforeSend, 'apply').mockImplementation((event) => {

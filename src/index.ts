@@ -46,11 +46,11 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
     return false;
   }
 
-  const trackingConsentManager = await TrackingConsentManager.start(app.getPath('userData'));
   tracing = new Tracing(config);
 
   eventManager = new EventManager();
   const hooks = createFormatHooks();
+  const trackingConsentManager = await TrackingConsentManager.init(hooks);
 
   registerCommonContext(config, hooks);
   userContext = await UserContext.init(hooks);
@@ -74,7 +74,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   new RendererPipeline(eventManager, hooks, config);
 
-  const rum = await RumCollection.start(eventManager, hooks, sessionManager, config, trackingConsentManager);
+  const rum = await RumCollection.start(eventManager, hooks, sessionManager, config);
   rumApi = rum.getApi();
   setDurationVitalApi(rumApi);
 

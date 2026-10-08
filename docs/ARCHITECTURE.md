@@ -157,14 +157,12 @@ When `enableExecutionContext` is set, `ExecutionContextCollection` (`src/domain/
 
 ## Internal Tracking Consent State
 
-`TrackingConsentManager` defaults to `granted`. SDK initialization loads consent history from the previous
-launch before saving the new launch's state. Previous consent is used for historical lookups, not as the
-current consent of the new launch.
-Changes notify monitored subscribers synchronously after updating the state.
-Consumers own their subscriptions and unsubscribe when stopped.
+`TrackingConsentManager` defaults to `granted`. Changes notify monitored subscribers synchronously after updating
+the state. Consumers own their subscriptions and unsubscribe when stopped.
 
-`getAt()` returns the original state at a time within the current launch. A past `pending` period still returns
-`pending` after a grant or refusal. Crash recovery uses `isAuthorizedAt()` to also consult the previous launch.
+Its timestamped history is persisted like the session and view histories, so that an event is judged by the
+consent of its own time, even when it is assembled at a later launch. History lookups return the state active at
+the requested time; a past `pending` period still returns `pending` after a decision.
 
 ### Consent and batch storage
 
@@ -199,24 +197,21 @@ The existing best-effort limit of 100 completed batches applies to the authorize
 of 100 applies across all remaining pending and migration directories together, so creating new periods
 does not multiply the allowance. Open files and filesystem failures can temporarily exceed these limits.
 
-### Consent and crash recovery
+### Consent at assembly
 
-Context histories retain their existing attribution behavior. Crash recovery checks consent explicitly
-before reading a dump: saved session, view or customer context is not proof that a crash was authorized.
+Batch storage applies the consent current when an event is written. That is not enough for events recovered from
+an earlier launch: a crash is written at the next launch, and its saved session, view and customer context is not
+proof that it was captured with consent.
 
-`TrackingConsentManager` keeps timestamped state changes for the current launch and persists them to
-`_dd_tracking_consent_history`. On startup it reads the previous launch's timeline separately, so a new
-`granted` state cannot authorize an earlier launch's unresolved `pending` period. A pending period is
-accepted only if followed by a grant within the same launch. Missing or invalid consent history rejects
-the recovered crash. Only the new launch's timeline is written back; older unprocessed dumps without
-matching consent history are discarded.
+A RUM format hook therefore discards events whose start time falls in a refused period, or in no known period.
+A `pending` period takes the decision that ended it, like its pending batches: a grant keeps its events, and a
+refusal discards them even if consent is granted again later. Events of a still undecided `pending` period are left
+to the batch storage. A new process cannot grant the previous one's undecided period, so startup records it as
+refused, as it deletes its pending batches. Recovered crashes are then stored according to the current consent,
+like other events.
 
-`CrashCollection` deletes rejected dumps without parsing or emitting them. Accepted crashes carry their
-established authorization through assembly to the authorized batch store, even if current consent has
-changed. Session/view/user histories still supply attribution through the existing format hooks.
-
-Consent snapshots are written asynchronously in order. A failed or interrupted write can leave an older
-`granted` state on disk; this history does not guarantee correct authorization after such a failure.
+Consent changes reach the disk asynchronously: a crash that follows a refusal before it is written is accepted at
+the next launch.
 
 ## Error Reporting
 

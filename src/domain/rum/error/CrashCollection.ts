@@ -8,26 +8,21 @@ import type { CrashReport } from '../../../wasm';
 import type { RawRumError, RumErrorEvent } from '../types';
 import { display } from '../../../tools/display';
 import { addError, monitor } from '../../telemetry';
-import type { TrackingConsentManager } from '../../tracking-consent';
 
 /**
  * Collect RUM error events for native crashes.
  * - Electron crashReporter store .dmp files on crashes
  * - At startup:
  *   - scans crash dump directory for .dmp files recursively
- *   - removes dumps from periods without authorization
- *   - processes authorized dumps sequentially through the WASM minidump-processor
+ *   - processes each sequentially through the WASM minidump-processor
  *   - emits RUM error events
  */
 export class CrashCollection {
-  private constructor(
-    private readonly eventManager: EventManager,
-    private readonly consentManager: TrackingConsentManager
-  ) {}
+  private constructor(private readonly eventManager: EventManager) {}
 
-  static start(eventManager: EventManager, consentManager: TrackingConsentManager): CrashCollection {
+  static start(eventManager: EventManager): CrashCollection {
     crashReporter.start({ uploadToServer: false, ignoreSystemCrashHandler: true });
-    const collection = new CrashCollection(eventManager, consentManager);
+    const collection = new CrashCollection(eventManager);
     // TODO(RUM-15046): wait for app to be stable (electron + browser windows)
     void app.whenReady().then(monitor(() => collection.processCrashFiles()));
     return collection;
@@ -41,6 +36,8 @@ export class CrashCollection {
       return;
     }
 
+    // Dynamic import to avoid loading the ~1.6MB WASM binary into memory when there are no dumps
+    const { processMinidump } = await import('../../../wasm');
     display.info(`${dmpFiles.length} crash dumps to process`);
 
     for (const filePath of dmpFiles) {
@@ -48,13 +45,6 @@ export class CrashCollection {
         const fileStat = await fs.stat(filePath);
         // birthtimeMs can be 0 on Linux (ext4), fall back to mtimeMs
         const crashTime = (fileStat.birthtimeMs || fileStat.mtimeMs) as TimeStamp;
-        if (!this.consentManager.isAuthorizedAt(crashTime)) {
-          await fs.unlink(filePath);
-          continue;
-        }
-
-        // Load the WASM processor only when there is an authorized dump to process.
-        const { processMinidump } = await import('../../../wasm');
         const bytes = new Uint8Array(await fs.readFile(filePath));
         const crashReport = await processMinidump(bytes);
 
@@ -63,7 +53,6 @@ export class CrashCollection {
           format: EventFormat.RUM,
           data: buildCrashErrorEvent(crashReport, crashTime),
           startTime: crashTime,
-          storageConsent: 'granted',
         });
 
         await fs.unlink(filePath);
