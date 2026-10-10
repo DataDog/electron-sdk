@@ -228,7 +228,14 @@ __metadata:
     vitest: "npm:4.1.11"
     yaml: "npm:2.9.0"
   peerDependencies:
+    "@openfeature/core": ^1.9.2
+    "@openfeature/web-sdk": ^1.5.0
     electron: ">=39"
+  peerDependenciesMeta:
+    "@openfeature/core":
+      optional: true
+    "@openfeature/web-sdk":
+      optional: true
   languageName: unknown
   linkType: soft
 

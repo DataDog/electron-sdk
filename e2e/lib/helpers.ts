@@ -191,9 +191,10 @@ async function waitForWindowLoaded(electronApp: ElectronApplication): Promise<{ 
 export async function launchAppManually(
   intake: Intake,
   userDataDir: string,
-  sdkConfigOverrides: Partial<InitConfiguration> | null = null
+  sdkConfigOverrides: Partial<InitConfiguration> | null = null,
+  rumBrowserSdk: Record<string, unknown> | null = null
 ): Promise<{ electronApp: ElectronApplication; window: Page; mainPage: MainPage }> {
-  const electronApp = await launchApp(intake, userDataDir, null, sdkConfigOverrides);
+  const electronApp = await launchApp(intake, userDataDir, rumBrowserSdk, sdkConfigOverrides);
   try {
     const { window } = await waitForWindowLoaded(electronApp);
     return { electronApp, window, mainPage: new MainPage(window) };

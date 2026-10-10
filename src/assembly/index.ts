@@ -14,3 +14,4 @@ export type {
 } from './hooks';
 export { UserContext } from '../domain/customer-context';
 export type { AccountInfo, UserInfo } from '../domain/customer-context';
+export { isAllowedRendererFrame } from './RendererIpcGate';

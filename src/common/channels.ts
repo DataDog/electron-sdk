@@ -6,3 +6,5 @@ export const CONFIG_CHANNEL = 'datadog:bridge-config';
 export const FLAGS_SNAPSHOT_CHANNEL = 'datadog:flags-snapshot';
 export const FLAGS_UPDATE_CHANNEL = 'datadog:flags-update';
 export const FLAGS_EVALUATIONS_CHANNEL = 'datadog:flags-evaluations';
+// Sync preload question: may this session expose DatadogFlagsBridge? (P1)
+export const FLAGS_BRIDGE_ENABLED_CHANNEL = 'datadog:flags-bridge-enabled';

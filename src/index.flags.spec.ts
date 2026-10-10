@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Configuration, InitConfiguration } from './config';
 
-const { startFeatureFlagsMock } = vi.hoisted(() => ({
+const { startFeatureFlagsMock, pendingFrame } = vi.hoisted(() => ({
   startFeatureFlagsMock: vi.fn().mockResolvedValue(undefined),
+  pendingFrame: { origin: 'app://window', url: 'app://window/', processId: 3, routingId: 4, send: vi.fn() },
 }));
 
 vi.mock('electron', () => ({
@@ -14,6 +15,7 @@ vi.mock('electron', () => ({
   },
   ipcMain: { handle: vi.fn(), on: vi.fn(), removeHandler: vi.fn() },
   BrowserWindow: vi.fn(),
+  webFrameMain: { fromId: vi.fn(() => pendingFrame) },
 }));
 
 vi.mock('./domain/flags/startFeatureFlags', () => ({
@@ -80,6 +82,7 @@ vi.mock('./tools/BeforeQuitHandler', () => ({
 }));
 
 import { init } from './index';
+import { addPendingSubscriber, getFlagsHolder } from './common/flags/flagsHolder';
 
 const BASE_CONFIGURATION: InitConfiguration = {
   site: 'datadoghq.com',
@@ -116,5 +119,17 @@ describe('init feature flags wiring', () => {
     await init({ ...BASE_CONFIGURATION });
 
     expect(startFeatureFlagsMock).not.toHaveBeenCalled();
+  });
+
+  it('answers DISABLED to snapshot requests when featureFlags is absent, and tells frames that asked before init', async () => {
+    delete (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:flagsHolder')];
+    addPendingSubscriber(pendingFrame);
+
+    await init({ ...BASE_CONFIGURATION });
+
+    const handler = getFlagsHolder().flagsStateHandler;
+    expect(handler).toBeDefined();
+    expect(JSON.parse(handler!({} as Electron.IpcMainInvokeEvent) as string)).toMatchObject({ status: 'DISABLED' });
+    expect(pendingFrame.send).toHaveBeenCalledWith('datadog:flags-update', expect.stringContaining('"DISABLED"'));
   });
 });
