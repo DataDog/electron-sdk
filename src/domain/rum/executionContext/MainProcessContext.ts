@@ -14,7 +14,8 @@ import {
 import type { FormatHooks } from '../../../assembly';
 import { SESSION_TIME_OUT_DELAY, type SessionManager } from '../../session';
 import type { RawRumExecutionContext, RawRumView } from '../types';
-import { setInterval, clearInterval } from '../../telemetry';
+import { setInterval, clearInterval, throttle } from '../../telemetry';
+import { VIEW_UPDATE_THROTTLE_DELAY } from '../view';
 import { ViewContext } from '../view';
 import { DiskValueHistory } from '../../../tools/DiskValueHistory';
 import { PROCESS_UPDATE_INTERVAL } from './executionContext.constants';
@@ -50,12 +51,27 @@ export class MainProcessContext {
   private heartbeatId: ReturnType<typeof setInterval> | undefined;
   private lifecycleSubscription!: Subscription;
 
+  private scheduleViewUpdate!: () => void;
+  private viewActive = false;
+  private cancelScheduledViewUpdate!: () => void;
+
   private constructor(
     private readonly eventManager: EventManager,
     private readonly viewContext: ViewContext,
     private readonly mainHistory: DiskValueHistory<MainExecutionContextDiskEntry>,
     private readonly sessionManager: SessionManager
-  ) {}
+  ) {
+    const { throttled, cancel } = throttle(() => {
+      if (!this.viewActive) {
+        // The view expired: its final inactive update already went out.
+        return;
+      }
+      this.state.documentVersion++;
+      this.emitViewEvent(true);
+    }, VIEW_UPDATE_THROTTLE_DELAY);
+    this.scheduleViewUpdate = throttled;
+    this.cancelScheduledViewUpdate = cancel;
+  }
 
   static async start(
     eventManager: EventManager,
@@ -106,7 +122,21 @@ export class MainProcessContext {
 
   stop(): void {
     this.clearHeartbeat();
+    this.cancelScheduledViewUpdate();
     this.lifecycleSubscription.unsubscribe();
+  }
+
+  /** The main view context, used by the feature flags RUM context (D10). */
+  getMainViewContext(): ViewContext {
+    return this.viewContext;
+  }
+
+  /**
+   * Request an additional throttled view update (bumping `document_version`), used by
+   * the feature flags RUM context. Same contract as {@link ViewCollection.requestViewUpdate}.
+   */
+  requestViewUpdate(): void {
+    this.scheduleViewUpdate();
   }
 
   private startState(): void {
@@ -134,6 +164,7 @@ export class MainProcessContext {
     this.mainHistory.closeActive(startTime);
     this.mainHistory.add({ id: executionContextId, type: 'main-process' }, startTime);
 
+    this.viewActive = true;
     this.emitViewEvent(true);
     this.emitExecutionContextEvent();
     this.startHeartbeat();
@@ -141,6 +172,8 @@ export class MainProcessContext {
 
   private endState(): void {
     this.clearHeartbeat();
+    this.viewActive = false;
+    this.cancelScheduledViewUpdate();
     // Close both histories at the exact same instant (same reasoning as startState's shared
     // startTime): otherwise main-process telemetry timestamped in the gap before the next
     // SESSION_RENEW would still resolve to this now-expired state.

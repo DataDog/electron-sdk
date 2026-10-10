@@ -74,6 +74,11 @@ export class ViewContext {
     this.history.add(id, atTime);
   }
 
+  /** The view id covering the given time, or `undefined` when no view covers it. */
+  findViewId(atTime: TimeStamp): string | undefined {
+    return this.history.find(atTime);
+  }
+
   /** Closes the active view at the supplied transition time, or now on expiry. */
   close(atTime: TimeStamp = timeStampNow()): void {
     this.history.closeActive(atTime);

@@ -75,7 +75,7 @@ describe('Transport', () => {
       finishCleanup();
       await startup;
       expect(mockClearPendingData.mock.calls.map(([trackPath]) => trackPath).sort()).toEqual(
-        ['rum', 'spans', 'dd_logs', 'profile', 'replay'].map((track) => `/mock/user/data/${track}`).sort()
+        ['rum', 'spans', 'dd_logs', 'profile', 'replay', 'exposures'].map((track) => `/mock/user/data/${track}`).sort()
       );
       expect(mockBatchCreate).toHaveBeenCalledTimes(3);
     });
@@ -102,6 +102,51 @@ describe('Transport', () => {
 
       const tracks = mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType);
       expect(tracks).toContain(EventTrack.LOGS);
+    });
+
+    it('should setup the EXPOSURES track when feature flags enable exposure logging', async () => {
+      const flagsConfig = createTestConfiguration({
+        featureFlags: {
+          env: 'e2e',
+          refreshInterval: 300000,
+          fetchTimeout: 5000,
+          persistConfiguration: true,
+          enableExposureLogging: true,
+          enableRumFeatureFlagTracking: true,
+        },
+      });
+      await Transport.create(flagsConfig, eventManager, trackingConsentManager);
+
+      const tracks = mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType);
+      expect(tracks).toContain(EventTrack.EXPOSURES);
+      // Exposures follow tracking consent like every other track.
+      const exposuresCall = mockBatchCreate.mock.calls.find(
+        ([, options]) => (options as { trackType: EventTrack }).trackType === EventTrack.EXPOSURES
+      );
+      expect(exposuresCall?.[2]).toBe(trackingConsentManager);
+    });
+
+    it('should skip the EXPOSURES track when feature flags are disabled or exposure logging is off', async () => {
+      await Transport.create(config, eventManager, trackingConsentManager);
+      expect(
+        mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType)
+      ).not.toContain(EventTrack.EXPOSURES);
+
+      vi.clearAllMocks();
+      const flagsConfig = createTestConfiguration({
+        featureFlags: {
+          env: 'e2e',
+          refreshInterval: 300000,
+          fetchTimeout: 5000,
+          persistConfiguration: true,
+          enableExposureLogging: false,
+          enableRumFeatureFlagTracking: true,
+        },
+      });
+      await Transport.create(flagsConfig, eventManager, trackingConsentManager);
+      expect(
+        mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType)
+      ).not.toContain(EventTrack.EXPOSURES);
     });
 
     it('should skip the REPLAY track when replay is disabled', async () => {

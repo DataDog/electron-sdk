@@ -1,4 +1,6 @@
 import '@datadog/electron-sdk/instrument';
+import { ElectronMainFlagsProvider } from '@datadog/electron-sdk';
+import { OpenFeature } from '@openfeature/web-sdk';
 import { join } from 'node:path';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { _flushTransport, init, type InitConfiguration } from '@datadog/electron-sdk';
@@ -8,6 +10,18 @@ let mainWindow: BrowserWindow | null = null;
 let customSessionWindow: BrowserWindow | null = null;
 
 void init(getConfiguration());
+
+void OpenFeature.setProviderAndWait(new ElectronMainFlagsProvider()).catch(() => undefined);
+
+ipcMain.handle(\'evaluateFlag\', (_event: \'boolean\' | \'string\', flagKey: string, defaultValue: unknown) => {
+  const client = OpenFeature.getClient();
+  if (_event === \'boolean\') {
+    const d = client.getBooleanDetails(flagKey, defaultValue as boolean);
+    return { value: d.value, variant: d.variant, errorCode: d.errorCode };
+  }
+  const d = client.getStringDetails(flagKey, defaultValue as string);
+  return { value: d.value, variant: d.variant, errorCode: d.errorCode };
+});
 
 ipcMain.handle('flushTransport', async () => {
   await _flushTransport();

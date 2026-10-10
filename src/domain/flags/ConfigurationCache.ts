@@ -1,7 +1,11 @@
 import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import { createHash } from 'node:crypto';
 import type { TimeStamp } from '@datadog/js-core/time';
+import { configurationFromString } from '@datadog/openfeature-browser/rules-based';
 import { display } from '../../tools/display';
+import { callMonitored } from '../telemetry';
+import { MAX_CONFIGURATION_LENGTH } from './RulesFetcher';
 
 export const CONFIGURATION_CACHE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 
@@ -18,6 +22,8 @@ export interface ConfigurationCacheOptions {
   flaggingProxy?: string;
   /** When false, the cache never reads or writes. */
   persistConfiguration: boolean;
+  /** Entries whose wire exceeds this length are ignored (defaults to MAX_CONFIGURATION_LENGTH, D15). */
+  maxConfigurationLength?: number;
 }
 
 /**
@@ -63,13 +69,13 @@ export class ConfigurationCache {
       display.warn('Ignoring a corrupt feature flags configuration cache entry.');
       return cache;
     }
-    if (!isCachedConfiguration(parsed)) {
+    if (!isCachedConfiguration(parsed, options.maxConfigurationLength ?? MAX_CONFIGURATION_LENGTH)) {
       display.warn('Ignoring a corrupt feature flags configuration cache entry.');
       return cache;
     }
     if (Date.now() - parsed.fetchedAt > CONFIGURATION_CACHE_MAX_AGE) {
-      cache.cached = undefined;
-      void Promise.resolve(fs.unlink(cache.filePath)).catch(() => undefined);
+      // Deleting goes through the write chain so a later write can never be removed by it.
+      cache.enqueue(() => fs.unlink(cache.filePath));
       return cache;
     }
     cache.cached = parsed;
@@ -87,15 +93,32 @@ export class ConfigurationCache {
     if (!this.persistConfiguration) {
       return this.pendingWrite;
     }
-    this.pendingWrite = this.pendingWrite.then(() =>
-      fs
-        .writeFile(this.filePath, JSON.stringify({ wire, fetchedAt }), 'utf-8')
-        .catch(() => {
-          display.warn('Cannot persist the feature flags configuration cache; the in-memory configuration is kept.');
-        })
-        .then(() => undefined)
+    this.enqueue(
+      async () => {
+        await fs.mkdir(path.dirname(this.filePath), { recursive: true });
+        await fs.writeFile(this.filePath, JSON.stringify({ wire, fetchedAt }), 'utf-8');
+      },
+      () => {
+        display.warn('Cannot persist the feature flags configuration cache; the in-memory configuration is kept.');
+      }
     );
     return this.pendingWrite;
+  }
+
+  /**
+   * Append a disk operation to the single pending-write chain. Operations run one after
+   * the other; a failing operation runs `onFailure` and never breaks the chain. Both
+   * callbacks are monitored, so an SDK error reaches telemetry instead of rejecting.
+   */
+  private enqueue(operation: () => Promise<unknown>, onFailure: () => void = () => undefined): void {
+    this.pendingWrite = this.pendingWrite.then(() =>
+      Promise.resolve(callMonitored(operation)).then(
+        () => undefined,
+        () => {
+          callMonitored(onFailure);
+        }
+      )
+    );
   }
 
   /** Resolves once the pending write, if any, has settled. */
@@ -104,11 +127,24 @@ export class ConfigurationCache {
   }
 }
 
-function isCachedConfiguration(value: unknown): value is CachedConfiguration {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as CachedConfiguration).wire === 'string' &&
-    typeof (value as CachedConfiguration).fetchedAt === 'number'
-  );
+/**
+ * A cache entry is usable only when its wire is within the size limit and parses to an
+ * evaluable rules configuration, and its `fetchedAt` is a finite timestamp (S4).
+ */
+function isCachedConfiguration(value: unknown, maxConfigurationLength: number): value is CachedConfiguration {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const { wire, fetchedAt } = value as Partial<CachedConfiguration>;
+  if (typeof wire !== 'string' || typeof fetchedAt !== 'number' || !Number.isFinite(fetchedAt)) {
+    return false;
+  }
+  if (wire.length > maxConfigurationLength) {
+    return false;
+  }
+  try {
+    return configurationFromString(wire).rules !== undefined;
+  } catch {
+    return false;
+  }
 }

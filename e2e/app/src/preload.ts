@@ -39,6 +39,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.once('mainPush', () => resolve());
       void ipcRenderer.invoke('triggerMainSend');
     }),
+  registerFlagsProvider: (context?: Record<string, unknown>) => ipcRenderer.invoke('registerFlagsProvider', context),
+  setFlagsContext: (context: Record<string, unknown>) => ipcRenderer.invoke('setFlagsContext', context),
+  evaluateFlag: (type: 'boolean' | 'string', flagKey: string, defaultValue: unknown) =>
+    ipcRenderer.invoke('evaluateFlag', type, flagKey, defaultValue),
+  getFlagsProviderStatus: () => ipcRenderer.invoke('getFlagsProviderStatus'),
   flushTransport: () => ipcRenderer.invoke('flushTransport'),
   setGlobalContext: (context: Record<string, unknown>) => ipcRenderer.invoke('setGlobalContext', context),
   setGlobalContextProperty: (key: string, value: unknown) => ipcRenderer.invoke('setGlobalContextProperty', key, value),

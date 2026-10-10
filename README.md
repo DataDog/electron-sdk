@@ -234,6 +234,7 @@ await esbuild.build({
 - **User & Account Info** — Attach user and account identity to all RUM events and traces
 - **Operation Monitoring** _(experimental)_ — Track start / succeed / fail steps of critical user-facing workflows
 - **Event Filtering and Scrubbing** — Modify or discard RUM events with `beforeSendRum`
+- **Feature Flags** — Evaluate Datadog feature flags locally in the main process (see [Feature Flags](#feature-flags))
 
 ### Event Filtering and Scrubbing
 
@@ -444,6 +445,68 @@ datadogRum.init({
 ```
 
 The Electron SDK advertises a `records` capability over the bridge, so the Browser SDK streams replay records to the main process instead of uploading them itself — no `startSessionReplayRecording()` call is required. See [Renderer process setup](#renderer-process-setup) for general Browser SDK configuration.
+
+
+## Feature Flags
+
+Evaluate [Datadog Feature Flags](https://docs.datadoghq.com/feature_flags/) locally and synchronously in the main process. Rules are fetched with your client token and evaluated against an OpenFeature evaluation context — no network round-trip per evaluation.
+
+### Prerequisites
+
+1. In Datadog, enable **Allow local rule evaluation in client SDKs** for your application.
+2. Set the distribution to **Client**.
+3. Use a client token (not an API key).
+
+### Setup
+
+```typescript
+import { init } from '@datadog/electron-sdk'
+import { ElectronMainFlagsProvider } from '@datadog/electron-sdk'
+import { OpenFeature } from '@openfeature/web-sdk'
+
+await init({
+  // ...your existing configuration...
+  featureFlags: {
+    env: 'production',        // defaults to the top-level env
+    refreshInterval: 300_000, // 5 minutes (default); 0 disables refresh
+    fetchTimeout: 5_000,      // default; clamped to [500, 60000]
+  },
+})
+
+// Register the provider with the initial context, before opening windows.
+const provider = new ElectronMainFlagsProvider()
+await OpenFeature.setProviderAndWait(provider)
+await OpenFeature.setContext({ targetingKey: 'user-123', plan: 'pro' })
+
+const client = OpenFeature.getClient()
+const variant = client.getStringValue('my-flag', 'default')
+```
+
+### The evaluation context
+
+The context is **main-owned and explicit**: set it through `OpenFeature.setContext()`, not through `setUserInfo`/`setAccountInfo`. A context is replaced (never merged) on every change; `{}` falls back to a per-install anonymous key persisted in `userData`. Only flat `string`, `number`, and `boolean` attributes are supported (at most 100, keys ≤ 256 chars, string values ≤ 4096 chars).
+
+### Options
+
+| Option | Type | Default | Notes |
+|--------|------|---------|-------|
+| `env` | `string` | top-level `env` | Required overall; flags are disabled if neither resolves |
+| `refreshInterval` | `number` | `300000` | 0 disables; values below 60 000 clamp to 60 000 |
+| `fetchTimeout` | `number` | `5000` | Clamped to [500, 60000] |
+| `persistConfiguration` | `boolean` | `true` | Cache the configuration on disk (7-day max age) |
+| `enableExposureLogging` | `boolean` | `true` | Send exposure events |
+| `enableRumFeatureFlagTracking` | `boolean` | `true` | Attach evaluated flags to main RUM views and errors |
+| `flaggingProxy` | `string` | — | Host that serves the rules endpoint; `https://` is prepended when there is no protocol. An invalid value disables flags entirely |
+
+### Behavior notes
+
+- With no `featureFlags` option, nothing changes: no fetch, no new track, no new IPC traffic.
+- The configuration is cached in `userData/_dd_flags/` and served as `STALE` on restart while offline.
+- If the org setting is off (HTTP 4xx), an actionable error is logged and the served configuration is dropped (defaults with `errorCode`) until a successful fetch.
+- Transient failures (timeout, network, HTTP 5xx) keep serving the held configuration.
+- Register the main provider with the initial context before opening windows so early evaluations are correct.
+
+See [docs/FEATURE_FLAGS.md](docs/FEATURE_FLAGS.md) for the full specification.
 
 ## API
 

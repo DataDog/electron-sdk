@@ -80,6 +80,21 @@ export class ViewCollection {
     });
   }
 
+  /** The main view context, used by the feature flags RUM context (D10). */
+  getMainViewContext(): ViewContext {
+    return this.viewContext;
+  }
+
+  /**
+   * Request an additional throttled view update (bumping `document_version`), used by
+   * the feature flags RUM context so new or changed flag evaluations show up on the
+   * current view document without waiting for the keepalive.
+   */
+  requestViewUpdate(): void {
+    this.currentView.documentVersion++;
+    this.scheduleViewUpdate();
+  }
+
   stop(): void {
     this.cancelScheduledViewUpdate();
     this.stopSessionKeepAlive();

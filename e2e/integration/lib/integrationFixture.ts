@@ -136,6 +136,10 @@ function buildSdkConfig(intake: Intake): InitConfiguration {
     telemetrySampleRate: 100,
     defaultPrivacyLevel: 'mask',
     allowedRendererHosts: ['*'],
+    featureFlags: {
+      env: 'test',
+      flaggingProxy: `http://localhost:${intake.getPort()}`,
+    },
   };
 }
 

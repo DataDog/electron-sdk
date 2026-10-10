@@ -29,4 +29,12 @@ export class ExecutionContextCollection {
     this.mainProcessContext.stop();
     this.rendererProcessContexts.stop();
   }
+
+  getMainViewContext() {
+    return this.mainProcessContext.getMainViewContext();
+  }
+
+  requestViewUpdate(): void {
+    this.mainProcessContext.requestViewUpdate();
+  }
 }

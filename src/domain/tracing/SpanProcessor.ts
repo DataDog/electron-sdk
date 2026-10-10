@@ -44,6 +44,8 @@ export class SpanProcessor {
   private channel: DiagnosticsChannel.Channel;
   private onMessage: (message: unknown) => void;
   private intakeHostname: string;
+  private flagsHostname: string;
+  private flaggingProxyHostname: string | undefined;
   private matchIntakeSubdomains: boolean;
   private env: string;
   private service: string;
@@ -56,6 +58,13 @@ export class SpanProcessor {
     this.env = config.env ?? '';
     this.service = config.service;
     this.intakeHostname = computeIntakeHostname(config.site, config.proxy);
+    // Feature flags rules requests go to ufc-client.<site> (or the flaggingProxy): they are
+    // SDK-internal traffic and must not be traced (D9/M3.8).
+    this.flagsHostname = `ufc-client.${config.site}`;
+    this.flaggingProxyHostname =
+      config.featureFlags?.flaggingProxy !== undefined
+        ? new URL(config.featureFlags.flaggingProxy).hostname
+        : undefined;
     // The `quota.` subdomain only exists on the real Datadog intake host. When proxying, the intake
     // hostname is the customer's proxy, whose subdomains are their own traffic — match it exactly.
     this.matchIntakeSubdomains = !config.proxy;
@@ -106,7 +115,10 @@ export class SpanProcessor {
     if (!url) return false;
     try {
       const { hostname } = new URL(url);
-      if (hostname === this.intakeHostname) {
+      if (hostname === this.intakeHostname || hostname === this.flagsHostname) {
+        return true;
+      }
+      if (this.flaggingProxyHostname !== undefined && hostname === this.flaggingProxyHostname) {
         return true;
       }
       // On the real Datadog intake, also match subdomains (e.g. the `quota.` host used by the profiling

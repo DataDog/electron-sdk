@@ -17,6 +17,8 @@ import { TrackingConsentManager } from './domain/tracking-consent';
 import { EventManager } from './event';
 import { BeforeQuitHandler } from './tools/BeforeQuitHandler';
 import { Transport } from './transport';
+import { startFeatureFlags } from './domain/flags/startFeatureFlags';
+export { ElectronMainFlagsProvider } from './domain/flags/ElectronMainFlagsProvider';
 
 let sessionManager: SessionManager | undefined;
 let eventManager: EventManager | undefined;
@@ -75,6 +77,10 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   const rum = await RumCollection.start(eventManager, hooks, sessionManager, config);
   rumApi = rum.getApi();
   setDurationVitalApi(rumApi);
+
+  if (config.featureFlags !== undefined) {
+    await startFeatureFlags(config, { eventManager, hooks, mainViewEmitter: rum.getMainViewEmitter() });
+  }
 
   beforeQuitHandler?.stop();
   beforeQuitHandler = new BeforeQuitHandler(app, _flushTransport);
