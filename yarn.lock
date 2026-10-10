@@ -178,7 +178,7 @@ __metadata:
   dependencies:
     "@datadog/browser-core": "npm:7.5.0"
     "@datadog/js-core": "npm:0.0.5"
-    "@electron/get": "npm:2.0.3"
+    "@electron/get": "npm:5.1.0"
     "@eslint/js": "npm:10.0.1"
     "@playwright/test": "npm:1.61.1"
     "@rollup/plugin-commonjs": "npm:29.0.3"
@@ -303,7 +303,25 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@electron/get@npm:2.0.3, @electron/get@npm:^2.0.0":
+"@electron/get@npm:5.1.0":
+  version: 5.1.0
+  resolution: "@electron/get@npm:5.1.0"
+  dependencies:
+    debug: "npm:^4.1.1"
+    env-paths: "npm:^3.0.0"
+    graceful-fs: "npm:^4.2.11"
+    progress: "npm:^2.0.3"
+    semver: "npm:^7.6.3"
+    sumchecker: "npm:^3.0.1"
+    undici: "npm:^7.24.4"
+  dependenciesMeta:
+    undici:
+      optional: true
+  checksum: 10c0/50e037c7f64197a6efcd219a0796566422c3fec056134144530da4a15c8bfaa0c5e7233bcc0c9a56ccb1b4c5d86878da6911d237a527684d70619dfd7a3f9675
+  languageName: node
+  linkType: hard
+
+"@electron/get@npm:^2.0.0":
   version: 2.0.3
   resolution: "@electron/get@npm:2.0.3"
   dependencies:
@@ -2130,6 +2148,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"env-paths@npm:^3.0.0":
+  version: 3.0.0
+  resolution: "env-paths@npm:3.0.0"
+  checksum: 10c0/76dec878cee47f841103bacd7fae03283af16f0702dad65102ef0a556f310b98a377885e0f32943831eb08b5ab37842a323d02529f3dfd5d0a40ca71b01b435f
+  languageName: node
+  linkType: hard
+
 "err-code@npm:^2.0.2":
   version: 2.0.3
   resolution: "err-code@npm:2.0.3"
@@ -2665,7 +2690,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"graceful-fs@npm:^4.1.6, graceful-fs@npm:^4.2.0, graceful-fs@npm:^4.2.6":
+"graceful-fs@npm:^4.1.6, graceful-fs@npm:^4.2.0, graceful-fs@npm:^4.2.11, graceful-fs@npm:^4.2.6":
   version: 4.2.11
   resolution: "graceful-fs@npm:4.2.11"
   checksum: 10c0/386d011a553e02bc594ac2ca0bd6d9e4c22d7fa8cfbfc448a6d148c59ea881b092db9dbe3547ae4b88e55f1b01f7c4a2ecc53b310c042793e63aa44cf6c257f2
@@ -4186,7 +4211,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"semver@npm:^7.3.2, semver@npm:^7.3.5, semver@npm:^7.5.3, semver@npm:^7.7.3, semver@npm:^7.8.5":
+"semver@npm:^7.3.2, semver@npm:^7.3.5, semver@npm:^7.5.3, semver@npm:^7.6.3, semver@npm:^7.7.3, semver@npm:^7.8.5":
   version: 7.8.5
   resolution: "semver@npm:7.8.5"
   bin:
@@ -4580,6 +4605,13 @@ __metadata:
   version: 8.3.0
   resolution: "undici-types@npm:8.3.0"
   checksum: 10c0/c8aa7e2fbebfce519654dafadc0ece59be888d2ccaf180fb4495da875e7b536d2456345c384069c7e6f3e9c9ab7435f074957da306f142343eee86ff8048855a
+  languageName: node
+  linkType: hard
+
+"undici@npm:^7.24.4":
+  version: 7.30.0
+  resolution: "undici@npm:7.30.0"
+  checksum: 10c0/011a321a9198532b0f0504740faa43b9ab8fcc0e4f60104e5c9cb808a61faeb03e4be4aec4f0c65f47913d7c7d9d91591793a6cb9ab843f98ca2c3d711c4a34c
   languageName: node
   linkType: hard
 
