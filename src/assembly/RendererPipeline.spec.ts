@@ -1,3 +1,4 @@
+import { FeatureFlagsRumContext } from '../domain/flags/FeatureFlagsRumContext';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED } from '@datadog/js-core/assembly';
@@ -326,6 +327,24 @@ describe('RendererPipeline', () => {
       expect(data.service).toBe('renderer-service');
       expect(data.view.id).toBe('renderer-view-id');
       expect(data.ddtags).toBe('sdk_version:1.0.0');
+    });
+
+    it('preserves renderer feature_flags through main enrichment, even with main flags recorded', () => {
+      hooks.registerRum(() => ({ session: { id: 'main-session' }, application: { id: 'main-app' } }));
+      const flagsRumContext = new FeatureFlagsRumContext({
+        hooks,
+        findViewId: () => 'main-view',
+        requestViewUpdate: () => undefined,
+        enabled: () => true,
+      });
+      flagsRumContext.record('main-flag', 'main-variant', 1 as never);
+
+      simulateIpcMessage(
+        JSON.stringify({ eventType: 'rum', event: { ...RENDERER_RUM_DATA, feature_flags: { 'renderer-flag': 'on' } } })
+      );
+
+      expect((serverEvents[0].data as { feature_flags?: unknown }).feature_flags).toEqual({ 'renderer-flag': 'on' });
+      flagsRumContext.stop();
     });
 
     it('preserves the Browser SDK trace sample rate during Electron enrichment', () => {

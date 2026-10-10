@@ -797,7 +797,27 @@ describe('buildConfiguration', () => {
         persistConfiguration: true,
         enableExposureLogging: true,
         enableRumFeatureFlagTracking: true,
+        excludedPartitions: [],
       });
+    });
+
+    it('keeps excludedPartitions and disables flags with display.error for an invalid value', () => {
+      const errorSpy = vi.spyOn(display, 'error').mockImplementation(() => undefined);
+      const configuration = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        env: 'e2e',
+        featureFlags: { excludedPartitions: ['persist:target', ''] },
+      });
+      expect(configuration!.featureFlags!.excludedPartitions).toEqual(['persist:target', '']);
+      for (const invalid of ['persist:target', [42], [{}]]) {
+        const rejected = buildConfiguration({
+          ...DEFAULT_CONFIG,
+          env: 'e2e',
+          featureFlags: { excludedPartitions: invalid as never },
+        });
+        expect(rejected!.featureFlags).toBeUndefined();
+      }
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('featureFlags.excludedPartitions'));
     });
 
     it('clamps refreshInterval below 60s with a warning and keeps 0 as disabled', () => {

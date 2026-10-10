@@ -75,6 +75,10 @@ const isDebugMode = process.env.PWDEBUG === '1';
 let mainWindow: BrowserWindow | null = null;
 let testRendererWindow: BrowserWindow | null = null;
 let rendererHttpServer: http.Server | null = null;
+// Feature flags e2e: windows with the app preload (probes) on a chosen session, served over
+// file:// or a local http origin so origin gating, navigation and partitions can be exercised.
+const flagsWindows = new Map<number, BrowserWindow>();
+let flagsHttpPort: number | undefined;
 
 const noop = () => undefined;
 
@@ -89,6 +93,41 @@ const e2eControls: {
 };
 
 (globalThis as Record<string, unknown>).__ddE2E = e2eControls;
+
+/** Serve the main window (with the renderer flags provider) over http on localhost. */
+function startFlagsHttpServer(): Promise<number> {
+  if (flagsHttpPort !== undefined) {
+    return Promise.resolve(flagsHttpPort);
+  }
+  return new Promise((resolve) => {
+    const server = http.createServer((req, res) => {
+      const fileName =
+        (req.url ?? '/').split('?')[0] === '/' ? 'main-window.html' : (req.url ?? '').split('?')[0].slice(1);
+      try {
+        const body = fs.readFileSync(join(__dirname, fileName));
+        res.writeHead(200, { 'Content-Type': fileName.endsWith('.js') ? 'application/javascript' : 'text/html' });
+        res.end(body);
+      } catch {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+    server.listen(0, () => {
+      flagsHttpPort = (server.address() as { port: number }).port;
+      resolve(flagsHttpPort);
+    });
+  });
+}
+
+type FlagsWindowLocation = 'file' | 'http-localhost' | 'http-127';
+
+async function flagsWindowUrl(location: FlagsWindowLocation, marker: string): Promise<string> {
+  if (location === 'file') {
+    return `${pathToFileURL(join(__dirname, 'main-window.html')).href}?${marker}`;
+  }
+  const port = await startFlagsHttpServer();
+  return `http://${location === 'http-localhost' ? 'localhost' : '127.0.0.1'}:${port}/?${marker}`;
+}
 
 function startRendererHttpServer(): Promise<number> {
   return new Promise((resolve) => {
@@ -263,6 +302,58 @@ void app.whenReady().then(async () => {
   });
 
   ipcMain.handle('getFlagsProviderStatus', () => OpenFeature.getClient().providerStatus);
+
+  ipcMain.handle(
+    'openFlagsWindow',
+    async (_event, options: { partition?: string; location?: FlagsWindowLocation; marker: string }) => {
+      const win = new BrowserWindow({
+        width: 600,
+        height: 400,
+        show: isDebugMode,
+        webPreferences: {
+          preload: join(__dirname, 'preload.js'),
+          contextIsolation: true,
+          nodeIntegration: false,
+          ...(options.partition !== undefined ? { partition: options.partition } : {}),
+        },
+      });
+      flagsWindows.set(win.id, win);
+      win.on('closed', () => flagsWindows.delete(win.id));
+      await win.loadURL(await flagsWindowUrl(options.location ?? 'file', options.marker));
+      return win.id;
+    }
+  );
+
+  // Evaluates in a flags window from main: Playwright cannot drive a page whose renderer crashed,
+  // even after its webContents reloaded.
+  ipcMain.handle('evaluateInFlagsWindow', (_event, id: number, flagKey: string) =>
+    flagsWindows
+      .get(id)
+      ?.webContents.executeJavaScript(`window.__rendererEvaluateFlag('string', ${JSON.stringify(flagKey)}, 'default')`)
+  );
+
+  ipcMain.handle('navigateFlagsWindow', async (_event, id: number, location: FlagsWindowLocation, marker: string) => {
+    await flagsWindows.get(id)?.loadURL(await flagsWindowUrl(location, marker));
+  });
+
+  // Crash the window's renderer for real, then reload the same webContents once
+  // render-process-gone has fired (the recovery pattern Electron documents).
+  ipcMain.handle('crashFlagsWindow', (_event, id: number, marker: string) => {
+    const wc = flagsWindows.get(id)?.webContents;
+    if (!wc) return Promise.resolve(false);
+    return new Promise<boolean>((resolve) => {
+      wc.once('render-process-gone', (_goneEvent, details) => {
+        setTimeout(() => {
+          if (!wc.isDestroyed()) {
+            void wc
+              .loadURL(`${pathToFileURL(join(__dirname, 'main-window.html')).href}?${marker}`)
+              .then(() => resolve(details.reason === 'crashed' || details.reason === 'killed'));
+          }
+        }, 500);
+      });
+      wc.forcefullyCrashRenderer();
+    });
+  });
 
   ipcMain.handle('flushTransport', async () => {
     await _flushTransport();

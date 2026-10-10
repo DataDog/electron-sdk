@@ -18,6 +18,7 @@ import { EventManager } from './event';
 import { BeforeQuitHandler } from './tools/BeforeQuitHandler';
 import { Transport } from './transport';
 import { startFeatureFlags } from './domain/flags/startFeatureFlags';
+import { startDisabledFlagsResponder } from './domain/flags/SnapshotPublisher';
 export { ElectronMainFlagsProvider } from './domain/flags/ElectronMainFlagsProvider';
 
 let sessionManager: SessionManager | undefined;
@@ -80,6 +81,9 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   if (config.featureFlags !== undefined) {
     await startFeatureFlags(config, { eventManager, hooks, mainViewEmitter: rum.getMainViewEmitter() });
+  } else {
+    // Renderer providers waiting on the instrument-time NOT_READY answer learn flags are off.
+    startDisabledFlagsResponder();
   }
 
   beforeQuitHandler?.stop();

@@ -12,6 +12,14 @@ import { BridgeWindowPage } from './bridgeWindowPage';
 // declare exposed IPC methods called directly in tests
 interface ElectronAppWindow {
   electronAPI: {
+    openFlagsWindow: (options: {
+      partition?: string;
+      location?: FlagsWindowLocation;
+      marker: string;
+    }) => Promise<number>;
+    navigateFlagsWindow: (id: number, location: FlagsWindowLocation, marker: string) => Promise<void>;
+    crashFlagsWindow: (id: number, marker: string) => Promise<boolean>;
+    evaluateInFlagsWindow: (id: number, flagKey: string) => Promise<{ value: unknown; variant?: string }>;
     generateTelemetryErrors: (count: number) => Promise<void>;
     generateManualError: (startTime?: number, context?: Record<string, string>) => Promise<void>;
     addDurationVital: (name: string, options: AddDurationVitalOptions) => Promise<void>;
@@ -61,6 +69,8 @@ interface ElectronAppWindow {
 /**
  * Page Object to interact with the main app window
  */
+export type FlagsWindowLocation = 'file' | 'http-localhost' | 'http-127';
+
 export class MainPage {
   constructor(private readonly page: Page) {}
 
@@ -233,6 +243,56 @@ export class MainPage {
       ([type, flagKey, defaultValue]) =>
         (globalThis as unknown as ElectronAppWindow).electronAPI.evaluateFlag(type, flagKey, defaultValue),
       [type, flagKey, defaultValue] as const
+    );
+  }
+
+  /**
+   * Open a window with the app preload on a given session and origin, loading the main window
+   * page (which registers the renderer flags provider). `marker` is appended as the query string
+   * so the window can be found by url.
+   */
+  async openFlagsWindow(
+    electronApp: ElectronApplication,
+    options: { partition?: string; location?: FlagsWindowLocation; marker: string }
+  ): Promise<{ id: number; page: Page }> {
+    const windowPromise = electronApp.waitForEvent('window', {
+      predicate: (page) => page.url().includes(options.marker),
+      timeout: 15_000,
+    });
+    const idPromise = this.page.evaluate(
+      ([options]) => (globalThis as unknown as ElectronAppWindow).electronAPI.openFlagsWindow(options),
+      [options] as const
+    );
+    const [id, page] = await Promise.all([idPromise, windowPromise.catch(() => undefined)]);
+    const resolvedPage = page ?? electronApp.windows().find((candidate) => candidate.url().includes(options.marker));
+    if (resolvedPage === undefined) {
+      throw new Error(`flags window ${options.marker} did not open`);
+    }
+    await resolvedPage.waitForLoadState('load');
+    return { id, page: resolvedPage };
+  }
+
+  navigateFlagsWindow(id: number, location: FlagsWindowLocation, marker: string): Promise<void> {
+    return this.page.evaluate(
+      ([id, location, marker]) =>
+        (globalThis as unknown as ElectronAppWindow).electronAPI.navigateFlagsWindow(id, location, marker),
+      [id, location, marker] as const
+    );
+  }
+
+  /** Crash the window's renderer process for real and reload it; resolves with whether it crashed. */
+  crashFlagsWindow(id: number, marker: string): Promise<boolean> {
+    return this.page.evaluate(
+      ([id, marker]) => (globalThis as unknown as ElectronAppWindow).electronAPI.crashFlagsWindow(id, marker),
+      [id, marker] as const
+    );
+  }
+
+  /** Evaluate a string flag in a flags window, driven from main (works after a renderer crash). */
+  evaluateInFlagsWindow(id: number, flagKey: string): Promise<{ value: unknown; variant?: string }> {
+    return this.page.evaluate(
+      ([id, flagKey]) => (globalThis as unknown as ElectronAppWindow).electronAPI.evaluateInFlagsWindow(id, flagKey),
+      [id, flagKey] as const
     );
   }
 

@@ -1,6 +1,7 @@
-import { app } from 'electron';
+import { app, session as electronSession } from 'electron';
 import type { EventManager } from '../../event';
 import { display } from '../../tools/display';
+import { callMonitored } from '../telemetry';
 import type { Configuration } from '../../config';
 import type { FormatHooks } from '../../assembly';
 import { FlagsEvaluator } from '../../common/flags/FlagsEvaluator';
@@ -9,6 +10,10 @@ import { AnonymousKeyStore } from './AnonymousKeyStore';
 import { ConfigurationCache } from './ConfigurationCache';
 import { ExposureCollector } from './ExposureCollector';
 import { FeatureFlagsRumContext } from './FeatureFlagsRumContext';
+import { SnapshotPublisher } from './SnapshotPublisher';
+import { getFlagsHolder } from '../../common/flags/flagsHolder';
+import { EvaluationRecordReceiver } from './EvaluationRecordReceiver';
+import { isAllowedRendererFrame } from '../../assembly';
 import { FlagsOwner } from './FlagsOwner';
 import { FlagsState } from './FlagsState';
 import { RulesFetcher, MAX_CONFIGURATION_LENGTH } from './RulesFetcher';
@@ -35,8 +40,11 @@ export interface FeatureFlagsController {
   evaluator: FlagsEvaluator;
   tracking: FlagsTracking;
   fetchTimeout: number;
+  /** Fan a main-process evaluation out to every enabled sink (exposures, main RUM). */
   recordEvaluation: (record: EvaluationRecord) => void;
-  stop: () => void | Promise<void>;
+  /** Resolves once the in-flight configuration fetch has been applied. */
+  settled: () => Promise<void>;
+  stop: () => Promise<void>;
 }
 
 export interface ElectronMainFlagsProviderLike {
@@ -65,9 +73,12 @@ function getProviderHolder(): ProviderHolder {
 
 /**
  * Start the feature flags subsystem when `featureFlags` is enabled (M3.7). Creates the
- * state, the anonymous key store, the fetcher, the disk cache, the owner, the exposure
- * collector and the main RUM flag context, and links any provider the application
- * already constructed. Returns the controller, or `undefined` when flags are disabled.
+ * state, the anonymous key store, the fetcher, the disk cache, the exposure collector,
+ * the main RUM flag context, the snapshot publisher and the
+ * renderer record receiver, and links any provider the application already constructed.
+ * The owner starts last: the cached configuration is served (STALE) to every linked
+ * component before the first network fetch, which is never awaited (B12). Returns the
+ * controller, or `undefined` when flags are disabled.
  */
 export async function startFeatureFlags(
   configuration: Configuration,
@@ -91,33 +102,37 @@ export async function startFeatureFlags(
   const tracking: FlagsTracking = {
     exposures: flagsConfiguration.enableExposureLogging,
     rum: flagsConfiguration.enableRumFeatureFlagTracking,
-    evaluations: true,
+    // Evaluation metrics are not sent yet.
+    evaluations: false,
   };
-  const state = new FlagsState({ targetingKey: keyStore.anonymousKey }, tracking);
+  const env = flagsConfiguration.env ?? '';
+  const flaggingProxy =
+    flagsConfiguration.flaggingProxy !== undefined ? { flaggingProxy: flagsConfiguration.flaggingProxy } : {};
   const fetcher = new RulesFetcher({
     clientToken: configuration.clientToken,
     site: configuration.site,
-    env: flagsConfiguration.env ?? '',
-    ...(flagsConfiguration.flaggingProxy !== undefined ? { flaggingProxy: flagsConfiguration.flaggingProxy } : {}),
+    env,
+    ...flaggingProxy,
     fetchTimeout: flagsConfiguration.fetchTimeout,
     maxConfigurationLength: MAX_CONFIGURATION_LENGTH,
     ...(deps.fetch !== undefined ? { fetch: deps.fetch } : {}),
   });
+  // Disk only: the network is never awaited before the subsystem is linked (B12).
   const cache = await ConfigurationCache.init({
     userDataPath,
     site: configuration.site,
-    env: flagsConfiguration.env ?? '',
+    env,
     clientToken: configuration.clientToken,
-    ...(flagsConfiguration.flaggingProxy !== undefined ? { flaggingProxy: flagsConfiguration.flaggingProxy } : {}),
+    ...flaggingProxy,
     persistConfiguration: flagsConfiguration.persistConfiguration,
   });
-  const owner = await FlagsOwner.start({
-    refreshInterval: flagsConfiguration.refreshInterval,
-    state,
-    fetcher,
-    cache,
-    keyStore,
+
+  const state = new FlagsState({ targetingKey: keyStore.anonymousKey }, tracking);
+  const evaluator = new FlagsEvaluator();
+  const evaluatorSubscription = state.subscribe((snapshot) => {
+    evaluator.apply(snapshot);
   });
+  evaluator.apply(state.snapshot());
 
   const collector = new ExposureCollector(
     state,
@@ -132,12 +147,32 @@ export async function startFeatureFlags(
     requestViewUpdate: deps.mainViewEmitter.requestViewUpdate,
     enabled: () => tracking.rum,
   });
+  /**
+   * The shared tracking fan-out (B9): main and renderer records reach the same sinks.
+   * Exposures and metrics take every record (the collector applies the upstream skip
+   * rules, metrics count defaults and errors too); main RUM correlation only takes main
+   * records with a variant, since renderers report to their own `DD_RUM`. Each sink is
+   * isolated so a throwing sink is reported and never starves the others.
+   */
+  const fanOut = (record: EvaluationRecord, source: 'main' | 'renderer') => {
+    if (tracking.exposures) {
+      callMonitored(() => collector.add(record));
+    }
+    if (source === 'main' && tracking.rum && record.variant !== undefined && record.errorCode === undefined) {
+      callMonitored(() => rumContext.record(record.flagKey, record.variant!, record.timestamp));
+    }
+  };
 
-  const evaluator = new FlagsEvaluator();
-  state.subscribe((snapshot) => {
-    evaluator.apply(snapshot);
+  const isSenderExcluded = createSessionExclusion(flagsConfiguration.excludedPartitions);
+  getFlagsHolder().isSenderExcluded = isSenderExcluded;
+  const publisher = new SnapshotPublisher(state, configuration.allowedRendererHosts, isSenderExcluded);
+  publisher.start();
+  const recordReceiver = new EvaluationRecordReceiver({
+    onRecord: (record) => fanOut(record, 'renderer'),
+    isAllowedSender: (frame, sender) =>
+      !isSenderExcluded(sender) && isAllowedRendererFrame(frame, configuration.allowedRendererHosts),
   });
-  evaluator.apply(state.snapshot());
+  recordReceiver.start();
 
   const controller: FeatureFlagsController = {
     state,
@@ -145,20 +180,22 @@ export async function startFeatureFlags(
     evaluator,
     tracking,
     fetchTimeout: flagsConfiguration.fetchTimeout,
-    recordEvaluation: (record) => {
-      if (tracking.exposures) {
-        collector.add(record);
-      }
-      if (tracking.rum && record.variant !== undefined) {
-        rumContext.record(record.flagKey, record.variant, record.timestamp);
-      }
-    },
+    recordEvaluation: (record) => fanOut(record, 'main'),
+    settled: () => owner.settled(),
     stop: async () => {
+      if (getControllerHolder().controller === controller) {
+        getControllerHolder().controller = undefined;
+      }
+      recordReceiver.stop();
+      publisher.stop();
+      if (getFlagsHolder().isSenderExcluded === isSenderExcluded) {
+        getFlagsHolder().isSenderExcluded = undefined;
+      }
       await owner.stop();
       collector.stop();
       rumContext.stop();
+      evaluatorSubscription.unsubscribe();
       evaluator.stop();
-      getControllerHolder().controller = undefined;
     },
   };
   getControllerHolder().controller = controller;
@@ -168,7 +205,38 @@ export async function startFeatureFlags(
   if (pendingProvider !== undefined) {
     pendingProvider.onControllerStart(controller);
   }
+
+  // Everything is linked: serving the cache (STALE) now reaches the evaluator, the
+  // publisher and the provider, then the first network fetch runs in the background.
+  const owner = FlagsOwner.start({
+    refreshInterval: flagsConfiguration.refreshInterval,
+    state,
+    fetcher,
+    cache,
+    keyStore,
+  });
   return controller;
+}
+
+/**
+ * Build the session exclusion check for `featureFlags.excludedPartitions` (P1). The
+ * check runs when a renderer talks to main, and compares session identity:
+ * `session.fromPartition` returns the one session of a partition, whether it was created
+ * before or after init, so custom partitions are covered.
+ */
+export function createSessionExclusion(
+  excludedPartitions: string[]
+): (sender: Electron.WebContents | undefined) => boolean {
+  if (excludedPartitions.length === 0) {
+    return () => false;
+  }
+  return (sender) => {
+    if (sender === undefined || sender === null) {
+      return false;
+    }
+    const senderSession = sender.session;
+    return excludedPartitions.some((partition) => electronSession.fromPartition(partition) === senderSession);
+  };
 }
 
 /** Internal: the active controller, if feature flags were started. */

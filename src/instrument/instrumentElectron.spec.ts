@@ -22,7 +22,7 @@ vi.mock('./registerBridgeConfig', () => ({
 
 function fakeElectron(): typeof import('electron') {
   return {
-    ipcMain: {},
+    ipcMain: { handle: vi.fn<(...args: unknown[]) => void>(), on: vi.fn() },
     BrowserWindow: class BrowserWindow {},
     net: {},
     session: { defaultSession: {} },
@@ -33,6 +33,19 @@ function fakeElectron(): typeof import('electron') {
 describe('instrumentElectron', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:flagsHolder')];
+  });
+
+  it('registers flags channels once even when instrumented twice or from two electron module instances', () => {
+    const first = fakeElectron();
+    const second = fakeElectron();
+    instrumentElectron(first);
+    instrumentElectron(first);
+    instrumentElectron(second);
+    const handleCalls = (electron: typeof import('electron')) =>
+      (electron.ipcMain as unknown as { handle: { mock: { calls: unknown[][] } } }).handle.mock.calls;
+    expect(handleCalls(first)).toEqual([['datadog:flags-snapshot', expect.any(Function)]]);
+    expect(handleCalls(second)).toEqual([]);
   });
 
   it('patches each Electron API once for a fresh electron module', () => {

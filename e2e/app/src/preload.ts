@@ -5,7 +5,22 @@ const rumBrowserSdkConfig = process.env.DD_RUM_BROWSER_SDK
   : null;
 contextBridge.exposeInMainWorld('e2eConfig', { rumBrowserSdk: rumBrowserSdkConfig });
 
+// Feature flags probe: counts snapshot pushes this document receives, independently of the SDK.
+let flagsUpdateCount = 0;
+ipcRenderer.on('datadog:flags-update', () => {
+  flagsUpdateCount += 1;
+});
+
 contextBridge.exposeInMainWorld('electronAPI', {
+  // Calls the flags snapshot channel directly, the way a page with IPC access could.
+  invokeFlagsSnapshot: () => ipcRenderer.invoke('datadog:flags-snapshot') as Promise<string | undefined>,
+  getFlagsUpdateCount: () => flagsUpdateCount,
+  openFlagsWindow: (options: { partition?: string; location?: string; marker: string }) =>
+    ipcRenderer.invoke('openFlagsWindow', options),
+  navigateFlagsWindow: (id: number, location: string, marker: string) =>
+    ipcRenderer.invoke('navigateFlagsWindow', id, location, marker),
+  crashFlagsWindow: (id: number, marker: string) => ipcRenderer.invoke('crashFlagsWindow', id, marker),
+  evaluateInFlagsWindow: (id: number, flagKey: string) => ipcRenderer.invoke('evaluateInFlagsWindow', id, flagKey),
   generateTelemetryErrors: (count: number) => ipcRenderer.invoke('generateTelemetryErrors', count),
   stopSession: () => ipcRenderer.invoke('stopSession'),
   getSessionId: () => ipcRenderer.invoke('getSessionId'),

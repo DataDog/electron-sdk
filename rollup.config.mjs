@@ -172,6 +172,27 @@ const config = [
     external: ['electron'],
     plugins: sharedPlugins,
   },
+  // Renderer entry: feature flags provider for renderer pages (M4/G2)
+  // @openfeature/web-sdk and @openfeature/core are external optional peers so the
+  // customer's renderer bundler resolves their single copy.
+  {
+    input: 'src/entries/renderer.ts',
+    output: [
+      { file: 'dist/renderer.cjs', format: 'cjs', sourcemap: true },
+      { file: 'dist/renderer.mjs', format: 'es', sourcemap: true },
+    ],
+    external: ['@openfeature/web-sdk', '@openfeature/core'],
+    plugins: sharedPlugins,
+  },
+  {
+    input: 'src/entries/renderer.ts',
+    output: {
+      file: 'dist/renderer.d.ts',
+      format: 'esm',
+    },
+    external: ['@openfeature/web-sdk', '@openfeature/core'],
+    plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
+  },
 ];
 
 export default config;

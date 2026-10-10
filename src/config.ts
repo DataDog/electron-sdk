@@ -45,6 +45,14 @@ export interface TraceSamplingRule {
 /**
  * Feature flags configuration. When `featureFlags` is absent from
  * {@link InitConfiguration}, the feature is fully disabled.
+ *
+ * @example
+ * ```ts
+ * await init({
+ *   ...options,
+ *   featureFlags: { env: 'production', refreshInterval: 300_000, excludedPartitions: ['persist:untrusted'] },
+ * })
+ * ```
  */
 export interface FeatureFlagsInitConfiguration {
   /**
@@ -79,6 +87,25 @@ export interface FeatureFlagsInitConfiguration {
    * is never sent to an unintended host.
    */
   flaggingProxy?: string;
+  /**
+   * Session partitions where feature flags are switched off for renderers, defaults to
+   * `[]`. Use the exact strings passed to `session.fromPartition` or the `partition`
+   * web preference (`''` is the default session). In a matching session the preload does
+   * not expose `DatadogFlagsBridge` and main gives no answer on the flags IPC channels,
+   * while the RUM `DatadogEventBridge` keeps working there.
+   *
+   * Partitions are matched by session identity when a renderer talks to main, so sessions
+   * created before or after `init()` are covered. A predicate is not supported because
+   * the decision must be answerable synchronously to the preload of any session. A
+   * window loaded before `init()` may still see the bridge object, but main never answers
+   * it. An invalid value disables feature flags.
+   *
+   * @example
+   * ```ts
+   * await init({ ...options, featureFlags: { excludedPartitions: ['persist:target'] } })
+   * ```
+   */
+  excludedPartitions?: string[];
 }
 
 export interface FeatureFlagsConfiguration {
@@ -89,6 +116,7 @@ export interface FeatureFlagsConfiguration {
   enableExposureLogging: boolean;
   enableRumFeatureFlagTracking: boolean;
   flaggingProxy?: string;
+  excludedPartitions: string[];
 }
 
 const DEFAULT_FEATURE_FLAGS_REFRESH_INTERVAL = 5 * 60 * 1000;
@@ -566,6 +594,13 @@ function buildFeatureFlagsConfiguration(
     return undefined;
   }
 
+  const excludedPartitions = options.excludedPartitions ?? [];
+  if (!Array.isArray(excludedPartitions) || !excludedPartitions.every((partition) => typeof partition === 'string')) {
+    // Fail closed: an excluded session must never receive the flags context.
+    display.error('featureFlags.excludedPartitions must be an array of strings; feature flags are disabled.');
+    return undefined;
+  }
+
   return {
     env,
     refreshInterval: validateFlagsNumber(
@@ -591,6 +626,7 @@ function buildFeatureFlagsConfiguration(
       true
     ),
     ...(flaggingProxy !== undefined ? { flaggingProxy } : {}),
+    excludedPartitions: [...excludedPartitions],
   };
 }
 

@@ -1,27 +1,63 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { OpenFeature, ProviderEvents } from '@openfeature/web-sdk';
+import { OpenFeature, OpenFeatureEventEmitter, ProviderEvents } from '@openfeature/web-sdk';
 import * as fs from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { EventEmitter } from 'node:events';
 import { display } from '../../tools/display';
 import { EventKind, EventManager, EventTrack, type ServerEvent } from '../../event';
 import { createFormatHooks } from '../../assembly';
 import { createTestConfiguration } from '../../mocks.specUtil';
-import { CASES, oracle, fixtureWire } from '../../common/flags/evaluationCases.specUtil';
+import { configurationToString } from '@datadog/openfeature-browser/rules-based';
+import { CASES, oracle, fixtureWire, fixtureConfiguration } from '../../common/flags/evaluationCases.specUtil';
 import { ElectronMainFlagsProvider } from './ElectronMainFlagsProvider';
 import { getFeatureFlagsController, startFeatureFlags, unregisterFlagsProvider } from './startFeatureFlags';
+import { registerFlagsChannels } from '../../instrument/registerFlagsChannels';
+
+const { ipcMain, frames, sessions } = await vi.hoisted(async () => {
+  const { EventEmitter } = await import('node:events');
+  const emitter = new EventEmitter() as InstanceType<typeof EventEmitter> & {
+    handlers: Map<string, (...args: unknown[]) => unknown>;
+    handle: (channel: string, handler: (...args: unknown[]) => unknown) => void;
+  };
+  emitter.handlers = new Map();
+  emitter.handle = (channel, handler) => emitter.handlers.set(channel, handler);
+  return { ipcMain: emitter, frames: new Map<string, unknown>(), sessions: new Map<string, object>() };
+});
 
 vi.mock('electron', () => ({
   app: { getPath: vi.fn(() => '/userData') },
+  ipcMain,
+  webFrameMain: { fromId: (processId: number, routingId: number) => frames.get(`${processId}:${routingId}`) },
+  webContents: { fromFrame: () => undefined },
+  session: {
+    // One session object per partition, created lazily like Electron's.
+    fromPartition: (partition: string) => {
+      if (!sessions.has(partition)) sessions.set(partition, { partition });
+      return sessions.get(partition);
+    },
+  },
 }));
 
 vi.mock('node:fs/promises');
 
 const readFile = vi.mocked(fs.readFile);
 const writeFile = vi.mocked(fs.writeFile);
+const ANONYMOUS_KEY = '123e4567-e89b-12d3-a456-426614174000';
+const OPENFEATURE_API_KEY = Symbol.for('@openfeature/web-sdk/api');
 
 const rulesJSON = JSON.parse(fixtureWire) as { rules: { response: string } };
 const rulesBinary = Uint8Array.from(atob(rulesJSON.rules.response), (c) => c.charCodeAt(0));
-const okResponse = () =>
-  new Response(rulesBinary.buffer.slice(0), {
+const secondBinary = (() => {
+  // The pro allocation serves the fallback variation: a different configuration.
+  const clone = structuredClone(fixtureConfiguration) as Parameters<typeof configurationToString>[0] & {
+    rules: { response: { flags: Record<string, { allocations: { splits: { variationIndex: number }[] }[] }> } };
+  };
+  clone.rules.response.flags['targeted-flag'].allocations[0].splits[0].variationIndex = 1;
+  const wire = JSON.parse(configurationToString(clone)) as { rules: { response: string } };
+  return Uint8Array.from(atob(wire.rules.response), (c) => c.charCodeAt(0));
+})();
+const okResponse = (binary: Uint8Array = rulesBinary) =>
+  new Response(binary.slice().buffer, {
     status: 200,
     headers: { 'content-type': 'application/protobuf' },
   });
@@ -35,6 +71,7 @@ function flagsConfiguration(overrides: Record<string, unknown> = {}) {
       persistConfiguration: false,
       enableExposureLogging: true,
       enableRumFeatureFlagTracking: true,
+      excludedPartitions: [],
       ...overrides,
     },
   });
@@ -45,13 +82,20 @@ describe('ElectronMainFlagsProvider', () => {
   let requestViewUpdate: () => void;
   let serverEvents: ServerEvent[];
   let fetchHandler: () => Promise<Response>;
+  let cachedWire: string | undefined;
 
   beforeEach(() => {
     vi.useFakeTimers();
     vi.spyOn(display, 'warn').mockImplementation(() => undefined);
+    cachedWire = undefined;
+    frames.clear();
+    delete (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:flagsHolder')];
     readFile.mockImplementation((path: unknown) => {
       if (String(path).endsWith('_dd_flags_anonymous_key')) {
-        return Promise.resolve('123e4567-e89b-12d3-a456-426614174000');
+        return Promise.resolve(ANONYMOUS_KEY);
+      }
+      if (String(path).includes('/_dd_flags/') && cachedWire !== undefined) {
+        return Promise.resolve(JSON.stringify({ wire: cachedWire, fetchedAt: Date.now() - 1000 }));
       }
       const error = new Error('ENOENT') as NodeJS.ErrnoException;
       error.code = 'ENOENT';
@@ -67,9 +111,11 @@ describe('ElectronMainFlagsProvider', () => {
     });
   });
 
-  afterEach(() => {
-    void getFeatureFlagsController()?.stop();
+  afterEach(async () => {
+    await getFeatureFlagsController()?.stop();
     unregisterFlagsProvider();
+    ipcMain.removeAllListeners();
+    ipcMain.handlers.clear();
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
@@ -130,13 +176,14 @@ describe('ElectronMainFlagsProvider', () => {
 
   it('emits ConfigurationChanged on refresh', async () => {
     fetchHandler = () => Promise.resolve(okResponse());
-    const owner = await startFlags({ refreshInterval: 1000 });
+    const owner = await startFlags({ refreshInterval: 60000 });
     const provider = new ElectronMainFlagsProvider();
     await OpenFeature.setProviderAndWait(provider);
     const changed: string[] = [];
     OpenFeature.addHandler(ProviderEvents.ConfigurationChanged, () => changed.push('ConfigurationChanged'));
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(changed.length).toBeGreaterThan(0);
+    fetchHandler = () => Promise.resolve(okResponse(secondBinary));
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(changed).toEqual(['ConfigurationChanged']);
     void owner!.stop();
   });
 
@@ -309,4 +356,233 @@ describe('ElectronMainFlagsProvider', () => {
     expect(serverEvents.filter((event) => event.track === EventTrack.EXPOSURES)).toHaveLength(1);
     expect(requestViewUpdate).not.toHaveBeenCalled();
   });
+  it('links the evaluator, publisher and provider to the cache-backed STALE state before the first network fetch', async () => {
+    registerFlagsChannels(ipcMain as unknown as Electron.IpcMain);
+    cachedWire = fixtureWire;
+    fetchHandler = () => new Promise<Response>(() => undefined); // held forever
+    const controller = (await startFlags({ persistConfiguration: true }))!;
+    expect(controller.state.snapshot().status).toBe('STALE');
+    const provider = new ElectronMainFlagsProvider();
+    await OpenFeature.setProviderAndWait(provider, { targetingKey: 'user-pro', plan: 'pro' });
+    expect(OpenFeature.getClient().getStringValue('targeted-flag', 'default')).toBe(
+      oracle({ ...CASES[0], context: { targetingKey: 'user-pro', plan: 'pro' } }).value
+    );
+    const frame = makeFrame(1, 1);
+    const snapshot = JSON.parse(ipcMain.handlers.get('datadog:flags-snapshot')!({ senderFrame: frame }) as string) as {
+      status: string;
+    };
+    expect(snapshot.status).toBe('STALE');
+  });
+
+  it('pushes the current snapshot to frames that subscribed through the instrument handler before init', async () => {
+    registerFlagsChannels(ipcMain as unknown as Electron.IpcMain);
+    const frame = makeFrame(4, 2);
+    const preInit = JSON.parse(ipcMain.handlers.get('datadog:flags-snapshot')!({ senderFrame: frame }) as string) as {
+      status: string;
+    };
+    expect(preInit.status).toBe('NOT_READY');
+    fetchHandler = () => Promise.resolve(okResponse());
+    const controller = (await startFlags())!;
+    await controller.settled();
+    const pushed = frame.send.mock.calls.map((call) => (JSON.parse(call[1] as string) as { status: string }).status);
+    expect(pushed[0]).toBe('NOT_READY');
+    expect(pushed).toContain('READY');
+  });
+
+  it('records the context revision used at resolution even when an after hook changes the context', async () => {
+    fetchHandler = () => Promise.resolve(okResponse());
+    const controller = (await startFlags())!;
+    const provider = new ElectronMainFlagsProvider();
+    await OpenFeature.setProviderAndWait(provider, { targetingKey: 'user-pro', plan: 'pro' });
+    const usedRevision = controller.state.snapshot().contextRevision;
+    const client = OpenFeature.getClient();
+    client.addHooks({
+      after: () => {
+        void provider.onContextChange(undefined, { targetingKey: 'someone-else', plan: 'free' });
+      },
+    });
+    client.getStringValue('targeted-flag', 'default');
+    expect(controller.state.snapshot().contextRevision).toBeGreaterThan(usedRevision);
+    const exposures = serverEvents.filter((event) => event.track === EventTrack.EXPOSURES);
+    expect(exposures).toHaveLength(1);
+    expect((exposures[0].data as { subject: { id: string } }).subject.id).toBe('user-pro');
+  });
+
+  it('routes renderer records through the shared fan-out to exposures, but not main RUM', async () => {
+    fetchHandler = () => Promise.resolve(okResponse());
+    const controller = (await startFlags())!;
+    const provider = new ElectronMainFlagsProvider();
+    await OpenFeature.setProviderAndWait(provider, { targetingKey: 'user-pro', plan: 'pro' });
+    const details = OpenFeature.getClient().getStringDetails('targeted-flag', 'default');
+    await controller.stop();
+    serverEvents.length = 0;
+    vi.mocked(requestViewUpdate).mockClear();
+
+    const restarted = (await startFlags())!;
+    await restarted.settled();
+    const record = {
+      flagKey: 'targeted-flag',
+      variant: details.variant,
+      allocationKey: details.flagMetadata.allocationKey,
+      reason: details.reason,
+      doLog: true,
+      contextRevision: 0,
+      timestamp: 100,
+      viewUrl: 'app://window/index.html',
+    };
+    ipcMain.emit(
+      'datadog:flags-evaluations',
+      { senderFrame: { origin: 'app://window', url: 'app://window/index.html' } },
+      JSON.stringify({ records: [record] })
+    );
+    await restarted.stop();
+    expect(serverEvents.filter((event) => event.track === EventTrack.EXPOSURES)).toHaveLength(1);
+    expect(requestViewUpdate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['the first network fetch', false],
+    ['the disk cache', true],
+  ])(
+    'recovers a provider whose initialize timed out before init(): Ready fires once init serves %s',
+    async (_label, withCache) => {
+      const provider = new ElectronMainFlagsProvider();
+      const registration = OpenFeature.setProviderAndWait(provider, { targetingKey: 'user-pro', plan: 'pro' }).then(
+        () => 'resolved',
+        (error: { code?: string }) => error.code
+      );
+      await vi.advanceTimersByTimeAsync(6000);
+      expect(await registration).toBe('PROVIDER_NOT_READY');
+      const client = OpenFeature.getClient();
+      expect(client.providerStatus).toBe('ERROR');
+      const ready: string[] = [];
+      OpenFeature.addHandler(ProviderEvents.Ready, () => ready.push('Ready'));
+
+      cachedWire = withCache ? fixtureWire : undefined;
+      fetchHandler = () => Promise.resolve(okResponse());
+      const controller = (await startFlags({ persistConfiguration: withCache }))!;
+      await controller.settled();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(ready).toEqual(['Ready']);
+      expect(client.providerStatus).toBe('READY');
+      expect(client.getStringValue('targeted-flag', 'default')).toBe(
+        oracle({ ...CASES[0], context: { targetingKey: 'user-pro', plan: 'pro' } }).value
+      );
+    }
+  );
+
+  it('excludes a persist: partition created after init: no bridge, no snapshot, no records accepted', async () => {
+    registerFlagsChannels(ipcMain as unknown as Electron.IpcMain);
+    fetchHandler = () => Promise.resolve(okResponse());
+    const controller = (await startFlags({ excludedPartitions: ['persist:target'] }))!;
+    await controller.settled();
+    const provider = new ElectronMainFlagsProvider();
+    await OpenFeature.setProviderAndWait(provider, { targetingKey: 'user-pro', plan: 'pro' });
+    serverEvents.length = 0;
+
+    // Sessions created after init, like Vitrine's persist:target.
+    const excludedSender = Object.assign(new EventEmitter(), { id: 10, session: { partition: 'after-init' } });
+    sessions.set('persist:target', excludedSender.session);
+    const defaultSender = Object.assign(new EventEmitter(), { id: 11, session: {} });
+    const bridgeEnabled = (sender: unknown) => {
+      const event: { sender: unknown; returnValue?: unknown } = { sender };
+      ipcMain.emit('datadog:flags-bridge-enabled', event);
+      return event.returnValue;
+    };
+    expect(bridgeEnabled(excludedSender)).toBe(false);
+    expect(bridgeEnabled(defaultSender)).toBe(true);
+
+    const snapshotHandler = ipcMain.handlers.get('datadog:flags-snapshot')!;
+    const frame = makeFrame(8, 1);
+    expect(snapshotHandler({ senderFrame: frame, sender: excludedSender })).toBeUndefined();
+    expect(JSON.parse(snapshotHandler({ senderFrame: frame, sender: defaultSender }) as string)).toMatchObject({
+      status: 'READY',
+    });
+
+    const details = OpenFeature.getClient().getStringDetails('targeted-flag', 'default');
+    await controller.stop();
+    serverEvents.length = 0;
+    const restarted = (await startFlags({ excludedPartitions: ['persist:target'] }))!;
+    await restarted.settled();
+    const batch = JSON.stringify({
+      records: [
+        {
+          flagKey: 'targeted-flag',
+          variant: details.variant,
+          allocationKey: details.flagMetadata.allocationKey,
+          reason: details.reason,
+          doLog: true,
+          contextRevision: 0,
+          timestamp: 100,
+        },
+      ],
+    });
+    const senderFrame = { origin: 'app://window', url: 'app://window/index.html' };
+    ipcMain.emit('datadog:flags-evaluations', { senderFrame, sender: excludedSender }, batch);
+    await restarted.stop();
+    expect(serverEvents.filter((event) => event.track === EventTrack.EXPOSURES)).toHaveLength(0);
+  });
+
+  it('works when registered with a separate copy of @openfeature/web-sdk (events, error .code, API singleton)', async () => {
+    const savedApi = (globalThis as Record<symbol, unknown>)[OPENFEATURE_API_KEY];
+    delete (globalThis as Record<symbol, unknown>)[OPENFEATURE_API_KEY];
+    try {
+      const copyA = loadSeparateWebSdkCopy();
+      const copyB = loadSeparateWebSdkCopy();
+      // Separate module copies, one shared API through the Symbol.for singleton.
+      expect(copyA.OpenFeatureEventEmitter).not.toBe(OpenFeatureEventEmitter);
+      expect(copyB.OpenFeatureEventEmitter).not.toBe(copyA.OpenFeatureEventEmitter);
+      expect(copyB.OpenFeature).toBe(copyA.OpenFeature);
+      expect(copyA.OpenFeature).not.toBe(OpenFeature);
+
+      fetchHandler = () =>
+        Promise.resolve(new Response('{}', { status: 503, headers: { 'content-type': 'application/json' } }));
+      await startFlags({ refreshInterval: 60000, fetchTimeout: 500 });
+      const provider = new ElectronMainFlagsProvider();
+      const registration = copyA.OpenFeature.setProviderAndWait(provider, { targetingKey: 'user-pro', plan: 'pro' });
+      const rejection = registration.then(
+        () => 'resolved',
+        (error: { code?: string }) => error.code
+      );
+      await vi.advanceTimersByTimeAsync(500);
+      expect(await rejection).toBe('PROVIDER_NOT_READY');
+      const client = copyB.OpenFeature.getClient();
+      expect(client.getStringDetails('targeted-flag', 'default').errorCode).toBe('PROVIDER_NOT_READY');
+
+      const ready: string[] = [];
+      copyB.OpenFeature.addHandler(copyB.ProviderEvents.Ready, () => ready.push('Ready'));
+      fetchHandler = () => Promise.resolve(okResponse());
+      await vi.advanceTimersByTimeAsync(60000);
+      expect(ready).toEqual(['Ready']);
+      expect(client.getStringValue('targeted-flag', 'default')).toBe(
+        oracle({ ...CASES[0], context: { targetingKey: 'user-pro', plan: 'pro' } }).value
+      );
+      await copyA.OpenFeature.clearProviders();
+    } finally {
+      (globalThis as Record<symbol, unknown>)[OPENFEATURE_API_KEY] = savedApi;
+    }
+  });
 });
+
+function makeFrame(processId: number, routingId: number) {
+  const frame = {
+    origin: 'app://window',
+    url: 'app://window/index.html',
+    processId,
+    routingId,
+    send: vi.fn(),
+    isDestroyed: () => false,
+  };
+  frames.set(`${processId}:${routingId}`, frame);
+  return frame;
+}
+
+/** Load a fresh CommonJS instance of @openfeature/web-sdk (and its core), like an app's own copy. */
+function loadSeparateWebSdkCopy(): typeof import('@openfeature/web-sdk') {
+  const requireFromHere = createRequire(import.meta.url);
+  for (const id of ['@openfeature/web-sdk', '@openfeature/core']) {
+    delete requireFromHere.cache[requireFromHere.resolve(id)];
+  }
+  return requireFromHere('@openfeature/web-sdk') as typeof import('@openfeature/web-sdk');
+}

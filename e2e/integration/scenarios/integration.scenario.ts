@@ -23,20 +23,23 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { ONE_SECOND } from '@datadog/js-core/time';
 
 // Renderer window global helpers exposed by each integration app's renderer code
+interface FlagResult {
+  value: unknown;
+  variant?: string;
+  errorCode?: string;
+}
+
 interface IntegrationTestWindow {
   electronAPI?: {
     flushTransport: () => Promise<void>;
     crash: () => Promise<void>;
     mainFetch: (url: string) => Promise<number>;
     openCustomSessionWindow: () => Promise<void>;
-    evaluateFlag: (
-      type: 'boolean' | 'string',
-      flagKey: string,
-      defaultValue: unknown
-    ) => Promise<{ value: unknown; variant?: string; errorCode?: string }>;
+    evaluateFlag: (flagKey: string, defaultValue: string) => Promise<FlagResult>;
   };
   __integrationTest?: {
     triggerRendererError: (message: string) => void;
+    evaluateFlag: (flagKey: string, defaultValue: string) => Promise<FlagResult>;
   };
 }
 
@@ -102,20 +105,47 @@ test.describe('view event on startup @integration', () => {
 });
 
 test.describe('feature flags @integration', () => {
+  // Each app registers ElectronMainFlagsProvider (context plan: 'pro') and the renderer provider;
+  // the intake serves the rules through featureFlags.flaggingProxy.
   test('main evaluates a flag and sends one exposure', async ({ window, intake }) => {
-    // The SDK is initialized with featureFlags (via buildSdkConfig); the app registers
-    // the provider on startup. Wait for the rules to be fetched and the provider to
-    // become ready, then evaluate.
-    await flushUntilEventArrives(window, intake, 'view', 1);
+    const evaluateInMain = () =>
+      window.evaluate(() =>
+        (globalThis as unknown as IntegrationTestWindow).electronAPI!.evaluateFlag('targeted-flag', 'default')
+      );
+    await expect.poll(async () => (await evaluateInMain()).value, { timeout: 15_000 }).toBe('variant-a');
+    await evaluateInMain();
 
-    const result = await window.evaluate(
-      ([type, flagKey, defaultValue]) =>
-        (globalThis as unknown as IntegrationTestWindow).electronAPI?.evaluateFlag(type, flagKey, defaultValue),
-      ['string', 'targeted-flag', 'default'] as const
-    );
-    // The flag evaluates to a non-default variant when rules are available.
-    expect(result?.value).toBeDefined();
-    expect(result?.variant).toBeDefined();
+    await expect
+      .poll(
+        async () => {
+          await window.evaluate(() => (globalThis as unknown as IntegrationTestWindow).electronAPI?.flushTransport());
+          return intake.getExposures().length;
+        },
+        { timeout: 15_000 }
+      )
+      .toBeGreaterThan(0);
+    await window.waitForTimeout(500);
+    await window.evaluate(() => (globalThis as unknown as IntegrationTestWindow).electronAPI?.flushTransport());
+    const exposures = intake.getExposures().map((exposure) => exposure.body);
+    expect(exposures).toHaveLength(1);
+    expect(exposures[0]).toMatchObject({ flag: { key: 'targeted-flag' }, subject: { id: 'user-pro' } });
+  });
+
+  test('renderer evaluates a flag', async ({ window }) => {
+    await expect
+      .poll(
+        async () =>
+          (
+            await window.evaluate(() =>
+              (globalThis as unknown as IntegrationTestWindow).__integrationTest!.evaluateFlag(
+                'targeted-flag',
+                'default'
+              )
+            )
+          ).value,
+        { timeout: 15_000 }
+      )
+      .toBe('variant-a');
   });
 });
 

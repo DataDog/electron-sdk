@@ -1,8 +1,7 @@
 import '@datadog/electron-sdk/instrument';
-import { ElectronMainFlagsProvider } from '@datadog/electron-sdk';
-import { OpenFeature } from '@openfeature/web-sdk';
 import { app, BrowserWindow, ipcMain } from 'electron';
-import { _flushTransport, init, type InitConfiguration } from '@datadog/electron-sdk';
+import { _flushTransport, ElectronMainFlagsProvider, init, type InitConfiguration } from '@datadog/electron-sdk';
+import { OpenFeature } from '@openfeature/web-sdk';
 
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
@@ -11,7 +10,18 @@ const isDebugMode = process.env.PWDEBUG === '1';
 let mainWindow: BrowserWindow | null = null;
 let customSessionWindow: BrowserWindow | null = null;
 
-void registerFlags().then(() => init(getConfiguration());
+void init(getConfiguration());
+
+// Feature flags: the main provider owns the evaluation context. It is registered right away,
+// before init() settles, and becomes ready once the rules are served.
+void OpenFeature.setProviderAndWait(new ElectronMainFlagsProvider(), { targetingKey: 'user-pro', plan: 'pro' }).catch(
+  () => undefined
+);
+
+ipcMain.handle('evaluateFlag', (_event, flagKey: string, defaultValue: string) => {
+  const details = OpenFeature.getClient().getStringDetails(flagKey, defaultValue);
+  return { value: details.value, variant: details.variant, errorCode: details.errorCode };
+});
 
 ipcMain.handle('flushTransport', async () => {
   await _flushTransport();

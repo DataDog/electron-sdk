@@ -113,6 +113,7 @@ describe('Transport', () => {
           persistConfiguration: true,
           enableExposureLogging: true,
           enableRumFeatureFlagTracking: true,
+          excludedPartitions: [],
         },
       });
       await Transport.create(flagsConfig, eventManager, trackingConsentManager);
@@ -141,6 +142,7 @@ describe('Transport', () => {
           persistConfiguration: true,
           enableExposureLogging: false,
           enableRumFeatureFlagTracking: true,
+          excludedPartitions: [],
         },
       });
       await Transport.create(flagsConfig, eventManager, trackingConsentManager);
