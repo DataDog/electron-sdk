@@ -42,6 +42,61 @@ export interface TraceSamplingRule {
   tags?: Record<string, string>;
 }
 
+/**
+ * Feature flags configuration. When `featureFlags` is absent from
+ * {@link InitConfiguration}, the feature is fully disabled.
+ */
+export interface FeatureFlagsInitConfiguration {
+  /**
+   * Datadog environment the flags are fetched for. Defaults to the SDK `env`.
+   */
+  env?: string;
+  /**
+   * Rules refresh interval in milliseconds, defaults to `300000` (5 minutes). `0`
+   * disables refresh; values below `60000` are clamped to `60000`.
+   */
+  refreshInterval?: number;
+  /**
+   * Timeout for a single rules fetch in milliseconds, defaults to `5000`. Clamped to
+   * `[500, 60000]`.
+   */
+  fetchTimeout?: number;
+  /**
+   * Cache the configuration on disk so it survives restarts, defaults to `true`.
+   */
+  persistConfiguration?: boolean;
+  /**
+   * Send exposure events through the consent-aware transport, defaults to `true`.
+   */
+  enableExposureLogging?: boolean;
+  /**
+   * Report flag evaluations on RUM views and errors, defaults to `true`.
+   */
+  enableRumFeatureFlagTracking?: boolean;
+  /**
+   * Host that serves the rules endpoint. A host without protocol gets `https://`
+   * prepended. An invalid value disables feature flags entirely so the client token
+   * is never sent to an unintended host.
+   */
+  flaggingProxy?: string;
+}
+
+export interface FeatureFlagsConfiguration {
+  env?: string;
+  refreshInterval: number;
+  fetchTimeout: number;
+  persistConfiguration: boolean;
+  enableExposureLogging: boolean;
+  enableRumFeatureFlagTracking: boolean;
+  flaggingProxy?: string;
+}
+
+const DEFAULT_FEATURE_FLAGS_REFRESH_INTERVAL = 5 * 60 * 1000;
+const MIN_FEATURE_FLAGS_REFRESH_INTERVAL = 60 * 1000;
+const DEFAULT_FEATURE_FLAGS_FETCH_TIMEOUT = 5000;
+const MIN_FEATURE_FLAGS_FETCH_TIMEOUT = 500;
+const MAX_FEATURE_FLAGS_FETCH_TIMEOUT = 60 * 1000;
+
 const DEFAULT_BATCH_SIZE: BatchSize = 'MEDIUM';
 const DEFAULT_UPLOAD_FREQUENCY: UploadFrequency = 'NORMAL';
 
@@ -146,6 +201,12 @@ export interface InitConfiguration {
    */
   beforeSendRum?: RumBeforeSend;
   /**
+   * Enable Datadog feature flags. Absent (the default) disables the feature
+   * entirely: no fetch, no track, no flag IPC traffic.
+   * @example { refreshInterval: 300000, enableExposureLogging: true }
+   */
+  featureFlags?: FeatureFlagsInitConfiguration;
+  /**
    * Hostnames allowed to send bridge events to the main process. Supports exact hostnames,
    * subdomain suffixes, single-wildcard globs, `'file://'` for local files, and `'*'` for all.
    * @example ['app.example.com', '*.staging.example.com', 'file://', '*']
@@ -183,6 +244,7 @@ export interface Configuration {
   allowedRendererHosts: string[];
   beforeSendRum?: RumBeforeSend;
   enableExecutionContext: boolean;
+  featureFlags?: FeatureFlagsConfiguration;
 }
 
 /**
@@ -440,6 +502,8 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     return undefined;
   }
 
+  const featureFlags = buildFeatureFlagsConfiguration(initConfig, initConfig.env);
+
   return {
     site,
     service,
@@ -473,5 +537,126 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     allowedRendererHosts,
     beforeSendRum: validateBeforeSendRum(initConfig.beforeSendRum),
     enableExecutionContext: initConfig.enableExecutionContext === true,
+    ...(featureFlags !== undefined ? { featureFlags } : {}),
   };
+}
+
+function buildFeatureFlagsConfiguration(
+  initConfig: InitConfiguration,
+  sdkEnv: string | undefined
+): FeatureFlagsConfiguration | undefined {
+  const { featureFlags } = initConfig;
+  if (featureFlags === undefined) {
+    return undefined;
+  }
+  if (!isIndexableObject(featureFlags)) {
+    display.error('featureFlags must be an object; feature flags are disabled.');
+    return undefined;
+  }
+  const options = featureFlags as unknown as FeatureFlagsInitConfiguration;
+
+  const env = isValidString(options.env) ? options.env : sdkEnv;
+  if (env === undefined) {
+    display.error('featureFlags requires an env (or a top-level env); feature flags are disabled.');
+    return undefined;
+  }
+
+  const flaggingProxy = validateFlaggingProxy(options.flaggingProxy);
+  if (options.flaggingProxy !== undefined && flaggingProxy === undefined) {
+    return undefined;
+  }
+
+  return {
+    env,
+    refreshInterval: validateFlagsNumber(
+      options.refreshInterval,
+      'refreshInterval',
+      DEFAULT_FEATURE_FLAGS_REFRESH_INTERVAL,
+      MIN_FEATURE_FLAGS_REFRESH_INTERVAL,
+      undefined,
+      true
+    ),
+    fetchTimeout: validateFlagsNumber(
+      options.fetchTimeout,
+      'fetchTimeout',
+      DEFAULT_FEATURE_FLAGS_FETCH_TIMEOUT,
+      MIN_FEATURE_FLAGS_FETCH_TIMEOUT,
+      MAX_FEATURE_FLAGS_FETCH_TIMEOUT
+    ),
+    persistConfiguration: validateFlagsBoolean(options.persistConfiguration, 'persistConfiguration', true),
+    enableExposureLogging: validateFlagsBoolean(options.enableExposureLogging, 'enableExposureLogging', true),
+    enableRumFeatureFlagTracking: validateFlagsBoolean(
+      options.enableRumFeatureFlagTracking,
+      'enableRumFeatureFlagTracking',
+      true
+    ),
+    ...(flaggingProxy !== undefined ? { flaggingProxy } : {}),
+  };
+}
+
+function validateFlagsNumber(
+  value: number | undefined,
+  field: keyof FeatureFlagsInitConfiguration,
+  defaultValue: number,
+  min: number,
+  max: number | undefined,
+  zeroDisables = false
+): number {
+  if (value === undefined) {
+    return defaultValue;
+  }
+  if (!isFiniteNumber(value) || value < 0) {
+    display.error(`featureFlags.${field} must be a positive number; using ${defaultValue}.`);
+    return defaultValue;
+  }
+  if (value < min && !(zeroDisables && value === 0)) {
+    display.warn(`featureFlags.${field} is clamped to ${min}.`);
+    return min;
+  }
+  if (max !== undefined && value > max) {
+    display.warn(`featureFlags.${field} is clamped to ${max}.`);
+    return max;
+  }
+  return value;
+}
+
+function validateFlagsBoolean(
+  value: boolean | undefined,
+  field: keyof FeatureFlagsInitConfiguration,
+  defaultValue: boolean
+): boolean {
+  if (value === undefined) {
+    return defaultValue;
+  }
+  if (typeof value !== 'boolean') {
+    display.error(`featureFlags.${field} must be a boolean; using ${defaultValue}.`);
+    return defaultValue;
+  }
+  return value;
+}
+
+function validateFlaggingProxy(value: string | undefined): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isValidString(value)) {
+    display.error('featureFlags.flaggingProxy must be a string; feature flags are disabled.');
+    return undefined;
+  }
+  const scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\//.exec(value);
+  if (scheme !== null && scheme[1] !== 'http' && scheme[1] !== 'https') {
+    display.error('featureFlags.flaggingProxy is not a valid http(s) host; feature flags are disabled.');
+    return undefined;
+  }
+  const withProtocol = scheme === null ? `https://${value}` : value;
+  try {
+    const url = new URL(withProtocol);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      throw new Error('invalid protocol');
+    }
+    return withProtocol;
+  } catch {
+    display.error('featureFlags.flaggingProxy is not a valid http(s) host; feature flags are disabled.');
+    return undefined;
+  }
 }

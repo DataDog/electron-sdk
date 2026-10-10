@@ -34,6 +34,15 @@ describe('computeIntakeUrlForTrack', () => {
     );
   });
 
+  it('computes the exposures intake URL with and without proxy', () => {
+    expect(computeIntakeUrlForTrack('datadoghq.com', 'exposures')).toBe(
+      'https://browser-intake-datadoghq.com/api/v2/exposures?ddsource=electron'
+    );
+    expect(computeIntakeUrlForTrack('datadoghq.com', 'exposures', { proxy: 'http://localhost:3000' })).toBe(
+      'http://localhost:3000?ddforward=%2Fapi%2Fv2%2Fexposures%3Fddsource%3Delectron'
+    );
+  });
+
   it('uses proxy when provided, with ddforward for rum track', () => {
     expect(computeIntakeUrlForTrack('datadoghq.com', 'rum', { proxy: 'http://localhost:3000' })).toBe(
       'http://localhost:3000?ddforward=%2Fapi%2Fv2%2Frum%3Fddsource%3Delectron'

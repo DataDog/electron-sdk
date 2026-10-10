@@ -1,4 +1,6 @@
 Component,Origin,License,Copyright
+npm-prod,@openfeature/core,Apache-2.0,Copyright OpenFeature Project Contributors
+npm-prod,@openfeature/web-sdk,Apache-2.0,Copyright OpenFeature Project Contributors
 rust-prod,breakpad-symbols,MIT,Copyright (c) 2015-2023 rust-minidump contributors
 rust-prod,console_error_panic_hook,MIT OR Apache-2.0,Copyright (c) 2018 Nick Fitzgerald
 rust-prod,js-sys,MIT OR Apache-2.0,Copyright (c) 2014 Alex Crichton

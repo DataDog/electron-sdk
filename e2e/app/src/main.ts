@@ -1,4 +1,6 @@
 import '@datadog/electron-sdk/instrument';
+import { ElectronMainFlagsProvider } from '@datadog/electron-sdk';
+import { OpenFeature } from '@openfeature/web-sdk';
 import { app, BrowserWindow, ipcMain, net, protocol } from 'electron';
 import * as http from 'node:http';
 import * as fs from 'node:fs';
@@ -234,6 +236,33 @@ void app.whenReady().then(async () => {
     await res.text();
     return res.status;
   });
+
+  ipcMain.handle('registerFlagsProvider', async (_event, context?: Record<string, unknown>) => {
+    const provider = new ElectronMainFlagsProvider();
+    // Registration can reject while no configuration is available yet (e.g. a failing
+    // endpoint); the provider still recovers when a later fetch succeeds.
+    await OpenFeature.setProviderAndWait(provider).catch(() => undefined);
+    if (context !== undefined) {
+      await OpenFeature.setContext(context as never).catch(() => undefined);
+    }
+    return OpenFeature.getClient().providerStatus;
+  });
+
+  ipcMain.handle('setFlagsContext', (_event, context: Record<string, unknown>) => {
+    return OpenFeature.setContext(context as never);
+  });
+
+  ipcMain.handle('evaluateFlag', (_event, type: 'boolean' | 'string', flagKey: string, defaultValue: unknown) => {
+    const client = OpenFeature.getClient();
+    if (type === 'boolean') {
+      const details = client.getBooleanDetails(flagKey, defaultValue as boolean);
+      return { value: details.value, variant: details.variant, reason: details.reason, errorCode: details.errorCode };
+    }
+    const details = client.getStringDetails(flagKey, defaultValue as string);
+    return { value: details.value, variant: details.variant, reason: details.reason, errorCode: details.errorCode };
+  });
+
+  ipcMain.handle('getFlagsProviderStatus', () => OpenFeature.getClient().providerStatus);
 
   ipcMain.handle('flushTransport', async () => {
     await _flushTransport();

@@ -10,6 +10,7 @@ export const EventTrack = {
   SPANS: 'spans',
   PROFILE: 'profile',
   REPLAY: 'replay',
+  EXPOSURES: 'exposures',
 } as const;
 export type EventTrack = (typeof EventTrack)[keyof typeof EventTrack];
 

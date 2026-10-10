@@ -111,6 +111,17 @@ describe('FlagsEvaluator', () => {
     expect(evaluator.resolve('string', 'targeted-flag', 'app-default').value).toBe('variant-a');
   });
 
+  it('clears the configuration when a snapshot reports ERROR without one', () => {
+    const evaluator = new FlagsEvaluator();
+    evaluator.apply(fixtureSnapshot());
+    expect(
+      evaluator.apply(fixtureSnapshot({ revision: 2, status: 'ERROR', configuration: undefined, context: undefined }))
+    ).toBe(true);
+    const result = evaluator.resolve('string', 'targeted-flag', 'app-default');
+    expect(result.value).toBe('app-default');
+    expect(result.errorCode).toBe('PROVIDER_NOT_READY');
+  });
+
   it('applies snapshots whose configuration is absent without disturbing the current one', () => {
     const evaluator = new FlagsEvaluator();
     evaluator.apply(fixtureSnapshot({ revision: 1 }));

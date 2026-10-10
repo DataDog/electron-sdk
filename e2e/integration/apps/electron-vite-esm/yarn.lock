@@ -987,6 +987,22 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@openfeature/core@npm:1.12.0":
+  version: 1.12.0
+  resolution: "@openfeature/core@npm:1.12.0"
+  checksum: 10c0/561aa31810b6bad7c787a61dfeef11615b3151773f751548b0d3bc894cf50d863ef45832f9b92f390bc7da7ba1c41be12ce6226a78c36a504dfd5e7fb97120bd
+  languageName: node
+  linkType: hard
+
+"@openfeature/web-sdk@npm:1.10.0":
+  version: 1.10.0
+  resolution: "@openfeature/web-sdk@npm:1.10.0"
+  peerDependencies:
+    "@openfeature/core": ^1.12.0
+  checksum: 10c0/70b2e470296a628d9e9ba4cff6d558487fff322e95bd68629606c7ba5be138194018865ccf33997488b39020e1466836072a22bd71e6a19f606bd4b07a867bfe
+  languageName: node
+  linkType: hard
+
 "@opentelemetry/api-logs@npm:<1.0.0":
   version: 0.218.0
   resolution: "@opentelemetry/api-logs@npm:0.218.0"
@@ -2260,6 +2276,8 @@ __metadata:
   dependencies:
     "@datadog/browser-rum": "npm:7.4.0"
     "@datadog/electron-sdk": "file:../../integration-sdk.tgz"
+    "@openfeature/core": "npm:1.12.0"
+    "@openfeature/web-sdk": "npm:1.10.0"
     "@types/node": "npm:24.13.2"
     electron: "npm:41.1.0"
     electron-builder: "npm:26.15.3"

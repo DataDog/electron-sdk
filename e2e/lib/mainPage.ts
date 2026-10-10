@@ -26,6 +26,14 @@ interface ElectronAppWindow {
     mainNetFetch: (url: string) => Promise<number>;
     mainFireAndForget: () => Promise<void>;
     triggerMainSend: () => Promise<void>;
+    registerFlagsProvider: (context?: Record<string, unknown>) => Promise<string | undefined>;
+    setFlagsContext: (context: Record<string, unknown>) => Promise<void>;
+    evaluateFlag: (
+      type: 'boolean' | 'string',
+      flagKey: string,
+      defaultValue: unknown
+    ) => Promise<{ value: unknown; variant?: string; reason?: string; errorCode?: string }>;
+    getFlagsProviderStatus: () => Promise<string>;
     flushTransport: () => Promise<void>;
     setGlobalContext: (context: Record<string, unknown>) => Promise<void>;
     setGlobalContextProperty: (key: string, value: unknown) => Promise<void>;
@@ -200,6 +208,36 @@ export class MainPage {
 
   async triggerMainSend(): Promise<void> {
     await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.triggerMainSend());
+  }
+
+  registerFlagsProvider(context?: Record<string, unknown>): Promise<string | undefined> {
+    return this.page.evaluate(
+      ([context]) => (globalThis as unknown as ElectronAppWindow).electronAPI.registerFlagsProvider(context),
+      [context] as const
+    );
+  }
+
+  setFlagsContext(context: Record<string, unknown>): Promise<void> {
+    return this.page.evaluate(
+      ([context]) => (globalThis as unknown as ElectronAppWindow).electronAPI.setFlagsContext(context),
+      [context] as const
+    );
+  }
+
+  evaluateFlag(
+    type: 'boolean' | 'string',
+    flagKey: string,
+    defaultValue: unknown
+  ): Promise<{ value: unknown; variant?: string; reason?: string; errorCode?: string }> {
+    return this.page.evaluate(
+      ([type, flagKey, defaultValue]) =>
+        (globalThis as unknown as ElectronAppWindow).electronAPI.evaluateFlag(type, flagKey, defaultValue),
+      [type, flagKey, defaultValue] as const
+    );
+  }
+
+  getFlagsProviderStatus(): Promise<string> {
+    return this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.getFlagsProviderStatus());
   }
 
   async flushTransport() {

@@ -370,4 +370,19 @@ describe('ViewCollection', () => {
       expect(rawRumEvents).toHaveLength(2);
     });
   });
+
+  describe('requestViewUpdate', () => {
+    it('bumps document_version and emits through the throttle', async () => {
+      const before = rawRumEvents.filter((event) => event.data.type === 'view').length;
+      viewCollection.requestViewUpdate();
+      await vi.advanceTimersByTimeAsync(0);
+      const viewEvents = rawRumEvents.filter((event) => event.data.type === 'view');
+      expect(viewEvents.length).toBe(before + 1);
+      const last = viewEvents[viewEvents.length - 1].data as RawRumView;
+      expect(last._dd.document_version).toBe(2);
+      // The trailing throttled update does not emit a second time.
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(rawRumEvents.filter((event) => event.data.type === 'view').length).toBe(viewEvents.length);
+    });
+  });
 });

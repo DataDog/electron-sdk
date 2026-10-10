@@ -20,6 +20,7 @@ export class FlagsEvaluator {
   private provider?: DatadogCoreProvider;
   private context?: FlatContext;
   private revision = -1;
+  private appliedContextRevision: number | undefined;
 
   /**
    * Apply a snapshot. Returns `true` when the snapshot was newer than the current one
@@ -31,6 +32,14 @@ export class FlagsEvaluator {
       return false;
     }
     this.revision = snapshot.revision;
+    if (snapshot.configuration === undefined && snapshot.status === 'ERROR') {
+      // An authoritative failure drops the served configuration: evaluations return the
+      // application default with an error code until a later successful fetch (D5).
+      this.provider = undefined;
+      this.context = undefined;
+      this.appliedContextRevision = snapshot.contextRevision;
+      return true;
+    }
     if (snapshot.configuration !== undefined) {
       const provider = this.provider ?? new DatadogCoreProvider();
       this.provider = provider;
@@ -38,6 +47,7 @@ export class FlagsEvaluator {
     }
     if (snapshot.context !== undefined) {
       this.setContext(snapshot.context);
+      this.appliedContextRevision = snapshot.contextRevision;
     }
     return true;
   }
@@ -95,10 +105,19 @@ export class FlagsEvaluator {
     return { flagKey, flagMetadata: {}, ...result } as EvaluationDetails<T>;
   }
 
+  /**
+   * The `contextRevision` of the context evaluations currently use. Hooks capture it at
+   * resolution time so a record always carries the revision it was evaluated with (D8).
+   */
+  get contextRevision(): number | undefined {
+    return this.appliedContextRevision;
+  }
+
   /** Release the provider. Subsequent resolves return the default with `PROVIDER_NOT_READY`. */
   stop(): void {
     this.provider = undefined;
     this.context = undefined;
     this.revision = -1;
+    this.appliedContextRevision = undefined;
   }
 }

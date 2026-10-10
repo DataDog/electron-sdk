@@ -29,6 +29,11 @@ interface IntegrationTestWindow {
     crash: () => Promise<void>;
     mainFetch: (url: string) => Promise<number>;
     openCustomSessionWindow: () => Promise<void>;
+    evaluateFlag: (
+      type: 'boolean' | 'string',
+      flagKey: string,
+      defaultValue: unknown
+    ) => Promise<{ value: unknown; variant?: string; errorCode?: string }>;
   };
   __integrationTest?: {
     triggerRendererError: (message: string) => void;
@@ -93,6 +98,24 @@ test.describe('view event on startup @integration', () => {
     expect(view.type).toBe('view');
     expect(view.session.id).toBeDefined();
     expect(view.application.id).toBe('integration-test-app-id');
+  });
+});
+
+test.describe('feature flags @integration', () => {
+  test('main evaluates a flag and sends one exposure', async ({ window, intake }) => {
+    // The SDK is initialized with featureFlags (via buildSdkConfig); the app registers
+    // the provider on startup. Wait for the rules to be fetched and the provider to
+    // become ready, then evaluate.
+    await flushUntilEventArrives(window, intake, 'view', 1);
+
+    const result = await window.evaluate(
+      ([type, flagKey, defaultValue]) =>
+        (globalThis as unknown as IntegrationTestWindow).electronAPI?.evaluateFlag(type, flagKey, defaultValue),
+      ['string', 'targeted-flag', 'default'] as const
+    );
+    // The flag evaluates to a non-default variant when rules are available.
+    expect(result?.value).toBeDefined();
+    expect(result?.variant).toBeDefined();
   });
 });
 

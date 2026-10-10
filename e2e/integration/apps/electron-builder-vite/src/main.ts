@@ -1,4 +1,6 @@
 import '@datadog/electron-sdk/instrument';
+import { ElectronMainFlagsProvider } from '@datadog/electron-sdk';
+import { OpenFeature } from '@openfeature/web-sdk';
 import { join } from 'node:path';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { _flushTransport, init, type InitConfiguration } from '@datadog/electron-sdk';
@@ -7,7 +9,7 @@ const isDebugMode = process.env.PWDEBUG === '1';
 let mainWindow: BrowserWindow | null = null;
 let customSessionWindow: BrowserWindow | null = null;
 
-void init(getConfiguration());
+void registerFlags().then(() => init(getConfiguration());
 
 ipcMain.handle('flushTransport', async () => {
   await _flushTransport();

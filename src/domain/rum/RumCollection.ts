@@ -33,6 +33,17 @@ export class RumCollection {
     return new RumCollection(viewCollection, errorCollection, vitalCollection, operationCollection);
   }
 
+  /** The main view emitter surface used by the feature flags RUM context (D10). */
+  getMainViewEmitter(): {
+    findViewId: (atTime: import('@datadog/js-core/time').TimeStamp) => string | undefined;
+    requestViewUpdate: () => void;
+  } {
+    return {
+      findViewId: (atTime) => this.viewCollection.getMainViewContext().findViewId(atTime),
+      requestViewUpdate: () => this.viewCollection.requestViewUpdate(),
+    };
+  }
+
   getApi() {
     return {
       ...this.errorCollection.getApi(),
