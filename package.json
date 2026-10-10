@@ -114,9 +114,13 @@
   },
   "devDependencies": {
     "@datadog/browser-core": "7.5.0",
+    "@datadog/flagging-core": "3.2.0",
     "@datadog/js-core": "0.0.5",
+    "@datadog/openfeature-browser": "2.1.0",
     "@electron/get": "5.1.0",
     "@eslint/js": "10.0.1",
+    "@openfeature/core": "1.12.0",
+    "@openfeature/web-sdk": "1.10.0",
     "@playwright/test": "1.61.1",
     "@rollup/plugin-commonjs": "29.0.3",
     "@rollup/plugin-json": "6.1.0",

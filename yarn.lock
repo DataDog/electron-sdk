@@ -105,6 +105,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@bufbuild/protobuf@npm:^2.13.0":
+  version: 2.16.0
+  resolution: "@bufbuild/protobuf@npm:2.16.0"
+  checksum: 10c0/ba3bc677e801a71d9cf0bdc138174144e493706efec3a47865eb07e956423315a80ff12301f6835d352202ae4d6599f2946a7c67338cf0079ed2a06af1a18097
+  languageName: node
+  linkType: hard
+
 "@csstools/color-helpers@npm:^6.1.1":
   version: 6.1.1
   resolution: "@csstools/color-helpers@npm:6.1.1"
@@ -163,6 +170,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@datadog/browser-core@npm:7.1.0":
+  version: 7.1.0
+  resolution: "@datadog/browser-core@npm:7.1.0"
+  checksum: 10c0/3c11fbd45cfb7c962358e5d2343d0d01a4dc4abeb14514b0204e46d155acab009de6dbbebc62ac0bc6d7909e717c30182140c40e16a712eadcab43e3590c7f15
+  languageName: node
+  linkType: hard
+
 "@datadog/browser-core@npm:7.5.0":
   version: 7.5.0
   resolution: "@datadog/browser-core@npm:7.5.0"
@@ -177,9 +191,13 @@ __metadata:
   resolution: "@datadog/electron-sdk@workspace:."
   dependencies:
     "@datadog/browser-core": "npm:7.5.0"
+    "@datadog/flagging-core": "npm:3.2.0"
     "@datadog/js-core": "npm:0.0.5"
+    "@datadog/openfeature-browser": "npm:2.1.0"
     "@electron/get": "npm:5.1.0"
     "@eslint/js": "npm:10.0.1"
+    "@openfeature/core": "npm:1.12.0"
+    "@openfeature/web-sdk": "npm:1.10.0"
     "@playwright/test": "npm:1.61.1"
     "@rollup/plugin-commonjs": "npm:29.0.3"
     "@rollup/plugin-json": "npm:6.1.0"
@@ -220,6 +238,23 @@ __metadata:
   dependencies:
     spark-md5: "npm:^3.0.2"
   checksum: 10c0/77539a5d0c501a5d8fa6a0017a0c58e84702825278358a740c7ff3043f88542fdb7e03a9ed64142e6443e2f8708985756d29c6fa06d31d003a69955534ae4719
+  languageName: node
+  linkType: hard
+
+"@datadog/flagging-core@npm:3.2.0":
+  version: 3.2.0
+  resolution: "@datadog/flagging-core@npm:3.2.0"
+  dependencies:
+    "@bufbuild/protobuf": "npm:^2.13.0"
+    spark-md5: "npm:^3.0.2"
+  checksum: 10c0/7e5a0384b1530d4edf616ea3a6acb5c1e17438532dd1cf8bd73f889ed7e7d9bc5d9da8a39d98dd4bfadf604a135eec868719284c5ae465d8c9645875e35e8f2b
+  languageName: node
+  linkType: hard
+
+"@datadog/js-core@npm:0.0.3":
+  version: 0.0.3
+  resolution: "@datadog/js-core@npm:0.0.3"
+  checksum: 10c0/69ee20872125a8e723e23266fab5220becd47417bc3bf897753b8713cbe5f4365a801f96ba7a3ab07d3e60e10d032e494de78613d76836169e89e5b4ecdab39e
   languageName: node
   linkType: hard
 
@@ -265,6 +300,20 @@ __metadata:
     node-gyp: "npm:latest"
     node-gyp-build: "npm:^3.9.0"
   checksum: 10c0/466f38f393bd303770346777df78a6642b1f449cca3e6e7a6d5a1d00d146126ca107afc1734d37d2b4ca858212a8e2e47a97fa8415a3e56cc807cffb31a31884
+  languageName: node
+  linkType: hard
+
+"@datadog/openfeature-browser@npm:2.1.0":
+  version: 2.1.0
+  resolution: "@datadog/openfeature-browser@npm:2.1.0"
+  dependencies:
+    "@datadog/browser-core": "npm:7.1.0"
+    "@datadog/flagging-core": "npm:3.2.0"
+    "@datadog/js-core": "npm:0.0.3"
+  peerDependencies:
+    "@openfeature/core": ^1.9.2
+    "@openfeature/web-sdk": ^1.5.0
+  checksum: 10c0/1cbab7e8f21f98f45260f036b5d93f83c0fcdce1daaabc42d808aa5e18f0cf28bfe94e74e1996f1f08ee24d33a1e348b0ebd4f980e84578ddb2d4fdf77569551
   languageName: node
   linkType: hard
 
@@ -595,6 +644,22 @@ __metadata:
   dependencies:
     semver: "npm:^7.3.5"
   checksum: 10c0/26e376d780f60ff16e874a0ac9bc3399186846baae0b6e1352286385ac134d900cc5dafaded77f38d77f86898fc923ae1cee9d7399f0275b1aa24878915d722b
+  languageName: node
+  linkType: hard
+
+"@openfeature/core@npm:1.12.0":
+  version: 1.12.0
+  resolution: "@openfeature/core@npm:1.12.0"
+  checksum: 10c0/561aa31810b6bad7c787a61dfeef11615b3151773f751548b0d3bc894cf50d863ef45832f9b92f390bc7da7ba1c41be12ce6226a78c36a504dfd5e7fb97120bd
+  languageName: node
+  linkType: hard
+
+"@openfeature/web-sdk@npm:1.10.0":
+  version: 1.10.0
+  resolution: "@openfeature/web-sdk@npm:1.10.0"
+  peerDependencies:
+    "@openfeature/core": ^1.12.0
+  checksum: 10c0/70b2e470296a628d9e9ba4cff6d558487fff322e95bd68629606c7ba5be138194018865ccf33997488b39020e1466836072a22bd71e6a19f606bd4b07a867bfe
   languageName: node
   linkType: hard
 
