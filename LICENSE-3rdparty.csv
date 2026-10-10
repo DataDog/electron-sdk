@@ -18,6 +18,8 @@ npm-dev,@electron-forge/cli,MIT,Copyright (c) 2019 The Electron Forge Contributo
 npm-dev,@electron-forge/plugin-vite,MIT,Copyright (c) 2019 The Electron Forge Contributors
 npm-dev,@electron-forge/plugin-webpack,MIT,Copyright (c) 2019 The Electron Forge Contributors
 npm-dev,@eslint/js,MIT,Copyright OpenJS Foundation and other contributors
+npm-dev,@openfeature/core,Apache-2.0,Copyright OpenFeature Project Contributors
+npm-dev,@openfeature/web-sdk,Apache-2.0,Copyright OpenFeature Project Contributors
 npm-dev,@playwright/test,Apache-2.0,Copyright Microsoft Corporation
 npm-dev,@rollup/plugin-commonjs,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)
 npm-dev,@rollup/plugin-json,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)
