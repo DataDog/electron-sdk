@@ -190,11 +190,35 @@ test.describe('feature flags observability (main)', () => {
       // Evaluate the same flag twice: the aggregator counts 2, not 1
       await mainPage.evaluateFlag('string', 'targeted-flag', 'app-default');
       await mainPage.evaluateFlag('string', 'targeted-flag', 'app-default');
-      // Flush: the flagevaluation track sends the aggregated count
-      await mainPage.flushTransport();
-      // The evaluation is counted (we can't easily assert the exact count in
-      // the intake without a flagevaluation-specific read method; the unit
-      // tests verify the aggregation in detail)
+      await mainPage.evaluateFlag('boolean', 'missing-flag', false);
+      // The aggregator flushes every 10 s onto the flagevaluation track.
+      await mainPage.whileFlushing(() => intake.waitForFlagEvaluationCount(2, { timeout: 20_000 }));
+      const events = intake.getFlagEvaluations();
+      expect(events.every((event) => event.ddforward.startsWith('/api/v2/flagevaluation?ddsource=electron'))).toBe(
+        true
+      );
+      const byFlag = Object.fromEntries(
+        events.map((event) => [(event.body.flag as { key: string }).key, event.body])
+      ) as Record<string, Record<string, unknown>>;
+      expect(byFlag['targeted-flag']).toMatchObject({
+        variant: { key: 'variant-a' },
+        allocation: { key: expect.any(String) as unknown },
+        evaluation_count: 2,
+        runtime_default_used: false,
+        targeting_key: 'user-pro',
+        context: {
+          evaluation: { plan: 'pro' },
+          dd: {
+            service: 'e2e-test-app',
+            rum: { application: { id: 'e2e-test-app-id' }, view: { url: 'electron://main-process' } },
+          },
+        },
+      });
+      expect(byFlag['missing-flag']).toMatchObject({
+        evaluation_count: 1,
+        runtime_default_used: true,
+        error: { message: 'FLAG_NOT_FOUND' },
+      });
       await electronApp.close();
     } finally {
       await cleanupUserDataDir(userDataDir);

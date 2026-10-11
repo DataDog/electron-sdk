@@ -64,6 +64,9 @@ export class Transport {
     if (this.config.featureFlags !== undefined && this.config.featureFlags.enableExposureLogging) {
       tracks.push(EventTrack.EXPOSURES);
     }
+    if (this.config.featureFlags !== undefined && this.config.featureFlags.enableFlagEvaluationTracking) {
+      tracks.push(EventTrack.FLAGEVALUATION);
+    }
     return tracks;
   }
 

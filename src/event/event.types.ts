@@ -42,7 +42,8 @@ export type ServerEvent =
   | ServerSpansEvent
   | ServerProfileEvent
   | ServerReplayEvent
-  | ServerExposuresEvent;
+  | ServerExposuresEvent
+  | ServerFlagEvaluationEvent;
 
 /**
  * Server events transported as newline-delimited JSON, i.e. every {@link ServerEvent} whose
@@ -79,6 +80,13 @@ export interface ServerLogsEvent {
   track: typeof EventTrack.LOGS;
   source: EventSource;
   data: LogsEvent;
+}
+
+export interface ServerFlagEvaluationEvent {
+  kind: typeof EventKind.SERVER;
+  track: typeof EventTrack.FLAGEVALUATION;
+  source: EventSource;
+  data: Record<string, unknown>;
 }
 
 export interface ServerExposuresEvent {
