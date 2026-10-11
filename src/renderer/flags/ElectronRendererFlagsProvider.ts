@@ -11,20 +11,23 @@ import type {
 } from '@openfeature/web-sdk';
 import { timeStampNow } from '@datadog/js-core/time';
 import { display } from '../../tools/display';
-import { parseFlagsSnapshot, MAX_BATCH_ERROR_MESSAGE_LENGTH } from '../../common/flags/flagsPayloads';
+import { parseFlagsSnapshot } from '../../common/flags/flagsPayloads';
+import { EvaluationReporter } from '../../common/flags/EvaluationReporter';
 import { FLAGS_BRIDGE_GLOBAL, type FlagsBridge } from '../../common/flags/flagsBridge';
 import { buildEvaluationRecord, ResolutionLedger } from '../../common/flags/evaluationRecord';
 import { FlagsEvaluator } from '../../common/flags/FlagsEvaluator';
-import type { EvaluationBatch, EvaluationRecord, FlagsSnapshot, FlagsTracking } from '../../common/flags/types';
+import type { EvaluationRecord, FlagsSnapshot, FlagsTracking } from '../../common/flags/types';
+
+export {
+  FLUSH_INTERVAL,
+  FLUSH_THRESHOLD,
+  MAX_RECORDS_PER_BATCH,
+  MAX_BATCH_BYTES,
+  MAX_ERRORS_PER_BATCH,
+} from '../../common/flags/EvaluationReporter';
 
 export const DEFAULT_INIT_TIMEOUT = 5_000;
-export const FLUSH_INTERVAL = 1_000;
-export const FLUSH_THRESHOLD = 50;
-export const MAX_RECORDS_PER_BATCH = 100;
-export const MAX_BATCH_BYTES = 64 * 1024;
-export const MAX_ERRORS_PER_BATCH = 5;
 const MAX_VIEW_URL_LENGTH = 2048;
-const MAX_PREDEDUPE_KEYS = 1000;
 
 /** The page-world globals this provider reads; declared locally because `src` has no DOM lib. */
 interface PageWorld {
@@ -86,10 +89,11 @@ export class ElectronRendererFlagsProvider {
   private evaluatable = false;
   private tracking: FlagsTracking = { exposures: false, rum: false, evaluations: false };
   private readonly readyWaiters = new Set<{ resolve: () => void; reject: (error: Error) => void }>();
-  private records: EvaluationRecord[] = [];
-  private errors: { message: string; stack?: string }[] = [];
-  private readonly preDedupeKeys = new Set<string>();
-  private flushTimer: unknown;
+  private readonly reporter = new EvaluationReporter({
+    send: (json) => this.bridge?.sendEvaluations(json),
+    setTimeout: (callback, delay) => pageWorld.setTimeout(callback, delay),
+    clearTimeout: (id) => pageWorld.clearTimeout(id),
+  });
   private warnedContextChange = false;
   private closed = false;
 
@@ -191,12 +195,8 @@ export class ElectronRendererFlagsProvider {
 
   /** Flush pending records and release the bridge subscription and the evaluator. */
   onClose(): Promise<void> {
-    this.flush();
+    this.reporter.close();
     this.closed = true;
-    if (this.flushTimer !== undefined) {
-      pageWorld.clearTimeout(this.flushTimer);
-      this.flushTimer = undefined;
-    }
     this.unsubscribe?.();
     this.unsubscribe = undefined;
     this.evaluator.stop();
@@ -245,6 +245,7 @@ export class ElectronRendererFlagsProvider {
     this.revision = snapshot.revision;
     this.snapshotStatus = snapshot.status;
     this.tracking = snapshot.tracking;
+    this.reporter.setTracking(snapshot.tracking);
     this.contextRevision = snapshot.contextRevision;
     if (snapshot.configuration !== undefined || snapshot.status === 'ERROR') {
       this.evaluator.apply(snapshot);
@@ -300,92 +301,23 @@ export class ElectronRendererFlagsProvider {
     if (this.tracking.rum && exposureEligible) {
       pageWorld.DD_RUM?.addFeatureFlagEvaluation?.(flagKey, record.variant);
     }
-    if (!this.tracking.exposures && !this.tracking.evaluations) {
+    if (!this.reporter.active) {
       return;
-    }
-    if (!this.tracking.evaluations) {
-      // Exposure-only mode: main only needs one record per exposure tuple and revision.
-      if (!exposureEligible || !record.doLog) {
-        return;
-      }
-      const key = JSON.stringify([
-        contextRevision,
-        flagKey,
-        record.variant,
-        record.allocationKey,
-        record.configurationId,
-      ]);
-      if (this.preDedupeKeys.has(key)) {
-        return;
-      }
-      this.preDedupeKeys.add(key);
-      if (this.preDedupeKeys.size > MAX_PREDEDUPE_KEYS) {
-        this.preDedupeKeys.delete(this.preDedupeKeys.values().next().value as string);
-      }
     }
     const view = pageWorld.DD_RUM?.getInternalContext?.()?.view;
     const viewUrl = view?.url ?? pageWorld.location?.href;
     if (view?.id !== undefined) record.viewId = view.id;
     if (viewUrl !== undefined) record.viewUrl = viewUrl.slice(0, MAX_VIEW_URL_LENGTH);
-    this.enqueue(record);
+    this.reporter.add(record);
   }
 
-  private enqueue(record: EvaluationRecord): void {
-    this.records.push(record);
-    if (this.records.length >= FLUSH_THRESHOLD) {
-      this.flush();
-    } else {
-      this.scheduleFlush();
-    }
+  /** @internal Queued records, kept on the reporter (test seam for batch bounds). */
+  protected get records(): EvaluationRecord[] {
+    return this.reporter.records;
   }
 
-  private scheduleFlush(): void {
-    if (this.flushTimer === undefined && !this.closed) {
-      this.flushTimer = pageWorld.setTimeout(() => {
-        this.flushTimer = undefined;
-        this.guard(() => this.flush());
-      }, FLUSH_INTERVAL);
-    }
-  }
-
-  /**
-   * Send queued records and errors in batches of at most {@link MAX_RECORDS_PER_BATCH}
-   * records and {@link MAX_BATCH_BYTES} of JSON; errors ride along with the first batch.
-   */
-  private flush(): void {
-    if (this.bridge === undefined || (this.records.length === 0 && this.errors.length === 0)) {
-      return;
-    }
-    const records = this.records;
-    let errors = this.errors;
-    this.records = [];
-    this.errors = [];
-    let batch: EvaluationRecord[] = [];
-    let batchBytes = 0;
-    const send = () => {
-      const payload: EvaluationBatch = { records: batch };
-      if (errors.length > 0) {
-        payload.errors = errors;
-        errors = [];
-      }
-      this.bridge!.sendEvaluations(JSON.stringify(payload));
-      batch = [];
-      batchBytes = 0;
-    };
-    const errorBytes = JSON.stringify(errors).length;
-    for (const record of records) {
-      const recordBytes = JSON.stringify(record).length + 1;
-      const reserved = errors.length > 0 ? errorBytes : 0;
-      if (
-        batch.length > 0 &&
-        (batch.length >= MAX_RECORDS_PER_BATCH || batchBytes + recordBytes + reserved + 32 > MAX_BATCH_BYTES)
-      ) {
-        send();
-      }
-      batch.push(record);
-      batchBytes += recordBytes;
-    }
-    send();
+  protected set records(records: EvaluationRecord[]) {
+    this.reporter.records = records;
   }
 
   /** Run renderer SDK code; an invariant throw is reported to main and never escapes. */
@@ -398,21 +330,6 @@ export class ElectronRendererFlagsProvider {
   }
 
   private reportError(error: unknown): void {
-    if (this.closed) {
-      return;
-    }
-    if (this.errors.length < MAX_ERRORS_PER_BATCH) {
-      const message = error instanceof Error ? error.message : String(error);
-      const entry: { message: string; stack?: string } = { message: message.slice(0, MAX_BATCH_ERROR_MESSAGE_LENGTH) };
-      if (error instanceof Error && typeof error.stack === 'string') {
-        entry.stack = error.stack.slice(0, MAX_BATCH_ERROR_MESSAGE_LENGTH);
-      }
-      this.errors.push(entry);
-    }
-    try {
-      this.scheduleFlush();
-    } catch {
-      // The page-world timer is unavailable: errors ride along with the next batch.
-    }
+    this.reporter.reportError(error);
   }
 }

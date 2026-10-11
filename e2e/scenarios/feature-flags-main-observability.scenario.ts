@@ -180,6 +180,28 @@ test.describe('feature flags observability (main)', () => {
     }
   });
 
+  test('quitting the app sends the pending evaluation metrics (B7)', async ({ intake }) => {
+    const userDataDir = await createUserDataDir();
+    try {
+      const { mainPage, electronApp } = await launchAppManually(intake, userDataDir, {
+        featureFlags: flagsConfiguration(intake),
+      });
+      await mainPage.registerFlagsProvider(PRO_CONTEXT);
+      await mainPage.evaluateFlag('string', 'targeted-flag', 'app-default');
+      await mainPage.evaluateFlag('string', 'targeted-flag', 'app-default');
+      // No flush and no wait for the 10 s aggregation interval: the real quit path must send them.
+      await electronApp.close();
+      await intake.waitForFlagEvaluationCount(1, { timeout: 10_000 });
+      const event = intake
+        .getFlagEvaluations()
+        .map((evaluation) => evaluation.body)
+        .find((body) => (body.flag as { key: string }).key === 'targeted-flag');
+      expect(event).toMatchObject({ evaluation_count: 2 });
+    } finally {
+      await cleanupUserDataDir(userDataDir);
+    }
+  });
+
   test('evaluations are aggregated and sent', async ({ intake }) => {
     const userDataDir = await createUserDataDir();
     try {

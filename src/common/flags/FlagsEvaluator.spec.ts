@@ -9,6 +9,14 @@ import {
   proContext,
   freeContext,
 } from './evaluationCases.specUtil';
+import {
+  PRECOMPUTED_CASES,
+  precomputedOracle,
+  precomputedSnapshot,
+  precomputedWire,
+  precomputedWireV2,
+  otherPrecomputedContext,
+} from './precomputedCases.specUtil';
 
 // A second wire where the pro allocation serves the fallback variation, so a stale
 // configuration is detectable by value.
@@ -131,5 +139,108 @@ describe('FlagsEvaluator', () => {
     expect(evaluator.resolve('string', 'targeted-flag', 'app-default').flagMetadata.allocationKey).toBe(
       'targeted-fallback'
     );
+  });
+
+  describe('precomputed', () => {
+    for (const evaluationCase of PRECOMPUTED_CASES) {
+      it(`precomputed parity › ${evaluationCase.name}`, () => {
+        const evaluator = new FlagsEvaluator();
+        expect(evaluator.apply(precomputedSnapshot({ context: evaluationCase.context }))).toBe(true);
+        const result = evaluator.resolve(evaluationCase.type, evaluationCase.flagKey, evaluationCase.defaultValue);
+        const expected = precomputedOracle(evaluationCase);
+        expect({
+          value: result.value,
+          variant: result.variant,
+          reason: result.reason,
+          errorCode: result.errorCode,
+          flagMetadata: result.flagMetadata,
+        }).toEqual({
+          value: expected.value,
+          variant: expected.variant,
+          reason: expected.reason,
+          errorCode: expected.errorCode,
+          flagMetadata: expected.flagMetadata,
+        });
+      });
+    }
+
+    it('a precomputed snapshot evaluates against its own context only', () => {
+      const evaluator = new FlagsEvaluator();
+      evaluator.apply(precomputedSnapshot({ context: otherPrecomputedContext }));
+      const result = evaluator.resolve('string', 'assigned-flag', 'app-default');
+      expect(result.value).toBe('app-default');
+      expect(result.errorCode).toBe('INVALID_CONTEXT');
+    });
+
+    it('reports TYPE_MISMATCH and FLAG_NOT_FOUND on precomputed flags', () => {
+      const evaluator = new FlagsEvaluator();
+      evaluator.apply(precomputedSnapshot());
+      const mismatch = evaluator.resolve('string', 'bool-flag', 'app-default');
+      expect(mismatch.value).toBe('app-default');
+      expect(mismatch.errorCode).toBe('TYPE_MISMATCH');
+      const missing = evaluator.resolve('string', 'missing-flag', 'app-default');
+      expect(missing.value).toBe('app-default');
+      expect(missing.errorCode).toBe('FLAG_NOT_FOUND');
+    });
+
+    it('switching capability between snapshots never mixes evaluators', () => {
+      const evaluator = new FlagsEvaluator();
+      // rules first
+      evaluator.apply(fixtureSnapshot({ revision: 1 }));
+      expect(evaluator.resolve('string', 'targeted-flag', 'app-default').value).toBe('variant-a');
+      // then precomputed
+      evaluator.apply(precomputedSnapshot({ revision: 2 }));
+      expect(evaluator.resolve('string', 'assigned-flag', 'app-default').value).toBe('variant-a');
+      const staleRules = evaluator.resolve('string', 'targeted-flag', 'app-default');
+      expect(staleRules.value).toBe('app-default');
+      expect(staleRules.errorCode).toBe('FLAG_NOT_FOUND');
+      // and back to rules
+      evaluator.apply(fixtureSnapshot({ revision: 3 }));
+      expect(evaluator.resolve('string', 'targeted-flag', 'app-default').value).toBe('variant-a');
+      const stalePrecomputed = evaluator.resolve('string', 'assigned-flag', 'app-default');
+      expect(stalePrecomputed.value).toBe('app-default');
+      expect(stalePrecomputed.errorCode).toBe('FLAG_NOT_FOUND');
+    });
+
+    it('a newer precomputed wire replaces the previous one', () => {
+      const evaluator = new FlagsEvaluator();
+      evaluator.apply(precomputedSnapshot({ revision: 1 }));
+      expect(evaluator.resolve('string', 'assigned-flag', 'app-default').variant).toBe('variant-a');
+      evaluator.apply(precomputedSnapshot({ revision: 2, configuration: precomputedWireV2() }));
+      const replaced = evaluator.resolve('string', 'assigned-flag', 'app-default');
+      expect(replaced.value).toBe('variant-a2');
+      expect(replaced.flagMetadata.allocationKey).toBe('assign-a2');
+    });
+
+    it('serves defaults while a changed-targeting-key context fetch is in flight (NOT_READY without a configuration)', () => {
+      const evaluator = new FlagsEvaluator();
+      evaluator.apply(precomputedSnapshot({ revision: 1 }));
+      expect(
+        evaluator.apply(
+          precomputedSnapshot({
+            revision: 2,
+            status: 'NOT_READY',
+            configuration: undefined,
+            context: otherPrecomputedContext,
+            contextRevision: 2,
+          })
+        )
+      ).toBe(true);
+      const result = evaluator.resolve('string', 'assigned-flag', 'app-default');
+      expect(result.value).toBe('app-default');
+      expect(result.errorCode).toBe('PROVIDER_NOT_READY');
+      // The new assignments then apply atomically with their context.
+      evaluator.apply(
+        precomputedSnapshot({ revision: 3, context: otherPrecomputedContext, contextRevision: 2, configurationRevision: 2 })
+      );
+      expect(evaluator.contextRevision).toBe(2);
+    });
+
+    it('keeps the same wire string for a precomputed configuration (payloads treat it as opaque)', () => {
+      // The rules wire function serializes the precomputed capability unchanged; the
+      // payload validator accepts any configuration string (opaque, M7 step 3).
+      expect(typeof precomputedWire).toBe('string');
+      expect(precomputedWire.length).toBeGreaterThan(0);
+    });
   });
 });

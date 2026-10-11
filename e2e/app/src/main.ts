@@ -1,7 +1,9 @@
 import '@datadog/electron-sdk/instrument';
-import { ElectronMainFlagsProvider } from '@datadog/electron-sdk';
+import { ElectronMainFlagsProvider, openFlagsChannel } from '@datadog/electron-sdk';
+import { fork, type ChildProcess } from 'node:child_process';
+import { Worker } from 'node:worker_threads';
 import { OpenFeature } from '@openfeature/web-sdk';
-import { app, BrowserWindow, ipcMain, net, protocol } from 'electron';
+import { app, BrowserWindow, ipcMain, net, protocol, utilityProcess } from 'electron';
 import * as http from 'node:http';
 import * as fs from 'node:fs';
 import { join } from 'node:path';
@@ -82,14 +84,142 @@ let flagsHttpPort: number | undefined;
 
 const noop = () => undefined;
 
+/**
+ * Feature flags in spawned processes (e2e): forked children with an app-owned correlated
+ * protocol plus `dd-flags` frame routing, a utility process and a worker with private
+ * ports. Driven from tests through `__ddE2E.flagsChildren` (electronApp.evaluate), so it
+ * also works before any window or init().
+ */
+interface ForkedFlagsChild {
+  child: ChildProcess;
+  pending: Map<number, (result: unknown) => void>;
+}
+const forkedChildren = new Map<string, ForkedFlagsChild>();
+let nextRequestId = 1;
+
+function forkFlagsChild(name: string, endpoint: 'frames' | 'none' = 'frames'): number {
+  const child = fork(join(__dirname, 'flags-child.js'), [], {
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', DD_E2E_FLAGS_CHILD_ENDPOINT: endpoint },
+    execArgv: [],
+    silent: true,
+  });
+  const pending = new Map<number, (result: unknown) => void>();
+  const flags = openFlagsChannel({
+    kind: 'frames',
+    name,
+    owner: child,
+    send: (frame) => child.send({ type: 'dd-flags', frame }, noop),
+  });
+  child.on('message', (message: { type?: string; frame?: unknown; id?: number; result?: unknown }) => {
+    if (message.type === 'dd-flags') {
+      flags.receive(message.frame);
+    } else if (typeof message.id === 'number') {
+      pending.get(message.id)?.(message.result);
+      pending.delete(message.id);
+    }
+  });
+  forkedChildren.set(name, { child, pending });
+  return child.pid ?? -1;
+}
+
+function callFlagsChild(name: string, method: string, params: Record<string, unknown> = {}): Promise<unknown> {
+  const entry = forkedChildren.get(name);
+  if (!entry) return Promise.reject(new Error(`no child ${name}`));
+  const id = nextRequestId++;
+  return new Promise((resolve) => {
+    entry.pending.set(id, (result) => resolve({ id, result }));
+    entry.child.send({ id, method, params });
+  });
+}
+
+async function killAndReforkFlagsChild(name: string): Promise<number> {
+  const entry = forkedChildren.get(name);
+  if (entry) {
+    const exited = new Promise((resolve) => entry.child.once('exit', resolve));
+    entry.child.kill();
+    await exited;
+  }
+  await new Promise((resolve) => setTimeout(resolve, 200)); // backoff
+  return forkFlagsChild(name);
+}
+
+function flagsChildrenState() {
+  const holder = (globalThis as Record<symbol, { channels: unknown[] } | undefined>)[
+    Symbol.for('@datadog/electron-sdk:flagsChildren')
+  ];
+  return {
+    openChannels: holder?.channels.length ?? 0,
+    listeners: Object.fromEntries(
+      [...forkedChildren].map(([name, { child }]) => [
+        name,
+        { message: child.listenerCount('message'), exit: child.listenerCount('exit') },
+      ])
+    ),
+  };
+}
+
+function spawnFlagsWorker(mode: 'serve' | 'once'): Promise<{ result: unknown; exited: boolean }> {
+  const channel = openFlagsChannel({ kind: 'worker', name: `worker-${mode}` });
+  const worker = new Worker(join(__dirname, 'flags-worker.js'), {
+    workerData: { flagsPort: channel.port, mode },
+    transferList: [channel.port],
+  });
+  return new Promise((resolve) => {
+    let result: unknown;
+    worker.once('message', (message: { result: unknown }) => {
+      result = message.result;
+      if (mode === 'serve') {
+        void worker.terminate();
+        resolve({ result, exited: false });
+      }
+    });
+    if (mode === 'once') {
+      const timer = setTimeout(() => {
+        void worker.terminate();
+        resolve({ result, exited: false });
+      }, 5000);
+      worker.once('exit', () => {
+        clearTimeout(timer);
+        resolve({ result, exited: true });
+      });
+    } else {
+      worker.postMessage({ id: 1 });
+    }
+  });
+}
+
+function spawnFlagsUtility(): Promise<unknown> {
+  const channel = openFlagsChannel({ kind: 'utility', name: 'indexer' });
+  const child = utilityProcess.fork(join(__dirname, 'flags-utility.js'));
+  child.postMessage({ type: 'init' }, [channel.port]);
+  return new Promise((resolve) => {
+    child.on('message', (message: { result: unknown }) => {
+      child.kill();
+      resolve(message.result);
+    });
+    child.postMessage({ id: 1 });
+  });
+}
+
+const flagsChildrenControls = {
+  fork: forkFlagsChild,
+  call: callFlagsChild,
+  killAndRefork: killAndReforkFlagsChild,
+  state: flagsChildrenState,
+  spawnWorker: spawnFlagsWorker,
+  spawnUtility: spawnFlagsUtility,
+};
+
 type BeforeSendRum = NonNullable<InitConfiguration['beforeSendRum']>;
 
 const e2eControls: {
   beforeSendRum: BeforeSendRum;
   init?: () => Promise<void>;
   openWindow?: () => void;
+  flagsChildren: typeof flagsChildrenControls;
 } = {
   beforeSendRum: () => true,
+  flagsChildren: flagsChildrenControls,
 };
 
 (globalThis as Record<string, unknown>).__ddE2E = e2eControls;

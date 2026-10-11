@@ -7,6 +7,8 @@ const RETAINED_CONTEXTS = 10;
 interface RetainedContext {
   contextRevision: number;
   context: FlatContext;
+  /** Configuration identity (the precomputed `createdAt`) the context's assignments were computed for (D29). */
+  configurationIdentity?: string;
 }
 
 /**
@@ -36,7 +38,7 @@ export class FlagsState {
       configurationRevision: 0,
       tracking: frozenTracking(tracking),
     });
-    this.retainedContexts.push({ contextRevision: 0, context });
+    this.retainedContexts.push(freezeRetained({ contextRevision: 0, context }));
   }
 
   /** Apply a configuration update: bumps `configurationRevision` when a configuration is served. */
@@ -60,7 +62,7 @@ export class FlagsState {
   applyContextUpdate(update: FlatContext): void {
     const context = frozenCopy(update);
     const contextRevision = this.current.contextRevision + 1;
-    this.retainedContexts.push({ contextRevision, context });
+    this.retainedContexts.push(freezeRetained({ contextRevision, context }));
     while (this.retainedContexts.length > RETAINED_CONTEXTS) {
       this.retainedContexts.shift();
     }
@@ -69,6 +71,57 @@ export class FlagsState {
       revision: this.current.revision + 1,
       context,
       contextRevision,
+    });
+    this.notify();
+  }
+
+  /**
+   * Publish precomputed assignments atomically with the context they were computed for
+   * (M7/D24/D25): configuration, context and status always come from the same fetch.
+   * A new context advances `contextRevision`; the same context (a refresh) keeps it and
+   * replaces the retained configuration identity, so a new `createdAt` re-logs
+   * exposures (D29). A `configuration` of `undefined` publishes defaults for a pending
+   * context (a changed targeting key whose assignments are being fetched).
+   */
+  applyPrecomputedUpdate(update: {
+    configuration?: string;
+    context: FlatContext;
+    status: FlagsStatus;
+    errorMessage?: string;
+    configurationIdentity?: string;
+  }): void {
+    const context = frozenCopy(update.context);
+    const sameContext = contextEquals(this.current.context, context);
+    const configurationChanged =
+      update.configuration !== undefined && update.configuration !== this.current.configuration;
+    let contextRevision = this.current.contextRevision;
+    if (!sameContext) {
+      contextRevision += 1;
+      this.retainedContexts.push(
+        freezeRetained({ contextRevision, context, configurationIdentity: update.configurationIdentity })
+      );
+      while (this.retainedContexts.length > RETAINED_CONTEXTS) {
+        this.retainedContexts.shift();
+      }
+    } else if (update.configurationIdentity !== undefined) {
+      // A refresh of the same context: replace the identity retained for its revision.
+      this.retainedContexts = this.retainedContexts.map((retained) =>
+        retained.contextRevision === contextRevision
+          ? freezeRetained({ ...retained, configurationIdentity: update.configurationIdentity })
+          : retained
+      );
+    }
+    this.current = Object.freeze({
+      ...this.current,
+      revision: this.current.revision + 1,
+      configuration: update.configuration,
+      status: update.status,
+      errorMessage: update.errorMessage,
+      context,
+      contextRevision,
+      configurationRevision: configurationChanged
+        ? this.current.configurationRevision + 1
+        : this.current.configurationRevision,
     });
     this.notify();
   }
@@ -93,6 +146,15 @@ export class FlagsState {
     return this.retainedContexts.find((retained) => retained.contextRevision === contextRevision)?.context;
   }
 
+  /**
+   * The configuration identity (precomputed `createdAt`) retained for a context
+   * revision, or `undefined`. Exposure dedupe falls back to it for records whose
+   * evaluation carried no `configurationId` (D29).
+   */
+  getConfigurationIdentity(contextRevision: number): string | undefined {
+    return this.retainedContexts.find((retained) => retained.contextRevision === contextRevision)?.configurationIdentity;
+  }
+
   /** Subscribe to snapshot changes. Notifications are synchronous and monitored. */
   subscribe(callback: (snapshot: FlagsSnapshot) => void): Subscription {
     return this.changes.subscribe(monitor(callback));
@@ -106,6 +168,14 @@ export class FlagsState {
 /** A frozen copy of a flat context (its values are primitives, so one level is the whole object). */
 function frozenCopy(context: FlatContext): FlatContext {
   return Object.freeze({ ...context });
+}
+
+function freezeRetained(retained: RetainedContext): RetainedContext {
+  return Object.freeze(retained);
+}
+
+function contextEquals(a: FlatContext, b: FlatContext): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 function frozenTracking(tracking: FlagsTracking): FlagsTracking {

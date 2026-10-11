@@ -470,6 +470,63 @@ const showBanner = OpenFeature.getClient().getBooleanValue('show-banner', false)
 - Renderer evaluations are reported to main, which deduplicates exposures across processes. When the Browser RUM SDK runs in the window, evaluations are also added to its views with `addFeatureFlagEvaluation`.
 - Without the preload (or outside Electron) the provider returns application defaults and never throws.
 
+### Feature flags in spawned processes
+
+`child_process.fork` children (including `ELECTRON_RUN_AS_NODE` servers), `utilityProcess` children and `worker_threads` workers evaluate flags locally too. Main keeps the configuration and the context: open one channel per spawned process with `openFlagsChannel`, and connect the child with `connectFlags` from `@datadog/electron-sdk/child` (no Electron import, nothing extra to install in the child). Child evaluations are attributed to the main process: they feed exposures, evaluation metrics and the main view's `feature_flags`.
+
+**The SDK never touches your channels.** It does not listen on, write to, ref or wrap `process`, `parentPort`, `ChildProcess`, `UtilityProcess` or `Worker`. Workers and utility processes get a private port you transfer once; forked children exchange opaque frames you route through your own message protocol. The only listener the SDK adds is `owner.once('exit')` when you pass `owner`.
+
+```typescript
+// main
+import { fork } from 'node:child_process';
+import { Worker } from 'node:worker_threads';
+import { utilityProcess } from 'electron';
+import { openFlagsChannel } from '@datadog/electron-sdk';
+
+// child_process.fork: frames ride your protocol. Re-fork = open a new channel with the same name.
+function startServerHost() {
+  const child = fork(entry, [], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, execArgv: [], silent: true });
+  const flags = openFlagsChannel({
+    kind: 'frames',
+    name: 'server-host',
+    owner: child, // closes the channel when the child exits
+    send: (frame) => child.send({ type: 'dd-flags', frame }, () => {}),
+  });
+  child.on('message', (msg) => (msg.type === 'dd-flags' ? flags.receive(msg.frame) : handleAppMessage(msg)));
+  child.on('exit', () => setTimeout(startServerHost, 1000));
+}
+
+// worker_threads: a private MessagePort in workerData
+const hash = openFlagsChannel({ kind: 'worker', name: 'hash' });
+new Worker(hashWorkerPath, { workerData: { flagsPort: hash.port }, transferList: [hash.port] });
+
+// utilityProcess: a private MessagePortMain with your own first message
+const indexer = openFlagsChannel({ kind: 'utility', name: 'indexer' });
+utilityProcess.fork(indexerPath).postMessage({ type: 'init' }, [indexer.port]);
+```
+
+```typescript
+// child
+import { connectFlags } from '@datadog/electron-sdk/child';
+
+const flags = connectFlags({ send: (frame) => process.send?.({ type: 'dd-flags', frame }) }); // forked child
+process.on('message', (msg) => (msg.type === 'dd-flags' ? flags.receive(msg.frame) : handleRequest(msg)));
+// worker:  const flags = connectFlags(workerData.flagsPort)
+// utility: process.parentPort.once('message', (e) => { flags = connectFlags(e.ports[0]) })
+
+await flags.whenReady({ timeout: 3000 }); // true on READY/STALE; never rejects
+const useNewIndexer = flags.getBooleanValue('new-indexer', false); // sync; the default before the first snapshot
+flags.onStatusChange((status) => {});
+flags.onChange(({ revision, status }) => {
+  // new rules or a new context (even while READY), or a status change; not tracking-only updates
+});
+```
+
+- **Context requests:** `await flags.requestContextUpdate({ targetingKey: workspaceId, tier: 'pro' })` asks main to replace the context. Main normalizes it like `OpenFeature.setContext` and applies it for every process; the promise resolves `{ accepted, contextRevision }` (`accepted: false` when rejected, after 5 s, or before main's `init()`). Pass `onContextRequest: (context, { name }) => boolean` to `openFlagsChannel` to filter requests. Between main's `OpenFeature.setContext` and child requests, the last writer wins, and `OpenFeature.getContext()` in main does not reflect a child request.
+- **Connection order does not matter:** the channel pushes the current snapshot as soon as it opens, answers the child's `hello`, and pushes every newer revision, so the child may connect before or after the channel opens and before or after main's flags are ready. `onChange` fires when new rules or a new context arrive (even while READY) and on each status change (like OpenFeature's `ConfigurationChanged`), and stays quiet for snapshots that change neither; re-read cached flags there. Its listeners are dropped on `close()` and on disconnect.
+- Channels work before `init()` (children read defaults with `NOT_READY` until main's flags start) and answer `DISABLED` when `init()` ran without `featureFlags`. Port channels close when the peer port closes; frames channels close on `close()` or `owner` exit. At most 100 channels are open at once.
+- Up to 1 s (or 50 records) of evaluations can be lost when a child is killed abruptly. `connectFlags(undefined)` returns application defaults with one warning, for standalone runs and tests.
+
 ### Behavior notes
 
 - With no `featureFlags` option, nothing changes: no fetch, no new track, no new IPC traffic.
@@ -477,7 +534,7 @@ const showBanner = OpenFeature.getClient().getBooleanValue('show-banner', false)
 - If the org setting is off (HTTP 4xx), an actionable error is logged and the served configuration is dropped (defaults with `errorCode`) until a successful fetch.
 - Transient failures (timeout, network, HTTP 5xx) keep serving the held configuration.
 - Register the main provider with the initial context before opening windows so early evaluations are correct. A provider registered before `init()` becomes ready (emitting `Ready`) once the rules load.
-- Utility processes and workers are not supported yet.
+- Spawned processes (forks, utility processes, workers) are supported through `openFlagsChannel` and `@datadog/electron-sdk/child`; see above.
 
 See the [Feature Flags architecture notes](docs/ARCHITECTURE.md#feature-flags) for ownership, snapshot lifecycle, origin gating and limits.
 

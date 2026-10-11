@@ -193,6 +193,24 @@ const config = [
     external: ['@openfeature/web-sdk', '@openfeature/core'],
     plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
   },
+  // Child entry: feature flags in spawned processes (M6/G4). Runs in plain Node children,
+  // workers and utility processes: no electron, and OpenFeature values are inlined like main.
+  {
+    input: 'src/entries/child.ts',
+    output: [
+      { file: 'dist/child.cjs', format: 'cjs', sourcemap: true },
+      { file: 'dist/child.mjs', format: 'es', sourcemap: true },
+    ],
+    plugins: sharedPlugins,
+  },
+  {
+    input: 'src/entries/child.ts',
+    output: {
+      file: 'dist/child.d.ts',
+      format: 'esm',
+    },
+    plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
+  },
 ];
 
 export default config;

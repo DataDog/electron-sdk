@@ -29,6 +29,8 @@ interface FlagResult {
   errorCode?: string;
 }
 
+const CHILD_FLAGS_APPS: string[] = ['forge-vite', 'forge-esbuild-esm', 'electron-builder-vite'];
+
 interface IntegrationTestWindow {
   electronAPI?: {
     flushTransport: () => Promise<void>;
@@ -36,6 +38,7 @@ interface IntegrationTestWindow {
     mainFetch: (url: string) => Promise<number>;
     openCustomSessionWindow: () => Promise<void>;
     evaluateFlag: (flagKey: string, defaultValue: string) => Promise<FlagResult>;
+    evaluateFlagInChild?: (flagKey: string, defaultValue: string) => Promise<FlagResult & { status: string }>;
   };
   __integrationTest?: {
     triggerRendererError: (message: string) => void;
@@ -129,6 +132,28 @@ test.describe('feature flags @integration', () => {
     const exposures = intake.getExposures().map((exposure) => exposure.body);
     expect(exposures).toHaveLength(1);
     expect(exposures[0]).toMatchObject({ flag: { key: 'targeted-flag' }, subject: { id: 'user-pro' } });
+  });
+
+  test('forked child evaluates a flag', async ({ app, window }) => {
+    // M6: one CJS app bundle, one ESM app bundle and one packager-copy app cover how the child
+    // entry is resolved (bundled into asar, ESM import, copied node_modules); the other apps add
+    // no different resolution path.
+    test.skip(
+      !CHILD_FLAGS_APPS.includes(app),
+      'the forked child fixture lives in forge-vite, forge-esbuild-esm and electron-builder-vite only'
+    );
+    await expect
+      .poll(
+        async () =>
+          window.evaluate(() =>
+            (globalThis as unknown as IntegrationTestWindow).electronAPI!.evaluateFlagInChild!(
+              'targeted-flag',
+              'default'
+            )
+          ),
+        { timeout: 20_000 }
+      )
+      .toMatchObject({ value: 'variant-a', status: 'READY' });
   });
 
   test('renderer evaluates a flag', async ({ window }) => {

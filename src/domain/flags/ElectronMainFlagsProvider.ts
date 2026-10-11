@@ -143,8 +143,7 @@ export class ElectronMainFlagsProvider {
 
   /** Replace the evaluation context (D1b): `{}` falls back to the anonymous key. */
   onContextChange(_oldContext: EvaluationContext | undefined, newContext: EvaluationContext = {}): Promise<void> {
-    this.applyContext(newContext);
-    return Promise.resolve();
+    return Promise.resolve(this.applyContext(newContext) ?? undefined);
   }
 
   resolveBooleanEvaluation(
@@ -218,15 +217,15 @@ export class ElectronMainFlagsProvider {
     };
   }
 
-  private applyContext(context: EvaluationContext): void {
+  private applyContext(context: EvaluationContext): void | Promise<void> {
     this.context = context;
     if (this.controller === undefined) {
       return;
     }
-    this.applyContextToController(context);
+    return this.applyContextToController(context);
   }
 
-  private applyContextToController(context: EvaluationContext): void {
+  private applyContextToController(context: EvaluationContext): void | Promise<void> {
     const controller = this.controller;
     if (controller === undefined) {
       return;
@@ -236,7 +235,10 @@ export class ElectronMainFlagsProvider {
       display.warn(`Dropped feature flags context attributes: ${droppedKeys.join(', ')}`);
     }
     if (JSON.stringify(controller.state.snapshot().context) !== JSON.stringify(normalized)) {
-      controller.state.applyContextUpdate(normalized);
+      // In precomputed mode this fetches the assignments for the new context and the
+      // returned promise settles once they are applied, so `await OpenFeature.setContext()`
+      // waits for them (D25) and the web-sdk reports RECONCILING meanwhile.
+      return controller.applyContextChange(normalized);
     }
   }
 

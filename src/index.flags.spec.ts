@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Configuration, InitConfiguration } from './config';
 
-const { startFeatureFlagsMock, pendingFrame } = vi.hoisted(() => ({
+const { startFeatureFlagsMock, stopFeatureFlagsMock, quitFlushes, calls, pendingFrame } = vi.hoisted(() => ({
   startFeatureFlagsMock: vi.fn().mockResolvedValue(undefined),
+  stopFeatureFlagsMock: vi.fn().mockResolvedValue(undefined),
+  quitFlushes: [] as (() => Promise<void>)[],
+  calls: [] as string[],
   pendingFrame: { origin: 'app://window', url: 'app://window/', processId: 3, routingId: 4, send: vi.fn() },
 }));
 
@@ -20,6 +23,7 @@ vi.mock('electron', () => ({
 
 vi.mock('./domain/flags/startFeatureFlags', () => ({
   startFeatureFlags: startFeatureFlagsMock,
+  stopFeatureFlags: stopFeatureFlagsMock,
 }));
 
 vi.mock('./domain/telemetry', async (importOriginal) => {
@@ -40,6 +44,7 @@ vi.mock('./domain/session', () => ({
 vi.mock('./domain/replay', () => ({
   ReplayCollection: class {
     static start = vi.fn().mockResolvedValue({ stop: vi.fn(), getApi: vi.fn() });
+    stop = vi.fn().mockResolvedValue(undefined);
   },
 }));
 
@@ -53,7 +58,7 @@ vi.mock('./domain/rum', () => ({
 }));
 
 vi.mock('./transport', () => ({
-  Transport: { create: vi.fn().mockResolvedValue({ flush: vi.fn() }) },
+  Transport: { create: vi.fn().mockResolvedValue({ flush: vi.fn(() => calls.push('transport.flush')) }) },
 }));
 
 vi.mock('./domain/tracing/Tracing', () => ({
@@ -78,6 +83,9 @@ vi.mock('./domain/customer-context', () => ({
 vi.mock('./tools/BeforeQuitHandler', () => ({
   BeforeQuitHandler: class {
     stop = vi.fn();
+    constructor(_app: unknown, flush: () => Promise<void>) {
+      quitFlushes.push(flush);
+    }
   },
 }));
 
@@ -131,5 +139,41 @@ describe('init feature flags wiring', () => {
     expect(handler).toBeDefined();
     expect(JSON.parse(handler!({} as Electron.IpcMainInvokeEvent) as string)).toMatchObject({ status: 'DISABLED' });
     expect(pendingFrame.send).toHaveBeenCalledWith('datadog:flags-update', expect.stringContaining('"DISABLED"'));
+  });
+});
+
+describe('feature flags shutdown and re-init (B7, B8)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    startFeatureFlagsMock.mockResolvedValue(undefined);
+    stopFeatureFlagsMock.mockResolvedValue(undefined);
+    stopFeatureFlagsMock.mockImplementation(() => {
+      calls.push('flags.stop');
+      return Promise.resolve();
+    });
+  });
+
+  it('on quit, stops the flags controller (flushing pending metrics) before the transport flush (B7)', async () => {
+    await init({ ...BASE_CONFIGURATION, featureFlags: { env: 'e2e' } });
+    const onQuit = quitFlushes[quitFlushes.length - 1];
+    calls.length = 0;
+    await onQuit();
+    expect(calls[0]).toBe('flags.stop');
+    expect(calls.slice(1)).toContain('transport.flush');
+  });
+
+  it('a flags stop failure on quit still flushes the transport (B7)', async () => {
+    await init({ ...BASE_CONFIGURATION, featureFlags: { env: 'e2e' } });
+    stopFeatureFlagsMock.mockRejectedValueOnce(new Error('stop failure'));
+    calls.length = 0;
+    await quitFlushes[quitFlushes.length - 1]();
+    expect(calls).toContain('transport.flush');
+  });
+
+  it('re-init without featureFlags stops the previous flags controller (B8)', async () => {
+    await init({ ...BASE_CONFIGURATION, featureFlags: { env: 'e2e' } });
+    stopFeatureFlagsMock.mockClear();
+    await init({ ...BASE_CONFIGURATION });
+    expect(stopFeatureFlagsMock).toHaveBeenCalledTimes(1);
   });
 });

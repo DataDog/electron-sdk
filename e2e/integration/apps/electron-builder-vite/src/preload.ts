@@ -6,4 +6,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   mainFetch: (url: string) => ipcRenderer.invoke('mainFetch', url),
   openCustomSessionWindow: () => ipcRenderer.invoke('openCustomSessionWindow'),
   evaluateFlag: (flagKey: string, defaultValue: string) => ipcRenderer.invoke('evaluateFlag', flagKey, defaultValue),
+  evaluateFlagInChild: (flagKey: string, defaultValue: string) =>
+    ipcRenderer.invoke('evaluateFlagInChild', flagKey, defaultValue),
 });
