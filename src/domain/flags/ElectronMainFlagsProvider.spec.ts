@@ -66,6 +66,7 @@ const okResponse = (binary: Uint8Array = rulesBinary) =>
 function flagsConfiguration(overrides: Record<string, unknown> = {}) {
   return createTestConfiguration({
     featureFlags: {
+      evaluationMode: 'rules',
       env: 'e2e',
       refreshInterval: 0,
       fetchTimeout: 500,

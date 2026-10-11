@@ -792,6 +792,7 @@ describe('buildConfiguration', () => {
       const configuration = buildConfiguration({ ...DEFAULT_CONFIG, env: 'e2e', featureFlags: {} });
       expect(configuration!.featureFlags).toEqual({
         env: 'e2e',
+        evaluationMode: 'precomputed',
         refreshInterval: 300000,
         fetchTimeout: 5000,
         persistConfiguration: true,
@@ -836,6 +837,24 @@ describe('buildConfiguration', () => {
         expect(rejected!.featureFlags).toBeUndefined();
       }
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('featureFlags.excludedPartitions'));
+    });
+
+    it('evaluationMode defaults to precomputed, accepts rules and falls back with display.error on an invalid value', () => {
+      const configuration = buildConfiguration({ ...DEFAULT_CONFIG, env: 'e2e', featureFlags: {} });
+      expect(configuration!.featureFlags!.evaluationMode).toBe('precomputed');
+      const rules = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        env: 'e2e',
+        featureFlags: { evaluationMode: 'rules' },
+      });
+      expect(rules!.featureFlags!.evaluationMode).toBe('rules');
+      const invalid = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        env: 'e2e',
+        featureFlags: { evaluationMode: 'local' as never },
+      });
+      expect(invalid!.featureFlags!.evaluationMode).toBe('precomputed');
+      expect(display.error).toHaveBeenCalledWith(expect.stringContaining('featureFlags.evaluationMode'));
     });
 
     it('clamps refreshInterval below 60s with a warning and keeps 0 as disabled', () => {

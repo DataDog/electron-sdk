@@ -531,6 +531,12 @@ The disk cache is scoped by `sha256(site, env, clientToken, flaggingProxy)` in `
 
 SDK bugs go to telemetry (`monitor` everywhere). Actionable environment issues (org setting off, HTTP 4xx) go to `display.error` with the actionable message. Expected defaults return `errorCode` on details without logging. Flag keys, variants, values, context, and URLs never go to SDK telemetry; dropped renderer records are reported as a rate-limited (one per 10 s) debug log with the count only.
 
+### Spawned processes
+
+Forked children, utility processes and workers connect over a channel opened in main (`openFlagsChannel`) and evaluate locally with the same `FlagsEvaluator` (`@datadog/electron-sdk/child`, which inlines the evaluator and imports nothing from `electron` or `src/domain`). The protocol is a JSON-safe envelope namespaced by `__ddElectronSdkFlags: 1` (`hello`, `snapshot`, `evaluations`, `context-request`, `context-response`), carried on a private SDK-owned port (`worker_threads` `MessagePort`, Electron `MessagePortMain`, both started and unref'd) or as string frames the app routes through its own `child_process` protocol. The SDK never listens on an app-owned object, except `owner.once('exit')` when the app passes `owner`.
+
+`ChildFlagsHub` keeps the open channels in a `Symbol.for('@datadog/electron-sdk:flagsChildren')` holder, so channels opened before `init()` answer `NOT_READY` and receive the real snapshot when `startFeatureFlags` links them (`DISABLED` after an `init()` without flags). Snapshots are pushed on open, on `hello` and on every newer revision. Child batches go through the shared `EvaluationBatchIntake` (the renderer's limits and rate-limited drop telemetry) into the tracking fan-out as `'child'` records, attributed to the main process (view fields dropped, main view `feature_flags`). Context requests are normalized, optionally filtered by `onContextRequest`, and applied to `FlagsState`, so every renderer and child gets the new snapshot.
+
 ### Not supported yet
 
-Utility processes and workers.
+A child-side OpenFeature provider (children use the `connectFlags` client).

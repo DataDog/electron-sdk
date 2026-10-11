@@ -129,4 +129,85 @@ describe('FlagsState', () => {
       expect(state.snapshot().revision).toBe(3);
     });
   });
+
+  describe('precomputed', () => {
+    it('publishes assignments and their context atomically, bumping both revisions', () => {
+      const state = new FlagsState(anonymousContext);
+      state.applyConfigurationUpdate({ configuration: 'wire-1', status: 'READY' });
+      const received: FlagsSnapshot[] = [];
+      state.subscribe((snapshot) => received.push(snapshot));
+      state.applyPrecomputedUpdate({
+        configuration: 'wire-2',
+        context: { targetingKey: 'user-1' },
+        status: 'READY',
+        configurationIdentity: 'created-at-1',
+      });
+      // One notification, one revision bump, both sub-revisions advanced together.
+      expect(received).toHaveLength(1);
+      expect(state.snapshot()).toMatchObject({
+        revision: 2,
+        status: 'READY',
+        configuration: 'wire-2',
+        context: { targetingKey: 'user-1' },
+        contextRevision: 1,
+        configurationRevision: 2,
+      });
+      expect(state.getConfigurationIdentity(1)).toBe('created-at-1');
+    });
+
+    it('keeps the contextRevision when the same context is re-applied with a new configuration, and replaces its identity', () => {
+      const state = new FlagsState(anonymousContext);
+      state.applyPrecomputedUpdate({
+        configuration: 'wire-1',
+        context: { targetingKey: 'user-1', plan: 'pro' },
+        status: 'READY',
+        configurationIdentity: 'created-at-1',
+      });
+      state.applyPrecomputedUpdate({
+        configuration: 'wire-2',
+        context: { targetingKey: 'user-1', plan: 'pro' },
+        status: 'READY',
+        configurationIdentity: 'created-at-2',
+      });
+      expect(state.snapshot().contextRevision).toBe(1);
+      expect(state.snapshot().configurationRevision).toBe(2);
+      expect(state.getConfigurationIdentity(1)).toBe('created-at-2');
+    });
+
+    it('retains the configuration identity per contextRevision and forgets it with the context', () => {
+      const state = new FlagsState(anonymousContext);
+      for (let i = 1; i <= 11; i += 1) {
+        state.applyPrecomputedUpdate({
+          configuration: `wire-${i}`,
+          context: { targetingKey: `user-${i}` },
+          status: 'READY',
+          configurationIdentity: `created-at-${i}`,
+        });
+      }
+      expect(state.getConfigurationIdentity(1)).toBeUndefined();
+      expect(state.getConfigurationIdentity(11)).toBe('created-at-11');
+    });
+
+    it('publishes a pending context with no configuration for a defaults (in-flight) update', () => {
+      const state = new FlagsState(anonymousContext);
+      state.applyPrecomputedUpdate({
+        configuration: 'wire-1',
+        context: { targetingKey: 'user-1' },
+        status: 'READY',
+        configurationIdentity: 'created-at-1',
+      });
+      state.applyPrecomputedUpdate({ configuration: undefined, context: { targetingKey: 'user-2' }, status: 'NOT_READY' });
+      expect(state.snapshot()).toMatchObject({
+        status: 'NOT_READY',
+        configuration: undefined,
+        context: { targetingKey: 'user-2' },
+        contextRevision: 2,
+      });
+      // The configurationRevision is untouched: no configuration was served.
+      expect(state.snapshot().configurationRevision).toBe(1);
+      // The pending context is retained by its revision.
+      expect(state.getContext(2)).toEqual({ targetingKey: 'user-2' });
+      expect(state.getConfigurationIdentity(2)).toBeUndefined();
+    });
+  });
 });

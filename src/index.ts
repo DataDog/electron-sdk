@@ -17,9 +17,18 @@ import { TrackingConsentManager } from './domain/tracking-consent';
 import { EventManager } from './event';
 import { BeforeQuitHandler } from './tools/BeforeQuitHandler';
 import { Transport } from './transport';
-import { startFeatureFlags } from './domain/flags/startFeatureFlags';
+import { startFeatureFlags, stopFeatureFlags } from './domain/flags/startFeatureFlags';
 import { startDisabledFlagsResponder } from './domain/flags/SnapshotPublisher';
+import { disableFlagsChildren } from './domain/flags/ChildFlagsHub';
 export { ElectronMainFlagsProvider } from './domain/flags/ElectronMainFlagsProvider';
+export { openFlagsChannel } from './domain/flags/ChildFlagsHub';
+export type {
+  ContextRequestFilter,
+  ExitOwner,
+  FlagsFramesChannel,
+  FlagsPortChannel,
+  OpenFlagsChannelOptions,
+} from './domain/flags/ChildFlagsHub';
 
 let sessionManager: SessionManager | undefined;
 let eventManager: EventManager | undefined;
@@ -82,12 +91,15 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   if (config.featureFlags !== undefined) {
     await startFeatureFlags(config, { eventManager, hooks, mainViewEmitter: rum.getMainViewEmitter() });
   } else {
+    // Re-init without featureFlags (B8): the previous controller releases everything first.
+    await stopFeatureFlags();
     // Renderer providers waiting on the instrument-time NOT_READY answer learn flags are off.
     startDisabledFlagsResponder();
+    disableFlagsChildren();
   }
 
   beforeQuitHandler?.stop();
-  beforeQuitHandler = new BeforeQuitHandler(app, _flushTransport);
+  beforeQuitHandler = new BeforeQuitHandler(app, flushOnQuit);
 
   // Reported last: the transport must be registered for the event to reach a batch, and every
   // component whose state it describes must be constructed. Monitored so a failure anywhere in the
@@ -328,6 +340,22 @@ export function failFeatureOperation(
     addUsage({ feature: 'add-operation-step-vital', action_type: 'fail' });
     rumApi?.failFeatureOperation(name, failureReason, options);
   });
+}
+
+/**
+ * Quit path (B7): stop feature flags first, so the evaluation aggregator flushes its pending
+ * metrics and the in-flight refresh and cache write settle, then flush the transport. A flags
+ * failure never prevents the transport flush.
+ */
+async function flushOnQuit(): Promise<void> {
+  try {
+    await stopFeatureFlags();
+  } catch (error) {
+    callMonitored(() => {
+      throw error;
+    });
+  }
+  await _flushTransport();
 }
 
 /**

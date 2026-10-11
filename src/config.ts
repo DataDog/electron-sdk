@@ -60,6 +60,20 @@ export interface FeatureFlagsInitConfiguration {
    */
   env?: string;
   /**
+   * How flags are evaluated, defaults to `precomputed`.
+   *
+   * - `precomputed` (default): Datadog computes the assignments for the current
+   *   evaluation context. Every context change and refresh sends the targeting context
+   *   (targeting key and attributes) to Datadog and fetches new assignments, which are
+   *   then evaluated locally and synchronously in every process.
+   * - `rules`: the full rules configuration is fetched with the client token and rules
+   *   are evaluated locally in every process. The evaluation context never leaves the
+   *   device.
+   *
+   * An invalid value falls back to `precomputed` with a `display.error`.
+   */
+  evaluationMode?: 'precomputed' | 'rules';
+  /**
    * Rules refresh interval in milliseconds, defaults to `300000` (5 minutes). `0`
    * disables refresh; values below `60000` are clamped to `60000`.
    */
@@ -114,6 +128,7 @@ export interface FeatureFlagsInitConfiguration {
 
 export interface FeatureFlagsConfiguration {
   env?: string;
+  evaluationMode: 'precomputed' | 'rules';
   refreshInterval: number;
   fetchTimeout: number;
   persistConfiguration: boolean;
@@ -608,6 +623,7 @@ function buildFeatureFlagsConfiguration(
 
   return {
     env,
+    evaluationMode: validateEvaluationMode(options.evaluationMode),
     refreshInterval: validateFlagsNumber(
       options.refreshInterval,
       'refreshInterval',
@@ -638,6 +654,14 @@ function buildFeatureFlagsConfiguration(
     ...(flaggingProxy !== undefined ? { flaggingProxy } : {}),
     excludedPartitions: [...excludedPartitions],
   };
+}
+
+function validateEvaluationMode(value: 'precomputed' | 'rules' | undefined): 'precomputed' | 'rules' {
+  if (value === undefined || value === 'precomputed' || value === 'rules') {
+    return value ?? 'precomputed';
+  }
+  display.error(`featureFlags.evaluationMode must be 'precomputed' or 'rules'; using precomputed.`);
+  return 'precomputed';
 }
 
 function validateFlagsNumber(

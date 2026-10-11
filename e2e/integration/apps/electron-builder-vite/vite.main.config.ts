@@ -12,9 +12,9 @@ export default defineConfig(({ mode }) => {
       outDir: `dist/${workflow}`,
       emptyOutDir: false,
       lib: {
-        entry: 'src/main.ts',
+        entry: { main: 'src/main.ts', 'flags-child': 'src/flags-child.ts' },
         formats: ['cjs'],
-        fileName: () => 'main.js',
+        fileName: (_format, name) => `${name}.js`,
       },
       rollupOptions: {
         external: ['electron', ...builtinModules, ...builtinModules.map((m) => `node:${m}`)],

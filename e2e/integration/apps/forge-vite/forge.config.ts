@@ -30,6 +30,7 @@ const config: ForgeConfig = {
       build: [
         { entry: 'src/main.ts', config: 'vite.main.config.ts', target: 'main' },
         { entry: 'src/preload.ts', config: 'vite.preload.config.ts', target: 'preload' },
+        { entry: 'src/flags-child.ts', config: 'vite.preload.config.ts', target: 'main' },
       ],
       renderer: [
         {

@@ -436,3 +436,75 @@ export class MainPage {
     await this.waitForIpcPropagation();
   }
 }
+
+interface FlagsChildrenControls {
+  fork: (name: string, endpoint?: 'frames' | 'none') => number;
+  call: (name: string, method: string, params?: Record<string, unknown>) => Promise<{ id: number; result: unknown }>;
+  killAndRefork: (name: string) => Promise<number>;
+  state: () => { openChannels: number; listeners: Record<string, { message: number; exit: number }> };
+  spawnWorker: (mode: 'serve' | 'once') => Promise<{ result: unknown; exited: boolean }>;
+  spawnUtility: () => Promise<unknown>;
+}
+
+interface FlagsChildrenGlobal {
+  __ddE2E: { flagsChildren: FlagsChildrenControls };
+}
+
+/**
+ * Drives the e2e app's spawned flags processes from the main process (works before any
+ * window or init()): forked ELECTRON_RUN_AS_NODE children, a utility process and a worker.
+ */
+export class FlagsChildren {
+  constructor(private readonly electronApp: ElectronApplication) {}
+
+  fork(name: string, endpoint: 'frames' | 'none' = 'frames'): Promise<number> {
+    return this.electronApp.evaluate(
+      (_electron, [name, endpoint]) =>
+        (globalThis as unknown as FlagsChildrenGlobal).__ddE2E.flagsChildren.fork(name, endpoint),
+      [name, endpoint] as const
+    );
+  }
+
+  call<T>(name: string, method: string, params: Record<string, unknown> = {}): Promise<{ id: number; result: T }> {
+    return this.electronApp.evaluate(
+      (_electron, [name, method, params]) =>
+        (globalThis as unknown as FlagsChildrenGlobal).__ddE2E.flagsChildren.call(name, method, params),
+      [name, method, params] as const
+    ) as Promise<{ id: number; result: T }>;
+  }
+
+  async evaluate(name: string, flagKey: string, defaultValue = 'default') {
+    return (
+      await this.call<{ value: string; variant?: string; errorCode?: string; status: string }>(name, 'evaluate', {
+        flagKey,
+        defaultValue,
+      })
+    ).result;
+  }
+
+  killAndRefork(name: string): Promise<number> {
+    return this.electronApp.evaluate(
+      (_electron, name) => (globalThis as unknown as FlagsChildrenGlobal).__ddE2E.flagsChildren.killAndRefork(name),
+      name
+    );
+  }
+
+  state() {
+    return this.electronApp.evaluate(() =>
+      (globalThis as unknown as FlagsChildrenGlobal).__ddE2E.flagsChildren.state()
+    );
+  }
+
+  spawnWorker(mode: 'serve' | 'once') {
+    return this.electronApp.evaluate(
+      (_electron, mode) => (globalThis as unknown as FlagsChildrenGlobal).__ddE2E.flagsChildren.spawnWorker(mode),
+      mode
+    );
+  }
+
+  spawnUtility() {
+    return this.electronApp.evaluate(() =>
+      (globalThis as unknown as FlagsChildrenGlobal).__ddE2E.flagsChildren.spawnUtility()
+    );
+  }
+}

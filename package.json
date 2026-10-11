@@ -37,6 +37,11 @@
       "types": "./dist/renderer.d.ts",
       "require": "./dist/renderer.cjs",
       "import": "./dist/renderer.mjs"
+    },
+    "./child": {
+      "types": "./dist/child.d.ts",
+      "require": "./dist/child.cjs",
+      "import": "./dist/child.mjs"
     }
   },
   "typesVersions": {
@@ -55,6 +60,9 @@
       ],
       "renderer": [
         "./dist/renderer.d.ts"
+      ],
+      "child": [
+        "./dist/child.d.ts"
       ]
     }
   },
@@ -94,6 +102,11 @@
     "dist/renderer.mjs",
     "dist/renderer.mjs.map",
     "dist/renderer.d.ts",
+    "dist/child.cjs",
+    "dist/child.cjs.map",
+    "dist/child.mjs",
+    "dist/child.mjs.map",
+    "dist/child.d.ts",
     "README.md",
     "LICENSE",
     "LICENSE-3rdparty.csv"
