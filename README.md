@@ -188,7 +188,7 @@ and their runtime dependencies.
 - **User & Account Info** — Attach user and account identity to all RUM events and traces
 - **Operation Monitoring** _(experimental)_ — Track start / succeed / fail steps of critical user-facing workflows
 - **Event Filtering and Scrubbing** — Modify or discard RUM events with `beforeSendRum`
-- **Feature Flags** — Evaluate Datadog feature flags locally in the main process (see [Feature Flags](#feature-flags))
+- **Feature Flags** — Evaluate Datadog feature flags locally in the main and renderer processes (see [Feature Flags](#feature-flags))
 
 ### Event Filtering and Scrubbing
 
@@ -400,10 +400,9 @@ datadogRum.init({
 
 The Electron SDK advertises a `records` capability over the bridge, so the Browser SDK streams replay records to the main process instead of uploading them itself — no `startSessionReplayRecording()` call is required. See [Renderer process setup](#renderer-process-setup) for general Browser SDK configuration.
 
-
 ## Feature Flags
 
-Evaluate [Datadog Feature Flags](https://docs.datadoghq.com/feature_flags/) locally and synchronously in the main process. Rules are fetched with your client token and evaluated against an OpenFeature evaluation context — no network round-trip per evaluation.
+Evaluate [Datadog Feature Flags](https://docs.datadoghq.com/feature_flags/) locally and synchronously in the main process and in renderer windows. Main fetches the rules with your client token and owns the OpenFeature evaluation context; renderers receive both through the SDK preload — no network round-trip per evaluation.
 
 ### Prerequisites
 
@@ -414,26 +413,26 @@ Evaluate [Datadog Feature Flags](https://docs.datadoghq.com/feature_flags/) loca
 ### Setup
 
 ```typescript
-import { init } from '@datadog/electron-sdk'
-import { ElectronMainFlagsProvider } from '@datadog/electron-sdk'
-import { OpenFeature } from '@openfeature/web-sdk'
+import { init } from '@datadog/electron-sdk';
+import { ElectronMainFlagsProvider } from '@datadog/electron-sdk';
+import { OpenFeature } from '@openfeature/web-sdk';
 
 await init({
   // ...your existing configuration...
   featureFlags: {
-    env: 'production',        // defaults to the top-level env
+    env: 'production', // defaults to the top-level env
     refreshInterval: 300_000, // 5 minutes (default); 0 disables refresh
-    fetchTimeout: 5_000,      // default; clamped to [500, 60000]
+    fetchTimeout: 5_000, // default; clamped to [500, 60000]
   },
-})
+});
 
 // Register the provider with the initial context, before opening windows.
-const provider = new ElectronMainFlagsProvider()
-await OpenFeature.setProviderAndWait(provider)
-await OpenFeature.setContext({ targetingKey: 'user-123', plan: 'pro' })
+const provider = new ElectronMainFlagsProvider();
+await OpenFeature.setProviderAndWait(provider);
+await OpenFeature.setContext({ targetingKey: 'user-123', plan: 'pro' });
 
-const client = OpenFeature.getClient()
-const variant = client.getStringValue('my-flag', 'default')
+const client = OpenFeature.getClient();
+const variant = client.getStringValue('my-flag', 'default');
 ```
 
 ### The evaluation context
@@ -442,15 +441,34 @@ The context is **main-owned and explicit**: set it through `OpenFeature.setConte
 
 ### Options
 
-| Option | Type | Default | Notes |
-|--------|------|---------|-------|
-| `env` | `string` | top-level `env` | Required overall; flags are disabled if neither resolves |
-| `refreshInterval` | `number` | `300000` | 0 disables; values below 60 000 clamp to 60 000 |
-| `fetchTimeout` | `number` | `5000` | Clamped to [500, 60000] |
-| `persistConfiguration` | `boolean` | `true` | Cache the configuration on disk (7-day max age) |
-| `enableExposureLogging` | `boolean` | `true` | Send exposure events |
-| `enableRumFeatureFlagTracking` | `boolean` | `true` | Attach evaluated flags to main RUM views and errors |
-| `flaggingProxy` | `string` | — | Host that serves the rules endpoint; `https://` is prepended when there is no protocol. An invalid value disables flags entirely |
+| Option                         | Type       | Default         | Notes                                                                                                                                                                                                                                                             |
+| ------------------------------ | ---------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `env`                          | `string`   | top-level `env` | Required overall; flags are disabled if neither resolves                                                                                                                                                                                                          |
+| `refreshInterval`              | `number`   | `300000`        | 0 disables; values below 60 000 clamp to 60 000                                                                                                                                                                                                                   |
+| `fetchTimeout`                 | `number`   | `5000`          | Clamped to [500, 60000]                                                                                                                                                                                                                                           |
+| `persistConfiguration`         | `boolean`  | `true`          | Cache the configuration on disk (7-day max age)                                                                                                                                                                                                                   |
+| `enableExposureLogging`        | `boolean`  | `true`          | Send exposure events                                                                                                                                                                                                                                              |
+| `enableRumFeatureFlagTracking` | `boolean`  | `true`          | Attach evaluated flags to main RUM views and errors                                                                                                                                                                                                               |
+| `enableFlagEvaluationTracking` | `boolean`  | `true`          | Send aggregated evaluation counts (`flagevaluation` track, every 10 s)                                                                                                                                                                                            |
+| `flaggingProxy`                | `string`   | —               | Host that serves the rules endpoint; `https://` is prepended when there is no protocol. An invalid value disables flags entirely                                                                                                                                  |
+| `excludedPartitions`           | `string[]` | `[]`            | Session partitions (as passed to `session.fromPartition`, `''` is the default session) where renderers get no flags bridge and no answer from main; RUM keeps working there. Works for sessions created before or after `init()`. An invalid value disables flags |
+
+### Renderer windows
+
+Install `@openfeature/web-sdk` in your renderer bundle and register the renderer provider. It reads the `DatadogFlagsBridge` exposed by the SDK preload, evaluates locally from the snapshots main publishes, and follows main's context — `OpenFeature.setContext()` in a renderer is ignored with a warning.
+
+```typescript
+import { OpenFeature } from '@openfeature/web-sdk';
+import { ElectronRendererFlagsProvider } from '@datadog/electron-sdk/renderer';
+
+// initTimeout (default 5000 ms): how long initialize() waits for a READY snapshot.
+await OpenFeature.setProviderAndWait(new ElectronRendererFlagsProvider({ initTimeout: 5_000 }));
+const showBanner = OpenFeature.getClient().getBooleanValue('show-banner', false);
+```
+
+- Snapshots are only sent to frames whose origin passes `allowedRendererHosts`; other frames get application defaults.
+- Renderer evaluations are reported to main, which deduplicates exposures across processes. When the Browser RUM SDK runs in the window, evaluations are also added to its views with `addFeatureFlagEvaluation`.
+- Without the preload (or outside Electron) the provider returns application defaults and never throws.
 
 ### Behavior notes
 
@@ -458,9 +476,10 @@ The context is **main-owned and explicit**: set it through `OpenFeature.setConte
 - The configuration is cached in `userData/_dd_flags/` and served as `STALE` on restart while offline.
 - If the org setting is off (HTTP 4xx), an actionable error is logged and the served configuration is dropped (defaults with `errorCode`) until a successful fetch.
 - Transient failures (timeout, network, HTTP 5xx) keep serving the held configuration.
-- Register the main provider with the initial context before opening windows so early evaluations are correct.
+- Register the main provider with the initial context before opening windows so early evaluations are correct. A provider registered before `init()` becomes ready (emitting `Ready`) once the rules load.
+- Utility processes and workers are not supported yet.
 
-See [docs/FEATURE_FLAGS.md](docs/FEATURE_FLAGS.md) for the full specification.
+See the [Feature Flags architecture notes](docs/ARCHITECTURE.md#feature-flags) for ownership, snapshot lifecycle, origin gating and limits.
 
 ## API
 

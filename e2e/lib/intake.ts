@@ -182,6 +182,7 @@ export class Intake {
     ddforward: string;
   }[] = [];
   private exposuresMode: 'ok' | 'reject' = 'ok';
+  private flagEvaluations: { timestamp: number; body: Record<string, unknown>; ddforward: string }[] = [];
   private logRequestSizes: number[] = [];
   private replaySegments: ReplaySegment[] = [];
   private traces: Trace[] = [];
@@ -295,6 +296,20 @@ export class Intake {
     while (this.rulesRequests.length < count) {
       if (Date.now() > deadline) {
         throw new Error(`Timed out waiting for ${count} rules requests, got ${this.rulesRequests.length}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+
+  getFlagEvaluations(): { timestamp: number; body: Record<string, unknown>; ddforward: string }[] {
+    return this.flagEvaluations;
+  }
+
+  async waitForFlagEvaluationCount(count: number, options?: { timeout?: number }): Promise<void> {
+    const deadline = Date.now() + (options?.timeout ?? 5000);
+    while (this.flagEvaluations.length < count) {
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out waiting for ${count} flag evaluations, got ${this.flagEvaluations.length}`);
       }
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
@@ -434,6 +449,10 @@ export class Intake {
                 res.writeHead(500, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: 'exposures intake failure' }));
                 return;
+              }
+            } else if (ddforward.startsWith('/api/v2/flagevaluation')) {
+              for (const item of parsedBody as Record<string, unknown>[]) {
+                this.flagEvaluations.push({ timestamp: Date.now(), body: item, ddforward });
               }
             } else if (ddforward.startsWith('/api/v2/spans')) {
               this.storeTraces(parsedBody);
@@ -684,6 +703,7 @@ export class Intake {
     this.rumEvents = [];
     this.rulesRequests = [];
     this.exposures = [];
+    this.flagEvaluations = [];
     this.logs = [];
     this.logRequestSizes = [];
     this.replaySegments = [];

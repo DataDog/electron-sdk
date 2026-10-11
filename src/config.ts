@@ -82,6 +82,10 @@ export interface FeatureFlagsInitConfiguration {
    */
   enableRumFeatureFlagTracking?: boolean;
   /**
+   * Send aggregated flag evaluation metrics (flagevaluation track), defaults to `true`.
+   */
+  enableFlagEvaluationTracking?: boolean;
+  /**
    * Host that serves the rules endpoint. A host without protocol gets `https://`
    * prepended. An invalid value disables feature flags entirely so the client token
    * is never sent to an unintended host.
@@ -115,6 +119,7 @@ export interface FeatureFlagsConfiguration {
   persistConfiguration: boolean;
   enableExposureLogging: boolean;
   enableRumFeatureFlagTracking: boolean;
+  enableFlagEvaluationTracking: boolean;
   flaggingProxy?: string;
   excludedPartitions: string[];
 }
@@ -623,6 +628,11 @@ function buildFeatureFlagsConfiguration(
     enableRumFeatureFlagTracking: validateFlagsBoolean(
       options.enableRumFeatureFlagTracking,
       'enableRumFeatureFlagTracking',
+      true
+    ),
+    enableFlagEvaluationTracking: validateFlagsBoolean(
+      options.enableFlagEvaluationTracking,
+      'enableFlagEvaluationTracking',
       true
     ),
     ...(flaggingProxy !== undefined ? { flaggingProxy } : {}),

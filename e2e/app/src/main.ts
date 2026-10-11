@@ -100,19 +100,31 @@ function startFlagsHttpServer(): Promise<number> {
     return Promise.resolve(flagsHttpPort);
   }
   return new Promise((resolve) => {
+    // The only request paths this server answers, mapped to the fixture files they may
+    // serve: no value derived from the request URL ever reaches the filesystem (CodeQL
+    // "uncontrolled data used in path expression"), and anything else answers 404.
+    const servedFiles: Record<string, string> = {
+      '/': 'main-window.html',
+      '/main-window.js': 'main-window.js',
+    };
     const server = http.createServer((req, res) => {
-      const fileName =
-        (req.url ?? '/').split('?')[0] === '/' ? 'main-window.html' : (req.url ?? '').split('?')[0].slice(1);
+      const served = servedFiles[(req.url ?? '').split('?')[0]];
+      if (served === undefined) {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
       try {
-        const body = fs.readFileSync(join(__dirname, fileName));
-        res.writeHead(200, { 'Content-Type': fileName.endsWith('.js') ? 'application/javascript' : 'text/html' });
+        const body = fs.readFileSync(join(__dirname, served));
+        res.writeHead(200, { 'Content-Type': served.endsWith('.js') ? 'application/javascript' : 'text/html' });
         res.end(body);
       } catch {
         res.writeHead(404);
         res.end();
       }
     });
-    server.listen(0, () => {
+    // Only the test harness (localhost / 127.0.0.1) ever connects.
+    server.listen(0, '127.0.0.1', () => {
       flagsHttpPort = (server.address() as { port: number }).port;
       resolve(flagsHttpPort);
     });

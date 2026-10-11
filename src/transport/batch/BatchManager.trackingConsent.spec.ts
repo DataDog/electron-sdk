@@ -59,7 +59,10 @@ describe('BatchManager tracking consent storage', () => {
     manager = undefined;
     vi.restoreAllMocks();
     vi.useRealTimers();
-    await fs.rm(basePath, { recursive: true, force: true });
+    // stop() is fire-and-forget: a lingering async batch write can still land while the
+    // directory is being removed, which surfaces as ENOTEMPTY on fast machines (the CI
+    // unit job flake). Node's rm retries that error when maxRetries is set.
+    await fs.rm(basePath, { recursive: true, force: true, maxRetries: 10, retryDelay: 20 });
   });
 
   const createConsentManager = (consent: TrackingConsent) => TrackingConsentManager.init(createFormatHooks(), consent);
@@ -113,6 +116,11 @@ describe('BatchManager tracking consent storage', () => {
         track: EventTrack.REPLAY,
         data: { metadata: { start: 1 }, rawBytesCount: 1, compressed: Buffer.from([1]) },
       },
+    ],
+    [EventTrack.EXPOSURES, { kind: EventKind.SERVER, track: EventTrack.EXPOSURES, data: { flag: { key: 'f' } } }],
+    [
+      EventTrack.FLAGEVALUATION,
+      { kind: EventKind.SERVER, track: EventTrack.FLAGEVALUATION, data: { flag: { key: 'f' } } },
     ],
   ] as const)('isolates pending %s events and moves them to authorized storage after grant', async (track, input) => {
     const state = await createConsentManager('pending');
@@ -364,6 +372,20 @@ describe('BatchManager tracking consent storage', () => {
     expect((await storedValues(path.join(basePath, 'rum'))).sort()).toEqual(['accepted', 'authorized']);
     expect(await pendingDirectories(path.join(basePath, 'rum'))).toEqual([]);
   });
+
+  it.each([EventTrack.EXPOSURES, EventTrack.FLAGEVALUATION])(
+    'does not persist %s events while consent is not granted',
+    async (track) => {
+      const state = await createConsentManager('not-granted');
+      manager = await BatchManager.create(config, createBatchConfig(track), state);
+
+      manager.post({ kind: EventKind.SERVER, track, data: { flag: { key: 'f' } } } as unknown as ServerEvent);
+      await manager.flush();
+
+      expect(await pendingDirectories(path.join(basePath, track)).catch(() => [])).toEqual([]);
+      expect(await logFiles(path.join(basePath, track))).toEqual([]);
+    }
+  );
 
   it('does not persist events while consent is not granted', async () => {
     const state = await createConsentManager('not-granted');

@@ -12,6 +12,7 @@ import { CASES, oracle, fixtureWire, fixtureConfiguration } from '../../common/f
 import { ElectronMainFlagsProvider } from './ElectronMainFlagsProvider';
 import { getFeatureFlagsController, startFeatureFlags, unregisterFlagsProvider } from './startFeatureFlags';
 import { registerFlagsChannels } from '../../instrument/registerFlagsChannels';
+import { MAIN_PROCESS_VIEW_URL } from './EvaluationAggregator';
 
 const { ipcMain, frames, sessions } = await vi.hoisted(async () => {
   const { EventEmitter } = await import('node:events');
@@ -71,6 +72,7 @@ function flagsConfiguration(overrides: Record<string, unknown> = {}) {
       persistConfiguration: false,
       enableExposureLogging: true,
       enableRumFeatureFlagTracking: true,
+      enableFlagEvaluationTracking: true,
       excludedPartitions: [],
       ...overrides,
     },
@@ -391,7 +393,7 @@ describe('ElectronMainFlagsProvider', () => {
 
   it('records the context revision used at resolution even when an after hook changes the context', async () => {
     fetchHandler = () => Promise.resolve(okResponse());
-    const controller = (await startFlags())!;
+    const controller = (await startFlags({ enableFlagEvaluationTracking: false }))!;
     const provider = new ElectronMainFlagsProvider();
     await OpenFeature.setProviderAndWait(provider, { targetingKey: 'user-pro', plan: 'pro' });
     const usedRevision = controller.state.snapshot().contextRevision;
@@ -408,7 +410,61 @@ describe('ElectronMainFlagsProvider', () => {
     expect((exposures[0].data as { subject: { id: string } }).subject.id).toBe('user-pro');
   });
 
-  it('routes renderer records through the shared fan-out to exposures, but not main RUM', async () => {
+  it('a throwing metrics sink leaves the exposure sink and the returned value unaffected (A3)', async () => {
+    const { EvaluationAggregator } = await import('./EvaluationAggregator');
+    const add = vi.spyOn(EvaluationAggregator.prototype, 'add').mockImplementation(() => {
+      throw new Error('aggregator failure');
+    });
+    fetchHandler = () => Promise.resolve(okResponse());
+    await startFlags();
+    const provider = new ElectronMainFlagsProvider();
+    await OpenFeature.setProviderAndWait(provider, { targetingKey: 'user-pro', plan: 'pro' });
+    expect(OpenFeature.getClient().getStringValue('targeted-flag', 'default')).toBe('variant-a');
+    expect(add).toHaveBeenCalled();
+    expect(serverEvents.filter((event) => event.track === EventTrack.EXPOSURES)).toHaveLength(1);
+    add.mockRestore();
+  });
+
+  it('a throwing RUM sink still lets the metrics sink receive the evaluation (A3)', async () => {
+    const { FeatureFlagsRumContext } = await import('./FeatureFlagsRumContext');
+    const { EvaluationAggregator } = await import('./EvaluationAggregator');
+    const record = vi.spyOn(FeatureFlagsRumContext.prototype, 'record').mockImplementation(() => {
+      throw new Error('rum failure');
+    });
+    const add = vi.spyOn(EvaluationAggregator.prototype, 'add');
+    fetchHandler = () => Promise.resolve(okResponse());
+    await startFlags();
+    const provider = new ElectronMainFlagsProvider();
+    await OpenFeature.setProviderAndWait(provider, { targetingKey: 'user-pro', plan: 'pro' });
+    expect(OpenFeature.getClient().getStringValue('targeted-flag', 'default')).toBe('variant-a');
+    expect(record).toHaveBeenCalled();
+    expect(add).toHaveBeenCalledWith(expect.objectContaining({ flagKey: 'targeted-flag' }));
+    record.mockRestore();
+    add.mockRestore();
+  });
+
+  it('feeds exposures and evaluation metrics independently, including default and error evaluations', async () => {
+    fetchHandler = () => Promise.resolve(okResponse());
+    const controller = (await startFlags())!;
+    expect(controller.tracking.evaluations).toBe(true);
+    const provider = new ElectronMainFlagsProvider();
+    await OpenFeature.setProviderAndWait(provider, { targetingKey: 'user-pro', plan: 'pro' });
+    const client = OpenFeature.getClient();
+    client.getStringValue('targeted-flag', 'default');
+    client.getStringValue('targeted-flag', 'default');
+    client.getBooleanValue('missing-flag', false);
+    await controller.stop();
+    expect(serverEvents.filter((event) => event.track === EventTrack.EXPOSURES)).toHaveLength(1);
+    const metrics = serverEvents
+      .filter((event) => event.track === EventTrack.FLAGEVALUATION)
+      .map((event) => event.data as { flag: { key: string }; evaluation_count: number; runtime_default_used: boolean });
+    expect(metrics).toEqual([
+      expect.objectContaining({ flag: { key: 'targeted-flag' }, evaluation_count: 2, runtime_default_used: false }),
+      expect.objectContaining({ flag: { key: 'missing-flag' }, evaluation_count: 1, runtime_default_used: true }),
+    ]);
+  });
+
+  it('routes renderer records through the shared fan-out to exposures and metrics, but not main RUM', async () => {
     fetchHandler = () => Promise.resolve(okResponse());
     const controller = (await startFlags())!;
     const provider = new ElectronMainFlagsProvider();
@@ -437,7 +493,19 @@ describe('ElectronMainFlagsProvider', () => {
     );
     await restarted.stop();
     expect(serverEvents.filter((event) => event.track === EventTrack.EXPOSURES)).toHaveLength(1);
+    const metrics = serverEvents.filter((event) => event.track === EventTrack.FLAGEVALUATION);
+    expect(metrics).toHaveLength(1);
+    expect(JSON.stringify(metrics[0].data)).toContain('app://window/index.html');
+    expect(JSON.stringify(metrics[0].data)).not.toContain(MAIN_PROCESS_VIEW_URL);
     expect(requestViewUpdate).not.toHaveBeenCalled();
+  });
+
+  it('does not advertise evaluation tracking in snapshots when enableFlagEvaluationTracking is false', async () => {
+    fetchHandler = () => Promise.resolve(okResponse());
+    const controller = (await startFlags({ enableFlagEvaluationTracking: false }))!;
+    expect(controller.state.snapshot().tracking).toEqual({ exposures: true, rum: true, evaluations: false });
+    await controller.stop();
+    expect(serverEvents.filter((event) => event.track === EventTrack.FLAGEVALUATION)).toHaveLength(0);
   });
 
   it.each([

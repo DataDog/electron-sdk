@@ -75,7 +75,9 @@ describe('Transport', () => {
       finishCleanup();
       await startup;
       expect(mockClearPendingData.mock.calls.map(([trackPath]) => trackPath).sort()).toEqual(
-        ['rum', 'spans', 'dd_logs', 'profile', 'replay', 'exposures'].map((track) => `/mock/user/data/${track}`).sort()
+        ['rum', 'spans', 'dd_logs', 'profile', 'replay', 'exposures', 'flagevaluation']
+          .map((track) => `/mock/user/data/${track}`)
+          .sort()
       );
       expect(mockBatchCreate).toHaveBeenCalledTimes(3);
     });
@@ -113,6 +115,7 @@ describe('Transport', () => {
           persistConfiguration: true,
           enableExposureLogging: true,
           enableRumFeatureFlagTracking: true,
+          enableFlagEvaluationTracking: true,
           excludedPartitions: [],
         },
       });
@@ -142,6 +145,7 @@ describe('Transport', () => {
           persistConfiguration: true,
           enableExposureLogging: false,
           enableRumFeatureFlagTracking: true,
+          enableFlagEvaluationTracking: true,
           excludedPartitions: [],
         },
       });
@@ -149,6 +153,38 @@ describe('Transport', () => {
       expect(
         mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType)
       ).not.toContain(EventTrack.EXPOSURES);
+    });
+
+    it.each([
+      [true, true],
+      [false, false],
+    ])(
+      'sets up the FLAGEVALUATION track only when enableFlagEvaluationTracking is on (%s)',
+      async (enableFlagEvaluationTracking, expected) => {
+        const flagsConfig = createTestConfiguration({
+          featureFlags: {
+            env: 'e2e',
+            refreshInterval: 300000,
+            fetchTimeout: 5000,
+            persistConfiguration: true,
+            enableExposureLogging: true,
+            enableRumFeatureFlagTracking: true,
+            enableFlagEvaluationTracking,
+            excludedPartitions: [],
+          },
+        });
+        await Transport.create(flagsConfig, eventManager, trackingConsentManager);
+        const tracks = mockBatchCreate.mock.calls.map(
+          ([, options]) => (options as { trackType: EventTrack }).trackType
+        );
+        expect(tracks.includes(EventTrack.FLAGEVALUATION)).toBe(expected);
+      }
+    );
+
+    it('never sets up the FLAGEVALUATION track without featureFlags', async () => {
+      await Transport.create(config, eventManager, trackingConsentManager);
+      const tracks = mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType);
+      expect(tracks).not.toContain(EventTrack.FLAGEVALUATION);
     });
 
     it('should skip the REPLAY track when replay is disabled', async () => {

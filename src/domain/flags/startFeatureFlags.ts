@@ -13,6 +13,7 @@ import { FeatureFlagsRumContext } from './FeatureFlagsRumContext';
 import { SnapshotPublisher } from './SnapshotPublisher';
 import { getFlagsHolder } from '../../common/flags/flagsHolder';
 import { EvaluationRecordReceiver } from './EvaluationRecordReceiver';
+import { startEvaluationAggregator } from './EvaluationAggregator';
 import { isAllowedRendererFrame } from '../../assembly';
 import { FlagsOwner } from './FlagsOwner';
 import { FlagsState } from './FlagsState';
@@ -40,7 +41,7 @@ export interface FeatureFlagsController {
   evaluator: FlagsEvaluator;
   tracking: FlagsTracking;
   fetchTimeout: number;
-  /** Fan a main-process evaluation out to every enabled sink (exposures, main RUM). */
+  /** Fan a main-process evaluation out to every enabled sink (exposures, main RUM, metrics). */
   recordEvaluation: (record: EvaluationRecord) => void;
   /** Resolves once the in-flight configuration fetch has been applied. */
   settled: () => Promise<void>;
@@ -74,7 +75,7 @@ function getProviderHolder(): ProviderHolder {
 /**
  * Start the feature flags subsystem when `featureFlags` is enabled (M3.7). Creates the
  * state, the anonymous key store, the fetcher, the disk cache, the exposure collector,
- * the main RUM flag context, the snapshot publisher and the
+ * the main RUM flag context, the evaluation metrics, the snapshot publisher and the
  * renderer record receiver, and links any provider the application already constructed.
  * The owner starts last: the cached configuration is served (STALE) to every linked
  * component before the first network fetch, which is never awaited (B12). Returns the
@@ -102,8 +103,7 @@ export async function startFeatureFlags(
   const tracking: FlagsTracking = {
     exposures: flagsConfiguration.enableExposureLogging,
     rum: flagsConfiguration.enableRumFeatureFlagTracking,
-    // Evaluation metrics are not sent yet.
-    evaluations: false,
+    evaluations: flagsConfiguration.enableFlagEvaluationTracking,
   };
   const env = flagsConfiguration.env ?? '';
   const flaggingProxy =
@@ -147,6 +147,16 @@ export async function startFeatureFlags(
     requestViewUpdate: deps.mainViewEmitter.requestViewUpdate,
     enabled: () => tracking.rum,
   });
+  const evaluationAggregator = startEvaluationAggregator(
+    state,
+    {
+      service: configuration.service,
+      applicationId: configuration.applicationId,
+      enableFlagEvaluationTracking: flagsConfiguration.enableFlagEvaluationTracking,
+    },
+    deps.eventManager
+  );
+
   /**
    * The shared tracking fan-out (B9): main and renderer records reach the same sinks.
    * Exposures and metrics take every record (the collector applies the upstream skip
@@ -160,6 +170,9 @@ export async function startFeatureFlags(
     }
     if (source === 'main' && tracking.rum && record.variant !== undefined && record.errorCode === undefined) {
       callMonitored(() => rumContext.record(record.flagKey, record.variant!, record.timestamp));
+    }
+    if (evaluationAggregator !== undefined) {
+      callMonitored(() => evaluationAggregator.add(record));
     }
   };
 
@@ -194,6 +207,7 @@ export async function startFeatureFlags(
       await owner.stop();
       collector.stop();
       rumContext.stop();
+      evaluationAggregator?.stop();
       evaluatorSubscription.unsubscribe();
       evaluator.stop();
     },

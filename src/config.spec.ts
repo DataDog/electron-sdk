@@ -797,8 +797,26 @@ describe('buildConfiguration', () => {
         persistConfiguration: true,
         enableExposureLogging: true,
         enableRumFeatureFlagTracking: true,
+        enableFlagEvaluationTracking: true,
         excludedPartitions: [],
       });
+    });
+
+    it('enableFlagEvaluationTracking defaults to true and validates booleans, naming the option', () => {
+      const errorSpy = vi.spyOn(display, 'error').mockImplementation(() => undefined);
+      const configuration = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        env: 'e2e',
+        featureFlags: { enableFlagEvaluationTracking: 'yes' as never },
+      });
+      expect(configuration!.featureFlags!.enableFlagEvaluationTracking).toBe(true);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('featureFlags.enableFlagEvaluationTracking'));
+      const disabled = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        env: 'e2e',
+        featureFlags: { enableFlagEvaluationTracking: false },
+      });
+      expect(disabled!.featureFlags!.enableFlagEvaluationTracking).toBe(false);
     });
 
     it('keeps excludedPartitions and disables flags with display.error for an invalid value', () => {

@@ -469,3 +469,54 @@ The `copyPackageTree` function in all three bundler plugins walks only the `depe
 - **Optional fields** (e.g. `env`): invalid values silently fall back to `undefined`.
 
 See `src/config.ts`.
+
+## Feature Flags
+
+### Ownership
+
+Main owns three things: the rules configuration, the evaluation context, and readiness. Each process evaluates flags locally and synchronously with `DatadogCoreProvider` from `@datadog/openfeature-browser/rules-based`, inlined by Rollup into `dist/index.*` (main) and `dist/renderer.*` (renderers; OpenFeature is an external optional peer there).
+
+### Snapshot lifecycle
+
+`FlagsState` is the single source of truth. Every mutation (configuration update, context update, tracking toggle) publishes a new immutable snapshot to subscribers synchronously. Snapshots are monotonically revisioned; the evaluator ignores non-newer revisions.
+
+`startFeatureFlags` links every consumer (evaluator, snapshot publisher, renderer record receiver, any provider constructed before `init()`) before `FlagsOwner` starts, so the cached configuration reaches all of them; the first network fetch is never awaited by `init()`. `FlagsOwner` serves the disk cache as `STALE` before the first network fetch, applies fetch outcomes (`READY` on success, `STALE` on warm failure with a held configuration, `ERROR` on authoritative failure with the configuration dropped), refreshes on `refreshInterval`, and persists valid configurations through a serialized pending-write chain.
+
+### Origin gating
+
+Snapshots carry the targeting context, so they follow the same origin policy as the RUM bridge. The `SnapshotPublisher` addresses the subscribing **frame** (not the whole `webContents`), re-checks the frame current origin and liveness before every push, and drops the subscription on navigation or destruction. The preload bridge is exposed per-session (covering partitions) through the existing preload registration.
+
+Before init, the instrument-time handler answers a minimal `NOT_READY` snapshot (no context, no configuration) and records the frame; at init the publisher re-checks those frames and pushes them the current snapshot, or `DISABLED` when `featureFlags` is not configured.
+
+### Excluded sessions
+
+The shared preload runs on every session and a preload cannot be unregistered, so `featureFlags.excludedPartitions` is enforced on both sides: the preload asks main synchronously (`datadog:flags-bridge-enabled`) and does not expose `DatadogFlagsBridge` in an excluded session, and main gives no answer to snapshot requests, never pushes, and drops evaluation records from excluded senders. Partitions are compared by session identity (`session.fromPartition`) when a renderer talks to main, so sessions created after `init()` are covered. `DatadogEventBridge` is untouched.
+
+### Channels
+
+- `datadog:flags-snapshot` (invoke): renderer requests the current snapshot
+- `datadog:flags-update` (main to frame push): snapshot updates
+- `datadog:flags-evaluations` (renderer to main send): batched evaluation records
+- `datadog:flags-bridge-enabled` (preload to main sync): whether this session may expose the bridge
+
+The `datadog:` prefix keeps them out of tracing spans.
+
+### Exposure deduplication
+
+Main is the single dedupe authority. Every evaluation record carries its originating `contextRevision`; main resolves each record to the exact context it used (retained for the last 10 revisions). The dedupe key hashes (subject id, subject attributes, flag key, allocation key, variant key, configuration id), bounded LRU of 1000 entries, never cleared on context change.
+
+### Tracking fan-out
+
+Main and renderer records go through one fan-out: exposures (the collector applies the upstream skip rules), evaluation metrics (every evaluation counts, defaults and errors included, bucketed per view url, emitted in the upstream `FlagEvaluationEvent` shape) and, for main records only, the main RUM flag context. Renderers report to their own `DD_RUM`. Each record carries the `contextRevision` captured when the flag was resolved.
+
+### Cache and limits
+
+The disk cache is scoped by `sha256(site, env, clientToken, flaggingProxy)` in `userData/_dd_flags/`, with a 7-day max age. Batches from renderers are capped at 100 records and 64 KiB; oversize or malformed payloads are rejected whole, individual invalid records are dropped and counted.
+
+### Error routing
+
+SDK bugs go to telemetry (`monitor` everywhere). Actionable environment issues (org setting off, HTTP 4xx) go to `display.error` with the actionable message. Expected defaults return `errorCode` on details without logging. Flag keys, variants, values, context, and URLs never go to SDK telemetry; dropped renderer records are reported as a rate-limited (one per 10 s) debug log with the count only.
+
+### Not supported yet
+
+Utility processes and workers.

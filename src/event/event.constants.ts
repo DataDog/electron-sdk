@@ -11,6 +11,7 @@ export const EventTrack = {
   PROFILE: 'profile',
   REPLAY: 'replay',
   EXPOSURES: 'exposures',
+  FLAGEVALUATION: 'flagevaluation',
 } as const;
 export type EventTrack = (typeof EventTrack)[keyof typeof EventTrack];
 
