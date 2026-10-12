@@ -90,6 +90,11 @@ export class DiskValueHistory<T> {
     return this.history.getEntries();
   }
 
+  /** Resolves once the writes queued so far have settled. */
+  flush(): Promise<void> {
+    return this.pendingWrite;
+  }
+
   private persistToDisk(): void {
     const snapshot = JSON.stringify(this.history.getEntries());
     this.pendingWrite = this.pendingWrite

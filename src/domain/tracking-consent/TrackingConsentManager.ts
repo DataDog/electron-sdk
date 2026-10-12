@@ -46,6 +46,8 @@ export class TrackingConsentManager {
       return consent === 'granted' || consent === 'pending' ? SKIPPED : DISCARDED;
     });
 
+    // Until this write lands, a crash of this launch would be judged by the previous launch's consent.
+    await history.flush();
     return manager;
   }
 

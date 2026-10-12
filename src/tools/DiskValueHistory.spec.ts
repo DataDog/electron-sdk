@@ -230,4 +230,33 @@ describe('DiskValueHistory', () => {
       expect(history.find(T10)).toBe('session-a');
     });
   });
+
+  describe('flush()', () => {
+    it('resolves once the queued writes have settled', async () => {
+      mfs.readFile.mockRejectedValue(new Error('ENOENT'));
+      let completeWrite!: () => void;
+      mfs.writeFile.mockReturnValue(new Promise<void>((resolve) => (completeWrite = resolve)));
+      const history = await DiskValueHistory.init<string>({ filePath: FILE_PATH, expireDelay: EXPIRE_DELAY });
+
+      history.add('session-a', T0);
+      let flushed = false;
+      void history.flush().then(() => (flushed = true));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(flushed).toBe(false);
+
+      completeWrite();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(flushed).toBe(true);
+    });
+
+    it('resolves when a write fails', async () => {
+      mfs.readFile.mockRejectedValue(new Error('ENOENT'));
+      mfs.writeFile.mockRejectedValue(new Error('disk full'));
+      const history = await DiskValueHistory.init<string>({ filePath: FILE_PATH, expireDelay: EXPIRE_DELAY });
+
+      history.add('session-a', T0);
+
+      await expect(history.flush()).resolves.toBeUndefined();
+    });
+  });
 });
