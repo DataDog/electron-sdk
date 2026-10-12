@@ -156,6 +156,8 @@ async function launchApp(
   Object.assign(env, extraEnv);
 
   const electronApp = await electron.launch({
+    // Surface launch failures before the 30-second test timeout.
+    timeout: process.platform === 'win32' ? 20_000 : undefined,
     executablePath: electronPath,
     args: [join(e2eAppDirectory, 'dist/main.js'), `--user-data-dir=${userDataDir}`],
     env,
@@ -192,8 +194,13 @@ export async function launchAppManually(
   sdkConfigOverrides: Partial<InitConfiguration> | null = null
 ): Promise<{ electronApp: ElectronApplication; window: Page; mainPage: MainPage }> {
   const electronApp = await launchApp(intake, userDataDir, null, sdkConfigOverrides);
-  const { window } = await waitForWindowLoaded(electronApp);
-  return { electronApp, window, mainPage: new MainPage(window) };
+  try {
+    const { window } = await waitForWindowLoaded(electronApp);
+    return { electronApp, window, mainPage: new MainPage(window) };
+  } catch (error) {
+    await electronApp.close();
+    throw error;
+  }
 }
 
 export async function launchDeferredInitApp(

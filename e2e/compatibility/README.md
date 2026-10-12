@@ -1,7 +1,7 @@
 # Electron compatibility tests
 
 Run the maintained E2E and integration apps against the Electron versions in `config.json`.
-Current support is Linux and macOS. Each run packages the current SDK checkout and prepares isolated
+The suite supports Linux, macOS, and Windows. Each run packages the current SDK checkout and prepares isolated
 apps under `generated/<target>/`, leaving the source templates and their lockfiles unchanged.
 
 ```sh
@@ -34,16 +34,22 @@ Compatibility tests run automatically after the regular checks pass on every pus
 (`main`), including PR merges. Feature-branch pushes keep the regular checks without the compatibility matrix.
 
 To run compatibility tests separately, start a web or scheduled pipeline with `COMPATIBILITY_TESTS=true`.
-This skips the regular checks and generates Linux and macOS jobs for every configured target.
+This skips the regular checks and generates Linux, macOS, and Windows jobs for every configured target.
 The matrix covers stable Electron releases and a pinned prerelease, excluding nightlies.
 Every compatibility job must pass.
 
 Optional comma-separated filters limit the matrix:
 
-- `DD_ELECTRON_COMPATIBILITY_ENVIRONMENTS=linux,macos`
+- `DD_ELECTRON_COMPATIBILITY_ENVIRONMENTS=linux,macos,windows`
 - `DD_ELECTRON_COMPATIBILITY_TARGETS=electron-41`
 
 Generate the child pipeline locally with `yarn test:compatibility:ci:generate`.
+Electron targets are defined in `config.json`; runner tags, images, and platform-specific jobs are
+defined together in `scripts/lib/compatibilityCi.ts`.
+The complete matrix contains 21 jobs: seven Electron targets on three platforms.
 Linux uses the existing CI image with Xvfb. macOS uses the Sequoia ARM64 runner and a job-local npm
 cache to avoid permissions on the runner's shared cache. Logs, Playwright results and target metadata
 are uploaded even on failure. Shell pipelines use `pipefail` so logging cannot hide a failed command.
+
+Windows jobs build and run a container on the shared `windows-v2:2022` runner. See the
+[Windows guide](../../ci/windows/README.md) for local commands, dependencies, and diagnostics.

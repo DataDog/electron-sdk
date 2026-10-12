@@ -18,9 +18,14 @@ export default defineConfig<IntegrationFixtures>({
   timeout: 60000, // Integration scenarios include app startup and event propagation.
   workers: 1, // Serial execution
   retries: process.env.CI ? 2 : 0,
-  reporter: process.env.CI ? [['html'], ['list']] : 'list',
+  maxFailures: process.platform === 'win32' ? 3 : 0,
+  reporter: [
+    ...(process.env.CI ? [['html'] as const] : []),
+    ['list'],
+    ...(process.platform === 'win32' ? [['./lib/windowsFailureReporter.ts'] as const] : []),
+  ],
   use: {
-    trace: 'on-first-retry',
+    trace: process.platform === 'win32' ? 'retain-on-failure' : 'on-first-retry',
   },
   projects: [
     {

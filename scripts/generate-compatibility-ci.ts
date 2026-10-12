@@ -1,4 +1,4 @@
-/** Generates the scheduled compatibility child pipeline from its canonical JSON config. */
+/** Generates the compatibility child pipeline from Electron targets and CI environment definitions. */
 import fs from 'node:fs';
 import path from 'node:path';
 

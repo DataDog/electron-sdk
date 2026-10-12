@@ -113,7 +113,8 @@ export async function launchApp(
 }
 
 async function launchAndAssertVersion(options: Parameters<typeof electron.launch>[0]): Promise<ElectronApplication> {
-  const app = await electron.launch(options);
+  // Surface launch failures before the integration test timeout.
+  const app = await electron.launch({ ...options, timeout: process.platform === 'win32' ? 20_000 : undefined });
   try {
     await assertExpectedElectronVersion(app);
     return app;

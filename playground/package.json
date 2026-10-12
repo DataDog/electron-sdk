@@ -6,20 +6,20 @@
   "description": "Playground for testing @datadog/electron-sdk",
   "main": "./dist/main.js",
   "scripts": {
-    "build": "tsc && yarn build:renderer && yarn build:secondary-renderer && cp src/index.html dist/index.html && cp src/secondary.html dist/secondary.html",
-    "build:renderer": "esbuild src/renderer.ts --bundle --format=esm --outfile=dist/renderer.js --sourcemap",
-    "build:secondary-renderer": "esbuild src/secondary-renderer.ts --bundle --format=esm --outfile=dist/secondary-renderer.js --sourcemap",
-    "build:watch": "concurrently \"tsc --watch\" \"yarn build:renderer --watch\" \"yarn build:secondary-renderer --watch\"",
+    "build": "node ../scripts/playground/build.ts",
+    "build:watch": "node ../scripts/playground/build.ts --watch",
     "start": "yarn build && electron .",
     "dev": "yarn build && concurrently \"yarn build:watch\" \"electron .\"",
+    "upload-sourcemaps": "node ../scripts/playground/upload-sourcemaps.ts",
     "test": "yarn build && playwright test -c test/playwright.config.ts"
   },
   "dependencies": {
-    "@datadog/browser-logs": "7.5.0",
-    "@datadog/browser-rum": "7.5.0",
+    "@datadog/browser-logs": "7.14.0",
+    "@datadog/browser-rum": "7.14.0",
     "@datadog/electron-sdk": "portal:.."
   },
   "devDependencies": {
+    "@datadog/datadog-ci": "5.24.1",
     "@playwright/test": "1.61.1",
     "@types/node": "25.9.5",
     "chokidar": "5.0.0",

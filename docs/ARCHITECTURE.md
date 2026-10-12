@@ -279,7 +279,7 @@ the host, so failing to relay an event would lose it. Transport therefore regist
 before `RendererPipeline` opens the IPC listener; the track stays active even when sampling is zero so
 persisted batches from an earlier launch can be recovered.
 
-`RendererPipeline` validates `date`, `message`, and `status`, then preserves the renderer-owned log
+`RendererPipeline` validates `date`, then preserves the renderer-owned log
 fields. Main-process hooks replace the stub application and session ids and fill missing `usr` and
 `account` context. Logs without a covering main-process session are still forwarded with null session
 ids. Uploads keep `ddsource=browser`, while `DD-EVP-ORIGIN: electron` identifies the uploader.
