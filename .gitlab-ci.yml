@@ -9,7 +9,7 @@ variables:
     description: 'Run compatibility tests instead of regular checks in web or scheduled pipelines. Default-branch pushes run both automatically.'
   DD_ELECTRON_COMPATIBILITY_ENVIRONMENTS:
     value: ''
-    description: 'Optional comma-separated compatibility environments, for example linux,macos.'
+    description: 'Optional comma-separated compatibility environments, for example linux,macos,windows.'
   DD_ELECTRON_COMPATIBILITY_TARGETS:
     value: ''
     description: 'Optional comma-separated compatibility targets, for example electron-41,electron-44.'

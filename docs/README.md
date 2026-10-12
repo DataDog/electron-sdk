@@ -17,5 +17,6 @@ When making changes that impact development workflows or architecture, update th
 | `docs/REVIEW.md`                                              | Code review guide for agents                                |
 | `scripts/README.md`                                           | Script placement and CLI conventions                        |
 | `e2e/integration/README.md`                                   | Integration tests strategy and structure                    |
-| [e2e/compatibility/README.md](../e2e/compatibility/README.md) | Linux/macOS Electron version matrix                         |
+| [e2e/compatibility/README.md](../e2e/compatibility/README.md) | Linux/macOS/Windows Electron version matrix                 |
 | `playground/README.md`                                        | Playground app, Playwright test infra for agent prototyping |
+| [ci/windows/README.md](../ci/windows/README.md)               | Windows shared-runner containers and local execution        |

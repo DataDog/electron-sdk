@@ -68,5 +68,5 @@ See e2e/integration/README.md for integration tests strategy and structure
 ## Compatibility matrix
 
 Use `yarn test:compatibility:init <target>` and `yarn test:compatibility <target>` to run the same
-E2E and integration suites across Electron versions on Linux and macOS. See the
+E2E and integration suites across Electron versions on Linux, macOS, and Windows. See the
 [compatibility guide](../e2e/compatibility/README.md) for CI and local commands.

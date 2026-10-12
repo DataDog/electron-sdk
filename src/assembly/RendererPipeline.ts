@@ -246,18 +246,12 @@ export class RendererPipeline {
     // here. The payload is forwarded to intake untouched apart from the hook result, so reject it at
     // the boundary, as the telemetry/profile/record cases do.
     //
-    // `date` resolves the session the log is attributed to, and `message`/`status` are what the logs
-    // intake maps to the body and severity of the log — a payload missing them would land as an
-    // unreadable blob. It has to be *finite* for the same reason it does for telemetry, and it matters
-    // more here: logs have no relay cap, so an `Infinity` date that `JSON.stringify` writes as `null`
-    // would be unbounded rather than capped at a session's budget. Everything else stays unchecked: the
-    // log's attributes are the customer's own, and pinning their shape here would drop valid logs.
-    if (
-      !isIndexableObject(eventData) ||
-      !isFiniteNumber(eventData.date) ||
-      typeof eventData.message !== 'string' ||
-      typeof eventData.status !== 'string'
-    ) {
+    // `date` resolves the session the log is attributed to. It has to be *finite* for the same reason it
+    // does for telemetry, and it matters more here: logs have no relay cap, so an `Infinity` date that
+    // `JSON.stringify` writes as `null` would be unbounded rather than capped at a session's budget.
+    // Everything else stays unchecked, `message` and `status` included: renderers could send non-string
+    // values for them, and rejecting those would drop real customer logs.
+    if (!isIndexableObject(eventData) || !isFiniteNumber(eventData.date)) {
       addTelemetryError(new Error('Received malformed log bridge event'));
       return;
     }

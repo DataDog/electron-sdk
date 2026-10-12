@@ -57,4 +57,5 @@ npm-dev,typescript-eslint,MIT,Copyright (c) 2019 typescript-eslint and other con
 npm-dev,vite,MIT,Copyright (c) 2019-present VoidZero Inc.
 npm-dev,vitest,MIT,Copyright (c) 2021-Present VoidZero Inc.
 npm-dev,webpack,MIT,Copyright (c) JS Foundation and other contributors
+npm-dev,yaml,ISC,Copyright Eemeli Aro <eemeli@gmail.com>
 rust-dev,wasm-bindgen-test,MIT OR Apache-2.0,Copyright (c) 2014 Alex Crichton

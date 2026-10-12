@@ -3,7 +3,7 @@
  *
  * Each test runs once per Playwright project (app × mode, including configured variants).
  */
-import { dirname, join } from 'node:path';
+import { dirname, join, posix, sep } from 'node:path';
 import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -19,7 +19,7 @@ import {
 import { getElectronBuilderViteArchivePath } from '../lib/electronBuilderVite';
 import { getCompatibilityRun } from '../../lib/compatibility';
 import { Intake, type EventBodyByType, type EventType, type ReceivedEvent, type Span } from '../../lib/intake';
-import type { Page } from '@playwright/test';
+import type { ElectronApplication, Page } from '@playwright/test';
 import { ONE_SECOND } from '@datadog/js-core/time';
 
 // Renderer window global helpers exposed by each integration app's renderer code
@@ -61,7 +61,7 @@ test.describe('electron-builder runtime dependency packaging @integration', () =
     const { listPackage } = requireFromApp('@electron/asar') as {
       listPackage: (archivePath: string, options: { isPack: boolean }) => string[];
     };
-    const archiveEntries = listPackage(archivePath, { isPack: false });
+    const archiveEntries = listPackage(archivePath, { isPack: false }).map((entry) => entry.split(sep).join(posix.sep));
 
     if (app === 'electron-builder-vite') {
       expect(archiveEntries).toContain('/node_modules/@datadog/electron-sdk/package.json');
@@ -196,10 +196,12 @@ test.describe('crash reporting across restart @integration', () => {
     const intake = new Intake();
     await intake.start();
     const userDataDir = await mkdtemp(join(tmpdir(), 'electron-sdk-integration-'));
+    let activeApp: ElectronApplication | undefined;
 
     try {
       // Phase 1: Launch, confirm SDK is running, then crash
       const firstApp = await launchApp(appDir, mode, intake, userDataDir, variant);
+      activeApp = firstApp;
       const firstWindow = await firstApp.firstWindow();
       await firstWindow.waitForLoadState('load');
       await firstWindow.waitForTimeout(500);
@@ -214,28 +216,37 @@ test.describe('crash reporting across restart @integration', () => {
           // expected: window disappears when the app crashes
         });
       await appClosed;
+      activeApp = undefined;
       intake.clear();
 
       // Phase 2: Relaunch — crash dump is processed on startup, error event sent to intake
       const secondApp = await launchApp(appDir, mode, intake, userDataDir, variant);
-      try {
-        const secondWindow = await secondApp.firstWindow();
-        await secondWindow.waitForLoadState('load');
+      activeApp = secondApp;
+      const secondWindow = await secondApp.firstWindow();
+      await secondWindow.waitForLoadState('load');
 
-        const errorEvents = await flushUntilEventArrives(secondWindow, intake, 'error', 1);
-        expect(errorEvents).toHaveLength(1);
+      const errorEvents = await flushUntilEventArrives(
+        secondWindow,
+        intake,
+        'error',
+        1,
+        undefined,
+        (event) => event.body.error.is_crash === true
+      );
+      expect(errorEvents).toHaveLength(1);
 
-        const error = errorEvents[0].body;
-        expect(error.error.is_crash).toBe(true);
-        expect(error.error.source).toBe('source');
-        expect(error.error.handling).toBe('unhandled');
-        expect(error.error.stack).toBeTruthy();
-      } finally {
-        await secondApp.close();
-      }
+      const error = errorEvents[0].body;
+      expect(error.error.is_crash).toBe(true);
+      expect(error.error.source).toBe('source');
+      expect(error.error.handling).toBe('unhandled');
+      expect(error.error.stack).toBeTruthy();
     } finally {
-      await intake.stop();
-      await rm(userDataDir, { recursive: true, force: true });
+      try {
+        await activeApp?.close();
+      } finally {
+        await intake.stop();
+        await rm(userDataDir, { recursive: true, force: true });
+      }
     }
   });
 });
@@ -256,7 +267,8 @@ async function flushUntilEventArrives<T extends EventType>(
   intake: Intake,
   type: T,
   count: number,
-  timeout = 30 * ONE_SECOND
+  timeout = 30 * ONE_SECOND,
+  predicate?: (event: ReceivedEvent<EventBodyByType[T]>) => boolean
 ): Promise<ReceivedEvent<EventBodyByType[T]>[]> {
   const pollInterval = 500;
   const deadline = Date.now() + timeout;
@@ -265,7 +277,7 @@ async function flushUntilEventArrives<T extends EventType>(
       /* empty */
     });
     const received = await intake
-      .waitForEventCount(type, count, { timeout: Math.min(pollInterval, deadline - Date.now()) })
+      .waitForEventCount(type, count, { timeout: Math.min(pollInterval, deadline - Date.now()), predicate })
       .catch(() => null);
     if (received) return received;
   }

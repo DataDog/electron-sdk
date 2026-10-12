@@ -7,9 +7,7 @@ export default defineConfig(({ mode }) => {
   const workflow = getWorkflow(mode);
 
   return {
-    plugins: [
-      workflow === 'default-copy' ? datadogVitePlugin() : datadogVitePlugin({ copyRuntimeDependencies: false }),
-    ],
+    plugins: [datadogVitePlugin({ copyRuntimeDependencies: workflow === 'default-copy' })],
     build: {
       outDir: `dist/${workflow}`,
       emptyOutDir: false,

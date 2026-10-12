@@ -210,8 +210,9 @@ to the batch storage. A new process cannot grant the previous one's undecided pe
 refused, as it deletes its pending batches. Recovered crashes are then stored according to the current consent,
 like other events.
 
-Consent changes reach the disk asynchronously: a crash that follows a refusal before it is written is accepted at
-the next launch.
+The initial state is on disk before `init()` resolves, so a crash later in the launch is not judged by the previous
+launch's consent. Later changes reach the disk asynchronously: a crash that follows a refusal before it is written is
+accepted at the next launch.
 
 ### Consent and session lifecycle
 
@@ -291,7 +292,7 @@ the host, so failing to relay an event would lose it. Transport therefore regist
 before `RendererPipeline` opens the IPC listener; the track stays active even when sampling is zero so
 persisted batches from an earlier launch can be recovered.
 
-`RendererPipeline` validates `date`, `message`, and `status`, then preserves the renderer-owned log
+`RendererPipeline` validates `date`, then preserves the renderer-owned log
 fields. Main-process hooks replace the stub application and session ids and fill missing `usr` and
 `account` context. Logs without a covering main-process session are still forwarded with null session
 ids. Uploads keep `ddsource=browser`, while `DD-EVP-ORIGIN: electron` identifies the uploader.
