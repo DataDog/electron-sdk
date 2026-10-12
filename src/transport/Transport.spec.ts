@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createFormatHooks } from '../assembly';
 import { BatchSizes, BatchUploadFrequencies } from '../config';
 import { TrackingConsentManager } from '../domain/tracking-consent';
 import type { RawEvent, ServerEvent, ServerProfileEvent } from '../event';
@@ -11,6 +12,7 @@ vi.mock('electron', () => ({
     getPath: vi.fn(() => '/mock/user/data'),
   },
 }));
+vi.mock('node:fs/promises');
 
 const { mockBatchPost, mockBatchFlush, mockBatchCreate, mockClearPendingData } = vi.hoisted(() => {
   const mockBatchPost = vi.fn();
@@ -36,10 +38,10 @@ describe('Transport', () => {
   let trackingConsentManager: TrackingConsentManager;
   let config: ReturnType<typeof createTestConfiguration>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     eventManager = new EventManager();
-    trackingConsentManager = new TrackingConsentManager();
+    trackingConsentManager = await TrackingConsentManager.init(createFormatHooks());
     config = createTestConfiguration();
   });
 

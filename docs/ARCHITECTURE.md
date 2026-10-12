@@ -161,8 +161,8 @@ When `enableExecutionContext` is set, `ExecutionContextCollection` (`src/domain/
 the state. Consumers own their subscriptions and unsubscribe when stopped.
 
 Its timestamped history is persisted like the session and view histories, so that an event is judged by the
-consent of its own time, even when it is assembled at a later launch. History lookups return the state active at
-the requested time; a past `pending` period still returns `pending` after a decision.
+consent of its own time, even when it is assembled at a later launch. A decision is recorded over the whole `pending`
+period it ends, so a lookup returns the consent that applies to data captured at that time.
 
 ### Consent and batch storage
 
