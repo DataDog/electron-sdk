@@ -91,10 +91,8 @@ export class MainProcessContext {
     if (sessionManager.getSession().status === 'active') {
       context.startState();
     } else {
-      // Close what a previous, since-exited process left active, as startState() would.
-      const now = timeStampNow();
-      viewContext.close(now);
-      mainHistory.closeActive(now);
+      // Close what a previous, since-exited process left active.
+      context.closeHistories(timeStampNow());
     }
 
     context.lifecycleSubscription = eventManager.registerHandler<LifecycleEvent>({
@@ -130,9 +128,8 @@ export class MainProcessContext {
     // whatever a previous, since-exited process instance left open) left active, before
     // registering this one. Safe to call unconditionally: closing an already-closed entry is a
     // no-op.
-    this.viewContext.close(startTime);
+    this.closeHistories(startTime);
     this.viewContext.add(sessionId, startTime);
-    this.mainHistory.closeActive(startTime);
     this.mainHistory.add({ id: executionContextId, type: 'main-process' }, startTime);
 
     this.emitViewEvent(true);
@@ -145,12 +142,15 @@ export class MainProcessContext {
     // Close both histories at the exact same instant (same reasoning as startState's shared
     // startTime): otherwise main-process telemetry timestamped in the gap before the next
     // SESSION_RENEW would still resolve to this now-expired state.
-    const endTime = timeStampNow();
-    this.viewContext.close(endTime);
-    this.mainHistory.closeActive(endTime);
+    this.closeHistories(timeStampNow());
     this.state.documentVersion++;
     this.emitViewEvent(false);
     this.emitExecutionContextEvent();
+  }
+
+  private closeHistories(time: TimeStamp): void {
+    this.viewContext.close(time);
+    this.mainHistory.closeActive(time);
   }
 
   private startHeartbeat(): void {
