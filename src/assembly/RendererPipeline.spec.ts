@@ -752,13 +752,30 @@ describe('RendererPipeline', () => {
       ['not an object', 'not-an-object'],
       ['a missing date', { message: 'm', status: 'info' }],
       ['a non-numeric date', { date: 'yesterday', message: 'm', status: 'info' }],
-      ['a missing message', { date: 1, status: 'info' }],
-      ['a missing status', { date: 1, message: 'm' }],
     ])('reports a telemetry error and drops a log with %s', (_label, payload) => {
       simulateLog(payload as unknown as Record<string, unknown>);
 
       expect(logsEvents).toHaveLength(0);
       expect(mockAddError).toHaveBeenCalledWith(new Error('Received malformed log bridge event'));
+    });
+
+    it.each([
+      ['message', { foo: 'bar' }],
+      ['status', 42],
+    ])('forwards a non-string %s as is', (key, value) => {
+      simulateLog({ ...RENDERER_LOG_DATA, [key]: value });
+
+      expect(logsEvents).toHaveLength(1);
+      expect(logsEvents[0].data[key]).toEqual(value);
+      expect(mockAddError).not.toHaveBeenCalled();
+    });
+
+    it.each(['message', 'status'])('forwards a log with a missing %s', (key) => {
+      simulateLog({ ...RENDERER_LOG_DATA, [key]: undefined });
+
+      expect(logsEvents).toHaveLength(1);
+      expect(logsEvents[0].data).not.toHaveProperty(key);
+      expect(mockAddError).not.toHaveBeenCalled();
     });
   });
 
