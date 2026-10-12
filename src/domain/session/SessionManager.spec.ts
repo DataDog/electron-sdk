@@ -32,11 +32,11 @@ describe('sessionManager', () => {
   let trackingConsentManager: TrackingConsentManager;
   let lifecycleEvents: string[];
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
-    trackingConsentManager = new TrackingConsentManager();
     mfs.writeFile.mockResolvedValue(undefined);
+    trackingConsentManager = await TrackingConsentManager.init(createFormatHooks());
     eventManager = new EventManager();
     lifecycleEvents = [];
     eventManager.registerHandler<LifecycleEvent>({

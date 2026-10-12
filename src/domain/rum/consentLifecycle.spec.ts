@@ -46,7 +46,6 @@ describe.each([false, true])('consent lifecycle with execution contexts enabled:
     mfs.readFile.mockRejectedValue(new Error('ENOENT'));
     mfs.writeFile.mockResolvedValue(undefined);
     mfs.readdir.mockResolvedValue([]);
-    consent = new TrackingConsentManager();
     hooks = createFormatHooks();
     events = [];
     grantedPost.mockClear();
@@ -63,7 +62,7 @@ describe.each([false, true])('consent lifecycle with execution contexts enabled:
 
   // Same order as SDK initialization: storage subscribes to consent before the session manager.
   async function start(initialConsent: TrackingConsent = 'granted') {
-    consent.update(initialConsent);
+    consent = await TrackingConsentManager.init(hooks, initialConsent);
     eventManager = new EventManager();
     router = await ConsentAwareBatchRouter.create(
       '/mock/rum',
