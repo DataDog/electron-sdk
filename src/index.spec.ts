@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { init } from './index';
+import { SessionManager } from './domain/session';
 import { addError, stopTelemetry } from './domain/telemetry';
 import { EventKind, EventTrack, type ServerEvent } from './event';
 import { createTestConfiguration } from './mocks.specUtil';
@@ -46,4 +47,14 @@ it('routes SDK errors while transport initialization is still in progress', asyn
       },
     },
   ]);
+});
+
+it('creates transport before the session manager', async () => {
+  const startSession = vi.spyOn(SessionManager, 'start');
+  createBatchManager.mockRejectedValue(new Error('transport failed'));
+
+  await expect(init(createTestConfiguration({ allowedRendererHosts: ['*'] }))).rejects.toThrow('transport failed');
+
+  // Transport subscribes to consent while it is created, and must apply a change before the session manager does.
+  expect(startSession).not.toHaveBeenCalled();
 });

@@ -155,7 +155,8 @@ export class ViewCollection {
   }
 
   private onServerRumEvent(event: ServerRumEvent): void {
-    // Without a session since startup, there is no view to count events from an earlier launch, such as a crash.
+    // Before the first session (a start while refused) there is no view, yet events recovered from an earlier launch,
+    // such as a crash, can arrive.
     if (event.source === EventSource.RENDERER || !this.currentView) {
       return;
     }

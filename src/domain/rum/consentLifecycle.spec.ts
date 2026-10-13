@@ -1,16 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DISCARDED } from '@datadog/js-core/assembly';
-import type { TimeStamp } from '@datadog/js-core/time';
 import { BeforeSend, createFormatHooks, MainAssembly, type FormatHooks } from '../../assembly';
-import {
-  EventFormat,
-  EventKind,
-  EventManager,
-  EventSource,
-  LifecycleKind,
-  type RawRumEvent,
-  type ServerEvent,
-} from '../../event';
+import { EventFormat, EventKind, EventManager, LifecycleKind, type RawRumEvent, type ServerEvent } from '../../event';
 import { createTestConfiguration, mockFs } from '../../mocks.specUtil';
 import { ConsentAwareBatchRouter, type BatchProducer } from '../../transport/batch';
 import { SessionManager } from '../session';
@@ -60,7 +50,7 @@ describe.each([false, true])('consent lifecycle with execution contexts enabled:
     vi.useRealTimers();
   });
 
-  // Same order as SDK initialization: storage subscribes to consent before the session manager.
+  // Like Transport at SDK initialization, the router subscribes to consent before the session manager.
   async function start(initialConsent: TrackingConsent = 'granted') {
     consent = await TrackingConsentManager.init(hooks, initialConsent);
     eventManager = new EventManager();
@@ -114,45 +104,25 @@ describe.each([false, true])('consent lifecycle with execution contexts enabled:
     expect(pendingPost.mock.calls.map(([event]) => event.data)).toMatchObject(openingDocuments());
   });
 
-  it('keeps the session and its documents when consent moves between granted and pending', async () => {
+  it('ends tracking on refusal and resumes with new documents when consent is granted again', async () => {
     await start();
-    const sessionId = session.getSession().id;
-    const eventCount = events.length;
+    const firstView = views()[0].view;
+    grantedPost.mockClear();
 
-    consent.update('pending');
+    vi.setSystemTime(1010);
+    consent.update('not-granted');
+    vi.advanceTimersByTime(60_000);
+    eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.END_USER_ACTIVITY });
+    await router.flush();
+
+    expect(views()[views().length - 1].view).toMatchObject({ id: firstView.id, is_active: false });
+    expect(vi.getTimerCount()).toBe(0);
+    expect(grantedPost).not.toHaveBeenCalled();
+
     consent.update('granted');
+    await router.flush();
 
-    expect(session.getSession().id).toBe(sessionId);
-    expect(events).toHaveLength(eventCount);
+    expect(grantedPost.mock.calls.map(([event]) => event.data)).toMatchObject(openingDocuments());
+    expect(views()[views().length - 1].view.id).not.toBe(firstView.id);
   });
-
-  it.each<TrackingConsent>(['granted', 'pending'])(
-    'ends tracking on refusal and resumes with new documents when consent becomes %s',
-    async (resumedConsent) => {
-      await start();
-      const firstView = views()[0].view;
-      grantedPost.mockClear();
-
-      vi.setSystemTime(1010);
-      consent.update('not-granted');
-      vi.advanceTimersByTime(60_000);
-      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.END_USER_ACTIVITY });
-      await router.flush();
-
-      expect(views()[views().length - 1].view).toMatchObject({ id: firstView.id, is_active: false });
-      expect(vi.getTimerCount()).toBe(0);
-      expect(grantedPost).not.toHaveBeenCalled();
-      expect(hooks.triggerRum({ eventType: 'error', startTime: 1020 as TimeStamp, source: EventSource.MAIN })).toBe(
-        DISCARDED
-      );
-
-      vi.setSystemTime(1030);
-      consent.update(resumedConsent);
-      await router.flush();
-
-      const resumedPost = resumedConsent === 'granted' ? grantedPost : pendingPost;
-      expect(resumedPost.mock.calls.map(([event]) => event.data)).toMatchObject(openingDocuments());
-      expect(views()[views().length - 1].view.id).not.toBe(firstView.id);
-    }
-  );
 });

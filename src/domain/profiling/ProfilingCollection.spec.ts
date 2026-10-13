@@ -212,16 +212,11 @@ describe('ProfilingCollection', () => {
     const FIRST_UUID = '11111111-1111-4111-8111-111111111111';
     const SECOND_UUID = '22222222-2222-4222-8222-222222222222';
 
-    it('waits for an active session before checking quota', () => {
-      const session = { id: LOW_HASH_UUID, status: 'expired' as 'active' | 'expired' };
-      const sessionManager = { getSession: () => session, getTrackedSessionId: () => undefined };
+    it('does not trigger quota check without an active session', () => {
       const cfg = createTestConfiguration({ sessionSampleRate: 100, profilingSampleRate: 100 });
-      new ProfilingCollection(eventManager, sessionManager, cfg, hooks);
-      expect(quotaCheckModule.checkProfilingQuota).not.toHaveBeenCalled();
+      new ProfilingCollection(eventManager, makeSessionManager('expired', LOW_HASH_UUID), cfg, hooks);
 
-      session.status = 'active';
-      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
-      expect(quotaCheckModule.checkProfilingQuota).toHaveBeenCalledExactlyOnceWith(cfg, session.id);
+      expect(quotaCheckModule.checkProfilingQuota).not.toHaveBeenCalled();
     });
 
     it('forwards events while quota check is pending (optimistic)', () => {

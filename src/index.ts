@@ -56,11 +56,13 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   userContext = await UserContext.init(hooks);
   accountContext = await AccountContext.init(hooks);
   setGlobalContextApi(await GlobalContext.init(hooks));
-  // Assemble telemetry before transport timers can report startup errors.
+  // Assemble telemetry before Transport, so SDK errors reported while its later tracks initialize reach the RUM track,
+  // which it sets up first.
   new MainAssembly(eventManager, hooks, new BeforeSend(config.beforeSendRum));
   startTelemetry(eventManager, config);
-  // Storage applies a consent change before the session manager, so the documents opened when tracking resumes
-  // into pending find their pending store. All tracks must also be ready before RendererPipeline receives IPC events.
+  // Transport is created before the session manager so that it applies a consent change first: the documents opened
+  // when tracking resumes into pending find their pending store. Every track must also be ready before
+  // RendererPipeline receives IPC events, since EventManager drops the events that no handler claims.
   transport = await Transport.create(config, eventManager, trackingConsentManager);
   sessionManager = await SessionManager.start(eventManager, hooks, config, trackingConsentManager);
 

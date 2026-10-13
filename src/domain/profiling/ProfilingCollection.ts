@@ -80,8 +80,8 @@ export class ProfilingCollection {
     });
   }
 
-  // Trigger a quota check for the current session, but only when it is profiling-sampled (an unsampled
-  // session never produces profiles, so its quota is irrelevant).
+  // Trigger a quota check for the current session, but only when it is active (none is started while consent is
+  // refused) and profiling-sampled (an unsampled session never produces profiles, so its quota is irrelevant).
   private maybeCheckQuota(): void {
     const session = this.sessionManager.getSession();
     if (session.status === 'active' && this.isProfilingSampled(session.id)) {
