@@ -86,6 +86,13 @@ export interface ProfilingRequest {
   timestamp: number;
   contentType: string;
   headers: Record<string, string>;
+  /** Parsed, inflated `wall-time.json` part. */
+  trace?: ProfilingTrace;
+}
+
+export interface ProfilingTrace {
+  resources: string[];
+  [key: string]: unknown;
 }
 
 const byType = (type: string) => (event: ReceivedEvent) => (event.body as { type?: string }).type === type;
@@ -247,9 +254,10 @@ export class Intake {
     this.replaySegments.push(segment);
   }
 
-  private storeProfilePayloads(rawBody: Buffer, contentType: string, source: string) {
+  private storeProfilePayloads(rawBody: Buffer, contentType: string, source: string): Pick<ProfilingRequest, 'trace'> {
+    const decoded: Pick<ProfilingRequest, 'trace'> = {};
     const boundary = /boundary=([^\s;]+)/.exec(contentType)?.[1];
-    if (!boundary) return;
+    if (!boundary) return decoded;
 
     for (const part of splitBuffer(rawBody, Buffer.from(`--${boundary}`))) {
       const headerEnd = part.indexOf('\r\n\r\n');
@@ -261,12 +269,15 @@ export class Intake {
         this.payloadTexts.push({ source, text: body.toString('utf8') });
       } else if (partHeaders.includes('name="wall-time.json"')) {
         try {
-          this.payloadTexts.push({ source, text: zlib.inflateSync(body).toString('utf8') });
+          const text = zlib.inflateSync(body).toString('utf8');
+          this.payloadTexts.push({ source, text });
+          decoded.trace = parseJson(text) as ProfilingTrace | undefined;
         } catch {
           // not a deflated profile: nothing to scan
         }
       }
     }
+    return decoded;
   }
 
   /**
@@ -328,11 +339,16 @@ export class Intake {
             for (const [key, value] of Object.entries(req.headers)) {
               if (typeof value === 'string') headers[key.toLowerCase()] = value;
             }
-            this.storeProfilePayloads(Buffer.concat(chunks), req.headers['content-type'] ?? '', ddforward);
+            const decoded = this.storeProfilePayloads(
+              Buffer.concat(chunks),
+              req.headers['content-type'] ?? '',
+              ddforward
+            );
             this.profilingRequests.push({
               timestamp: Date.now(),
               contentType: req.headers['content-type'] ?? '',
               headers,
+              ...decoded,
             });
             res.writeHead(200);
             res.end();
@@ -656,4 +672,12 @@ function stripTrailingCrlf(body: Buffer): Buffer {
   return body.length >= 2 && body[body.length - 2] === 0x0d && body[body.length - 1] === 0x0a
     ? body.subarray(0, body.length - 2)
     : body;
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
 }
