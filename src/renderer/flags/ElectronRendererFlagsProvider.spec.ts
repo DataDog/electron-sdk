@@ -3,6 +3,12 @@ import { OpenFeature, ProviderEvents } from '@openfeature/web-sdk';
 import { display } from '../../tools/display';
 import { ElectronRendererFlagsProvider, FLUSH_INTERVAL, MAX_BATCH_BYTES } from './ElectronRendererFlagsProvider';
 import { CASES, oracle, fixtureSnapshot, proContext } from '../../common/flags/evaluationCases.specUtil';
+import {
+  PRECOMPUTED_CASES,
+  precomputedOracle,
+  precomputedSnapshot,
+  precomputedWireV2,
+} from '../../common/flags/precomputedCases.specUtil';
 import { FlagsEvaluator } from '../../common/flags/FlagsEvaluator';
 import { parseEvaluationBatch } from '../../common/flags/flagsPayloads';
 import type { EvaluationBatch, FlagsSnapshot } from '../../common/flags/types';
@@ -118,6 +124,29 @@ describe('ElectronRendererFlagsProvider', () => {
     await expect(provider.initialize()).rejects.toMatchObject({ code: 'PROVIDER_NOT_READY' });
   });
 
+  it('a pending-identity NOT_READY invalidation clears the held assignments', async () => {
+    const fake = installBridge(fixtureSnapshot({ revision: 4 }));
+    const client = await register(new ElectronRendererFlagsProvider());
+    expect(client.getStringValue('targeted-flag', 'app-default')).not.toBe('app-default');
+
+    // Main is fetching assignments for a changed targeting key: the invalidation carries the
+    // new context and no configuration, and clears the previous identity's assignments.
+    fake.push(
+      fixtureSnapshot({
+        revision: 5,
+        status: 'NOT_READY',
+        configuration: undefined,
+        context: { targetingKey: 'user-2' },
+        contextRevision: 2,
+      })
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    // The held assignments are cleared: defaults with PROVIDER_NOT_READY until the new
+    // identity's snapshot arrives.
+    expect(client.getStringValue('targeted-flag', 'app-default')).toBe('app-default');
+    expect(client.getStringDetails('targeted-flag', 'app-default').errorCode).toBe('PROVIDER_NOT_READY');
+  });
+
   it('emits ConfigurationChanged on a newer snapshot and ignores an older one', async () => {
     const fake = installBridge(fixtureSnapshot({ revision: 4 }));
     await register(new ElectronRendererFlagsProvider());
@@ -192,6 +221,47 @@ describe('ElectronRendererFlagsProvider', () => {
       ]);
     });
   }
+
+  for (const evaluationCase of PRECOMPUTED_CASES) {
+    it(`precomputed parity \u2039 ${evaluationCase.name}`, async () => {
+      installBridge(precomputedSnapshot());
+      const client = await register(new ElectronRendererFlagsProvider());
+      const expected = precomputedOracle(evaluationCase);
+      const details =
+        evaluationCase.type === 'boolean'
+          ? client.getBooleanDetails(evaluationCase.flagKey, evaluationCase.defaultValue as boolean)
+          : evaluationCase.type === 'string'
+            ? client.getStringDetails(evaluationCase.flagKey, evaluationCase.defaultValue as string)
+            : evaluationCase.type === 'number'
+              ? client.getNumberDetails(evaluationCase.flagKey, evaluationCase.defaultValue as number)
+              : client.getObjectDetails(evaluationCase.flagKey, evaluationCase.defaultValue);
+      expect([details.value, details.variant, details.reason, details.errorCode]).toEqual([
+        expected.value,
+        expected.variant,
+        expected.reason,
+        expected.errorCode,
+      ]);
+    });
+  }
+
+  it('a precomputed snapshot with a new contextRevision emits ConfigurationChanged', async () => {
+    const fake = installBridge(precomputedSnapshot());
+    await register(new ElectronRendererFlagsProvider());
+    const changed: string[] = [];
+    OpenFeature.addHandler(ProviderEvents.ConfigurationChanged, () => changed.push('ConfigurationChanged'));
+    // A second context's assignments: a new contextRevision, configuration and wire.
+    fake.push(
+      precomputedSnapshot({
+        revision: 2,
+        context: { targetingKey: 'user-free', plan: 'free' },
+        contextRevision: 2,
+        configurationRevision: 2,
+        configuration: precomputedWireForOtherContext(),
+      })
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(changed).toEqual(['ConfigurationChanged']);
+  });
 
   describe('tracking', () => {
     it("sends records with contextRevision, viewId, viewUrl and the evaluator's configuration id, and no value or context", async () => {
@@ -297,6 +367,35 @@ describe('ElectronRendererFlagsProvider', () => {
       expect(fake.rawSent.length).toBeGreaterThan(4);
     });
 
+    it('exposure-only mode forwards a precomputed record after a refresh (new captured identity)', async () => {
+      const exposureOnly = installBridge(
+        precomputedSnapshot({ tracking: { exposures: true, rum: false, evaluations: false } })
+      );
+      const client = await register(new ElectronRendererFlagsProvider());
+      client.getStringValue('assigned-flag', 'default');
+      // The refresh delivers the assignments under a new createdAt: the next evaluation
+      // must still reach main (its record carries the new identity).
+      exposureOnly.push(
+        precomputedSnapshot({
+          revision: 6,
+          configuration: precomputedWireV2(),
+          configurationRevision: 2,
+          tracking: { exposures: true, rum: false, evaluations: false },
+        })
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      client.getStringValue('assigned-flag', 'default');
+      await vi.advanceTimersByTimeAsync(FLUSH_INTERVAL);
+      const records = exposureOnly.records().map((record) => record.flagKey);
+      expect(records).toEqual(['assigned-flag', 'assigned-flag']);
+      // Both records carry the configuration identity they resolved with.
+      const identities = exposureOnly
+        .records()
+        .map((record) => record.configurationId)
+        .filter((identity): identity is string => identity !== undefined);
+      expect(new Set(identities).size).toBe(2);
+    });
+
     it('pre-dedupes identical exposure tuples within a revision only in exposure-only mode', async () => {
       const exposureOnly = installBridge(
         fixtureSnapshot({ tracking: { exposures: true, rum: false, evaluations: false } })
@@ -388,3 +487,17 @@ describe('ElectronRendererFlagsProvider', () => {
     });
   });
 });
+
+import { configurationToString } from '@datadog/openfeature-browser/rules-based';
+import { precomputedResponse } from '../../common/flags/precomputedCases.specUtil';
+
+/** A wire with a different context: what a second context's assignments look like. */
+function precomputedWireForOtherContext(): string {
+  return configurationToString({
+    precomputed: {
+      response: precomputedResponse,
+      context: { targetingKey: 'user-free', plan: 'free' },
+      fetchedAt: 1_772_200_000_000,
+    },
+  } as never);
+}

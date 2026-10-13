@@ -196,7 +196,11 @@ describe('FlagsState', () => {
         status: 'READY',
         configurationIdentity: 'created-at-1',
       });
-      state.applyPrecomputedUpdate({ configuration: undefined, context: { targetingKey: 'user-2' }, status: 'NOT_READY' });
+      state.applyPrecomputedUpdate({
+        configuration: undefined,
+        context: { targetingKey: 'user-2' },
+        status: 'NOT_READY',
+      });
       expect(state.snapshot()).toMatchObject({
         status: 'NOT_READY',
         configuration: undefined,

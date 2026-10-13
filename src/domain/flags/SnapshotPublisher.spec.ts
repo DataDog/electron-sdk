@@ -24,7 +24,7 @@ vi.mock('electron', () => ({
   },
 }));
 
-import { SnapshotPublisher, startDisabledFlagsResponder } from './SnapshotPublisher';
+import { publishedSnapshot, SnapshotPublisher, startDisabledFlagsResponder } from './SnapshotPublisher';
 import { FlagsState } from './FlagsState';
 import { addPendingSubscriber, getFlagsHolder } from '../../common/flags/flagsHolder';
 import { parseFlagsSnapshot } from '../../common/flags/flagsPayloads';
@@ -105,6 +105,26 @@ describe('SnapshotPublisher', () => {
       expect(parseFlagsSnapshot(json)).toBeDefined();
     }
     notReadyPublisher.stop();
+  });
+
+  it('downgrades only the pre-init NOT_READY snapshot; a pending-identity invalidation is published with its context', () => {
+    const preInit = new FlagsState({ targetingKey: 'anon' });
+    expect(publishedSnapshot(preInit.snapshot())).toMatchObject({ status: 'NOT_READY', revision: 0 });
+    expect(publishedSnapshot(preInit.snapshot())).not.toHaveProperty('context');
+
+    // The pending-identity invalidation (D25/Q2): revision >= 1, the new context, no
+    // configuration. It must reach consumers so they clear the previous identity's
+    // assignments, and the renderer parser must accept it.
+    const pending = new FlagsState({ targetingKey: 'anon' });
+    pending.applyPrecomputedUpdate({
+      configuration: undefined,
+      context: { targetingKey: 'user-2' },
+      status: 'NOT_READY',
+    });
+    const published = publishedSnapshot(pending.snapshot());
+    expect(published).toMatchObject({ status: 'NOT_READY', context: { targetingKey: 'user-2' } });
+    expect(published.revision).toBeGreaterThanOrEqual(1);
+    expect(parseFlagsSnapshot(JSON.stringify(published))).toEqual(published);
   });
 
   it('answers DISABLED to a disallowed frame and does not subscribe it', () => {

@@ -74,6 +74,7 @@ describe('child exposures and tracking consent (real Transport)', () => {
       profilingSampleRate: 0,
       sessionReplaySampleRate: 0,
       featureFlags: {
+        evaluationMode: 'rules',
         env: 'e2e',
         refreshInterval: 0,
         fetchTimeout: 500,

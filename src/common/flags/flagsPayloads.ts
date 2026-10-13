@@ -48,9 +48,11 @@ function isFlatContext(value: unknown): value is FlatContext {
 /**
  * Parse and validate a snapshot received over IPC. All-or-nothing: any invalid field
  * rejects the whole snapshot (renderers keep serving their previous snapshot instead).
- * Accepts both the minimal pre-init/disabled shape and the full READY/STALE/ERROR
- * shape; a minimal-status snapshot must not carry a configuration, a context or an
- * error message.
+ * Accepts the minimal pre-init/disabled shape, the full READY/STALE/ERROR shape and the
+ * pending-identity `NOT_READY` invalidation (revision >= 1, the new context, no
+ * configuration); a minimal-status snapshot must not carry a configuration or an error
+ * message, a context only as that invalidation, and never at revision 0 (the pre-init
+ * privacy contract).
  */
 export function parseFlagsSnapshot(json: string): FlagsSnapshot | undefined {
   let parsed: unknown;
@@ -86,12 +88,19 @@ export function parseFlagsSnapshot(json: string): FlagsSnapshot | undefined {
   };
   const isMinimal = (MINIMAL_STATUSES as string[]).includes(parsed.status);
   if (isMinimal) {
-    if (parsed.configuration !== undefined || parsed.context !== undefined || parsed.errorMessage !== undefined) {
+    const invalidation = parsed.status === 'NOT_READY' && parsed.revision >= 1 && parsed.context !== undefined;
+    if (
+      parsed.configuration !== undefined ||
+      parsed.errorMessage !== undefined ||
+      (parsed.context !== undefined && !invalidation) ||
+      (invalidation && !isFlatContext(parsed.context))
+    ) {
       return undefined;
     }
     return {
       revision: parsed.revision,
       status: parsed.status,
+      ...(invalidation ? { context: parsed.context as FlatContext } : {}),
       contextRevision: parsed.contextRevision,
       configurationRevision: parsed.configurationRevision,
       tracking,

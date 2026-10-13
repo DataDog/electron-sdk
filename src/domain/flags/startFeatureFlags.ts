@@ -168,12 +168,14 @@ async function startFlagsSubsystem(
     ...flaggingProxy,
     fetchTimeout: flagsConfiguration.fetchTimeout,
     maxConfigurationLength: MAX_CONFIGURATION_LENGTH,
+    ...(configuration.applicationId !== undefined ? { applicationId: configuration.applicationId } : {}),
     ...(deps.fetch !== undefined ? { fetch: deps.fetch } : {}),
   };
   const evaluationMode = flagsConfiguration.evaluationMode;
   // The fetcher and the disk cache are per mode: rules are identity-independent and cached
   // by environment (D7); precomputed assignments are per context and cached per context (D28).
-  const fetcher = evaluationMode === 'precomputed' ? new PrecomputedFetcher(fetchOptions) : new RulesFetcher(fetchOptions);
+  const fetcher =
+    evaluationMode === 'precomputed' ? new PrecomputedFetcher(fetchOptions) : new RulesFetcher(fetchOptions);
   const cache =
     evaluationMode === 'precomputed'
       ? await PrecomputedCache.init({
@@ -286,11 +288,20 @@ async function startFlagsSubsystem(
   const applyContextChange = (context: FlatContext): void | Promise<void> => {
     const owner = ownerRef.current;
     if (owner instanceof PrecomputedOwner) {
-      // After startup the assignments for the new context are fetched and awaited (D25).
+      // An identical context with nothing in flight is a no-op (D20): no new revision, no
+      // request. Anything else goes to the owner, which awaits a matching in-flight
+      // assignments fetch (a duplicate) or supersedes it with the new request (D25) —
+      // including a reversion back to the served context while a different one is pending.
+      if (owner.pendingContext === undefined && contextEquals(state.snapshot().context, context)) {
+        return;
+      }
       return owner.requestContext(context);
     }
-    // Rules mode, or a context held before the owner starts (applied as the startup context).
-    state.applyContextUpdate(context);
+    // Rules mode, or a context held before the owner starts (applied as the startup
+    // context): an identical context is a no-op — no new revision, no fetch.
+    if (!contextEquals(state.snapshot().context, context)) {
+      state.applyContextUpdate(context);
+    }
   };
 
   const controller: FeatureFlagsController = {
@@ -360,6 +371,11 @@ function withoutViewAttribution(record: EvaluationRecord): EvaluationRecord {
   delete attributed.viewId;
   delete attributed.viewUrl;
   return attributed;
+}
+
+/** Whether two normalized contexts are equal (flat primitives, so JSON equality works). */
+function contextEquals(a: FlatContext | undefined, b: FlatContext): boolean {
+  return a !== undefined && JSON.stringify(a) === JSON.stringify(b);
 }
 
 /**

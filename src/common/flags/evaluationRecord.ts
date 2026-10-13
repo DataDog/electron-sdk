@@ -71,6 +71,10 @@ export function buildEvaluationRecord(
   if (typeof metadata.__dd_split_serial_id === 'number') record.serialId = metadata.__dd_split_serial_id;
   if (typeof metadata.__dd_core_configuration_id === 'string') {
     record.configurationId = metadata.__dd_core_configuration_id;
+  } else if (typeof metadata.__dd_configuration_identity === 'string') {
+    // Precomputed assignments: the `createdAt` captured at resolution time (D29), so the
+    // record dedupes on the identity it was evaluated with, never a later refresh's.
+    record.configurationId = metadata.__dd_configuration_identity;
   }
   return record;
 }

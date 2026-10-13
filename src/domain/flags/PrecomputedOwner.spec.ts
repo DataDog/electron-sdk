@@ -1,23 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { display } from '../../tools/display';
-import {
-  precomputedContext,
-  otherPrecomputedContext,
-  precomputedConfiguration,
-} from '../../common/flags/precomputedCases.specUtil';
+import { precomputedContext, otherPrecomputedContext } from '../../common/flags/precomputedCases.specUtil';
 import type { FlatContext } from '../../common/flags/types';
+import { timeStampNow } from '@datadog/js-core/time';
 import { FlagsState } from './FlagsState';
 import { AnonymousKeyStore } from './AnonymousKeyStore';
-import { PrecomputedFetcher, MAX_CONFIGURATION_LENGTH } from './PrecomputedFetcher';
+import { PrecomputedFetcher } from './PrecomputedFetcher';
+import { MAX_CONFIGURATION_LENGTH } from './RulesFetcher';
 import { PrecomputedCache } from './PrecomputedCache';
 import { PrecomputedOwner, precomputedCreatedAtOf } from './PrecomputedOwner';
-
-import { addError } from '../telemetry';
-
-vi.mock('../telemetry', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../telemetry')>()),
-  addError: vi.fn(),
-}));
 
 /** Build the assignments response body `/precompute-assignments` returns for a context. */
 function assignmentsBodyFor(context: FlatContext): string {
@@ -60,7 +51,7 @@ describe('PrecomputedOwner', () => {
     vi.spyOn(display, 'warn').mockImplementation(() => undefined);
     vi.spyOn(display, 'error').mockImplementation(() => undefined);
     state = new FlagsState({ targetingKey: 'anonymous-key' });
-    keyStore = { anonymousKey: 'anonymous-key' } as AnonymousKeyStore;
+    keyStore = { anonymousKey: 'anonymous-key' };
     cache = await PrecomputedCache.init({
       userDataPath: '/userData',
       site: 'datadoghq.com',
@@ -95,15 +86,19 @@ describe('PrecomputedOwner', () => {
       fetchTimeout: 5000,
       maxConfigurationLength: MAX_CONFIGURATION_LENGTH,
       fetch: (url, init) => {
-        const body = JSON.parse(String(init?.body)) as {
-          data: { attributes: { subject: { targeting_key: string; targeting_attributes: Record<string, string | number | boolean> } } };
+        const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as {
+          data: {
+            attributes: {
+              subject: { targeting_key: string; targeting_attributes: Record<string, string | number | boolean> };
+            };
+          };
         };
         const context: FlatContext = {
           ...body.data.attributes.subject.targeting_attributes,
           targetingKey: body.data.attributes.subject.targeting_key,
         };
         fetches.push({ context });
-        return handlerState.handler(url as string, init);
+        return handlerState.handler(url as string, init as RequestInit);
       },
     });
     const started = PrecomputedOwner.start({
@@ -128,9 +123,12 @@ describe('PrecomputedOwner', () => {
   }
 
   it('fetches assignments for the startup context and becomes READY', async () => {
-    const { fetches } = await startAndSettle(() => Promise.resolve(okResponse(assignmentsBodyFor(precomputedContext))), {
-      startupContext: precomputedContext,
-    });
+    const { fetches } = await startAndSettle(
+      () => Promise.resolve(okResponse(assignmentsBodyFor(precomputedContext))),
+      {
+        startupContext: precomputedContext,
+      }
+    );
     expect(fetches).toHaveLength(1);
     expect(fetches[0].context).toEqual(precomputedContext);
     expect(state.snapshot()).toMatchObject({ status: 'READY', context: precomputedContext });
@@ -141,7 +139,7 @@ describe('PrecomputedOwner', () => {
 
   it('serves the cached assignments for the startup context as STALE before the network', async () => {
     // Seed the cache with an entry for the startup context, then let the network hang.
-    await cache.write(precomputedContext, assignmentsWireFor('cached'), 1);
+    await cache.write(precomputedContext, assignmentsWireFor('cached'), timeStampNow());
     const hanging = (_url: string, init: RequestInit) =>
       new Promise<Response>((_resolve, reject) => {
         init.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
@@ -174,7 +172,7 @@ describe('PrecomputedOwner', () => {
     await pending;
     expect(state.snapshot()).toMatchObject({
       status: 'READY',
-      configuration: expect.any(String),
+      configuration: expect.any(String) as string,
       context: otherPrecomputedContext,
       contextRevision: 2,
     });
@@ -222,7 +220,7 @@ describe('PrecomputedOwner', () => {
     await refresh;
     expect(state.snapshot()).toMatchObject({
       status: 'STALE',
-      configuration: expect.any(String),
+      configuration: expect.any(String) as string,
       context: precomputedContext,
     });
   });
@@ -253,17 +251,55 @@ describe('PrecomputedOwner', () => {
   });
 
   it('an authoritative failure drops the configuration (defaults with errorCode)', async () => {
-    await cache.write(precomputedContext, assignmentsWireFor('cached'), 1);
+    await cache.write(precomputedContext, assignmentsWireFor('cached'), timeStampNow());
     await startAndSettle(() => Promise.resolve(errorResponse(403)), { startupContext: precomputedContext });
     // Even a cached entry is not applied for an authoritative failure (D27).
     expect(state.snapshot()).toMatchObject({ status: 'ERROR', configuration: undefined });
   });
 
+  it('a settled superseded request does not let a refresh run while a newer request is in flight', async () => {
+    let call = 0;
+    const deferreds: ((response: Response) => void)[] = [];
+    const { owner: started, fetches } = startOwner(
+      () => {
+        const index = call++;
+        if (index === 0) {
+          return Promise.resolve(okResponse(assignmentsBodyFor(precomputedContext)));
+        }
+        return new Promise<Response>((resolve) => {
+          deferreds[index] = resolve;
+        });
+      },
+      { startupContext: precomputedContext, refreshInterval: 60000 }
+    );
+    await started.settled();
+    expect(fetches).toHaveLength(1);
+
+    const first = started.requestContext({ targetingKey: 'user-first' });
+    const second = started.requestContext({ targetingKey: 'user-second' });
+    expect(fetches).toHaveLength(3);
+    // The superseded first settles while the second is still in flight.
+    deferreds[1]?.(okResponse(assignmentsBodyFor({ targetingKey: 'user-first' })));
+    await first;
+    // The refresh interval fires: it must not start a fetch (the second is in flight),
+    // because a shared in-flight flag cleared by the superseded first would let it run
+    // and supersede the second.
+    vi.advanceTimersByTime(60000);
+    expect(fetches).toHaveLength(3);
+
+    deferreds[2]?.(okResponse(assignmentsBodyFor({ targetingKey: 'user-second' })));
+    await second;
+    expect(state.snapshot()).toMatchObject({ status: 'READY', context: { targetingKey: 'user-second' } });
+  });
+
   it('refresh re-fetches the current context every refreshInterval', async () => {
-    const { fetches } = await startAndSettle(() => Promise.resolve(okResponse(assignmentsBodyFor(precomputedContext))), {
-      startupContext: precomputedContext,
-      refreshInterval: 60000,
-    });
+    const { fetches } = await startAndSettle(
+      () => Promise.resolve(okResponse(assignmentsBodyFor(precomputedContext))),
+      {
+        startupContext: precomputedContext,
+        refreshInterval: 60000,
+      }
+    );
     expect(fetches).toHaveLength(1);
     vi.advanceTimersByTime(60000);
     await owner!.settled();

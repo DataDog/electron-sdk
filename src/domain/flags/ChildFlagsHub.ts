@@ -213,17 +213,19 @@ class ChildChannel {
       }
     }
     const state = link.state;
-    if (JSON.stringify(state.snapshot().context) !== JSON.stringify(context)) {
-      // Last writer wins with main's OpenFeature.setContext (D20). In precomputed mode the
-      // reply is sent once the assignments for the requested context are applied.
-      const applied =
-        link.applyContextChange !== undefined ? link.applyContextChange(context) : state.applyContextUpdate(context);
-      if (isPromiseLike(applied)) {
-        return applied.then(
-          () => contextResponseMessage(message.id, true, state.snapshot().contextRevision),
-          () => contextResponseMessage(message.id, false)
-        );
-      }
+    // The link (or the state) compares against the *pending* context too, not only the
+    // served snapshot: a duplicate request awaits the matching in-flight assignments
+    // fetch, and a different one supersedes it (D20/§11.3). In precomputed mode the reply
+    // is sent once the assignments for the requested context are applied.
+    const applied =
+      link.applyContextChange !== undefined
+        ? link.applyContextChange(context)
+        : applyStateContextUpdate(state, context);
+    if (isPromiseLike(applied)) {
+      return applied.then(
+        () => contextResponseMessage(message.id, true, state.snapshot().contextRevision),
+        () => contextResponseMessage(message.id, false)
+      );
     }
     return contextResponseMessage(message.id, true, state.snapshot().contextRevision);
   }
@@ -401,4 +403,11 @@ function resolveMessageChannelMain(): typeof Electron.MessageChannelMain {
 /** Whether a value is thenable, so a context change can resolve asynchronously (§11.3). */
 function isPromiseLike(value: unknown): value is Promise<void> {
   return typeof value === 'object' && value !== null && typeof (value as Promise<void>).then === 'function';
+}
+
+/** The state fallback (no controller link): apply only a real change, like the rules branch. */
+function applyStateContextUpdate(state: FlagsState, context: FlatContext): void {
+  if (JSON.stringify(state.snapshot().context) !== JSON.stringify(context)) {
+    state.applyContextUpdate(context);
+  }
 }

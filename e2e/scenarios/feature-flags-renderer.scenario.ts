@@ -15,6 +15,7 @@ import { MainPage } from '../lib/mainPage';
  * renderers and main are deduplicated by the main-process ExposureCollector.
  */
 const flagsConfiguration = (intake: { getPort: () => number }) => ({
+  evaluationMode: 'rules' as const,
   refreshInterval: 60_000,
   fetchTimeout: 2_000,
   flaggingProxy: `http://localhost:${intake.getPort()}`,

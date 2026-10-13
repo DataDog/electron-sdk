@@ -148,6 +148,80 @@ describe('ExposureCollector', () => {
     expect(events).toHaveLength(2);
   });
 
+  describe('precomputed configuration identity (D29)', () => {
+    function createPrecomputedState(): FlagsState {
+      const state = new FlagsState(anonymousContext);
+      state.applyPrecomputedUpdate({
+        configuration: 'wire-p1',
+        context: anonymousContext,
+        status: 'READY',
+        configurationIdentity: 'created-at-1',
+      });
+      return state;
+    }
+
+    it('dedupes on createdAt when configurationId is absent', () => {
+      const { collector, events } = createCollector(createPrecomputedState());
+      collector.add(record({ configurationId: undefined }));
+      collector.add(record({ configurationId: undefined }));
+      expect(events).toHaveLength(1);
+    });
+
+    it('a new createdAt re-emits the same flag and variant', () => {
+      const { collector, events, state } = createCollector(createPrecomputedState());
+      collector.add(record({ configurationId: undefined }));
+      state.applyPrecomputedUpdate({
+        configuration: 'wire-p2',
+        context: anonymousContext,
+        status: 'READY',
+        configurationIdentity: 'created-at-2',
+      });
+      collector.add(record({ configurationId: undefined }));
+      expect(events).toHaveLength(2);
+    });
+
+    it('a late record dedupes on its own captured identity across a same-revision refresh', () => {
+      const { collector, events, state } = createCollector(createPrecomputedState());
+      // Pre-refresh evaluation: the record carries the createdAt it resolved with.
+      collector.add(record({ configurationId: 'created-at-1' }));
+      // A refresh of the same context replaces the identity retained for the revision.
+      state.applyPrecomputedUpdate({
+        configuration: 'wire-p2',
+        context: anonymousContext,
+        status: 'READY',
+        configurationIdentity: 'created-at-2',
+      });
+      // A late pre-refresh record carrying its own captured identity: no duplicate of its
+      // earlier emission. Resolving the mutable retained identity instead would re-emit.
+      collector.add(record({ configurationId: 'created-at-1' }));
+      expect(events).toHaveLength(1);
+      // The genuine post-refresh evaluation emits: never suppressed by the late record.
+      collector.add(record({ configurationId: 'created-at-2' }));
+      expect(events).toHaveLength(2);
+    });
+
+    it('a late record from a previous context revision resolves its own createdAt', () => {
+      const { collector, events, state } = createCollector(createPrecomputedState());
+      const otherContext = { targetingKey: 'user-2' };
+      // Revision 0 (created-at-1) emits once.
+      collector.add(record({ configurationId: undefined }));
+      // Revision 1 carries its own createdAt.
+      state.applyPrecomputedUpdate({
+        configuration: 'wire-p2',
+        context: otherContext,
+        status: 'READY',
+        configurationIdentity: 'created-at-2',
+      });
+      // A late record from revision 0 resolves revision 0's createdAt (already emitted):
+      // no duplicate. Resolving the current identity instead would emit here.
+      collector.add(record({ configurationId: undefined }));
+      expect(events).toHaveLength(1);
+      // A record for revision 1 carries the new createdAt and emits.
+      collector.add(record({ configurationId: undefined, contextRevision: 1 }));
+      expect(events).toHaveLength(2);
+    });
+  });
+
   it('uses the same tuple from main and a renderer: one exposure', () => {
     const { collector, events } = createCollector();
     collector.add(record({ viewUrl: 'electron://main-process' }));

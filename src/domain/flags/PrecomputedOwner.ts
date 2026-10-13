@@ -51,14 +51,22 @@ export class PrecomputedOwner {
   private refreshIntervalId: ReturnType<typeof setInterval> | undefined;
   private stopped = false;
   private fetchInFlight = false;
+  private latestRequestId = 0;
   private inflightFetch: Promise<void> = Promise.resolve();
+  private pending: FlatContext | undefined;
+
+  /** The context whose assignments the in-flight fetch was started for, if one is in flight. */
+  get pendingContext(): FlatContext | undefined {
+    return this.pending;
+  }
 
   private constructor(private readonly deps: PrecomputedOwnerDependencies) {}
 
   /** Start the owner; the first network fetch is never awaited (startup is never blocked). */
   static start(deps: PrecomputedOwnerDependencies): PrecomputedOwner {
     const owner = new PrecomputedOwner(deps);
-    const startupContext = deps.startupContext ?? deps.state.snapshot().context;
+    const startupContext = deps.startupContext ??
+      deps.state.snapshot().context ?? { targetingKey: deps.keyStore.anonymousKey };
     const cached = deps.cache.entry(startupContext);
     if (cached !== undefined) {
       deps.state.applyPrecomputedUpdate({
@@ -73,7 +81,7 @@ export class PrecomputedOwner {
       owner.refreshIntervalId = sdkSetInterval(() => {
         // A refresh must never supersede a context fetch in flight.
         if (!owner.fetchInFlight) {
-          owner.fetchContext(owner.deps.state.snapshot().context);
+          owner.fetchContext(owner.deps.state.snapshot().context ?? { targetingKey: owner.deps.keyStore.anonymousKey });
         }
       }, deps.refreshInterval);
     }
@@ -91,12 +99,22 @@ export class PrecomputedOwner {
   }
 
   /**
-   * Request assignments for a new evaluation context (already normalized). Returns a
-   * promise that settles once the fetch outcome has been applied.
+   * Request assignments for a new evaluation context (already normalized). A request
+   * matching the context whose assignments are already being fetched awaits that
+   * in-flight fetch (duplicates coalesce); any other request supersedes it (the fetcher
+   * aborts the older one, so the last request wins). Identical-to-served requests reach
+   * the owner only when something else is in flight or they differ — the no-op for an
+   * identical served context lives in the controller. Returns a promise that settles
+   * once the outcome has been applied.
    */
   requestContext(context: FlatContext): Promise<void> {
+    if (this.pending !== undefined && contextEquals(this.pending, context)) {
+      // A matching fetch is already in flight: await it instead of issuing another (and
+      // superseding) request for the same assignments.
+      return this.inflightFetch;
+    }
     const current = this.deps.state.snapshot().context;
-    if (context.targetingKey !== current.targetingKey) {
+    if (current === undefined || context.targetingKey !== current.targetingKey) {
       // Defaults while assignments for a changed targeting key are fetched (Q2). One
       // identity never sees another's assignments.
       this.deps.state.applyPrecomputedUpdate({ configuration: undefined, context, status: 'NOT_READY' });
@@ -122,13 +140,20 @@ export class PrecomputedOwner {
   }
 
   private fetchContext(context: FlatContext): void {
+    // Only the latest request's lifecycle controls the in-flight flag: a superseded
+    // request settling must not let a refresh run while a newer request is still pending.
+    const requestId = ++this.latestRequestId;
+    this.pending = context;
     this.fetchInFlight = true;
     this.inflightFetch = this.runFetch(context)
       .catch((error: unknown) => {
         addTelemetryError(error);
       })
       .then(() => {
-        this.fetchInFlight = false;
+        if (requestId === this.latestRequestId) {
+          this.fetchInFlight = false;
+          this.pending = undefined;
+        }
       });
   }
 
@@ -184,6 +209,6 @@ export class PrecomputedOwner {
   }
 }
 
-function contextEquals(a: FlatContext, b: FlatContext): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+function contextEquals(a: FlatContext | undefined, b: FlatContext): boolean {
+  return a !== undefined && JSON.stringify(a) === JSON.stringify(b);
 }

@@ -152,7 +152,8 @@ export class FlagsState {
    * evaluation carried no `configurationId` (D29).
    */
   getConfigurationIdentity(contextRevision: number): string | undefined {
-    return this.retainedContexts.find((retained) => retained.contextRevision === contextRevision)?.configurationIdentity;
+    return this.retainedContexts.find((retained) => retained.contextRevision === contextRevision)
+      ?.configurationIdentity;
   }
 
   /** Subscribe to snapshot changes. Notifications are synchronous and monitored. */
@@ -174,8 +175,8 @@ function freezeRetained(retained: RetainedContext): RetainedContext {
   return Object.freeze(retained);
 }
 
-function contextEquals(a: FlatContext, b: FlatContext): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+function contextEquals(a: FlatContext | undefined, b: FlatContext): boolean {
+  return a !== undefined && JSON.stringify(a) === JSON.stringify(b);
 }
 
 function frozenTracking(tracking: FlagsTracking): FlagsTracking {

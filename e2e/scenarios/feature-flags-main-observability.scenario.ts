@@ -7,6 +7,7 @@ import { isMainProcessView } from '../lib/intake';
  * throttle, and errors carry the flags evaluated before them.
  */
 const flagsConfiguration = (intake: { getPort: () => number }) => ({
+  evaluationMode: 'rules' as const,
   refreshInterval: 60_000,
   fetchTimeout: 2_000,
   flaggingProxy: `http://localhost:${intake.getPort()}`,

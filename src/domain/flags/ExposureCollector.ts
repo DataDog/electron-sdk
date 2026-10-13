@@ -64,7 +64,11 @@ export class ExposureCollector {
     if (exposure === undefined) {
       return;
     }
-    const dedupeKey = exposureDedupeKey(exposure, record.configurationId);
+    const configurationIdentity = record.configurationId ?? this.state.getConfigurationIdentity(record.contextRevision);
+    // The configuration identity is the rules `configurationId`, or the precomputed
+    // `createdAt` retained for the record's context revision when the record carries
+    // none (D29) — a new `createdAt` re-logs, matching the upstream exposure cache clear.
+    const dedupeKey = exposureDedupeKey(exposure, configurationIdentity);
     if (this.emittedExposures.has(dedupeKey)) {
       // A hit refreshes the entry so frequently evaluated flags stay in the LRU.
       this.rememberExposure(dedupeKey);

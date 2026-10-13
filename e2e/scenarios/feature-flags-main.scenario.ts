@@ -6,6 +6,7 @@ import { test, expect, launchAppManually, createUserDataDir, cleanupUserDataDir 
  * environment so a relaunch can serve it while the endpoint fails.
  */
 const flagsConfiguration = (intake: { getPort: () => number }, overrides: Record<string, unknown> = {}) => ({
+  evaluationMode: 'rules' as const,
   refreshInterval: 60_000,
   fetchTimeout: 2_000,
   flaggingProxy: `http://localhost:${intake.getPort()}`,
