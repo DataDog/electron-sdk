@@ -231,32 +231,17 @@ describe('DiskValueHistory', () => {
     });
   });
 
-  describe('flush()', () => {
-    it('resolves once the queued writes have settled', async () => {
+  describe('updateActive()', () => {
+    it('persists the new value of the active entry', async () => {
       mfs.readFile.mockRejectedValue(new Error('ENOENT'));
-      let completeWrite!: () => void;
-      mfs.writeFile.mockReturnValue(new Promise<void>((resolve) => (completeWrite = resolve)));
       const history = await DiskValueHistory.init<string>({ filePath: FILE_PATH, expireDelay: EXPIRE_DELAY });
 
-      history.add('session-a', T0);
-      let flushed = false;
-      void history.flush().then(() => (flushed = true));
+      history.add('old', T0);
+      history.updateActive('new');
       await vi.advanceTimersByTimeAsync(0);
-      expect(flushed).toBe(false);
 
-      completeWrite();
-      await vi.advanceTimersByTimeAsync(0);
-      expect(flushed).toBe(true);
-    });
-
-    it('resolves when a write fails', async () => {
-      mfs.readFile.mockRejectedValue(new Error('ENOENT'));
-      mfs.writeFile.mockRejectedValue(new Error('disk full'));
-      const history = await DiskValueHistory.init<string>({ filePath: FILE_PATH, expireDelay: EXPIRE_DELAY });
-
-      history.add('session-a', T0);
-
-      await expect(history.flush()).resolves.toBeUndefined();
+      const lastCall = mfs.writeFile.mock.calls[mfs.writeFile.mock.calls.length - 1] as [string, string, string];
+      expect(JSON.parse(lastCall[1])).toEqual([{ startTime: T0, endTime: null, value: 'new' }]);
     });
   });
 });

@@ -23,12 +23,11 @@ export class TrackingConsentManager {
     private readonly history: DiskValueHistory<TrackingConsent>,
     initialConsent: TrackingConsent
   ) {
-    const now = timeStampNow();
     // A new process cannot grant the previous one's undecided period, whose pending batches it deletes.
     if (this.get() === 'pending') {
-      this.updateHistory('not-granted', now);
+      this.updateHistory('not-granted');
     }
-    this.updateHistory(initialConsent, now);
+    this.updateHistory(initialConsent);
 
     hooks.registerRum(({ startTime }) => {
       // Events of an undecided pending period are held by the batch storage until its decision.
@@ -42,10 +41,7 @@ export class TrackingConsentManager {
       filePath: path.join(app.getPath('userData'), TRACKING_CONSENT_HISTORY_FILE_NAME),
       expireDelay: SESSION_TIME_OUT_DELAY,
     });
-    const manager = new TrackingConsentManager(hooks, history, initialConsent);
-    // Until this write lands, a crash of this launch would be judged by the previous launch's consent.
-    await history.flush();
-    return manager;
+    return new TrackingConsentManager(hooks, history, initialConsent);
   }
 
   get(): TrackingConsent {
@@ -59,15 +55,17 @@ export class TrackingConsentManager {
       return;
     }
 
-    const time = timeStampNow();
-    this.updateHistory(consent, time);
-    this.changes.notify({ previous, current: consent, time });
+    this.updateHistory(consent);
+    this.changes.notify({ previous, current: consent, time: timeStampNow() });
   }
 
-  /** A decision covers the whole pending period it ends, like the batches held during that period. */
-  private updateHistory(consent: TrackingConsent, time: TimeStamp): void {
-    const [active] = this.history.getEntries();
-    this.history.closeAndAdd(consent, active?.value === 'pending' ? active.startTime : time);
+  private updateHistory(consent: TrackingConsent): void {
+    if (this.get() === 'pending') {
+      // A decision covers the whole pending period it ends, like the batches held during that period.
+      this.history.updateActive(consent);
+    } else {
+      this.history.closeAndAdd(consent, timeStampNow());
+    }
   }
 
   /** Subscribe to future changes. A failing observer must not interrupt other consumers. */
