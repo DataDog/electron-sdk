@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createFormatHooks } from '../../assembly';
 import { TrackingConsentManager, type TrackingConsent } from '../../domain/tracking-consent';
 import { EventKind, EventTrack, type ServerEvent } from '../../event';
 import { createTestConfiguration } from '../../mocks.specUtil';
@@ -9,9 +10,12 @@ import { BatchManager } from './BatchManager';
 import type { BatchConfig } from './batchConfig.types';
 import { PENDING_DIRECTORY_PREFIX } from './batchPaths';
 
-const { mockConsumerUpload } = vi.hoisted(() => ({
+const { mockConsumerUpload, userData } = vi.hoisted(() => ({
   mockConsumerUpload: vi.fn().mockResolvedValue(undefined),
+  userData: { path: '' },
 }));
+
+vi.mock('electron', () => ({ app: { getPath: () => userData.path } }));
 
 vi.mock('./standard/StandardBatchConsumer', () => ({
   StandardBatchConsumer: vi.fn().mockImplementation(function (this: unknown) {
@@ -46,6 +50,7 @@ describe('BatchManager tracking consent storage', () => {
 
   beforeEach(async () => {
     basePath = await fs.mkdtemp(path.join(os.tmpdir(), 'electron-sdk-consent-'));
+    userData.path = basePath;
     mockConsumerUpload.mockReset().mockResolvedValue(undefined);
   });
 
@@ -57,11 +62,7 @@ describe('BatchManager tracking consent storage', () => {
     await fs.rm(basePath, { recursive: true, force: true });
   });
 
-  const createConsentManager = (consent: TrackingConsent) => {
-    const state = new TrackingConsentManager();
-    state.update(consent);
-    return state;
-  };
+  const createConsentManager = (consent: TrackingConsent) => TrackingConsentManager.init(createFormatHooks(), consent);
 
   const createBatchConfig = (trackType: EventTrack = EventTrack.RUM): BatchConfig => ({
     path: basePath,
@@ -114,7 +115,7 @@ describe('BatchManager tracking consent storage', () => {
       },
     ],
   ] as const)('isolates pending %s events and moves them to authorized storage after grant', async (track, input) => {
-    const state = createConsentManager('pending');
+    const state = await createConsentManager('pending');
     manager = await BatchManager.create(config, createBatchConfig(track), state);
     const directory = track === EventTrack.LOGS ? 'dd_logs' : track;
     const authorizedPath = path.join(basePath, directory);
@@ -135,7 +136,7 @@ describe('BatchManager tracking consent storage', () => {
   });
 
   it('deletes pending events when consent is rejected', async () => {
-    const state = createConsentManager('pending');
+    const state = await createConsentManager('pending');
     manager = await BatchManager.create(config, createBatchConfig(), state);
 
     manager.post(event('delete-me'));
@@ -150,7 +151,7 @@ describe('BatchManager tracking consent storage', () => {
     'retries a rejected store deletion on %s without another consent transition',
     async (retry) => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-      const state = createConsentManager('granted');
+      const state = await createConsentManager('granted');
       manager = await BatchManager.create(config, createBatchConfig(), state);
       const authorizedPath = path.join(basePath, 'rum');
       manager.post(event('authorized'));
@@ -188,7 +189,7 @@ describe('BatchManager tracking consent storage', () => {
   );
 
   it('writes and grants a new pending period while deletion of a rejected period keeps failing', async () => {
-    const state = createConsentManager('pending');
+    const state = await createConsentManager('pending');
     manager = await BatchManager.create(config, createBatchConfig(), state);
     const authorizedPath = path.join(basePath, 'rum');
     manager.post(event('rejected'));
@@ -229,7 +230,7 @@ describe('BatchManager tracking consent storage', () => {
   it.each(['granted', 'not-granted'] as const)(
     'keeps a new pending period independent when its decision is %s and an earlier grant cannot detach',
     async (decision) => {
-      const state = createConsentManager('pending');
+      const state = await createConsentManager('pending');
       manager = await BatchManager.create(config, createBatchConfig(), state);
       const authorizedPath = path.join(basePath, 'rum');
       manager.post(event('first'));
@@ -275,7 +276,7 @@ describe('BatchManager tracking consent storage', () => {
   );
 
   it('keeps only events accepted by rapid ordered consent transitions', async () => {
-    const state = createConsentManager('pending');
+    const state = await createConsentManager('pending');
     manager = await BatchManager.create(config, createBatchConfig(), state);
 
     manager.post(event('first-pending'));
@@ -297,7 +298,7 @@ describe('BatchManager tracking consent storage', () => {
   });
 
   it('keeps decisions attached to their periods while pending directory creation is delayed', async () => {
-    const state = createConsentManager('granted');
+    const state = await createConsentManager('granted');
     manager = await BatchManager.create(config, createBatchConfig(), state);
     const mkdir = fs.mkdir.bind(fs);
     let pendingPath: string | undefined;
@@ -334,7 +335,7 @@ describe('BatchManager tracking consent storage', () => {
   });
 
   it('continues authorized uploads and starts a fresh period after pending directory creation fails', async () => {
-    const state = createConsentManager('granted');
+    const state = await createConsentManager('granted');
     manager = await BatchManager.create(config, createBatchConfig(), state);
     const mkdir = fs.mkdir.bind(fs);
     let failed = false;
@@ -365,7 +366,7 @@ describe('BatchManager tracking consent storage', () => {
   });
 
   it('does not persist events while consent is not granted', async () => {
-    const state = createConsentManager('not-granted');
+    const state = await createConsentManager('not-granted');
     manager = await BatchManager.create(config, createBatchConfig(), state);
 
     manager.post(event('drop-me'));
@@ -376,7 +377,7 @@ describe('BatchManager tracking consent storage', () => {
   });
 
   it('retries pending directory creation without requiring another consent transition', async () => {
-    const state = createConsentManager('granted');
+    const state = await createConsentManager('granted');
     manager = await BatchManager.create(config, createBatchConfig(), state);
     const mkdir = fs.mkdir.bind(fs);
     let failed = false;
@@ -400,7 +401,7 @@ describe('BatchManager tracking consent storage', () => {
   });
 
   it('keeps already authorized batches uploadable after consent is denied', async () => {
-    const state = createConsentManager('granted');
+    const state = await createConsentManager('granted');
     manager = await BatchManager.create(config, createBatchConfig(), state);
     const authorizedPath = path.join(basePath, 'rum');
     const uploaded: string[] = [];
@@ -422,7 +423,7 @@ describe('BatchManager tracking consent storage', () => {
   });
 
   it('bounds the authorized backlog after repeated pending grants without direct granted writes', async () => {
-    const state = createConsentManager('pending');
+    const state = await createConsentManager('pending');
     manager = await BatchManager.create(config, createBatchConfig(EventTrack.REPLAY), state);
     const authorizedPath = path.join(basePath, 'replay');
 
@@ -447,7 +448,7 @@ describe('BatchManager tracking consent storage', () => {
   });
 
   it('bounds the combined backlog across pending periods whose grants cannot detach', async () => {
-    const state = createConsentManager('pending');
+    const state = await createConsentManager('pending');
     manager = await BatchManager.create(config, createBatchConfig(EventTrack.REPLAY), state);
     const authorizedPath = path.join(basePath, 'replay');
     const rename = fs.rename.bind(fs);

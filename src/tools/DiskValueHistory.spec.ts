@@ -230,4 +230,18 @@ describe('DiskValueHistory', () => {
       expect(history.find(T10)).toBe('session-a');
     });
   });
+
+  describe('updateActive()', () => {
+    it('persists the new value of the active entry', async () => {
+      mfs.readFile.mockRejectedValue(new Error('ENOENT'));
+      const history = await DiskValueHistory.init<string>({ filePath: FILE_PATH, expireDelay: EXPIRE_DELAY });
+
+      history.add('old', T0);
+      history.updateActive('new');
+      await vi.advanceTimersByTimeAsync(0);
+
+      const lastCall = mfs.writeFile.mock.calls[mfs.writeFile.mock.calls.length - 1] as [string, string, string];
+      expect(JSON.parse(lastCall[1])).toEqual([{ startTime: T0, endTime: null, value: 'new' }]);
+    });
+  });
 });

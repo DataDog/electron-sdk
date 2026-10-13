@@ -5,8 +5,8 @@ import { display } from './display';
 
 /**
  * Disk-backed extension of TimeStampValueHistory. All in-memory operations delegate to an
- * underlying TimeStampValueHistory; add() and closeActive() additionally persist the full
- * entry list to disk as a JSON array (newest-first).
+ * underlying TimeStampValueHistory; every write additionally persists the full entry list to
+ * disk as a JSON array (newest-first).
  *
  * Lifecycle:
  * - Create instances via `DiskValueHistory.init()` which loads and restores entries from a
@@ -70,6 +70,11 @@ export class DiskValueHistory<T> {
 
   closeActive(endTime: TimeStamp): void {
     this.history.closeActive(endTime);
+    this.persistToDisk();
+  }
+
+  updateActive(value: T): void {
+    this.history.updateActive(value);
     this.persistToDisk();
   }
 
