@@ -45,6 +45,7 @@ export interface TestFixtures {
   initialIntakeQuotaDecision: 'quota_ok' | 'quota_ko';
   sdkConfigOverrides: Partial<InitConfiguration> | null;
   beforeSendRumEnabled: boolean;
+  fileProfiling: boolean;
 }
 
 /**
@@ -80,10 +81,11 @@ export const test = base.extend<TestFixtures>({
     { option: true },
   ],
 
-  electronApp: async ({ intake, rumBrowserSdk, sdkConfigOverrides, beforeSendRumEnabled }, use) => {
+  electronApp: async ({ intake, rumBrowserSdk, sdkConfigOverrides, beforeSendRumEnabled, fileProfiling }, use) => {
     const userDataDir = await createUserDataDir();
     const electronApp = await launchApp(intake, userDataDir, rumBrowserSdk, sdkConfigOverrides, {
       ...(beforeSendRumEnabled && { DD_E2E_BEFORE_SEND_RUM: '1' }),
+      ...(fileProfiling && { DD_E2E_FILE_PROFILING: '1' }),
     });
     await use(electronApp);
     await electronApp.close();
@@ -107,6 +109,8 @@ export const test = base.extend<TestFixtures>({
   sdkConfigOverrides: [null, { option: true }],
 
   beforeSendRumEnabled: [false, { option: true }],
+
+  fileProfiling: [false, { option: true }],
 });
 
 async function launchApp(

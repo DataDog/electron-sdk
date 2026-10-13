@@ -1,5 +1,5 @@
 import '@datadog/electron-sdk/instrument';
-import { app, BrowserWindow, ipcMain, net, protocol } from 'electron';
+import { app, BrowserWindow, ipcMain, net, protocol, session } from 'electron';
 import * as http from 'node:http';
 import * as fs from 'node:fs';
 import { join } from 'node:path';
@@ -126,6 +126,16 @@ function startRendererHttpServer(): Promise<number> {
 
 void app.whenReady().then(async () => {
   const config = getConfiguration();
+  // Opt-in: lets the file:// bridge window profile, as the playground does for its file:// renderer.
+  if (process.env.DD_E2E_FILE_PROFILING === '1') {
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      if (details.url.startsWith('file://') && details.url.endsWith('/bridge-window.html')) {
+        callback({ responseHeaders: { ...details.responseHeaders, 'Document-Policy': ['js-profiling'] } });
+      } else {
+        callback({});
+      }
+    });
+  }
   // DD_E2E_DEFER_INIT reproduces the "init() gated behind user consent" flow: the SDK is instrumented
   // (preload registered) but init() does not run and no window opens at startup. The e2e drives init and
   // window creation from the main process via __ddE2E, so it can control the order of init vs window open
