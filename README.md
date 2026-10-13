@@ -448,13 +448,26 @@ The Electron SDK advertises a `records` capability over the bridge, so the Brows
 
 ## Feature Flags
 
-Evaluate [Datadog Feature Flags](https://docs.datadoghq.com/feature_flags/) locally and synchronously in the main process and in renderer windows. Main fetches the rules with your client token and owns the OpenFeature evaluation context; renderers receive both through the SDK preload — no network round-trip per evaluation.
+Evaluate [Datadog Feature Flags](https://docs.datadoghq.com/feature_flags/) locally and synchronously in the main process and in renderer windows. By default (`evaluationMode: 'precomputed'`), Datadog computes the assignments for the current evaluation context and every process evaluates them locally — no network round-trip per evaluation. Main owns the OpenFeature evaluation context; renderers and spawned processes receive the assignments and context through the SDK preload and flags channels.
 
 ### Prerequisites
 
-1. In Datadog, enable **Allow local rule evaluation in client SDKs** for your application.
-2. Set the distribution to **Client**.
-3. Use a client token (not an API key).
+1. Set the distribution to **Client** and use a client token (not an API key).
+2. For `precomputed` (the default): enable feature flags for your application and environment in Datadog.
+3. For `rules`: enable **Allow local rule evaluation in client SDKs** for your application.
+
+### Evaluation modes
+
+| Mode                    | How flags are evaluated                                                                                                       | Context privacy                                                                                             | Fetches                                                            |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `precomputed` (default) | Datadog computes the assignments for the current context; every process evaluates them locally against the precomputed values | The targeting context (targeting key and attributes) is sent to Datadog on every context change and refresh | One request per context change, plus every `refreshInterval`       |
+| `rules`                 | The full rules configuration is fetched with your client token and rules are evaluated locally in every process               | The evaluation context never leaves the device                                                              | One request per `refreshInterval`; a context change needs no fetch |
+
+Notes for `precomputed`:
+
+- `await OpenFeature.setContext()` in main waits for the new assignments (bounded by `fetchTimeout`); while they are fetched, OpenFeature reports `Reconciling`. When the targeting key changes, applications defaults are served until the new identity's assignments arrive, so one identity never sees another's assignments. On failure `setContext()` still resolves and the provider emits `Error` (its status becomes `ERROR`); the returned promise does not reject.
+- The per-context assignments are cached on disk (at most 5 contexts, 7-day max age, including the targeting attributes at rest — like the browser SDK's IndexedDB cache) so a restart offline serves them as `STALE`.
+- Exposure deduplication uses the assignments' `createdAt` as the configuration identity: a new `createdAt` logs exposures again.
 
 ### Setup
 
@@ -483,21 +496,22 @@ const variant = client.getStringValue('my-flag', 'default');
 
 ### The evaluation context
 
-The context is **main-owned and explicit**: set it through `OpenFeature.setContext()`, not through `setUserInfo`/`setAccountInfo`. A context is replaced (never merged) on every change; `{}` falls back to a per-install anonymous key persisted in `userData`. Only flat `string`, `number`, and `boolean` attributes are supported (at most 100, keys ≤ 256 chars, string values ≤ 4096 chars).
+The context is **main-owned and explicit**: set it through `OpenFeature.setContext()`, not through `setUserInfo`/`setAccountInfo`. A context is replaced (never merged) on every change; `{}` falls back to a per-install anonymous key persisted in `userData`. Only flat `string`, `number`, and `boolean` attributes are supported (at most 100, keys ≤ 256 chars, string values ≤ 4096 chars). In `precomputed` mode the context is part of every assignments request (see [Evaluation modes](#evaluation-modes)).
 
 ### Options
 
-| Option                         | Type       | Default         | Notes                                                                                                                                                                                                                                                             |
-| ------------------------------ | ---------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `env`                          | `string`   | top-level `env` | Required overall; flags are disabled if neither resolves                                                                                                                                                                                                          |
-| `refreshInterval`              | `number`   | `300000`        | 0 disables; values below 60 000 clamp to 60 000                                                                                                                                                                                                                   |
-| `fetchTimeout`                 | `number`   | `5000`          | Clamped to [500, 60000]                                                                                                                                                                                                                                           |
-| `persistConfiguration`         | `boolean`  | `true`          | Cache the configuration on disk (7-day max age)                                                                                                                                                                                                                   |
-| `enableExposureLogging`        | `boolean`  | `true`          | Send exposure events                                                                                                                                                                                                                                              |
-| `enableRumFeatureFlagTracking` | `boolean`  | `true`          | Attach evaluated flags to main RUM views and errors                                                                                                                                                                                                               |
-| `enableFlagEvaluationTracking` | `boolean`  | `true`          | Send aggregated evaluation counts (`flagevaluation` track, every 10 s)                                                                                                                                                                                            |
-| `flaggingProxy`                | `string`   | —               | Host that serves the rules endpoint; `https://` is prepended when there is no protocol. An invalid value disables flags entirely                                                                                                                                  |
-| `excludedPartitions`           | `string[]` | `[]`            | Session partitions (as passed to `session.fromPartition`, `''` is the default session) where renderers get no flags bridge and no answer from main; RUM keeps working there. Works for sessions created before or after `init()`. An invalid value disables flags |
+| Option                         | Type                       | Default         | Notes                                                                                                                                                                                                                                                             |
+| ------------------------------ | -------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `evaluationMode`               | `'precomputed' \| 'rules'` | `'precomputed'` | How flags are evaluated (see [Evaluation modes](#evaluation-modes)); an invalid value falls back to `precomputed` with an error                                                                                                                                   |
+| `env`                          | `string`                   | top-level `env` | Required overall; flags are disabled if neither resolves                                                                                                                                                                                                          |
+| `refreshInterval`              | `number`                   | `300000`        | 0 disables; values below 60 000 clamp to 60 000                                                                                                                                                                                                                   |
+| `fetchTimeout`                 | `number`                   | `5000`          | Clamped to [500, 60000]                                                                                                                                                                                                                                           |
+| `persistConfiguration`         | `boolean`                  | `true`          | Cache on disk (7-day max age): the rules configuration by environment, or per-context assignments (at most 5 contexts) in `precomputed` mode                                                                                                                      |
+| `enableExposureLogging`        | `boolean`                  | `true`          | Send exposure events                                                                                                                                                                                                                                              |
+| `enableRumFeatureFlagTracking` | `boolean`                  | `true`          | Attach evaluated flags to main RUM views and errors                                                                                                                                                                                                               |
+| `enableFlagEvaluationTracking` | `boolean`                  | `true`          | Send aggregated evaluation counts (`flagevaluation` track, every 10 s)                                                                                                                                                                                            |
+| `flaggingProxy`                | `string`                   | —               | Single host that serves both flagging endpoints; `https://` is prepended when there is no protocol. An invalid value disables flags entirely                                                                                                                      |
+| `excludedPartitions`           | `string[]`                 | `[]`            | Session partitions (as passed to `session.fromPartition`, `''` is the default session) where renderers get no flags bridge and no answer from main; RUM keeps working there. Works for sessions created before or after `init()`. An invalid value disables flags |
 
 ### Renderer windows
 
@@ -579,7 +593,7 @@ flags.onChange(({ revision, status }) => {
 - The configuration is cached in `userData/_dd_flags/` and served as `STALE` on restart while offline.
 - If the org setting is off (HTTP 4xx), an actionable error is logged and the served configuration is dropped (defaults with `errorCode`) until a successful fetch.
 - Transient failures (timeout, network, HTTP 5xx) keep serving the held configuration.
-- Register the main provider with the initial context before opening windows so early evaluations are correct. A provider registered before `init()` becomes ready (emitting `Ready`) once the rules load.
+- Register the main provider with the initial context before opening windows so early evaluations are correct. A provider registered before `init()` becomes ready (emitting `Ready`) once the assignments or rules load.
 - Spawned processes (forks, utility processes, workers) are supported through `openFlagsChannel` and `@datadog/electron-sdk/child`; see above.
 
 See the [Feature Flags architecture notes](docs/ARCHITECTURE.md#feature-flags) for ownership, snapshot lifecycle, origin gating and limits.

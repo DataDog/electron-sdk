@@ -1,4 +1,8 @@
-import { configurationFromString, configurationToString, fetchPrecomputedConfiguration } from '@datadog/openfeature-browser/rules-based';
+import {
+  configurationFromString,
+  configurationToString,
+  fetchPrecomputedConfiguration,
+} from '@datadog/openfeature-browser/rules-based';
 import type { FlagsConfiguration } from '@datadog/flagging-core';
 import type { TimeStamp } from '@datadog/js-core/time';
 import { timeStampNow } from '@datadog/js-core/time';
@@ -11,7 +15,6 @@ import {
 } from '../telemetry';
 import { display } from '../../tools/display';
 import type { FlatContext } from '../../common/flags/types';
-import { MAX_CONFIGURATION_LENGTH } from './RulesFetcher';
 
 export type PrecomputedFetchOutcome =
   | { kind: 'success'; wire: string; fetchedAt: TimeStamp; createdAt: string }
@@ -57,6 +60,9 @@ export class PrecomputedFetcher {
 
   fetch(context: FlatContext): Promise<PrecomputedFetchOutcome> {
     const requestId = ++this.latestRequestId;
+    // Abort the superseded request at once: its outcome settles as a warm failure and is
+    // then dropped by the sequencing check below.
+    this.activeController?.abort();
     const controller = new AbortController();
     this.activeController = controller;
     const timeoutId = sdkSetTimeout(() => controller.abort(), this.options.fetchTimeout);

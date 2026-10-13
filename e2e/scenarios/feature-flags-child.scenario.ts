@@ -15,6 +15,7 @@ import { FlagsChildren } from '../lib/mainPage';
  * touches the app's own channels.
  */
 const flagsConfiguration = (intake: { getPort: () => number }) => ({
+  evaluationMode: 'rules' as const,
   refreshInterval: 60_000,
   fetchTimeout: 2_000,
   flaggingProxy: `http://localhost:${intake.getPort()}`,

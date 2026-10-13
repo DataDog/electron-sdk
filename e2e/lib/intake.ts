@@ -175,6 +175,9 @@ export class Intake {
   private logs: ReceivedEvent<LogsEvent>[] = [];
   private rulesRequests: { timestamp: number; url: string; headers: Record<string, string> }[] = [];
   private rulesMode: 'ok' | 'unavailable' | 'error' | 'hang' = 'ok';
+  private precomputedRequests: PrecomputedRequest[] = [];
+  private precomputedMode: 'ok' | 'forbidden' | 'error' | 'hang' | 'slow' = 'ok';
+  private precomputedCreatedAtCounter = 0;
   private exposures: {
     timestamp: number;
     body: Record<string, unknown>;
@@ -286,6 +289,26 @@ export class Intake {
     this.rulesMode = mode;
   }
 
+  /** Configure the precompute-assignments endpoint behavior (ok / 403 / 503 / hang / slow). */
+  setPrecomputedMode(mode: 'ok' | 'forbidden' | 'error' | 'hang' | 'slow'): void {
+    this.precomputedMode = mode;
+  }
+
+  getPrecomputedRequests(): PrecomputedRequest[] {
+    return this.precomputedRequests;
+  }
+
+  async waitForPrecomputedRequestCount(count: number, options?: { timeout?: number }): Promise<void> {
+    const timeout = options?.timeout ?? 5000;
+    const deadline = Date.now() + timeout;
+    while (this.precomputedRequests.length < count) {
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out waiting for ${count} precomputed requests, got ${this.precomputedRequests.length}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+
   getRulesRequests(): { timestamp: number; url: string; headers: Record<string, string> }[] {
     return this.rulesRequests;
   }
@@ -340,6 +363,74 @@ export class Intake {
         const url = new URL(req.url ?? '/', 'http://localhost');
         const ddforward = url.searchParams.get('ddforward') ?? '';
         const ddforwardSubdomain = url.searchParams.get('ddforwardSubdomain') ?? '';
+
+        // The precompute-assignments request goes through the proxy root as a POST with a
+        // dd_env query param and a JSON:API body carrying the evaluation context (M7).
+        if (req.method === 'POST' && url.searchParams.has('dd_env')) {
+          const chunks: Buffer[] = [];
+          req.on('data', (chunk: Buffer) => chunks.push(chunk));
+          req.on('end', () => {
+            const bodyText = Buffer.concat(chunks).toString('utf-8');
+            let targetingKey = '';
+            let targetingAttributes: Record<string, string | number | boolean> = {};
+            try {
+              const parsed = JSON.parse(bodyText) as {
+                data?: {
+                  attributes?: {
+                    subject?: {
+                      targeting_key?: string;
+                      targeting_attributes?: Record<string, string | number | boolean>;
+                    };
+                  };
+                };
+              };
+              targetingKey = parsed.data?.attributes?.subject?.targeting_key ?? '';
+              targetingAttributes = parsed.data?.attributes?.subject?.targeting_attributes ?? {};
+            } catch {
+              // An undecodable request body: answer as a server error.
+            }
+            this.precomputedRequests.push({
+              timestamp: Date.now(),
+              url: url.toString(),
+              headers: req.headers as Record<string, string>,
+              targetingKey,
+              targetingAttributes,
+            });
+            if (this.precomputedMode === 'hang') {
+              // Never respond: the SDK must abort after its fetch timeout.
+              return;
+            }
+            if (this.precomputedMode === 'slow') {
+              // Respond late: the SDK must keep serving the previous snapshot meanwhile.
+              setTimeout(() => {
+                res.writeHead(200, { 'Content-Type': 'application/vnd.api+json' });
+                res.end(
+                  JSON.stringify(
+                    precomputedAssignmentsFor(targetingKey, targetingAttributes, ++this.precomputedCreatedAtCounter)
+                  )
+                );
+              }, 4000);
+              return;
+            }
+            if (this.precomputedMode === 'forbidden') {
+              res.writeHead(403, { 'Content-Type': 'application/vnd.api+json' });
+              res.end(JSON.stringify({ errors: [{ detail: 'Feature flags are not enabled for this application' }] }));
+              return;
+            }
+            if (this.precomputedMode === 'error') {
+              res.writeHead(503, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'unavailable' }));
+              return;
+            }
+            res.writeHead(200, { 'Content-Type': 'application/vnd.api+json' });
+            res.end(
+              JSON.stringify(
+                precomputedAssignmentsFor(targetingKey, targetingAttributes, ++this.precomputedCreatedAtCounter)
+              )
+            );
+          });
+          return;
+        }
 
         // The feature flags rules request goes through the proxy root: upstream sends it
         // to `<flaggingProxy>/?dd_env=<env>` (the proxy is expected to route internally),
@@ -702,6 +793,7 @@ export class Intake {
   clear(): void {
     this.rumEvents = [];
     this.rulesRequests = [];
+    this.precomputedRequests = [];
     this.exposures = [];
     this.flagEvaluations = [];
     this.logs = [];
@@ -853,3 +945,64 @@ const wireJSON = JSON.parse(wire) as { rules: { response: string } };
 
 /** The rules endpoint response body: the protobuf configuration binary. */
 export const flagsBinary = (): Buffer => Buffer.from(wireJSON.rules.response, 'base64');
+
+// ---------------------------------------------------------------------------
+// Feature flags precomputed assignments (M7). Computed at request time from a
+// hand-authored table keyed by the request's targeting key and attributes, so
+// the scenarios assert real assignment values without a committed fixture.
+// ---------------------------------------------------------------------------
+
+/** One recorded `/precompute-assignments` request. */
+export interface PrecomputedRequest {
+  timestamp: number;
+  url: string;
+  headers: Record<string, string>;
+  targetingKey: string;
+  targetingAttributes: Record<string, string | number | boolean>;
+}
+
+/**
+ * The assignments response for a context, mirroring the rules fixture semantics:
+ * - `targeted-flag` (string): 'variant-a' when `plan` is 'pro', 'str-default' otherwise;
+ * - `split-flag` (boolean): a stable bucket per targeting key ('split-key-1' is off,
+ *   'split-key-5' is on, like the rules fixture's known shards);
+ * - `disabled-flag`: absent, so it always evaluates to the application default.
+ *
+ * `createdAt` changes per response when `clock` advances, so scenarios can assert
+ * that a new configuration identity re-logs exposures (D29).
+ */
+function precomputedAssignmentsFor(
+  targetingKey: string,
+  attributes: Record<string, string | number | boolean>,
+  clock: number
+): { data: { attributes: { createdAt: string; flags: Record<string, unknown> } } } {
+  const isPro = attributes.plan === 'pro';
+  const flags: Record<string, unknown> = {
+    'targeted-flag': {
+      allocationKey: isPro ? 'targeted-pro' : 'targeted-fallback',
+      variationKey: isPro ? 'variant-a' : 'str-default',
+      variationType: 'string',
+      variationValue: isPro ? 'variant-a' : 'str-default',
+      reason: 'STATIC',
+      doLog: true,
+      serialId: 1,
+    },
+    'split-flag': {
+      allocationKey: 'split-allocation',
+      variationKey: targetingKey === 'split-key-5' ? 'on' : 'off',
+      variationType: 'boolean',
+      variationValue: targetingKey === 'split-key-5',
+      reason: 'SPLIT',
+      doLog: true,
+      serialId: 2,
+    },
+  };
+  return {
+    data: {
+      attributes: {
+        createdAt: `created-at-${clock}`,
+        flags,
+      },
+    },
+  };
+}

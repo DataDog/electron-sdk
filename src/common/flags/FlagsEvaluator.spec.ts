@@ -31,6 +31,13 @@ function fixtureWireV2(): string {
   return configurationToString(clone as never);
 }
 
+/** Drop the SDK-added configuration identity so parity compares upstream metadata only. */
+function stripConfigurationIdentity(metadata: Record<string, unknown> | undefined): Record<string, unknown> {
+  const rest = { ...(metadata ?? {}) };
+  delete rest.__dd_configuration_identity;
+  return rest;
+}
+
 describe('FlagsEvaluator', () => {
   beforeEach(() => {
     // Freeze time so flagMetadata evaluation timestamps match between oracle and evaluator.
@@ -52,7 +59,8 @@ describe('FlagsEvaluator', () => {
         variant: result.variant,
         reason: result.reason,
         errorCode: result.errorCode,
-        flagMetadata: result.flagMetadata,
+        // The precomputed identity is SDK-added metadata (D29), not part of upstream parity.
+        flagMetadata: stripConfigurationIdentity(result.flagMetadata),
       }).toEqual({
         value: expected.value,
         variant: expected.variant,
@@ -153,7 +161,8 @@ describe('FlagsEvaluator', () => {
           variant: result.variant,
           reason: result.reason,
           errorCode: result.errorCode,
-          flagMetadata: result.flagMetadata,
+          // The precomputed identity is SDK-added metadata (D29), not upstream parity.
+          flagMetadata: stripConfigurationIdentity(result.flagMetadata),
         }).toEqual({
           value: expected.value,
           variant: expected.variant,
@@ -231,7 +240,12 @@ describe('FlagsEvaluator', () => {
       expect(result.errorCode).toBe('PROVIDER_NOT_READY');
       // The new assignments then apply atomically with their context.
       evaluator.apply(
-        precomputedSnapshot({ revision: 3, context: otherPrecomputedContext, contextRevision: 2, configurationRevision: 2 })
+        precomputedSnapshot({
+          revision: 3,
+          context: otherPrecomputedContext,
+          contextRevision: 2,
+          configurationRevision: 2,
+        })
       );
       expect(evaluator.contextRevision).toBe(2);
     });

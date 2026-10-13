@@ -185,14 +185,15 @@ export class SnapshotPublisher {
  * The minimal snapshot carries no configuration or context, so no origin check applies.
  */
 /**
- * The snapshot main publishes to renderers and spawned processes. While the state is
- * `NOT_READY` (before the first configuration is served) that is the minimal `NOT_READY`
- * snapshot, with no context: the wire contract only carries a context with a READY, STALE
- * or ERROR status, so the full NOT_READY snapshot would be rejected by every parser and
- * reported as an invalid snapshot.
+ * The snapshot main publishes to renderers and spawned processes. Before the first
+ * configuration is served (revision 0) that is the minimal `NOT_READY` snapshot, with no
+ * context: pre-init frames never receive an evaluation context. A `NOT_READY` snapshot
+ * with revision >= 1 is the pending-identity invalidation (D25/Q2): it carries the new
+ * context and no configuration, so every process clears the held assignments of the
+ * previous identity while the new assignments are fetched.
  */
 export function publishedSnapshot(snapshot: FlagsSnapshot): FlagsSnapshot {
-  return snapshot.status === 'NOT_READY' ? minimalFlagsSnapshot('NOT_READY') : snapshot;
+  return snapshot.status === 'NOT_READY' && snapshot.revision === 0 ? minimalFlagsSnapshot('NOT_READY') : snapshot;
 }
 
 export function startDisabledFlagsResponder(): void {

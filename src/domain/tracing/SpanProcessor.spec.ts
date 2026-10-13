@@ -204,7 +204,7 @@ describe('SpanProcessor', () => {
       expect(collected).toHaveLength(0);
     });
 
-    it('filters flag configuration requests to ufc-client.<site> and to the flaggingProxy host', () => {
+    it('filters flag configuration requests to the rules and precomputed-assignments hosts and to the flaggingProxy host', () => {
       processor.stop();
       processor = new SpanProcessor(eventManager, hooks, {
         env: 'test',
@@ -224,8 +224,16 @@ describe('SpanProcessor', () => {
         [
           createSpan({
             meta: {
-              'http.url': 'https://ufc-client.datadoghq.com/api/v2/feature-flagging/config/rules-based/client',
+              'http.url': 'https://ufc-client.ff-cdn.datadoghq.com/api/v2/feature-flagging/config/rules-based/client',
               'http.method': 'GET',
+            },
+          }),
+        ],
+        [
+          createSpan({
+            meta: {
+              'http.url': 'https://preview.ff-cdn.datadoghq.com/precompute-assignments?dd_env=test',
+              'http.method': 'POST',
             },
           }),
         ],

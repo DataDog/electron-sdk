@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { createHash } from 'node:crypto';
 import type { TimeStamp } from '@datadog/js-core/time';
 import { configurationFromString } from '@datadog/openfeature-browser/rules-based';
+import { timeStampNow } from '@datadog/js-core/time';
 import { display } from '../../tools/display';
 import { callMonitored } from '../telemetry';
 import { CONFIGURATION_CACHE_MAX_AGE } from './ConfigurationCache';
@@ -137,7 +138,7 @@ export class PrecomputedCache {
 
   /** The cache key for a context: the environment identity plus the canonical context. */
   keyFor(context: FlatContext): string {
-    return createHash('sha256').update(`${this.identity}|${canonicalContext(context)}`).digest('hex');
+    return precomputedCacheKey(this.identity, context);
   }
 
   /**
@@ -151,14 +152,30 @@ export class PrecomputedCache {
       return undefined;
     }
     const [hit] = this.entries.splice(index, 1);
-    this.entries.push(hit);
+    // Re-check the age: an entry that aged out since startup is not served (D7).
+    if (timeStampNow() - hit.fetchedAt > CONFIGURATION_CACHE_MAX_AGE) {
+      if (this.persistConfiguration) {
+        this.enqueue(async () => {
+          await fs.unlink(this.entryFilePath(key)).catch(() => undefined);
+          await this.writeIndex();
+        });
+      }
+      return undefined;
+    }
+    // A hit refreshes the entry's recency and persists it, so a recently read context
+    // survives LRU eviction across a restart.
+    const refreshed = { ...hit, lastUsed: timeStampNow() };
+    this.entries.push(refreshed);
+    if (this.persistConfiguration) {
+      this.enqueue(() => this.writeIndex());
+    }
     return { wire: hit.wire, fetchedAt: hit.fetchedAt };
   }
 
   /** Persist assignments for a context. Writes are serialized; the last write wins. */
   write(context: FlatContext, wire: string, fetchedAt: TimeStamp): Promise<void> {
     const key = this.keyFor(context);
-    const lastUsed = Date.now();
+    const lastUsed = timeStampNow();
     this.entries = this.entries.filter((entry) => entry.key !== key);
     this.entries.push({ key, wire, fetchedAt, lastUsed });
     const evicted = this.entries.slice(0, Math.max(0, this.entries.length - PRECOMPUTED_CACHE_MAX_CONTEXTS));
@@ -217,6 +234,13 @@ export class PrecomputedCache {
       )
     );
   }
+}
+
+/** The disk-cache key for a context: the environment identity plus the canonical context. */
+export function precomputedCacheKey(identity: string, context: FlatContext): string {
+  return createHash('sha256')
+    .update(`${identity}|${canonicalContext(context)}`)
+    .digest('hex');
 }
 
 /** A stable serialization of a flat context (its values are primitives). */

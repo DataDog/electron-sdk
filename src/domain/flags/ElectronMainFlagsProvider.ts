@@ -71,7 +71,7 @@ export class ElectronMainFlagsProvider {
         this.configurationRevision = current.configurationRevision;
         controller.state.subscribe((snapshot) => this.onSnapshot(snapshot));
         if (this.context !== undefined) {
-          this.applyContextToController(this.context);
+          this.applyContextInBackground(this.context);
         }
         if (this.evaluatable) {
           this.notifyReadyWaiters();
@@ -85,7 +85,7 @@ export class ElectronMainFlagsProvider {
    * web-sdk on `setProvider` — the context is replaced, never merged.
    */
   initialize(context: EvaluationContext = {}): Promise<void> {
-    this.applyContext(context);
+    this.applyContextInBackground(context);
     if (this.evaluatable) {
       return Promise.resolve();
     }
@@ -225,6 +225,20 @@ export class ElectronMainFlagsProvider {
     return this.applyContextToController(context);
   }
 
+  /**
+   * Apply a context change whose promise nobody awaits (the registration and startup
+   * paths): a rejection (the assignments fetch ended in ERROR, D25) must not become an
+   * unhandled rejection. Readiness stays bounded: `initialize()` still rejects after
+   * `fetchTimeout` (which the web-sdk reports), and the state already publishes the
+   * failure (defaults with `errorCode`).
+   */
+  private applyContextInBackground(context: EvaluationContext): void {
+    const applied = this.applyContext(context);
+    if (applied !== undefined && typeof applied.then === 'function') {
+      applied.catch(() => undefined);
+    }
+  }
+
   private applyContextToController(context: EvaluationContext): void | Promise<void> {
     const controller = this.controller;
     if (controller === undefined) {
@@ -234,12 +248,22 @@ export class ElectronMainFlagsProvider {
     if (droppedKeys.length > 0) {
       display.warn(`Dropped feature flags context attributes: ${droppedKeys.join(', ')}`);
     }
-    if (JSON.stringify(controller.state.snapshot().context) !== JSON.stringify(normalized)) {
-      // In precomputed mode this fetches the assignments for the new context and the
-      // returned promise settles once they are applied, so `await OpenFeature.setContext()`
-      // waits for them (D25) and the web-sdk reports RECONCILING meanwhile.
-      return controller.applyContextChange(normalized);
+    // The controller compares against the *pending* context too, not only the served
+    // snapshot: a duplicate change awaits the matching in-flight assignments fetch, and a
+    // different one supersedes it (D25), so `await OpenFeature.setContext()` always waits
+    // for the assignments of the context it asked for.
+    const applied = controller.applyContextChange(normalized);
+    if (applied !== undefined && typeof applied.then === 'function') {
+      return applied.then(() => {
+        const snapshot = controller.state.snapshot();
+        if (snapshot.status === 'ERROR' && JSON.stringify(snapshot.context) === JSON.stringify(normalized)) {
+          throw new ProviderNotReadyError(
+            'no feature flags assignments are available for the requested evaluation context'
+          );
+        }
+      });
     }
+    return applied;
   }
 
   /**

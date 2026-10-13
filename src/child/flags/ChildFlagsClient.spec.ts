@@ -10,6 +10,11 @@ import {
   type ChildMessage,
 } from '../../common/flags/childProtocol';
 import { CASES, oracle, fixtureSnapshot, proContext } from '../../common/flags/evaluationCases.specUtil';
+import {
+  PRECOMPUTED_CASES,
+  precomputedOracle,
+  precomputedSnapshot,
+} from '../../common/flags/precomputedCases.specUtil';
 import { FlagsEvaluator } from '../../common/flags/FlagsEvaluator';
 import { minimalFlagsSnapshot } from '../../common/flags/flagsHolder';
 import type { FlagValue } from '@openfeature/web-sdk';
@@ -79,6 +84,27 @@ describe('ChildFlagsClient', () => {
     expect(client.getStringValue('targeted-flag', 'default')).toBe(oracle(CASES[0]).value);
   });
 
+  it('a pending-identity NOT_READY invalidation clears the held assignments', () => {
+    const { client, push } = connectOverFrames();
+    push(fixtureSnapshot({ context: proContext }));
+    expect(client.getStringValue('targeted-flag', 'default')).not.toBe('default');
+
+    // Main is fetching assignments for a changed targeting key: the invalidation clears the
+    // previous identity's assignments in the child too.
+    push(
+      fixtureSnapshot({
+        revision: fixtureSnapshot({ revision: 5 }).revision,
+        status: 'NOT_READY',
+        configuration: undefined,
+        context: { targetingKey: 'user-2' },
+        contextRevision: 2,
+      })
+    );
+    expect(client.status).toBe('NOT_READY');
+    expect(client.getStringValue('targeted-flag', 'default')).toBe('default');
+    expect(client.getStringDetails('targeted-flag', 'default').errorCode).toBe('PROVIDER_NOT_READY');
+  });
+
   it('ignores an older revision; a minimal snapshot never overrides a real one', () => {
     const { client, push } = connectOverFrames();
     push(fixtureSnapshot({ revision: 5, status: 'STALE' }));
@@ -110,6 +136,38 @@ describe('ChildFlagsClient', () => {
       expect(await client.whenReady({ timeout: 1000 })).toBe(true);
       const details = evaluate(client, evaluationCase.type, evaluationCase.flagKey, evaluationCase.defaultValue);
       const expected = oracle(evaluationCase);
+      expect([details.value, details.variant, details.reason, details.errorCode]).toEqual([
+        expected.value,
+        expected.variant,
+        expected.reason,
+        expected.errorCode,
+      ]);
+      client.close();
+      port2.close();
+    });
+  }
+
+  for (const evaluationCase of PRECOMPUTED_CASES) {
+    it(`precomputed parity \u2039 ${evaluationCase.name} (frames)`, () => {
+      const { client, push } = connectOverFrames();
+      push(precomputedSnapshot());
+      const details = evaluate(client, evaluationCase.type, evaluationCase.flagKey, evaluationCase.defaultValue);
+      const expected = precomputedOracle(evaluationCase);
+      expect([details.value, details.variant, details.reason, details.errorCode]).toEqual([
+        expected.value,
+        expected.variant,
+        expected.reason,
+        expected.errorCode,
+      ]);
+    });
+
+    it(`precomputed parity \u2039 ${evaluationCase.name} (port)`, async () => {
+      const { port1, port2 } = new MessageChannel();
+      answerHelloWith(port2, precomputedSnapshot());
+      const client = connectFlags(port1);
+      expect(await client.whenReady({ timeout: 1000 })).toBe(true);
+      const details = evaluate(client, evaluationCase.type, evaluationCase.flagKey, evaluationCase.defaultValue);
+      const expected = precomputedOracle(evaluationCase);
       expect([details.value, details.variant, details.reason, details.errorCode]).toEqual([
         expected.value,
         expected.variant,

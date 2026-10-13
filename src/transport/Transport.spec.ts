@@ -109,6 +109,7 @@ describe('Transport', () => {
     it('should setup the EXPOSURES track when feature flags enable exposure logging', async () => {
       const flagsConfig = createTestConfiguration({
         featureFlags: {
+          evaluationMode: 'rules',
           env: 'e2e',
           refreshInterval: 300000,
           fetchTimeout: 5000,
@@ -139,6 +140,7 @@ describe('Transport', () => {
       vi.clearAllMocks();
       const flagsConfig = createTestConfiguration({
         featureFlags: {
+          evaluationMode: 'rules',
           env: 'e2e',
           refreshInterval: 300000,
           fetchTimeout: 5000,
@@ -163,6 +165,7 @@ describe('Transport', () => {
       async (enableFlagEvaluationTracking, expected) => {
         const flagsConfig = createTestConfiguration({
           featureFlags: {
+            evaluationMode: 'rules',
             env: 'e2e',
             refreshInterval: 300000,
             fetchTimeout: 5000,

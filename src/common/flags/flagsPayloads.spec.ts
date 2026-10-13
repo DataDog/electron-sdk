@@ -7,6 +7,7 @@ import {
   utf8ByteLength,
 } from './flagsPayloads';
 import type { FlagsSnapshot } from './types';
+import { precomputedSnapshot } from './precomputedCases.specUtil';
 
 const fullSnapshot: FlagsSnapshot = {
   revision: 3,
@@ -23,6 +24,13 @@ describe('parseFlagsSnapshot', () => {
     expect(parseFlagsSnapshot(JSON.stringify(fullSnapshot))).toEqual(fullSnapshot);
   });
 
+  it('accepts a precomputed configuration string unchanged (opaque, M7)', () => {
+    const snapshot = precomputedSnapshot();
+    // The payloads layer treats the wire string as opaque: whatever precomputed
+    // assignments serialize to round-trips without validation or transformation.
+    expect(parseFlagsSnapshot(JSON.stringify(snapshot))).toEqual(snapshot);
+  });
+
   it('accepts the minimal pre-init and disabled snapshot shapes (no configuration or context)', () => {
     const minimal = {
       revision: 0,
@@ -34,6 +42,29 @@ describe('parseFlagsSnapshot', () => {
     expect(parseFlagsSnapshot(JSON.stringify(minimal))).toEqual(minimal);
     const disabled = { ...minimal, status: 'DISABLED' as const };
     expect(parseFlagsSnapshot(JSON.stringify(disabled))).toEqual(disabled);
+  });
+  it('accepts a pending-identity NOT_READY invalidation and rejects contexts on minimal shapes otherwise', () => {
+    // The invalidation: revision >= 1, the new context, no configuration.
+    const invalidation = {
+      revision: 3,
+      status: 'NOT_READY',
+      context: { targetingKey: 'user-2' },
+      contextRevision: 2,
+      configurationRevision: 1,
+      tracking: { exposures: true, rum: true, evaluations: true },
+    };
+    expect(parseFlagsSnapshot(JSON.stringify(invalidation))).toEqual(invalidation);
+    // The pre-init privacy contract: a context never rides a revision-0 minimal snapshot.
+    expect(parseFlagsSnapshot(JSON.stringify({ ...invalidation, revision: 0 }))).toBeUndefined();
+    // DISABLED never carries a context, at any revision.
+    expect(parseFlagsSnapshot(JSON.stringify({ ...invalidation, status: 'DISABLED' }))).toBeUndefined();
+    // An invalidation never carries a configuration or an error message.
+    expect(parseFlagsSnapshot(JSON.stringify({ ...invalidation, configuration: 'wire' }))).toBeUndefined();
+    expect(parseFlagsSnapshot(JSON.stringify({ ...invalidation, errorMessage: 'boom' }))).toBeUndefined();
+    // The invalidation context must be flat.
+    expect(
+      parseFlagsSnapshot(JSON.stringify({ ...invalidation, context: { targetingKey: 'u', nested: {} } }))
+    ).toBeUndefined();
   });
 
   it('rejects a minimal-status snapshot that carries a configuration or context', () => {

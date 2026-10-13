@@ -70,7 +70,14 @@ __metadata:
   dependencies:
     dd-trace: "npm:6.10.0"
   peerDependencies:
+    "@openfeature/core": ^1.9.2
+    "@openfeature/web-sdk": ^1.5.0
     electron: ">=39"
+  peerDependenciesMeta:
+    "@openfeature/core":
+      optional: true
+    "@openfeature/web-sdk":
+      optional: true
   languageName: node
   linkType: soft
 

@@ -345,6 +345,7 @@ describe('ChildFlagsHub', () => {
       const controller = (await startFeatureFlags(
         createTestConfiguration({
           featureFlags: {
+            evaluationMode: 'rules',
             env: 'e2e',
             refreshInterval: 0,
             fetchTimeout: 500,
@@ -361,6 +362,85 @@ describe('ChildFlagsHub', () => {
           hooks,
           mainViewEmitter: { findViewId: () => 'main-view', requestViewUpdate },
           fetch: () => Promise.resolve(okResponse()),
+        }
+      ))!;
+      await controller.settled();
+      return controller;
+    }
+
+    /** The assignments response body `/precompute-assignments` returns for a targeting key. */
+    const okPrecomputed = (targetingKey: string) =>
+      new Response(JSON.stringify(precomputedResponseFor(targetingKey)), {
+        status: 200,
+        headers: { 'content-type': 'application/vnd.api+json' },
+      });
+
+    function precomputedResponseFor(targetingKey: string): Record<string, unknown> {
+      return {
+        data: {
+          attributes: {
+            createdAt: `created-${targetingKey}`,
+            flags: {
+              'assigned-flag': {
+                allocationKey: 'assign-a',
+                variationKey: `variant-${targetingKey}`,
+                variationType: 'string',
+                variationValue: `variant-${targetingKey}`,
+                reason: 'STATIC',
+                doLog: true,
+                serialId: 11,
+              },
+            },
+          },
+        },
+      };
+    }
+
+    /** Read the subject of a precompute-assignments request body. */
+    function precomputedSubjectOf(body: string): {
+      targeting_key?: string;
+      targeting_attributes?: Record<string, string | number | boolean>;
+    } {
+      try {
+        return (
+          (
+            JSON.parse(body) as {
+              data?: {
+                attributes?: {
+                  subject?: {
+                    targeting_key?: string;
+                    targeting_attributes?: Record<string, string | number | boolean>;
+                  };
+                };
+              };
+            }
+          ).data?.attributes?.subject ?? {}
+        );
+      } catch {
+        return {};
+      }
+    }
+
+    async function startPrecomputedFlags(fetch: typeof globalThis.fetch) {
+      const controller = (await startFeatureFlags(
+        createTestConfiguration({
+          featureFlags: {
+            evaluationMode: 'precomputed',
+            env: 'e2e',
+            refreshInterval: 0,
+            fetchTimeout: 500,
+            persistConfiguration: false,
+            enableExposureLogging: true,
+            enableRumFeatureFlagTracking: true,
+            enableFlagEvaluationTracking: true,
+            excludedPartitions: [],
+          },
+        }),
+        {
+          eventManager,
+          hooks,
+          mainViewEmitter: { findViewId: () => 'main-view', requestViewUpdate },
+          fetch,
         }
       ))!;
       await controller.settled();
@@ -607,6 +687,34 @@ describe('ChildFlagsHub', () => {
         ) as { accepted: boolean; contextRevision?: number } | undefined;
       };
 
+      it('the response is delayed until an asynchronous context change (precomputed assignments) is applied', async () => {
+        const state = readyState();
+        let resolveAssignments: () => void = () => undefined;
+        const assignmentsApplied = new Promise<void>((resolve) => {
+          resolveAssignments = resolve;
+        });
+        unlink = linkFlagsChildren({
+          state,
+          intake: new EvaluationBatchIntake(() => undefined),
+          keyStore,
+          // Precomputed mode: the context change resolves once its assignments are applied.
+          applyContextChange: (context) =>
+            assignmentsApplied.then(() => {
+              state.applyContextUpdate(context);
+            }),
+        });
+        const { send, fromMain } = rawFramesChannel();
+        send(contextRequestMessage(7, JSON.stringify({ targetingKey: 'user-late' })));
+        // While the assignments are in flight: no response.
+        expect(fromMain.filter((message) => message.type === 'context-response')).toHaveLength(0);
+        resolveAssignments();
+        await vi.waitFor(() =>
+          expect(
+            fromMain.find((message) => message.type === 'context-response' && (message as { id: number }).id === 7)
+          ).toMatchObject({ accepted: true, contextRevision: state.snapshot().contextRevision })
+        );
+      });
+
       it('an accepted request applies the normalized context and the new snapshot reaches every child channel and the renderer publisher', async () => {
         registerFlagsChannels(ipcMain as unknown as Electron.IpcMain);
         const controller = await startFlags();
@@ -723,6 +831,83 @@ describe('ChildFlagsHub', () => {
         await OpenFeature.setContext({ targetingKey: 'main-user-2' });
         expect(controller.state.snapshot().context).toEqual({ targetingKey: 'main-user-2' });
         await OpenFeature.clearProviders();
+      });
+
+      it('a duplicate child context request awaits the matching in-flight assignments fetch', async () => {
+        const requestedKeys: string[] = [];
+        const pendingFetches: ((response: Response) => void)[] = [];
+        const controller = await startPrecomputedFlags((_url?: unknown, init?: unknown) => {
+          const targetingKey = precomputedSubjectOf((init as RequestInit | undefined)?.body as string).targeting_key;
+          requestedKeys.push(targetingKey ?? '');
+          if (targetingKey === ANONYMOUS_KEY) {
+            return Promise.resolve(okPrecomputed(ANONYMOUS_KEY));
+          }
+          return new Promise<Response>((resolve) => pendingFetches.push(resolve));
+        });
+        const { child } = connectFramesChild();
+        expect(child.status).toBe('READY');
+        const first = child.requestContextUpdate({ targetingKey: 'user-pro', plan: 'pro' });
+        let secondResult: { accepted: boolean; contextRevision?: number } | undefined;
+        const second = child
+          .requestContextUpdate({ targetingKey: 'user-pro', plan: 'pro' })
+          .then((result) => (secondResult = result));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        // The duplicate did not settle before the assignments arrived, and it did not
+        // supersede the matching in-flight fetch with a second network request.
+        expect(secondResult).toBeUndefined();
+        expect(requestedKeys.filter((key) => key === 'user-pro')).toEqual(['user-pro']);
+        pendingFetches[0](okPrecomputed('user-pro'));
+        const [firstResult] = await Promise.all([first, second]);
+        expect(firstResult).toMatchObject({ accepted: true });
+        expect(secondResult).toMatchObject({ accepted: true });
+        expect(firstResult.contextRevision).toBe(secondResult!.contextRevision);
+        expect(controller.state.snapshot()).toMatchObject({
+          status: 'READY',
+          context: { targetingKey: 'user-pro', plan: 'pro' },
+        });
+      });
+
+      it('a child reversion to the served context supersedes the pending one (pro → free → pro)', async () => {
+        const requestedPlans: string[] = [];
+        const pendingFetches: ((response: Response) => void)[] = [];
+        const planOf = (init: RequestInit | undefined) =>
+          precomputedSubjectOf(init?.body as string).targeting_attributes?.plan;
+        const controller = await startPrecomputedFlags((_url?: unknown, init?: unknown) => {
+          const targetingKey = precomputedSubjectOf((init as RequestInit | undefined)?.body as string).targeting_key;
+          if (targetingKey === ANONYMOUS_KEY) {
+            return Promise.resolve(okPrecomputed(ANONYMOUS_KEY));
+          }
+          requestedPlans.push(String(planOf(init as RequestInit | undefined)));
+          return new Promise<Response>((resolve) => pendingFetches.push(resolve));
+        });
+        const { child } = connectFramesChild();
+        expect(child.status).toBe('READY');
+        // Establish the served context: user-pro with plan pro.
+        const establish = child.requestContextUpdate({ targetingKey: 'user-pro', plan: 'pro' });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        pendingFetches[0](okPrecomputed('user-pro'));
+        await establish;
+        expect(controller.state.snapshot()).toMatchObject({ status: 'READY', context: { targetingKey: 'user-pro' } });
+        // plan: free is requested (its fetch is pending), then the child reverts to the
+        // served plan: pro. The reversion must supersede the pending free fetch.
+        const changeToFree = child.requestContextUpdate({ targetingKey: 'user-pro', plan: 'free' });
+        const revertToPro = child.requestContextUpdate({ targetingKey: 'user-pro', plan: 'pro' });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(requestedPlans).toEqual(['pro', 'free', 'pro']);
+        // The reverted-to context's assignments arrive first and are applied.
+        pendingFetches[2](okPrecomputed('user-pro'));
+        await revertToPro;
+        expect(controller.state.snapshot()).toMatchObject({
+          status: 'READY',
+          context: { targetingKey: 'user-pro', plan: 'pro' },
+        });
+        // The superseded free response arrives late: it must never be applied.
+        pendingFetches[1](okPrecomputed('user-pro'));
+        await changeToFree;
+        expect(controller.state.snapshot()).toMatchObject({
+          status: 'READY',
+          context: { targetingKey: 'user-pro', plan: 'pro' },
+        });
       });
     });
   });

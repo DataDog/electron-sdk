@@ -247,7 +247,12 @@ export class ElectronRendererFlagsProvider {
     this.tracking = snapshot.tracking;
     this.reporter.setTracking(snapshot.tracking);
     this.contextRevision = snapshot.contextRevision;
-    if (snapshot.configuration !== undefined || snapshot.status === 'ERROR') {
+    if (
+      snapshot.configuration !== undefined ||
+      snapshot.status === 'ERROR' ||
+      // A pending-identity NOT_READY invalidation clears the held assignments (D25/Q2).
+      (snapshot.status === 'NOT_READY' && snapshot.context !== undefined)
+    ) {
       this.evaluator.apply(snapshot);
     }
     const wasEvaluatable = this.evaluatable;

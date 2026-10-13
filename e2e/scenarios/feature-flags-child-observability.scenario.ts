@@ -8,6 +8,7 @@ import { isMainProcessView } from '../lib/intake';
  * deduplicated with main and renderer exposures by main, counted in evaluation metrics.
  */
 const flagsConfiguration = (intake: { getPort: () => number }) => ({
+  evaluationMode: 'rules' as const,
   refreshInterval: 60_000,
   fetchTimeout: 2_000,
   flaggingProxy: `http://localhost:${intake.getPort()}`,

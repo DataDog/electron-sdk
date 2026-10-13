@@ -488,7 +488,16 @@ See `src/config.ts`.
 
 ### Ownership
 
-Main owns three things: the rules configuration, the evaluation context, and readiness. Each process evaluates flags locally and synchronously with `DatadogCoreProvider` from `@datadog/openfeature-browser/rules-based`, inlined by Rollup into `dist/index.*` (main) and `dist/renderer.*` (renderers; OpenFeature is an external optional peer there).
+Main owns three things: the flag configuration (rules or precomputed assignments), the evaluation context, and readiness. Each process evaluates flags locally and synchronously — rules with `DatadogCoreProvider` from `@datadog/openfeature-browser/rules-based`, precomputed assignments with `evaluatePrecomputedConfiguration` from `@datadog/flagging-core` — inlined by Rollup into `dist/index.*` (main) and `dist/renderer.*` (renderers; OpenFeature is an external optional peer there). The decoded configuration capability selects the evaluator; both evaluators ship in every bundle because the mode is chosen at runtime.
+
+### Evaluation modes (M7)
+
+`featureFlags.evaluationMode` selects the strategy behind one `FlagsState` abstraction, fixed at init:
+
+- **`precomputed` (default).** `PrecomputedFetcher` POSTs the normalized context to `preview.ff-cdn.<site>/precompute-assignments` (or the `flaggingProxy`) through the upstream `fetchPrecomputedConfiguration`, sequenced so a newer context aborts the in-flight fetch. `PrecomputedOwner` serves the per-context disk cache (`PrecomputedCache`: `userData/_dd_flags/precomputed/<sha256 of environment identity and canonical context>.json`, at most 5 contexts LRU, 7-day max age, targeting attributes at rest) as `STALE` while a fetch is in flight. A context change publishes **defaults for the new context** while its assignments are fetched when the _targeting key_ changed (one identity never sees another's assignments), and keeps serving the previous snapshot for an attribute-only change, as upstream does; the first successful fetch then publishes configuration and context **atomically** (`FlagsState.applyPrecomputedUpdate` bumps `contextRevision` only then). A transient failure keeps the same context's assignments (`STALE` from cache or `ERROR` with defaults when none); an authoritative failure (HTTP 4xx, `precomputedError`) drops the configuration with an actionable `display.error`. `refreshInterval` also applies and re-fetches the current context. `await OpenFeature.setContext()` in main settles with that fetch so the web-sdk reports `Reconciling`; on ERROR the provider rejects, but the web-sdk catches it, emits the `Error` event and `setContext()` still resolves (status `ERROR`). Child context responses are delayed until the assignments are applied.
+- **`rules`.** The M1–M6 behavior, unchanged: `RulesFetcher` + `ConfigurationCache` + `FlagsOwner`, environment-scoped cache, no context on the wire.
+
+The exposure dedupe key uses the configuration identity captured **at resolution time** (D29): the rules `configurationId` from the evaluation's flag metadata, or the precomputed `createdAt` of the applied assignments, which `FlagsEvaluator` stamps into every precomputed resolution's flag metadata (`__dd_configuration_identity`) so `buildEvaluationRecord` carries it in the record's `configurationId` in every process. A new `createdAt` re-logs, matching the upstream exposure cache clear, and a late record always dedupes against the identity it was evaluated with, never a later refresh's.
 
 ### Snapshot lifecycle
 
@@ -525,7 +534,7 @@ Main and renderer records go through one fan-out: exposures (the collector appli
 
 ### Cache and limits
 
-The disk cache is scoped by `sha256(site, env, clientToken, flaggingProxy)` in `userData/_dd_flags/`, with a 7-day max age. Batches from renderers are capped at 100 records and 64 KiB; oversize or malformed payloads are rejected whole, individual invalid records are dropped and counted.
+The rules disk cache is scoped by `sha256(site, env, clientToken, flaggingProxy)` in `userData/_dd_flags/`, with a 7-day max age; the precomputed cache is per context (see [Evaluation modes](#evaluation-modes-m7)). Batches from renderers are capped at 100 records and 64 KiB; oversize or malformed payloads are rejected whole, individual invalid records are dropped and counted.
 
 ### Error routing
 

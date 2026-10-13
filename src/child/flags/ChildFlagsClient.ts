@@ -337,7 +337,12 @@ export class ChildFlagsClient {
     this.contextRevision = snapshot.contextRevision;
     this.configurationRevision = snapshot.configurationRevision;
     this.reporter.setTracking(snapshot.tracking);
-    if (snapshot.configuration !== undefined || snapshot.status === 'ERROR') {
+    if (
+      snapshot.configuration !== undefined ||
+      snapshot.status === 'ERROR' ||
+      // A pending-identity NOT_READY invalidation clears the held assignments (D25/Q2).
+      (snapshot.status === 'NOT_READY' && snapshot.context !== undefined)
+    ) {
       this.evaluator.apply(snapshot);
     }
     if (snapshot.status !== this.currentStatus) {

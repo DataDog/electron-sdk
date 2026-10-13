@@ -9,6 +9,12 @@ import { createFormatHooks } from '../../assembly';
 import { createTestConfiguration } from '../../mocks.specUtil';
 import { configurationToString } from '@datadog/openfeature-browser/rules-based';
 import { CASES, oracle, fixtureWire, fixtureConfiguration } from '../../common/flags/evaluationCases.specUtil';
+import {
+  PRECOMPUTED_CASES,
+  precomputedOracle,
+  precomputedResponse,
+  precomputedContext,
+} from '../../common/flags/precomputedCases.specUtil';
 import { ElectronMainFlagsProvider } from './ElectronMainFlagsProvider';
 import { getFeatureFlagsController, startFeatureFlags, unregisterFlagsProvider } from './startFeatureFlags';
 import { registerFlagsChannels } from '../../instrument/registerFlagsChannels';
@@ -84,7 +90,7 @@ describe('ElectronMainFlagsProvider', () => {
   let eventManager: EventManager;
   let requestViewUpdate: () => void;
   let serverEvents: ServerEvent[];
-  let fetchHandler: () => Promise<Response>;
+  let fetchHandler: (url?: unknown, init?: unknown) => Promise<Response>;
   let cachedWire: string | undefined;
 
   beforeEach(() => {
@@ -117,6 +123,10 @@ describe('ElectronMainFlagsProvider', () => {
   afterEach(async () => {
     await getFeatureFlagsController()?.stop();
     unregisterFlagsProvider();
+    // The web-sdk provider and context are process singletons: clear them so one test's
+    // provider (and its in-flight fetch handler) never leaks into the next one.
+    await OpenFeature.clearProviders();
+    await OpenFeature.setContext({}).catch(() => undefined);
     ipcMain.removeAllListeners();
     ipcMain.handlers.clear();
     vi.useRealTimers();
@@ -129,7 +139,7 @@ describe('ElectronMainFlagsProvider', () => {
       eventManager,
       hooks,
       mainViewEmitter: { findViewId: () => 'view-1', requestViewUpdate },
-      fetch: (..._args: unknown[]) => fetchHandler(),
+      fetch: (...args: unknown[]) => fetchHandler(...args),
     });
   }
 
@@ -228,6 +238,276 @@ describe('ElectronMainFlagsProvider', () => {
     expect(display.warn).not.toHaveBeenCalled();
     new ElectronMainFlagsProvider();
     expect(display.warn).toHaveBeenCalled();
+  });
+
+  describe('precomputed mode (M7)', () => {
+    const okPrecomputed = (targetingKey: string) =>
+      new Response(JSON.stringify(precomputedResponseFor(targetingKey)), {
+        status: 200,
+        headers: { 'content-type': 'application/vnd.api+json' },
+      });
+    const errorPrecomputed = (status: number) =>
+      new Response(JSON.stringify({ errors: [{ detail: 'unavailable' }] }), {
+        status,
+        headers: { 'content-type': 'application/vnd.api+json' },
+      });
+
+    it('initialize resolves on READY and setContext waits for the new assignments', async () => {
+      fetchHandler = () => Promise.resolve(okPrecomputed(ANONYMOUS_KEY));
+      const owner = (await startFlags({ evaluationMode: 'precomputed' }))!;
+      const provider = new ElectronMainFlagsProvider();
+      await OpenFeature.setProviderAndWait(provider);
+      expect(owner.state.snapshot()).toMatchObject({ status: 'READY' });
+
+      fetchHandler = () => Promise.resolve(okPrecomputed('user-pro'));
+      const events: string[] = [];
+      OpenFeature.addHandler(ProviderEvents.Reconciling, () => events.push('Reconciling'));
+      OpenFeature.addHandler(ProviderEvents.ContextChanged, () => events.push('ContextChanged'));
+      await OpenFeature.setContext({ targetingKey: 'user-pro', plan: 'pro' });
+      expect(events).toEqual(['Reconciling', 'ContextChanged']);
+      expect(owner.state.snapshot()).toMatchObject({
+        status: 'READY',
+        context: { targetingKey: 'user-pro', plan: 'pro' },
+      });
+      void owner.stop();
+    });
+
+    it('serves defaults while assignments for a changed targeting key are fetched (Q2)', async () => {
+      fetchHandler = () => Promise.resolve(okPrecomputed(ANONYMOUS_KEY));
+      const owner = (await startFlags({ evaluationMode: 'precomputed' }))!;
+      const provider = new ElectronMainFlagsProvider();
+      await OpenFeature.setProviderAndWait(provider);
+      const client = OpenFeature.getClient();
+      expect(client.getStringValue('assigned-flag', 'app-default')).toBe(`variant-${ANONYMOUS_KEY}`);
+
+      let resolveFetch: (response: Response) => void = () => undefined;
+      fetchHandler = () => new Promise<Response>((resolve) => (resolveFetch = resolve));
+      const applied = OpenFeature.setContext({ targetingKey: 'user-pro', plan: 'pro' });
+      // Let the context-change handler start: while the assignments for the new identity
+      // are in flight, the caller default is served (Q2).
+      await vi.advanceTimersByTimeAsync(0);
+      expect(client.getStringValue('assigned-flag', 'app-default')).toBe('app-default');
+      resolveFetch(okPrecomputed('user-pro'));
+      await applied;
+      expect(client.getStringValue('assigned-flag', 'app-default')).toBe('variant-user-pro');
+      void owner.stop();
+    });
+
+    it('a failing context fetch rejects and emits Error; a later success emits Ready', async () => {
+      fetchHandler = () => Promise.resolve(okPrecomputed(ANONYMOUS_KEY));
+      const owner = (await startFlags({ evaluationMode: 'precomputed', refreshInterval: 1000 }))!;
+      const provider = new ElectronMainFlagsProvider();
+      await OpenFeature.setProviderAndWait(provider);
+      const errors: string[] = [];
+      OpenFeature.addHandler(ProviderEvents.Error, () => errors.push('Error'));
+      fetchHandler = () => Promise.resolve(errorPrecomputed(503));
+      await OpenFeature.setContext({ targetingKey: 'user-stranger' });
+      expect(errors).toEqual(['Error']);
+      expect(owner.state.snapshot()).toMatchObject({ status: 'ERROR', configuration: undefined });
+
+      const ready: string[] = [];
+      OpenFeature.addHandler(ProviderEvents.Ready, () => ready.push('Ready'));
+      fetchHandler = () => Promise.resolve(okPrecomputed('user-stranger'));
+      await OpenFeature.setContext({ targetingKey: 'user-stranger', plan: 'pro' });
+      expect(ready).toEqual(['Ready']);
+      expect(owner.state.snapshot()).toMatchObject({ status: 'READY', context: { targetingKey: 'user-stranger' } });
+      void owner.stop();
+    });
+
+    it('concurrent setContext calls settle with the last one', async () => {
+      fetchHandler = () => Promise.resolve(okPrecomputed(ANONYMOUS_KEY));
+      const owner = (await startFlags({ evaluationMode: 'precomputed' }))!;
+      const provider = new ElectronMainFlagsProvider();
+      await OpenFeature.setProviderAndWait(provider);
+      fetchHandler = () => Promise.resolve(okPrecomputed('user-pro'));
+      const first = OpenFeature.setContext({ targetingKey: 'user-a' }).catch(() => undefined);
+      fetchHandler = () => Promise.resolve(okPrecomputed('user-b'));
+      const second = OpenFeature.setContext({ targetingKey: 'user-b' }).catch(() => undefined);
+      await Promise.all([first, second]);
+      expect(owner.state.snapshot().context).toEqual({ targetingKey: 'user-b' });
+      void owner.stop();
+    });
+
+    it('a failing fetch for the registration context leaves no unhandled rejection and keeps readiness bounded', async () => {
+      fetchHandler = (_url?: unknown, init?: unknown) => {
+        const targetingKey = targetingKeyOfRequest(init as RequestInit | undefined) ?? '';
+        return Promise.resolve(targetingKey === ANONYMOUS_KEY ? okPrecomputed(ANONYMOUS_KEY) : errorPrecomputed(503));
+      };
+      const owner = (await startFlags({ evaluationMode: 'precomputed', fetchTimeout: 500 }))!;
+      const unhandled: unknown[] = [];
+      const onUnhandledRejection = (reason: unknown) => unhandled.push(reason);
+      process.on('unhandledRejection', onUnhandledRejection);
+      try {
+        // initialize() applies the registration context in the background (it is not the
+        // promise initialize returns): its assignments fetch fails, so that background
+        // promise rejects with nobody awaiting it.
+        const provider = new ElectronMainFlagsProvider();
+        const registration = OpenFeature.setProviderAndWait(provider, { targetingKey: 'user-stranger' });
+        const outcome = registration.then(
+          () => 'resolved',
+          (error: Error & { code?: string }) => error.code
+        );
+        await vi.advanceTimersByTimeAsync(600);
+        // Readiness stays bounded: the registration rejects after fetchTimeout, not never.
+        expect(await outcome).toBe('PROVIDER_NOT_READY');
+        expect(owner.state.snapshot()).toMatchObject({ status: 'ERROR', context: { targetingKey: 'user-stranger' } });
+        // The discarded context-application promise produced no unhandled rejection.
+        expect(unhandled).toEqual([]);
+      } finally {
+        process.off('unhandledRejection', onUnhandledRejection);
+      }
+      void owner.stop();
+    });
+
+    it('a duplicate context change awaits the matching in-flight assignments fetch', async () => {
+      fetchHandler = () => Promise.resolve(okPrecomputed(ANONYMOUS_KEY));
+      const owner = (await startFlags({ evaluationMode: 'precomputed' }))!;
+      const provider = new ElectronMainFlagsProvider();
+      await OpenFeature.setProviderAndWait(provider);
+      const requestedKeys: string[] = [];
+      const pendingFetches: ((response: Response) => void)[] = [];
+      fetchHandler = (_url?: unknown, init?: unknown) => {
+        requestedKeys.push(targetingKeyOfRequest(init as RequestInit | undefined) ?? '');
+        return new Promise<Response>((resolve) => pendingFetches.push(resolve));
+      };
+      const first = OpenFeature.setContext({ targetingKey: 'user-pro', plan: 'pro' });
+      await vi.advanceTimersByTimeAsync(0);
+      let secondSettled = false;
+      const second = OpenFeature.setContext({ targetingKey: 'user-pro', plan: 'pro' }).then(() => {
+        secondSettled = true;
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      // The duplicate did not settle before the assignments arrived, and it did not
+      // supersede the matching in-flight fetch with a second network request.
+      expect(secondSettled).toBe(false);
+      expect(requestedKeys).toEqual(['user-pro']);
+      pendingFetches[0](okPrecomputed('user-pro'));
+      await Promise.all([first, second]);
+      expect(owner.state.snapshot()).toMatchObject({ status: 'READY', context: { targetingKey: 'user-pro' } });
+      void owner.stop();
+    });
+
+    it('a reversion to the served context supersedes the pending one (pro → free → pro)', async () => {
+      fetchHandler = (_url?: unknown, init?: unknown) => {
+        const targetingKey = targetingKeyOfRequest(init as RequestInit | undefined) ?? '';
+        return Promise.resolve(okPrecomputed(targetingKey));
+      };
+      const owner = (await startFlags({ evaluationMode: 'precomputed' }))!;
+      const provider = new ElectronMainFlagsProvider();
+      await OpenFeature.setProviderAndWait(provider, { targetingKey: 'user-pro', plan: 'pro' });
+      expect(owner.state.snapshot()).toMatchObject({ status: 'READY' });
+      const requestedPlans: string[] = [];
+      const pendingFetches: ((response: Response) => void)[] = [];
+      fetchHandler = (_url?: unknown, init?: unknown) => {
+        requestedPlans.push(planOfRequest(init as RequestInit | undefined) ?? '');
+        return new Promise<Response>((resolve) => pendingFetches.push(resolve));
+      };
+      // plan: free is requested (its fetch is pending), then the caller reverts to the
+      // served plan: pro. The reversion must supersede the pending free fetch.
+      const changeToFree = OpenFeature.setContext({ targetingKey: 'user-pro', plan: 'free' });
+      await vi.advanceTimersByTimeAsync(0);
+      const revertToPro = OpenFeature.setContext({ targetingKey: 'user-pro', plan: 'pro' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(requestedPlans).toEqual(['free', 'pro']);
+      // The reverted-to context's assignments arrive first and are applied.
+      pendingFetches[1](okPrecomputed('user-pro'));
+      await revertToPro;
+      expect(owner.state.snapshot()).toMatchObject({
+        status: 'READY',
+        context: { targetingKey: 'user-pro', plan: 'pro' },
+      });
+      // The superseded free response arrives late: it must never be applied.
+      pendingFetches[0](okPrecomputed('user-pro'));
+      await changeToFree;
+      await vi.advanceTimersByTimeAsync(0);
+      expect(owner.state.snapshot()).toMatchObject({
+        status: 'READY',
+        context: { targetingKey: 'user-pro', plan: 'pro' },
+      });
+      void owner.stop();
+    });
+
+    it('a context set before init() is fetched for at startup', async () => {
+      const provider = new ElectronMainFlagsProvider();
+      await provider.onContextChange(undefined, { targetingKey: 'user-pro', plan: 'pro' });
+      let requestedTargetingKey = '';
+      fetchHandler = (_url?: unknown, init?: unknown) => {
+        requestedTargetingKey = targetingKeyOfRequest(init as RequestInit | undefined) ?? '';
+        return Promise.resolve(okPrecomputed('user-pro'));
+      };
+      const owner = (await startFlags({ evaluationMode: 'precomputed' }))!;
+      await owner.settled();
+      expect(requestedTargetingKey).toBe('user-pro');
+      expect(owner.state.snapshot()).toMatchObject({ status: 'READY', context: { targetingKey: 'user-pro' } });
+      void owner.stop();
+    });
+
+    it('the precomputed request carries the client token, env and application id, and the context in the body', async () => {
+      let seen: { url?: string; init?: RequestInit } = {};
+      fetchHandler = (url?: unknown, init?: unknown) => {
+        seen = { url: url as string, init: init as RequestInit };
+        return Promise.resolve(okPrecomputed(ANONYMOUS_KEY));
+      };
+      await startFlags({ evaluationMode: 'precomputed' });
+      await getFeatureFlagsController()?.settled();
+      expect(seen.init?.method).toBe('POST');
+      expect(targetingKeyOfRequest(seen.init)).toBe(ANONYMOUS_KEY);
+      // The upstream request stringifies the whole context into targeting_attributes
+      // (including the targeting key), plus the dedicated targeting_key field.
+      expect(targetingAttributesOfRequest(seen.init)).toEqual({ targetingKey: ANONYMOUS_KEY });
+    });
+
+    it('initialize rejects after fetchTimeout with no assignments', async () => {
+      fetchHandler = () =>
+        Promise.resolve(new Response('{}', { status: 503, headers: { 'content-type': 'application/json' } }));
+      await startFlags({ evaluationMode: 'precomputed', fetchTimeout: 500 });
+      const provider = new ElectronMainFlagsProvider();
+      const registration = OpenFeature.setProviderAndWait(provider);
+      const assertion = registration.then(
+        () => {
+          throw new Error('expected rejection');
+        },
+        (error: Error & { code?: string }) => expect(error.code).toBe('PROVIDER_NOT_READY')
+      );
+      await vi.advanceTimersByTimeAsync(600);
+      await assertion;
+    });
+
+    for (const evaluationCase of PRECOMPUTED_CASES) {
+      it(`precomputed parity \u2039 ${evaluationCase.name}`, async () => {
+        fetchHandler = () =>
+          Promise.resolve(
+            new Response(JSON.stringify(precomputedResponse), {
+              status: 200,
+              headers: { 'content-type': 'application/vnd.api+json' },
+            })
+          );
+        await startFlags({ evaluationMode: 'precomputed' });
+        const provider = new ElectronMainFlagsProvider();
+        await OpenFeature.setProviderAndWait(provider, precomputedContext);
+        const client = OpenFeature.getClient();
+        const expected = precomputedOracle(evaluationCase);
+        const details =
+          evaluationCase.type === 'boolean'
+            ? client.getBooleanDetails(evaluationCase.flagKey, evaluationCase.defaultValue as boolean)
+            : evaluationCase.type === 'string'
+              ? client.getStringDetails(evaluationCase.flagKey, evaluationCase.defaultValue as string)
+              : evaluationCase.type === 'number'
+                ? client.getNumberDetails(evaluationCase.flagKey, evaluationCase.defaultValue as number)
+                : client.getObjectDetails(evaluationCase.flagKey, evaluationCase.defaultValue);
+        expect({
+          value: details.value,
+          variant: details.variant,
+          reason: details.reason,
+          errorCode: details.errorCode,
+        }).toEqual({
+          value: expected.value,
+          variant: expected.variant,
+          reason: expected.reason,
+          errorCode: expected.errorCode,
+        });
+      });
+    }
   });
 
   for (const evaluationCase of CASES) {
@@ -654,4 +934,59 @@ function loadSeparateWebSdkCopy(): typeof import('@openfeature/web-sdk') {
     delete requireFromHere.cache[requireFromHere.resolve(id)];
   }
   return requireFromHere('@openfeature/web-sdk') as typeof import('@openfeature/web-sdk');
+}
+
+/** The assignments response body `/precompute-assignments` returns for a targeting key. */
+function precomputedResponseFor(targetingKey: string): Record<string, unknown> {
+  return {
+    data: {
+      attributes: {
+        createdAt: `created-${targetingKey}`,
+        flags: {
+          'assigned-flag': {
+            allocationKey: 'assign-a',
+            variationKey: `variant-${targetingKey}`,
+            variationType: 'string',
+            variationValue: `variant-${targetingKey}`,
+            reason: 'STATIC',
+            doLog: true,
+            serialId: 11,
+          },
+        },
+      },
+    },
+  };
+}
+
+/** Read the `subject.targeting_key` of a precompute-assignments request body. */
+function targetingKeyOfRequest(init: RequestInit | undefined): string | undefined {
+  return init?.body !== undefined ? precomputedSubjectOf(init.body as string)?.targeting_key : undefined;
+}
+
+/** Read the `subject.targeting_attributes` of a precompute-assignments request body. */
+function targetingAttributesOfRequest(init: RequestInit | undefined): Record<string, string | number | boolean> {
+  return init?.body !== undefined ? (precomputedSubjectOf(init.body as string)?.targeting_attributes ?? {}) : {};
+}
+
+/** Read the `plan` attribute of a precompute-assignments request body. */
+function planOfRequest(init: RequestInit | undefined): string | undefined {
+  const plan = targetingAttributesOfRequest(init).plan;
+  return typeof plan === 'string' ? plan : undefined;
+}
+
+function precomputedSubjectOf(
+  body: string
+): { targeting_key?: string; targeting_attributes?: Record<string, string | number | boolean> } | undefined {
+  try {
+    const parsed = JSON.parse(body) as {
+      data?: {
+        attributes?: {
+          subject?: { targeting_key?: string; targeting_attributes?: Record<string, string | number | boolean> };
+        };
+      };
+    };
+    return parsed.data?.attributes?.subject;
+  } catch {
+    return undefined;
+  }
 }

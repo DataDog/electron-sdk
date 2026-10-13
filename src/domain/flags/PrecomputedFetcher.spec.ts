@@ -16,7 +16,8 @@ import { addError } from '../telemetry';
 import { startMonitorErrorCollection } from '@datadog/browser-core/cjs/tools/monitor';
 
 const addErrorMock = addError as unknown as ReturnType<typeof vi.fn>;
-import { PrecomputedFetcher, MAX_CONFIGURATION_LENGTH } from './PrecomputedFetcher';
+import { PrecomputedFetcher } from './PrecomputedFetcher';
+import { MAX_CONFIGURATION_LENGTH } from './RulesFetcher';
 import type { FlatContext } from '../../common/flags/types';
 
 const context: FlatContext = { targetingKey: 'user-pro', plan: 'pro' };
@@ -49,7 +50,7 @@ const errorResponse = (status: number, detail: string): Response =>
   });
 
 /** A fetch that never resolves on its own and rejects when the SDK aborts its signal. */
-const hangFetch: typeof fetch = (url, init) =>
+const hangFetch: typeof fetch = (_url, init) =>
   new Promise((_resolve, reject) => {
     init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
   }) as never;
@@ -106,7 +107,14 @@ describe('PrecomputedFetcher', () => {
       'dd-client-token': 'client-token',
       'dd-application-id': 'application-id',
     });
-    const body = JSON.parse(String(init.body));
+    const body = JSON.parse(bodyOf(init)) as {
+      data: {
+        attributes: {
+          subject: { targeting_key: string; targeting_attributes: Record<string, string | number | boolean> };
+          env: { dd_env: string };
+        };
+      };
+    };
     expect(body.data.attributes.subject.targeting_key).toBe('user-pro');
     expect(body.data.attributes.subject.targeting_attributes).toEqual({ targetingKey: 'user-pro', plan: 'pro' });
     expect(body.data.attributes.env.dd_env).toBe('e2e');
@@ -118,17 +126,18 @@ describe('PrecomputedFetcher', () => {
     expect(proxied.calls[0].url).toBe('https://flags.example.com/?dd_env=e2e');
   });
 
-  it('aborts a superseded request when a newer context is requested', async () => {
+  it('aborts a superseded request immediately when a newer context is requested', async () => {
+    vi.useFakeTimers();
     const fetcher = createFetcher({ fetch: hangFetch });
     const first = fetcher.fetch(context);
+    // Starting the newer request aborts the older one at once, without waiting for any
+    // timeout: the first settles now, before time advances.
     const second = fetcher.fetch(otherContext);
-    // The newer request also hangs: advance time so both settle through their own abort.
-    vi.advanceTimersByTime(5001);
-    const outcomes = await Promise.all([first, second]);
-    expect(outcomes[0].kind).toBe('superseded');
-    // The newer request is the latest one: its outcome is its own abort (transient),
+    expect(await first).toEqual({ kind: 'superseded' });
+    // The newer request is the latest one: it settles through its own abort (transient),
     // never superseded by the older one.
-    expect(outcomes[1].kind).toBe('warm-failure');
+    await vi.advanceTimersByTimeAsync(5001);
+    expect(await second).toEqual({ kind: 'warm-failure' });
   });
 
   it('aborts after fetchTimeout and resolves as a transient failure', async () => {
@@ -202,3 +211,8 @@ describe('PrecomputedFetcher', () => {
     expect(await pending).toEqual({ kind: 'superseded' });
   });
 });
+
+/** The stringified JSON:API request body, or an empty object literal when absent. */
+function bodyOf(init: RequestInit): string {
+  return typeof init.body === 'string' ? init.body : '{}';
+}

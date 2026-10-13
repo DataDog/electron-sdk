@@ -27,6 +27,12 @@ export class FlagsEvaluator {
   private context?: FlatContext;
   private revision = -1;
   private appliedContextRevision: number | undefined;
+  /**
+   * The precomputed `createdAt` of the applied configuration: the configuration identity
+   * captured at apply time, so every evaluation record carries the identity it resolved
+   * with regardless of later refreshes (D29).
+   */
+  private precomputedIdentity?: string;
 
   /**
    * Apply a snapshot. Returns `true` when the snapshot was newer than the current one
@@ -48,6 +54,7 @@ export class FlagsEvaluator {
       if (dropConfiguration) {
         this.provider = undefined;
         this.precomputed = undefined;
+        this.precomputedIdentity = undefined;
         this.context = undefined;
         if (snapshot.context !== undefined) {
           this.appliedContextRevision = snapshot.contextRevision;
@@ -63,8 +70,10 @@ export class FlagsEvaluator {
     if (decoded.precomputed !== undefined || decoded.precomputedError !== undefined) {
       this.provider = undefined;
       this.precomputed = decoded;
+      this.precomputedIdentity = precomputedCreatedAtOf(snapshot.configuration);
     } else if (decoded.rules !== undefined) {
       this.precomputed = undefined;
+      this.precomputedIdentity = undefined;
       const provider = this.provider ?? new DatadogCoreProvider();
       this.provider = provider;
       provider.setConfiguration(decoded);
@@ -119,7 +128,14 @@ export class FlagsEvaluator {
         defaultValue as never,
         this.context ?? {}
       );
-      return { flagKey, flagMetadata: {}, ...result } as EvaluationDetails<T>;
+      // Carry the configuration identity of the applied assignments so records dedupe on
+      // the identity the evaluation actually used, never a later refresh's (D29).
+      const flagMetadata = { ...(result.flagMetadata ?? {}) } as Record<string, unknown>;
+      if (this.precomputedIdentity !== undefined) {
+        flagMetadata.__dd_configuration_identity = this.precomputedIdentity;
+      }
+      // `result` first: its own flagMetadata must not overwrite the identity-carrying one.
+      return { ...result, flagKey, flagMetadata } as unknown as EvaluationDetails<T>;
     }
     if (this.provider === undefined || this.context === undefined) {
       return {
@@ -161,8 +177,21 @@ export class FlagsEvaluator {
   stop(): void {
     this.provider = undefined;
     this.precomputed = undefined;
+    this.precomputedIdentity = undefined;
     this.context = undefined;
     this.revision = -1;
     this.appliedContextRevision = undefined;
+  }
+}
+
+/**
+ * The `createdAt` of the precomputed assignments in a wire string, or `undefined`. It is
+ * the configuration identity captured at apply time for exposure dedupe (M7/D29).
+ */
+function precomputedCreatedAtOf(wire: string): string | undefined {
+  try {
+    return configurationFromString(wire).precomputed?.response.data.attributes.createdAt;
+  } catch {
+    return undefined;
   }
 }
