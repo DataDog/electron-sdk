@@ -217,14 +217,14 @@ the next launch.
 ### Consent and session lifecycle
 
 A refusal ends tracking rather than pausing it: the session expires, the main-process view and the execution contexts
-close with it, and no session starts while consent is refused, neither at init nor on user activity. Leaving
+close with it, and no session starts while consent is refused, at init or on user activity. Leaving
 `not-granted` starts a new session. The final updates emitted when a refusal ends the session are not stored.
 
-Moving between `granted` and `pending` keeps the session and its documents. Their updates are stored with the
-consent current when they are written, so those written while `pending` follow that period's decision.
+Moving between `granted` and `pending` keeps the session and its documents; updates written while `pending` follow
+that period's decision.
 
 Transport subscribes to consent when it is created, before the session manager, and subscribers are notified in that
-order: the documents opened when tracking resumes into `pending` find their pending store.
+order: the documents of the session started on leaving `not-granted` for `pending` find their pending store.
 
 ## Error Reporting
 

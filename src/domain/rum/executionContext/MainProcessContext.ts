@@ -37,8 +37,8 @@ interface MainProcessState {
 
 /**
  * Owns the fake main-process view and the main execution context as one session-scoped state:
- * both are created together on SDK init with an active session and on every SESSION_RENEW, and closed together on
- * SESSION_EXPIRED. Each new state gets a fresh execution_context.id and view.id, but the emitted
+ * both are created together when a session starts, on SDK init or SESSION_RENEW, and closed
+ * together on SESSION_EXPIRED. Each new state gets a fresh execution_context.id and view.id, but the emitted
  * execution_context event's instance_id is always the OS process pid, constant across every session
  * the process lives through. Also registers the format hooks that tag every other main-process RUM
  * event and span with the execution context active at that event's timestamp, backed by a
@@ -88,12 +88,7 @@ export class MainProcessContext {
       return { meta: { '_dd.execution_context.id': entry.id } };
     });
 
-    if (sessionManager.getSession().status === 'active') {
-      context.startState();
-    } else {
-      // Close what a previous, since-exited process left active.
-      context.closeHistories(timeStampNow());
-    }
+    context.startState();
 
     context.lifecycleSubscription = eventManager.registerHandler<LifecycleEvent>({
       canHandle: (event): event is LifecycleEvent => event.kind === EventKind.LIFECYCLE,
@@ -115,21 +110,28 @@ export class MainProcessContext {
   }
 
   private startState(): void {
+    const session = this.sessionManager.getSession();
+    // The fake view takes the session id, and there is none while consent is refused at startup.
+    if (session.status === 'not-granted') {
+      return;
+    }
+
     // One shared startTime for every registration below: the view and execution_context events
     // cross-tag each other by looking up the other's DiskValueHistory at their own startTime, so
     // both entries must be registered at the exact same instant — two independent timeStampNow()
     // reads, even microseconds apart, could land on opposite sides of a lookup boundary and miss.
     const startTime = timeStampNow();
-    const sessionId = this.sessionManager.getSession().id;
+    const sessionId = session.id;
     const executionContextId = generateUUID();
     this.state = { sessionId, executionContextId, startTime, documentVersion: 1 };
 
-    // Close whatever the previous state (this run's prior session, or — on the very first call —
+    // Close whatever the previous state (this run's prior session, or — for this process's first state —
     // whatever a previous, since-exited process instance left open) left active, before
     // registering this one. Safe to call unconditionally: closing an already-closed entry is a
     // no-op.
-    this.closeHistories(startTime);
+    this.viewContext.close(startTime);
     this.viewContext.add(sessionId, startTime);
+    this.mainHistory.closeActive(startTime);
     this.mainHistory.add({ id: executionContextId, type: 'main-process' }, startTime);
 
     this.emitViewEvent(true);
@@ -142,15 +144,12 @@ export class MainProcessContext {
     // Close both histories at the exact same instant (same reasoning as startState's shared
     // startTime): otherwise main-process telemetry timestamped in the gap before the next
     // SESSION_RENEW would still resolve to this now-expired state.
-    this.closeHistories(timeStampNow());
+    const endTime = timeStampNow();
+    this.viewContext.close(endTime);
+    this.mainHistory.closeActive(endTime);
     this.state.documentVersion++;
     this.emitViewEvent(false);
     this.emitExecutionContextEvent();
-  }
-
-  private closeHistories(time: TimeStamp): void {
-    this.viewContext.close(time);
-    this.mainHistory.closeActive(time);
   }
 
   private startHeartbeat(): void {

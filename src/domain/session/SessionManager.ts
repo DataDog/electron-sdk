@@ -13,12 +13,7 @@ import { setCurrentSessionSampled } from '../../common';
 
 export const SESSION_EXPIRATION_DELAY = 15 * ONE_MINUTE;
 
-export interface Session {
-  id: string;
-  status: SessionStatus;
-}
-
-export type SessionStatus = 'active' | 'expired';
+export type Session = { id: string; status: 'active' | 'expired' } | { status: 'not-granted' };
 
 /**
  * Track session lifecycle
@@ -26,7 +21,8 @@ export type SessionStatus = 'active' | 'expired';
  * - after SESSION_EXPIRATION_DELAY without activity, expire the Session
  * - after SESSION_TIME_OUT_DELAY if the Session is still active, expire the Session
  * - on activity, if the Session is expired, create a new Session
- * - when tracking consent is refused, expire the Session and ignore activity; create a new Session once it is not
+ * - when tracking consent is refused, expire the Session and ignore activity; create a new Session when consent leaves
+ *   not-granted
  */
 export class SessionManager {
   private currentSession!: Session;
@@ -87,7 +83,7 @@ export class SessionManager {
     this.sessionContext = await SessionContext.init(this.hooks);
     this.sessionContext.close();
     if (this.trackingConsentManager.get() === 'not-granted') {
-      this.currentSession = { id: generateUUID(), status: 'expired' };
+      this.currentSession = { status: 'not-granted' };
       setCurrentSessionSampled(false);
     } else {
       this.createNewSession();
@@ -103,10 +99,11 @@ export class SessionManager {
     });
   }
 
-  private onConsentChange({ previous, current }: TrackingConsentChange): void {
+  private onConsentChange({ current }: TrackingConsentChange): void {
     if (current === 'not-granted') {
       this.expireSession();
-    } else if (previous === 'not-granted') {
+      this.currentSession = { status: 'not-granted' };
+    } else if (this.currentSession.status === 'not-granted') {
       this.renewSession();
     }
   }
@@ -127,7 +124,7 @@ export class SessionManager {
   }
 
   private expireSession(): void {
-    if (this.currentSession.status === 'expired') {
+    if (this.currentSession.status !== 'active') {
       return;
     }
 
@@ -139,7 +136,7 @@ export class SessionManager {
   }
 
   private updateActivity(): void {
-    if (this.trackingConsentManager.get() === 'not-granted') {
+    if (this.currentSession.status === 'not-granted') {
       return;
     }
     if (this.currentSession.status === 'expired') {

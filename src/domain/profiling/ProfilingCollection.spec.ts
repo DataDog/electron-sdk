@@ -214,7 +214,11 @@ describe('ProfilingCollection', () => {
 
     it('does not trigger quota check without an active session', () => {
       const cfg = createTestConfiguration({ sessionSampleRate: 100, profilingSampleRate: 100 });
-      new ProfilingCollection(eventManager, makeSessionManager('expired', LOW_HASH_UUID), cfg, hooks);
+      const refusedSessionManager = {
+        getSession: () => ({ status: 'not-granted' as const }),
+        getTrackedSessionId: () => undefined,
+      };
+      new ProfilingCollection(eventManager, refusedSessionManager, cfg, hooks);
 
       expect(quotaCheckModule.checkProfilingQuota).not.toHaveBeenCalled();
     });

@@ -9,13 +9,13 @@ vi.mock('../../../tools/display', () => ({
 }));
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
+import { timeStampNow } from '@datadog/js-core/time';
 import { DISCARDED } from '@datadog/js-core/assembly';
 import { MainProcessContext } from './MainProcessContext';
 import { PROCESS_UPDATE_INTERVAL } from './executionContext.constants';
 import { EventManager, EventKind, EventFormat, EventSource, LifecycleKind, type RawRumEvent } from '../../../event';
 import { createFormatHooks, type FormatHooks } from '../../../assembly';
-import type { SessionManager } from '../../session';
+import type { Session, SessionManager } from '../../session';
 import type { RawRumExecutionContext, RawRumView } from '../types';
 
 vi.mock('node:fs/promises');
@@ -43,7 +43,7 @@ describe('MainProcessContext', () => {
     });
 
     currentSessionId = 'session-1';
-    sessionManager = { getSession: () => ({ id: currentSessionId, status: 'active' }) } as unknown as SessionManager;
+    sessionManager = { getSession: () => ({ id: currentSessionId, status: 'tracked' }) } as unknown as SessionManager;
 
     context = await MainProcessContext.start(eventManager, hooks, sessionManager);
   });
@@ -207,18 +207,18 @@ describe('MainProcessContext', () => {
     ).toMatchObject({ execution_context: { id: renewedContextId } });
   });
 
-  it('creates no state or heartbeat without an active session at start, until SESSION_RENEW', async () => {
+  it('starts no state while consent is refused at start, until a session starts', async () => {
     context.stop();
     rawRumEvents.length = 0;
-    const expiredSessionManager = {
-      getSession: () => ({ id: 'session-2', status: 'expired' }),
-    } as unknown as SessionManager;
+    let session: Session = { status: 'not-granted' };
+    const refusedSessionManager = { getSession: () => session } as unknown as SessionManager;
 
-    context = await MainProcessContext.start(eventManager, createFormatHooks(), expiredSessionManager);
+    context = await MainProcessContext.start(eventManager, createFormatHooks(), refusedSessionManager);
 
     expect(rawRumEvents).toEqual([]);
     expect(vi.getTimerCount()).toBe(0);
 
+    session = { id: 'session-2', status: 'active' };
     eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
 
     expect(rawRumEvents.map((e) => e.data.type)).toEqual(['view', 'execution_context']);
@@ -240,7 +240,7 @@ describe('MainProcessContext', () => {
         handle: (e) => localRawRumEvents.push(e),
       });
       const localSessionManager = {
-        getSession: () => ({ id: 'session-new', status: 'active' }),
+        getSession: () => ({ id: 'session-new', status: 'tracked' }),
       } as unknown as SessionManager;
 
       const localContext = await MainProcessContext.start(localEventManager, localHooks, localSessionManager);
@@ -256,26 +256,6 @@ describe('MainProcessContext', () => {
           source: EventSource.MAIN,
         })
       ).toMatchObject({ execution_context: { id: newContextId } });
-
-      localContext.stop();
-    });
-
-    it('closes the stale entry when no session is active at start', async () => {
-      context.stop();
-      mfs.readFile.mockResolvedValue(
-        JSON.stringify([{ value: { id: 'stale-id', type: 'main-process' }, startTime: 0, endTime: null }])
-      );
-      const localHooks = createFormatHooks();
-      const expiredSessionManager = {
-        getSession: () => ({ id: 'session-new', status: 'expired' }),
-      } as unknown as SessionManager;
-
-      const localContext = await MainProcessContext.start(new EventManager(), localHooks, expiredSessionManager);
-
-      expect(localHooks.triggerSpan({ startTime: 0 as TimeStamp, source: EventSource.MAIN })).toMatchObject({
-        meta: { '_dd.execution_context.id': 'stale-id' },
-      });
-      expect(localHooks.triggerSpan({ startTime: timeStampNow(), source: EventSource.MAIN })).toBe(DISCARDED);
 
       localContext.stop();
     });
