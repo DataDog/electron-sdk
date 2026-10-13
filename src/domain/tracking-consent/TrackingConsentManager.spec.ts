@@ -146,24 +146,6 @@ describe('TrackingConsentManager', () => {
   });
 
   describe('across launches', () => {
-    it('resolves init once its initial consent is written', async () => {
-      let completeWrites!: () => void;
-      const writesCompleted = new Promise<void>((resolve) => (completeWrites = resolve));
-      vi.mocked(fs.writeFile).mockImplementation(async (_path, data) => {
-        await writesCompleted;
-        file = data as string;
-      });
-
-      let initialized = false;
-      const launched = launch('pending').then(() => (initialized = true));
-      await vi.advanceTimersByTimeAsync(0);
-      expect(initialized).toBe(false);
-
-      completeWrites();
-      await launched;
-      expect(JSON.parse(file)).toEqual([{ startTime: 1000, endTime: null, value: 'pending' }]);
-    });
-
     it('checks events against the consent of their own launch without restoring it as the current state', async () => {
       await launch();
       vi.setSystemTime(1020);

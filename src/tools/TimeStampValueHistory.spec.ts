@@ -122,6 +122,28 @@ describe('TimeStampValueHistory', () => {
     });
   });
 
+  describe('updateActive', () => {
+    it('replaces the value of the active entry from its start time', () => {
+      const history = new TimeStampValueHistory<string>({ expireDelay: EXPIRE_DELAY });
+
+      history.add('a', T10);
+      history.updateActive('b');
+
+      expect(history.getEntries()).toEqual([{ startTime: T10, endTime: Infinity, value: 'b' }]);
+      expect(history.find(T10)).toBe('b');
+    });
+
+    it('is a no-op when there is no active entry', () => {
+      const history = new TimeStampValueHistory<string>({ expireDelay: EXPIRE_DELAY });
+
+      history.add('a', T10);
+      history.closeActive(T20);
+      history.updateActive('b');
+
+      expect(history.find(T10)).toBe('a');
+    });
+  });
+
   describe('expireDelay — pruning on add()', () => {
     it('prunes closed entries whose endTime is older than expireDelay', () => {
       const history = new TimeStampValueHistory<string>({ expireDelay: 10 });

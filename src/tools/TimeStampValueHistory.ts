@@ -50,11 +50,24 @@ export class TimeStampValueHistory<T> {
   }
 
   closeActive(endTime: TimeStamp): void {
+    const activeEntry = this.getActiveEntry();
+    if (activeEntry) {
+      activeEntry.endTime = endTime;
+    }
+  }
+
+  /** Replaces the value of the active entry, keeping its start time. */
+  updateActive(value: T): void {
+    const activeEntry = this.getActiveEntry();
+    if (activeEntry) {
+      activeEntry.value = value;
+    }
+  }
+
+  private getActiveEntry(): TimeStampHistoryEntry<T> | undefined {
     // Active entry is always the most recently added (index 0)
     const latestEntry = this.entries[0];
-    if (latestEntry && latestEntry.endTime === END_OF_TIMES) {
-      latestEntry.endTime = endTime;
-    }
+    return latestEntry && isActive(latestEntry) ? latestEntry : undefined;
   }
 
   /** Entries ordered newest-first — index 0 is the active one, if isActive(entries[0]) is true. */
