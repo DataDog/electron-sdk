@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { cleanBuildOutput, rendererBuildArgs, writeVersionFile } from './build.ts';
+import { cleanBuildOutput, rendererBuildOptions, writeVersionFile } from './build.ts';
 
 describe('cleanBuildOutput', () => {
   it('removes dist/ and the tsc build info, leaving sources untouched', () => {
@@ -46,31 +46,27 @@ describe('writeVersionFile', () => {
   });
 });
 
-describe('rendererBuildArgs', () => {
+describe('rendererBuildOptions', () => {
   it('bundles the renderer with the version injected as a string literal', () => {
-    expect(rendererBuildArgs('renderer', '0.1.2', false)).toEqual([
-      'src/renderer.ts',
-      '--bundle',
-      '--format=esm',
-      '--outfile=dist/renderer.js',
-      '--sourcemap',
-      '--define:__PLAYGROUND_VERSION__="0.1.2"',
-    ]);
+    expect(rendererBuildOptions('renderer', '0.1.2')).toMatchObject({
+      entryPoints: ['src/renderer.ts'],
+      bundle: true,
+      format: 'esm',
+      outfile: 'dist/renderer.js',
+      sourcemap: true,
+      define: { __PLAYGROUND_VERSION__: '"0.1.2"' },
+    });
   });
 
-  it('adds --watch in watch mode', () => {
-    expect(rendererBuildArgs('secondary-renderer', 'abc123', true)).toEqual([
-      'src/secondary-renderer.ts',
-      '--bundle',
-      '--format=esm',
-      '--outfile=dist/secondary-renderer.js',
-      '--sourcemap',
-      '--define:__PLAYGROUND_VERSION__="abc123"',
-      '--watch',
-    ]);
+  it('targets the matching output for the secondary renderer', () => {
+    expect(rendererBuildOptions('secondary-renderer', 'abc123')).toMatchObject({
+      entryPoints: ['src/secondary-renderer.ts'],
+      outfile: 'dist/secondary-renderer.js',
+      define: { __PLAYGROUND_VERSION__: '"abc123"' },
+    });
   });
 
   it('escapes the version so it stays a valid JS string', () => {
-    expect(rendererBuildArgs('renderer', 'a"b', false)).toContain('--define:__PLAYGROUND_VERSION__="a\\"b"');
+    expect(rendererBuildOptions('renderer', 'a"b').define).toEqual({ __PLAYGROUND_VERSION__: '"a\\"b"' });
   });
 });

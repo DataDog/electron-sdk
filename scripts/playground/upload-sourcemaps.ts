@@ -9,12 +9,12 @@ import { PLAYGROUND_DIR, getGitSha, resolvePlaygroundVersion } from './lib/versi
  * Usage: [PLAYGROUND_ENV=staging|prod] [PLAYGROUND_VERSION=x] DATADOG_API_KEY=... \
  *   node scripts/playground/upload-sourcemaps.ts [--dry-run]
  */
-runMain(() => {
+runMain(async () => {
   const { site, dryRun, apiKey } = parseUploadOptions(process.argv.slice(2), process.env);
   const version = resolvePlaygroundVersion(process.env, () => getGitSha(PLAYGROUND_DIR));
 
   printLog(`Building playground version ${version}...`);
-  buildPlayground(version);
+  await buildPlayground(version);
 
   for (const target of UPLOAD_TARGETS) {
     printLog(`Uploading ${target.service} (${target.minifiedPathPrefix}) version ${version} to ${site}...`);
