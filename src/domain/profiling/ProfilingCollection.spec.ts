@@ -1,13 +1,16 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ProfilingCollection } from './ProfilingCollection';
 import { SKIPPED } from '@datadog/js-core/assembly';
 import { EventFormat, EventKind, EventManager, EventSource, EventTrack, LifecycleKind } from '../../event';
 import type { RawProfileEvent, ServerProfileEvent, SessionRenewEvent } from '../../event';
 import { createTestConfiguration } from '../../mocks.specUtil';
-import type { FormatHooks } from '../../assembly';
+import { createFormatHooks, type FormatHooks } from '../../assembly';
+import { TrackingConsentManager, type TrackingConsent } from '../tracking-consent';
 import * as quotaCheckModule from './quotaCheck';
 
 vi.mock('./quotaCheck');
+vi.mock('node:fs/promises');
+vi.mock('electron', () => ({ app: { getPath: () => '/mock/user/data' } }));
 
 type RumHookCallback = Parameters<FormatHooks['registerRum']>[0];
 
@@ -26,6 +29,7 @@ describe('ProfilingCollection', () => {
   let eventManager: EventManager;
   let serverEvents: ServerProfileEvent[];
   let hooks: FormatHooks;
+  let consentManager: TrackingConsentManager;
   const config = createTestConfiguration({ applicationId: 'native-app-id' });
 
   function makeSessionManager(status: 'active' | 'expired' = 'active', id = 'native-session-id') {
@@ -37,8 +41,12 @@ describe('ProfilingCollection', () => {
     };
   }
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    // Consent is granted from time 0, before every capture time used below.
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    consentManager = await TrackingConsentManager.init(createFormatHooks());
     eventManager = new EventManager();
     serverEvents = [];
     hooks = {
@@ -61,8 +69,12 @@ describe('ProfilingCollection', () => {
     vi.mocked(quotaCheckModule.checkProfilingQuota).mockResolvedValue({ decision: 'quota_ok', reason: 'quota_ok' });
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('enriches event with native session.id and application.id', () => {
-    new ProfilingCollection(eventManager, makeSessionManager(), config, hooks);
+    new ProfilingCollection(eventManager, makeSessionManager(), config, hooks, consentManager);
 
     eventManager.notify(makeRawProfileEvent());
 
@@ -72,9 +84,14 @@ describe('ProfilingCollection', () => {
   });
 
   it('preserves all other event fields unchanged', () => {
-    new ProfilingCollection(eventManager, makeSessionManager(), config, hooks);
+    new ProfilingCollection(eventManager, makeSessionManager(), config, hooks, consentManager);
     const raw = makeRawProfileEvent({
-      data: { application: { id: 'dummy' }, date: 9999, custom_field: 'preserved' } as never,
+      data: {
+        application: { id: 'dummy' },
+        date: 9999,
+        start: '2024-06-01T00:00:00.000Z',
+        custom_field: 'preserved',
+      } as never,
     });
 
     eventManager.notify(raw);
@@ -84,7 +101,7 @@ describe('ProfilingCollection', () => {
   });
 
   it('passes trace through unchanged', () => {
-    new ProfilingCollection(eventManager, makeSessionManager(), config, hooks);
+    new ProfilingCollection(eventManager, makeSessionManager(), config, hooks, consentManager);
     const trace = {
       resources: ['r1'],
       frames: [{ name: 'f1' }],
@@ -98,15 +115,28 @@ describe('ProfilingCollection', () => {
   });
 
   it('drops profile when session is not active', () => {
-    new ProfilingCollection(eventManager, makeSessionManager('expired'), config, hooks);
+    new ProfilingCollection(eventManager, makeSessionManager('expired'), config, hooks, consentManager);
 
     eventManager.notify(makeRawProfileEvent());
 
     expect(serverEvents).toHaveLength(0);
   });
 
+  it('releases its subscriptions on stop', () => {
+    consentManager.update('pending');
+    const collection = new ProfilingCollection(eventManager, makeSessionManager(), config, hooks, consentManager);
+
+    collection.stop();
+    consentManager.update('granted');
+    eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+    eventManager.notify(makeRawProfileEvent());
+
+    expect(quotaCheckModule.checkProfilingQuota).not.toHaveBeenCalled();
+    expect(serverEvents).toHaveLength(0);
+  });
+
   it('emits ServerProfileEvent with correct kind and track', () => {
-    new ProfilingCollection(eventManager, makeSessionManager(), config, hooks);
+    new ProfilingCollection(eventManager, makeSessionManager(), config, hooks, consentManager);
 
     eventManager.notify(makeRawProfileEvent());
 
@@ -121,7 +151,7 @@ describe('ProfilingCollection', () => {
         getTrackedSessionId: vi.fn().mockReturnValue('capture-session'),
       };
       const cfg = createTestConfiguration({ sessionSampleRate: 100, profilingSampleRate: 100 });
-      new ProfilingCollection(eventManager, sessionManager, cfg, hooks);
+      new ProfilingCollection(eventManager, sessionManager, cfg, hooks, consentManager);
 
       eventManager.notify(
         makeRawProfileEvent({
@@ -139,11 +169,41 @@ describe('ProfilingCollection', () => {
         getTrackedSessionId: () => undefined,
       };
       const cfg = createTestConfiguration({ sessionSampleRate: 100, profilingSampleRate: 100 });
-      new ProfilingCollection(eventManager, sessionManager, cfg, hooks);
+      new ProfilingCollection(eventManager, sessionManager, cfg, hooks, consentManager);
 
       eventManager.notify(makeRawProfileEvent());
 
       expect(serverEvents).toHaveLength(0);
+    });
+
+    it.each<[string, [number, TrackingConsent][], number]>([
+      [
+        'drops a profile captured while consent was refused, even if granted again since',
+        [
+          [10_000, 'not-granted'],
+          [20_000, 'granted'],
+        ],
+        0,
+      ],
+      [
+        'drops a profile captured while consent was refused, even if pending since',
+        [
+          [10_000, 'not-granted'],
+          [20_000, 'pending'],
+        ],
+        0,
+      ],
+      ['forwards a profile captured while consent is pending, for batch storage to hold', [[10_000, 'pending']], 1],
+    ])('%s', (_title, changes, forwarded) => {
+      for (const [time, change] of changes) {
+        vi.setSystemTime(time);
+        consentManager.update(change);
+      }
+      new ProfilingCollection(eventManager, makeSessionManager(), config, hooks, consentManager);
+
+      eventManager.notify(makeRawProfileEvent({ data: { start: '1970-01-01T00:00:15.000Z' } as never }));
+
+      expect(serverEvents).toHaveLength(forwarded);
     });
   });
 
@@ -154,7 +214,7 @@ describe('ProfilingCollection', () => {
 
     it('forwards event when session is profiling-sampled', () => {
       const cfg = createTestConfiguration({ sessionSampleRate: 100, profilingSampleRate: 100 });
-      new ProfilingCollection(eventManager, makeSessionManager('active', LOW_HASH_UUID), cfg, hooks);
+      new ProfilingCollection(eventManager, makeSessionManager('active', LOW_HASH_UUID), cfg, hooks, consentManager);
 
       eventManager.notify(makeRawProfileEvent());
 
@@ -163,7 +223,7 @@ describe('ProfilingCollection', () => {
 
     it('discards event when session is not profiling-sampled', () => {
       const cfg = createTestConfiguration({ sessionSampleRate: 100, profilingSampleRate: 0 });
-      new ProfilingCollection(eventManager, makeSessionManager('active', LOW_HASH_UUID), cfg, hooks);
+      new ProfilingCollection(eventManager, makeSessionManager('active', LOW_HASH_UUID), cfg, hooks, consentManager);
 
       eventManager.notify(makeRawProfileEvent());
 
@@ -173,7 +233,7 @@ describe('ProfilingCollection', () => {
     it('uses correctedChildSampleRate: high-hash UUID is not sampled at correctedRate below its hash', () => {
       // HIGH_HASH_UUID has a hash ~99.9%. correctedChildSampleRate(100, 50) = 50 → not sampled.
       const cfg = createTestConfiguration({ sessionSampleRate: 100, profilingSampleRate: 50 });
-      new ProfilingCollection(eventManager, makeSessionManager('active', HIGH_HASH_UUID), cfg, hooks);
+      new ProfilingCollection(eventManager, makeSessionManager('active', HIGH_HASH_UUID), cfg, hooks, consentManager);
 
       eventManager.notify(makeRawProfileEvent());
 
@@ -191,7 +251,7 @@ describe('ProfilingCollection', () => {
         getTrackedSessionId: vi.fn().mockReturnValueOnce(HIGH_HASH_UUID).mockReturnValue(LOW_HASH_UUID),
       };
       const cfg = createTestConfiguration({ sessionSampleRate: 100, profilingSampleRate: 50 });
-      new ProfilingCollection(eventManager, sessionManager, cfg, hooks);
+      new ProfilingCollection(eventManager, sessionManager, cfg, hooks, consentManager);
 
       // Before renewal: HIGH_HASH_UUID is not sampled at rate 50
       eventManager.notify(makeRawProfileEvent());
@@ -216,7 +276,7 @@ describe('ProfilingCollection', () => {
       // eslint-disable-next-line @typescript-eslint/no-empty-function
       vi.mocked(quotaCheckModule.checkProfilingQuota).mockReturnValue(new Promise(() => {})); // never resolves
       const cfg = createTestConfiguration({ sessionSampleRate: 100, profilingSampleRate: 100 });
-      new ProfilingCollection(eventManager, makeSessionManager('active', LOW_HASH_UUID), cfg, hooks);
+      new ProfilingCollection(eventManager, makeSessionManager('active', LOW_HASH_UUID), cfg, hooks, consentManager);
 
       eventManager.notify(makeRawProfileEvent());
 
@@ -229,7 +289,7 @@ describe('ProfilingCollection', () => {
         reason: 'quota_exceeded',
       });
       const cfg = createTestConfiguration({ sessionSampleRate: 100, profilingSampleRate: 100 });
-      new ProfilingCollection(eventManager, makeSessionManager('active', LOW_HASH_UUID), cfg, hooks);
+      new ProfilingCollection(eventManager, makeSessionManager('active', LOW_HASH_UUID), cfg, hooks, consentManager);
 
       await Promise.resolve(); // let the quota check microtask resolve
 
@@ -241,7 +301,7 @@ describe('ProfilingCollection', () => {
     it('forwards events after quota_ok resolves', async () => {
       vi.mocked(quotaCheckModule.checkProfilingQuota).mockResolvedValue({ decision: 'quota_ok', reason: 'quota_ok' });
       const cfg = createTestConfiguration({ sessionSampleRate: 100, profilingSampleRate: 100 });
-      new ProfilingCollection(eventManager, makeSessionManager('active', LOW_HASH_UUID), cfg, hooks);
+      new ProfilingCollection(eventManager, makeSessionManager('active', LOW_HASH_UUID), cfg, hooks, consentManager);
 
       await Promise.resolve();
 
@@ -253,10 +313,42 @@ describe('ProfilingCollection', () => {
     it('does not trigger quota check when session is not sampled', () => {
       vi.mocked(quotaCheckModule.checkProfilingQuota).mockResolvedValue({ decision: 'quota_ok', reason: 'quota_ok' });
       const cfg = createTestConfiguration({ sessionSampleRate: 100, profilingSampleRate: 0 });
-      new ProfilingCollection(eventManager, makeSessionManager('active', LOW_HASH_UUID), cfg, hooks);
+      new ProfilingCollection(eventManager, makeSessionManager('active', LOW_HASH_UUID), cfg, hooks, consentManager);
 
       expect(quotaCheckModule.checkProfilingQuota).not.toHaveBeenCalled();
     });
+
+    it.each<TrackingConsent>(['pending', 'not-granted'])(
+      'checks no quota while consent is %s, then the current session once granted',
+      (state) => {
+        consentManager.update(state);
+        let currentId = FIRST_UUID;
+        const sessionManager = {
+          getSession: () => ({ id: currentId, status: 'active' as const }),
+          getTrackedSessionId: () => currentId,
+        };
+        new ProfilingCollection(eventManager, sessionManager, config, hooks, consentManager);
+        currentId = SECOND_UUID;
+        eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+        expect(quotaCheckModule.checkProfilingQuota).not.toHaveBeenCalled();
+
+        consentManager.update('granted');
+
+        expect(quotaCheckModule.checkProfilingQuota).toHaveBeenCalledExactlyOnceWith(config, SECOND_UUID);
+      }
+    );
+
+    it.each<TrackingConsent>(['pending', 'not-granted'])(
+      'checks the quota of a session once, even when consent is %s then granted again',
+      (state) => {
+        new ProfilingCollection(eventManager, makeSessionManager(), config, hooks, consentManager);
+
+        consentManager.update(state);
+        consentManager.update('granted');
+
+        expect(quotaCheckModule.checkProfilingQuota).toHaveBeenCalledTimes(1);
+      }
+    );
 
     it('re-triggers the quota check for the renewed session', async () => {
       // First session is denied; the renewed session is allowed.
@@ -270,7 +362,7 @@ describe('ProfilingCollection', () => {
         getTrackedSessionId: () => currentId,
       };
       const cfg = createTestConfiguration({ sessionSampleRate: 100, profilingSampleRate: 100 });
-      new ProfilingCollection(eventManager, sessionManager, cfg, hooks);
+      new ProfilingCollection(eventManager, sessionManager, cfg, hooks, consentManager);
 
       await Promise.resolve(); // first session's quota_ko resolves
 
@@ -279,6 +371,7 @@ describe('ProfilingCollection', () => {
 
       currentId = SECOND_UUID; // session renews
       eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+      expect(quotaCheckModule.checkProfilingQuota).toHaveBeenLastCalledWith(cfg, SECOND_UUID);
       await Promise.resolve(); // renewed session's quota_ok resolves
 
       eventManager.notify(makeRawProfileEvent());
@@ -297,7 +390,7 @@ describe('ProfilingCollection', () => {
         getTrackedSessionId: () => FIRST_UUID, // the profile was captured during the denied session
       };
       const cfg = createTestConfiguration({ sessionSampleRate: 100, profilingSampleRate: 100 });
-      new ProfilingCollection(eventManager, sessionManager, cfg, hooks);
+      new ProfilingCollection(eventManager, sessionManager, cfg, hooks, consentManager);
 
       await Promise.resolve(); // FIRST denied
 
@@ -321,7 +414,7 @@ describe('ProfilingCollection', () => {
         getTrackedSessionId: () => FIRST_UUID, // the profile was captured during the allowed session
       };
       const cfg = createTestConfiguration({ sessionSampleRate: 100, profilingSampleRate: 100 });
-      new ProfilingCollection(eventManager, sessionManager, cfg, hooks);
+      new ProfilingCollection(eventManager, sessionManager, cfg, hooks, consentManager);
 
       await Promise.resolve(); // FIRST allowed
 
@@ -340,7 +433,7 @@ describe('ProfilingCollection', () => {
         getTrackedSessionId: () => LOW_HASH_UUID,
       };
       const cfg = createTestConfiguration({ sessionSampleRate: 100, profilingSampleRate: 0 });
-      new ProfilingCollection(eventManager, sessionManager, cfg, hooks);
+      new ProfilingCollection(eventManager, sessionManager, cfg, hooks, consentManager);
 
       const renewEvent: SessionRenewEvent = { kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW };
       eventManager.notify(renewEvent);
@@ -363,7 +456,13 @@ describe('ProfilingCollection', () => {
         decision: 'quota_ko',
         reason: 'quota_exceeded',
       });
-      new ProfilingCollection(eventManager, makeSessionManager('active', LOW_HASH_UUID), sampledCfg, hooks);
+      new ProfilingCollection(
+        eventManager,
+        makeSessionManager('active', LOW_HASH_UUID),
+        sampledCfg,
+        hooks,
+        consentManager
+      );
       await Promise.resolve();
 
       expect(invokeHook(EventSource.RENDERER, 'view')).toEqual({
@@ -373,7 +472,7 @@ describe('ProfilingCollection', () => {
 
     it('suppresses the context with null when the session is sampled out', () => {
       const cfg = createTestConfiguration({ sessionSampleRate: 100, profilingSampleRate: 0 });
-      new ProfilingCollection(eventManager, makeSessionManager('active', LOW_HASH_UUID), cfg, hooks);
+      new ProfilingCollection(eventManager, makeSessionManager('active', LOW_HASH_UUID), cfg, hooks, consentManager);
 
       expect(invokeHook(EventSource.RENDERER, 'view')).toEqual({ _dd: { profiling: null } });
     });
@@ -381,7 +480,13 @@ describe('ProfilingCollection', () => {
     it('contributes nothing while quota is pending or ok', () => {
       // eslint-disable-next-line @typescript-eslint/no-empty-function
       vi.mocked(quotaCheckModule.checkProfilingQuota).mockReturnValue(new Promise(() => {}));
-      new ProfilingCollection(eventManager, makeSessionManager('active', LOW_HASH_UUID), sampledCfg, hooks);
+      new ProfilingCollection(
+        eventManager,
+        makeSessionManager('active', LOW_HASH_UUID),
+        sampledCfg,
+        hooks,
+        consentManager
+      );
 
       expect(invokeHook(EventSource.RENDERER, 'view')).toBe(SKIPPED);
     });
@@ -391,7 +496,13 @@ describe('ProfilingCollection', () => {
         decision: 'quota_ko',
         reason: 'quota_exceeded',
       });
-      new ProfilingCollection(eventManager, makeSessionManager('active', LOW_HASH_UUID), sampledCfg, hooks);
+      new ProfilingCollection(
+        eventManager,
+        makeSessionManager('active', LOW_HASH_UUID),
+        sampledCfg,
+        hooks,
+        consentManager
+      );
       await Promise.resolve();
 
       expect(invokeHook(EventSource.MAIN, 'view')).toBe(SKIPPED);
@@ -402,7 +513,13 @@ describe('ProfilingCollection', () => {
         decision: 'quota_ko',
         reason: 'quota_exceeded',
       });
-      new ProfilingCollection(eventManager, makeSessionManager('active', LOW_HASH_UUID), sampledCfg, hooks);
+      new ProfilingCollection(
+        eventManager,
+        makeSessionManager('active', LOW_HASH_UUID),
+        sampledCfg,
+        hooks,
+        consentManager
+      );
       await Promise.resolve();
 
       expect(invokeHook(EventSource.RENDERER, 'resource')).toBe(SKIPPED);
@@ -420,7 +537,7 @@ describe('ProfilingCollection', () => {
         getTrackedSessionId: vi.fn().mockReturnValue(HIGH_HASH_UUID),
       };
       const cfg = createTestConfiguration({ sessionSampleRate: 100, profilingSampleRate: 50 });
-      new ProfilingCollection(eventManager, sessionManager, cfg, hooks);
+      new ProfilingCollection(eventManager, sessionManager, cfg, hooks, consentManager);
 
       // Suppressed (HIGH is sampled out) even though the current session would be sampled.
       expect(invokeHook(EventSource.RENDERER, 'view')).toEqual({ _dd: { profiling: null } });
@@ -431,7 +548,7 @@ describe('ProfilingCollection', () => {
         getSession: () => ({ id: LOW_HASH_UUID, status: 'active' as const }),
         getTrackedSessionId: () => undefined,
       };
-      new ProfilingCollection(eventManager, sessionManager, sampledCfg, hooks);
+      new ProfilingCollection(eventManager, sessionManager, sampledCfg, hooks, consentManager);
 
       expect(invokeHook(EventSource.RENDERER, 'view')).toBe(SKIPPED);
     });
@@ -445,7 +562,7 @@ describe('ProfilingCollection', () => {
         getSession: () => ({ id: currentId, status: 'active' as const }),
         getTrackedSessionId: () => currentId,
       };
-      new ProfilingCollection(eventManager, sessionManager, sampledCfg, hooks);
+      new ProfilingCollection(eventManager, sessionManager, sampledCfg, hooks, consentManager);
       await Promise.resolve();
       expect(invokeHook(EventSource.RENDERER, 'view')).toEqual({
         _dd: { profiling: { status: 'stopped', quota_reason: 'quota_exceeded' } },

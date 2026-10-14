@@ -199,19 +199,22 @@ does not multiply the allowance. Open files and filesystem failures can temporar
 
 ### Consent at assembly
 
-Batch storage applies the consent current when an event is written. That is not enough for events recovered from
-an earlier launch: a crash is written at the next launch, and its saved session, view and customer context is not
-proof that it was captured with consent.
+Batch storage applies the consent current when an event is written. Logs, telemetry and replay records are written
+within seconds of their capture, but other data can be written later, possibly after a consent change: a crash is
+written at the next launch, and its saved session, view and customer context is not proof that it was captured with
+consent; a span is written when its whole trace ends, and a profile when its recording ends.
 
-A RUM format hook therefore discards events whose start time falls in a refused period, or in no known period.
+Format hooks therefore discard RUM events and spans whose start time falls in a refused period, or in no known
+period. Profiles bypass format hooks, so `ProfilingCollection` applies the same check to their start time.
 A `pending` period takes the decision that ended it, like its pending batches: a grant keeps its events, and a
 refusal discards them even if consent is granted again later. Events of a still undecided `pending` period are left
 to the batch storage. A new process cannot grant the previous one's undecided period, so startup records it as
 refused, as it deletes its pending batches. Recovered crashes are then stored according to the current consent,
 like other events.
 
-Consent changes reach the disk asynchronously: a crash that follows a refusal before it is written is accepted at
-the next launch.
+Only the start time is checked: a view, span or profile that starts while consent is granted and is written after a
+refusal and a new grant is kept whole, including what it captured while refused. Consent changes reach the disk
+asynchronously: a crash that follows a refusal before the refusal is saved is accepted at the next launch.
 
 ## Error Reporting
 
@@ -295,8 +298,10 @@ within the Logs intake request limit without dropping events.
 ## Profiling
 
 Profiles originate in the renderer (the Browser SDK's profiler) and reach the main process over the bridge
-as `PROFILE` events. `ProfilingCollection` gates them on profiling sampling and a backend quota check, then
-emits `ServerProfileEvent`s on the `PROFILE` track (transported as multipart, separate from RUM).
+as `PROFILE` events. `ProfilingCollection` gates them on consent, profiling sampling and a backend quota check, then
+emits `ServerProfileEvent`s on the `PROFILE` track (transported as multipart, separate from RUM). The quota check
+sends the session id to Datadog, so it only runs while consent is granted; profiles received before its answer are
+forwarded.
 
 The Electron SDK is **authoritative for the profiling quota decision** and enriches the renderer's RUM
 events' `_dd.profiling` context accordingly (via a `registerRum` hook, merged by `combine`):

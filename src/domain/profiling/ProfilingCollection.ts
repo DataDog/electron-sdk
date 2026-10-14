@@ -1,9 +1,11 @@
+import type { Subscription } from '@datadog/browser-core';
 import { combine } from '@datadog/js-core/util';
 import { SKIPPED } from '@datadog/js-core/assembly';
 import type { TimeStamp } from '@datadog/js-core/time';
 import type { Configuration } from '../../config';
 import type { FormatHooks, RumEventType } from '../../assembly';
 import type { SessionManager } from '../session';
+import type { TrackingConsentManager } from '../tracking-consent';
 import type { EventManager, RawProfileEvent, ServerProfileEvent, SessionRenewEvent } from '../../event';
 import { EventFormat, EventKind, EventSource, EventTrack, LifecycleKind } from '../../event';
 import { correctedChildSampleRate, isSessionSampled } from '../../tools/Sampler';
@@ -15,18 +17,25 @@ import { checkProfilingQuota } from './quotaCheck';
 // profilingContext assemble hook), so electron scopes its contribution the same way to stay consistent.
 const PROFILING_EVENT_TYPES: readonly RumEventType[] = ['view', 'long_task', 'action', 'vital'];
 
+/**
+ * Forwards renderer profiles to the PROFILE track when consent, profiling sampling and the backend quota allow them,
+ * and aligns the `_dd.profiling` context of renderer RUM events with its sampling and quota decisions.
+ */
 export class ProfilingCollection {
   // Sessions denied by the backend quota, keyed by session id (value is the denial reason). A profile is
   // gated on the quota decision of the session that captured it, not the current one, so a profile flushed
-  // after a renewal is still dropped if its own session was denied. Absence means "not denied" (allowed or
-  // still pending the async check, i.e. optimistic).
+  // after a renewal is still dropped if its own session was denied. Absence means "not denied" (allowed, check
+  // in flight, or not checked because consent was not granted, i.e. optimistic).
   private readonly quotaDeniedSessions = new Map<string, QuotaReason>();
+  private quotaCheckedSessionId: string | undefined;
+  private readonly subscriptions: Subscription[];
 
   constructor(
     eventManager: EventManager,
     private readonly sessionManager: Pick<SessionManager, 'getSession' | 'getTrackedSessionId'>,
     private readonly config: Configuration,
-    hooks: FormatHooks
+    hooks: FormatHooks,
+    private readonly trackingConsentManager: TrackingConsentManager
   ) {
     this.maybeCheckQuota();
 
@@ -62,29 +71,40 @@ export class ProfilingCollection {
       return SKIPPED;
     });
 
-    eventManager.registerHandler<RawProfileEvent>({
-      canHandle: (event): event is RawProfileEvent =>
-        event.kind === EventKind.RAW && event.format === EventFormat.PROFILE,
-      handle: (rawEvent, notify) => {
-        const serverEvent = this.processProfile(rawEvent);
-        if (serverEvent) notify(serverEvent);
-      },
-    });
-
-    eventManager.registerHandler<SessionRenewEvent>({
-      canHandle: (event): event is SessionRenewEvent =>
-        event.kind === EventKind.LIFECYCLE && event.lifecycle === LifecycleKind.SESSION_RENEW,
-      handle: () => {
-        this.maybeCheckQuota();
-      },
-    });
+    this.subscriptions = [
+      eventManager.registerHandler<RawProfileEvent>({
+        canHandle: (event): event is RawProfileEvent =>
+          event.kind === EventKind.RAW && event.format === EventFormat.PROFILE,
+        handle: (rawEvent, notify) => {
+          const serverEvent = this.processProfile(rawEvent);
+          if (serverEvent) notify(serverEvent);
+        },
+      }),
+      eventManager.registerHandler<SessionRenewEvent>({
+        canHandle: (event): event is SessionRenewEvent =>
+          event.kind === EventKind.LIFECYCLE && event.lifecycle === LifecycleKind.SESSION_RENEW,
+        handle: () => this.maybeCheckQuota(),
+      }),
+      trackingConsentManager.subscribe(() => this.maybeCheckQuota()),
+    ];
   }
 
-  // Trigger a quota check for the current session, but only when it is profiling-sampled (an unsampled
-  // session never produces profiles, so its quota is irrelevant).
+  stop(): void {
+    for (const subscription of this.subscriptions) {
+      subscription.unsubscribe();
+    }
+  }
+
+  // Check the current session's quota once, when it starts or at the first grant during it: the check sends the
+  // session id to Datadog, so it needs consent, and is skipped for an unsampled session, whose profiles are dropped.
   private maybeCheckQuota(): void {
     const session = this.sessionManager.getSession();
-    if (this.isProfilingSampled(session.id)) {
+    if (
+      session.id !== this.quotaCheckedSessionId &&
+      this.trackingConsentManager.get() === 'granted' &&
+      this.isProfilingSampled(session.id)
+    ) {
+      this.quotaCheckedSessionId = session.id;
       this.triggerQuotaCheck(session.id);
     }
   }
@@ -109,12 +129,16 @@ export class ProfilingCollection {
   }
 
   private processProfile(rawEvent: RawProfileEvent): ServerProfileEvent | null {
+    const captureTime = new Date(rawEvent.data.start).getTime() as TimeStamp;
+    // Profiles bypass format hooks, so consent is checked here, at their start time like RUM events and spans.
+    if (!this.trackingConsentManager.allowsDataCapturedAt(captureTime)) {
+      return null;
+    }
     // Attribute the profile to the session that produced it, not the current one: a profile can be flushed
     // asynchronously (e.g. on unload) after the session renewed or expired. Resolve the session covering the
     // profile's start time from the session history (like RUM events do via their start time), and drop the
     // profile if none covered it (window expired, or the session was not sampled). Sampling and the quota
     // decision are then evaluated for that session so they match the one that captured the profile.
-    const captureTime = new Date(rawEvent.data.start).getTime() as TimeStamp;
     const sessionId = this.sessionManager.getTrackedSessionId(captureTime);
     if (sessionId === undefined || !this.isProfilingSampled(sessionId)) {
       return null;

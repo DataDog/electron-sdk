@@ -60,7 +60,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   sessionManager = await SessionManager.start(eventManager, hooks, config);
 
   new MainAssembly(eventManager, hooks, new BeforeSend(config.beforeSendRum));
-  new ProfilingCollection(eventManager, sessionManager, config, hooks);
+  new ProfilingCollection(eventManager, sessionManager, config, hooks, trackingConsentManager);
   replayCollection = new ReplayCollection(eventManager, config, sessionManager, hooks);
 
   if (tracing.enabled) {

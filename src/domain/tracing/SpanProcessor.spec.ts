@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as DiagnosticsChannel from 'node:diagnostics_channel';
 import { DISCARDED, SKIPPED } from '@datadog/js-core/assembly';
-import { EventFormat, EventKind, EventManager, EventTrack } from '../../event';
+import { EventFormat, EventKind, EventManager, EventSource, EventTrack } from '../../event';
 import type { Event, RawRumEvent, ServerSpansEvent } from '../../event';
 import { createFormatHooks, type FormatHooks } from '../../assembly';
 import type { Configuration } from '../../config';
@@ -344,6 +344,15 @@ describe('SpanProcessor', () => {
 
       const serverEvent = collected.find((e) => e.kind === EventKind.SERVER) as ServerSpansEvent;
       expect(serverEvent).toBeUndefined();
+    });
+
+    it('should evaluate span hooks at the span start time', () => {
+      const spanHook = vi.fn<Parameters<FormatHooks['registerSpan']>[0]>(() => SKIPPED);
+      hooks.registerSpan(spanHook);
+
+      publish([[createSpan()]]); // starts at 1000 ms, lasts 50 ms
+
+      expect(spanHook).toHaveBeenCalledExactlyOnceWith({ startTime: 1000, source: EventSource.MAIN });
     });
 
     it('should not enrich when hooks return SKIPPED', () => {
