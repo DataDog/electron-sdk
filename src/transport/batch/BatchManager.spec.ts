@@ -125,7 +125,7 @@ describe('BatchManager', () => {
         intakeUrl: 'https://mock-intake.com/api/v2/rum',
         clientToken: 'test-token',
       });
-      expect(mockProducerCreate).not.toHaveBeenCalled();
+      expect(mockProducerCreate).toHaveBeenCalled();
     });
 
     it('should start the upload cycle after creation', async () => {
