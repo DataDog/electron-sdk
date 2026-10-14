@@ -212,6 +212,17 @@ describe('ProfilingCollection', () => {
     const FIRST_UUID = '11111111-1111-4111-8111-111111111111';
     const SECOND_UUID = '22222222-2222-4222-8222-222222222222';
 
+    it('does not trigger quota check without an active session', () => {
+      const cfg = createTestConfiguration({ sessionSampleRate: 100, profilingSampleRate: 100 });
+      const refusedSessionManager = {
+        getSession: () => ({ status: 'not-granted' as const }),
+        getTrackedSessionId: () => undefined,
+      };
+      new ProfilingCollection(eventManager, refusedSessionManager, cfg, hooks);
+
+      expect(quotaCheckModule.checkProfilingQuota).not.toHaveBeenCalled();
+    });
+
     it('forwards events while quota check is pending (optimistic)', () => {
       // eslint-disable-next-line @typescript-eslint/no-empty-function
       vi.mocked(quotaCheckModule.checkProfilingQuota).mockReturnValue(new Promise(() => {})); // never resolves

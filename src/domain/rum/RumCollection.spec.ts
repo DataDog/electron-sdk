@@ -60,7 +60,7 @@ describe('RumCollection', () => {
     const configuration = { enableExecutionContext: false } as Configuration;
     const rum = await RumCollection.start(eventManager, hooks, sessionManager, configuration);
     // ViewCollection.start emits the real generateUUID-based view id, not the session id
-    expect((rawRumEvents[0].data as RawRumView).view.id).not.toBe(sessionManager.getSession().id);
+    expect((rawRumEvents[0].data as RawRumView).view.id).not.toBe('session-1');
     // ExecutionContextCollection must stay unstarted on the disabled path — no execution_context event
     expect(rawRumEvents.find((e) => e.data.type === 'execution_context')).toBeUndefined();
     rum.stop();
@@ -71,7 +71,7 @@ describe('RumCollection', () => {
     const rum = await RumCollection.start(eventManager, hooks, sessionManager, configuration);
 
     const viewEvent = rawRumEvents.find((e) => e.data.type === 'view');
-    expect((viewEvent!.data as RawRumView).view.id).toBe(sessionManager.getSession().id);
+    expect((viewEvent!.data as RawRumView).view.id).toBe('session-1');
 
     // ExecutionContextCollection.start() emits an initial main-process execution_context event
     const executionContextEvent = rawRumEvents.find((e) => e.data.type === 'execution_context');
