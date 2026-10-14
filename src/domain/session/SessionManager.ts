@@ -83,8 +83,7 @@ export class SessionManager {
     this.sessionContext = await SessionContext.init(this.hooks);
     this.sessionContext.close();
     if (this.trackingConsentManager.get() === 'not-granted') {
-      this.currentSession = { status: 'not-granted' };
-      setCurrentSessionSampled(false);
+      this.setSession({ status: 'not-granted' });
     } else {
       this.createNewSession();
     }
@@ -102,10 +101,16 @@ export class SessionManager {
   private onConsentChange({ current }: TrackingConsentChange): void {
     if (current === 'not-granted') {
       this.expireSession();
-      this.currentSession = { status: 'not-granted' };
+      this.setSession({ status: 'not-granted' });
     } else if (this.currentSession.status === 'not-granted') {
       this.renewSession();
     }
+  }
+
+  // Updates the session and the sampling flag read by main-process tracing together, so they cannot diverge.
+  private setSession(session: Session, isSampled = false): void {
+    this.currentSession = session;
+    setCurrentSessionSampled(isSampled);
   }
 
   private createNewSession(): void {
@@ -113,8 +118,7 @@ export class SessionManager {
     const id = generateUUID();
     const isSampled = isSessionSampled(id, this.configuration.sessionSampleRate);
 
-    this.currentSession = { id, status: 'active' };
-    setCurrentSessionSampled(isSampled);
+    this.setSession({ id, status: 'active' }, isSampled);
     if (isSampled) {
       this.sessionContext.add(id);
     }
@@ -129,8 +133,7 @@ export class SessionManager {
     }
 
     this.clearTimers();
-    this.currentSession.status = 'expired';
-    setCurrentSessionSampled(false);
+    this.setSession({ id: this.currentSession.id, status: 'expired' });
     this.sessionContext.close();
     this.eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
   }
