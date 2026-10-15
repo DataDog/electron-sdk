@@ -3,6 +3,7 @@ import { RawTelemetryData, TelemetryEvent } from '../domain/telemetry';
 import { MainRumEvent, RawRumData, RendererRumEvent } from '../domain/rum';
 import type { TimeStamp } from '@datadog/js-core/time';
 import { RawTraceData } from '../domain/tracing/rawTracingData.types';
+import type { FlagsExposureEvent } from '../domain/flags/exposureEvent.types';
 import type { BrowserProfileEvent, BrowserProfilerTrace } from '../domain/profiling';
 import type { ReplaySegmentPayload, BrowserRecord } from '../domain/replay';
 import type { LogsEvent } from '../domain/logs';
@@ -35,7 +36,14 @@ export interface RawReplayEvent {
 }
 
 export type ServerEvent =
-  ServerRumEvent | ServerTelemetryEvent | ServerLogsEvent | ServerSpansEvent | ServerProfileEvent | ServerReplayEvent;
+  | ServerRumEvent
+  | ServerTelemetryEvent
+  | ServerLogsEvent
+  | ServerSpansEvent
+  | ServerProfileEvent
+  | ServerReplayEvent
+  | ServerExposuresEvent
+  | ServerFlagEvaluationEvent;
 
 /**
  * Server events transported as newline-delimited JSON, i.e. every {@link ServerEvent} whose
@@ -72,6 +80,20 @@ export interface ServerLogsEvent {
   track: typeof EventTrack.LOGS;
   source: EventSource;
   data: LogsEvent;
+}
+
+export interface ServerFlagEvaluationEvent {
+  kind: typeof EventKind.SERVER;
+  track: typeof EventTrack.FLAGEVALUATION;
+  source: EventSource;
+  data: Record<string, unknown>;
+}
+
+export interface ServerExposuresEvent {
+  kind: typeof EventKind.SERVER;
+  track: typeof EventTrack.EXPOSURES;
+  source: EventSource;
+  data: FlagsExposureEvent;
 }
 
 export interface ServerSpansEvent {

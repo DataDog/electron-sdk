@@ -23,15 +23,26 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { ONE_SECOND } from '@datadog/js-core/time';
 
 // Renderer window global helpers exposed by each integration app's renderer code
+interface FlagResult {
+  value: unknown;
+  variant?: string;
+  errorCode?: string;
+}
+
+const CHILD_FLAGS_APPS: string[] = ['forge-vite', 'forge-esbuild-esm', 'electron-builder-vite'];
+
 interface IntegrationTestWindow {
   electronAPI?: {
     flushTransport: () => Promise<void>;
     crash: () => Promise<void>;
     mainFetch: (url: string) => Promise<number>;
     openCustomSessionWindow: () => Promise<void>;
+    evaluateFlag: (flagKey: string, defaultValue: string) => Promise<FlagResult>;
+    evaluateFlagInChild?: (flagKey: string, defaultValue: string) => Promise<FlagResult & { status: string }>;
   };
   __integrationTest?: {
     triggerRendererError: (message: string) => void;
+    evaluateFlag: (flagKey: string, defaultValue: string) => Promise<FlagResult>;
   };
 }
 
@@ -93,6 +104,73 @@ test.describe('view event on startup @integration', () => {
     expect(view.type).toBe('view');
     expect(view.session.id).toBeDefined();
     expect(view.application.id).toBe('integration-test-app-id');
+  });
+});
+
+test.describe('feature flags @integration', () => {
+  // Each app registers ElectronMainFlagsProvider (context plan: 'pro') and the renderer provider;
+  // the intake serves the rules through featureFlags.flaggingProxy.
+  test('main evaluates a flag and sends one exposure', async ({ window, intake }) => {
+    const evaluateInMain = () =>
+      window.evaluate(() =>
+        (globalThis as unknown as IntegrationTestWindow).electronAPI!.evaluateFlag('targeted-flag', 'default')
+      );
+    await expect.poll(async () => (await evaluateInMain()).value, { timeout: 15_000 }).toBe('variant-a');
+    await evaluateInMain();
+
+    await expect
+      .poll(
+        async () => {
+          await window.evaluate(() => (globalThis as unknown as IntegrationTestWindow).electronAPI?.flushTransport());
+          return intake.getExposures().length;
+        },
+        { timeout: 15_000 }
+      )
+      .toBeGreaterThan(0);
+    await window.waitForTimeout(500);
+    await window.evaluate(() => (globalThis as unknown as IntegrationTestWindow).electronAPI?.flushTransport());
+    const exposures = intake.getExposures().map((exposure) => exposure.body);
+    expect(exposures).toHaveLength(1);
+    expect(exposures[0]).toMatchObject({ flag: { key: 'targeted-flag' }, subject: { id: 'user-pro' } });
+  });
+
+  test('forked child evaluates a flag', async ({ app, window }) => {
+    // M6: one CJS app bundle, one ESM app bundle and one packager-copy app cover how the child
+    // entry is resolved (bundled into asar, ESM import, copied node_modules); the other apps add
+    // no different resolution path.
+    test.skip(
+      !CHILD_FLAGS_APPS.includes(app),
+      'the forked child fixture lives in forge-vite, forge-esbuild-esm and electron-builder-vite only'
+    );
+    await expect
+      .poll(
+        async () =>
+          window.evaluate(() =>
+            (globalThis as unknown as IntegrationTestWindow).electronAPI!.evaluateFlagInChild!(
+              'targeted-flag',
+              'default'
+            )
+          ),
+        { timeout: 20_000 }
+      )
+      .toMatchObject({ value: 'variant-a', status: 'READY' });
+  });
+
+  test('renderer evaluates a flag', async ({ window }) => {
+    await expect
+      .poll(
+        async () =>
+          (
+            await window.evaluate(() =>
+              (globalThis as unknown as IntegrationTestWindow).__integrationTest!.evaluateFlag(
+                'targeted-flag',
+                'default'
+              )
+            )
+          ).value,
+        { timeout: 15_000 }
+      )
+      .toBe('variant-a');
   });
 });
 

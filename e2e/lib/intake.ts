@@ -1,5 +1,6 @@
 import * as http from 'node:http';
 import zlib from 'node:zlib';
+import { configurationToString } from '@datadog/openfeature-browser/rules-based';
 import type {
   LogsEvent,
   RumActionEvent,
@@ -172,6 +173,19 @@ export class Intake {
   private server: http.Server | null = null;
   private rumEvents: ReceivedEvent[] = [];
   private logs: ReceivedEvent<LogsEvent>[] = [];
+  private rulesRequests: { timestamp: number; url: string; headers: Record<string, string> }[] = [];
+  private rulesMode: 'ok' | 'unavailable' | 'error' | 'hang' = 'ok';
+  private precomputedRequests: PrecomputedRequest[] = [];
+  private precomputedMode: 'ok' | 'forbidden' | 'error' | 'hang' | 'slow' = 'ok';
+  private precomputedCreatedAtCounter = 0;
+  private exposures: {
+    timestamp: number;
+    body: Record<string, unknown>;
+    headers: Record<string, string>;
+    ddforward: string;
+  }[] = [];
+  private exposuresMode: 'ok' | 'reject' = 'ok';
+  private flagEvaluations: { timestamp: number; body: Record<string, unknown>; ddforward: string }[] = [];
   private logRequestSizes: number[] = [];
   private replaySegments: ReplaySegment[] = [];
   private traces: Trace[] = [];
@@ -265,6 +279,80 @@ export class Intake {
     }
   }
 
+  /** Configure the rules endpoint behavior (ok / 403 rules-unavailable / 503 / hang). */
+  /** When 'reject', the exposures endpoint answers 500 to simulate an intake failure. */
+  setExposuresMode(mode: 'ok' | 'reject'): void {
+    this.exposuresMode = mode;
+  }
+
+  setRulesMode(mode: 'ok' | 'unavailable' | 'error' | 'hang'): void {
+    this.rulesMode = mode;
+  }
+
+  /** Configure the precompute-assignments endpoint behavior (ok / 403 / 503 / hang / slow). */
+  setPrecomputedMode(mode: 'ok' | 'forbidden' | 'error' | 'hang' | 'slow'): void {
+    this.precomputedMode = mode;
+  }
+
+  getPrecomputedRequests(): PrecomputedRequest[] {
+    return this.precomputedRequests;
+  }
+
+  async waitForPrecomputedRequestCount(count: number, options?: { timeout?: number }): Promise<void> {
+    const timeout = options?.timeout ?? 5000;
+    const deadline = Date.now() + timeout;
+    while (this.precomputedRequests.length < count) {
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out waiting for ${count} precomputed requests, got ${this.precomputedRequests.length}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+
+  getRulesRequests(): { timestamp: number; url: string; headers: Record<string, string> }[] {
+    return this.rulesRequests;
+  }
+
+  async waitForRulesRequestCount(count: number, options?: { timeout?: number }): Promise<void> {
+    const timeout = options?.timeout ?? 5000;
+    const deadline = Date.now() + timeout;
+    while (this.rulesRequests.length < count) {
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out waiting for ${count} rules requests, got ${this.rulesRequests.length}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+
+  getFlagEvaluations(): { timestamp: number; body: Record<string, unknown>; ddforward: string }[] {
+    return this.flagEvaluations;
+  }
+
+  async waitForFlagEvaluationCount(count: number, options?: { timeout?: number }): Promise<void> {
+    const deadline = Date.now() + (options?.timeout ?? 5000);
+    while (this.flagEvaluations.length < count) {
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out waiting for ${count} flag evaluations, got ${this.flagEvaluations.length}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+
+  getExposures(): { timestamp: number; body: Record<string, unknown>; headers: Record<string, string> }[] {
+    return this.exposures;
+  }
+
+  async waitForExposureCount(count: number, options?: { timeout?: number }): Promise<void> {
+    const timeout = options?.timeout ?? 5000;
+    const deadline = Date.now() + timeout;
+    while (this.exposures.length < count) {
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out waiting for ${count} exposures, got ${this.exposures.length}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+
   setQuotaResponse(decision: 'quota_ok' | 'quota_ko'): void {
     this.quotaDecision = decision;
   }
@@ -275,6 +363,110 @@ export class Intake {
         const url = new URL(req.url ?? '/', 'http://localhost');
         const ddforward = url.searchParams.get('ddforward') ?? '';
         const ddforwardSubdomain = url.searchParams.get('ddforwardSubdomain') ?? '';
+
+        // The precompute-assignments request goes through the proxy root as a POST with a
+        // dd_env query param and a JSON:API body carrying the evaluation context (M7).
+        if (req.method === 'POST' && url.searchParams.has('dd_env')) {
+          const chunks: Buffer[] = [];
+          req.on('data', (chunk: Buffer) => chunks.push(chunk));
+          req.on('end', () => {
+            const bodyText = Buffer.concat(chunks).toString('utf-8');
+            let targetingKey = '';
+            let targetingAttributes: Record<string, string | number | boolean> = {};
+            try {
+              const parsed = JSON.parse(bodyText) as {
+                data?: {
+                  attributes?: {
+                    subject?: {
+                      targeting_key?: string;
+                      targeting_attributes?: Record<string, string | number | boolean>;
+                    };
+                  };
+                };
+              };
+              targetingKey = parsed.data?.attributes?.subject?.targeting_key ?? '';
+              targetingAttributes = parsed.data?.attributes?.subject?.targeting_attributes ?? {};
+            } catch {
+              // An undecodable request body: answer as a server error.
+            }
+            this.precomputedRequests.push({
+              timestamp: Date.now(),
+              url: url.toString(),
+              headers: req.headers as Record<string, string>,
+              targetingKey,
+              targetingAttributes,
+            });
+            if (this.precomputedMode === 'hang') {
+              // Never respond: the SDK must abort after its fetch timeout.
+              return;
+            }
+            if (this.precomputedMode === 'slow') {
+              // Respond late: the SDK must keep serving the previous snapshot meanwhile.
+              setTimeout(() => {
+                res.writeHead(200, { 'Content-Type': 'application/vnd.api+json' });
+                res.end(
+                  JSON.stringify(
+                    precomputedAssignmentsFor(targetingKey, targetingAttributes, ++this.precomputedCreatedAtCounter)
+                  )
+                );
+              }, 4000);
+              return;
+            }
+            if (this.precomputedMode === 'forbidden') {
+              res.writeHead(403, { 'Content-Type': 'application/vnd.api+json' });
+              res.end(JSON.stringify({ errors: [{ detail: 'Feature flags are not enabled for this application' }] }));
+              return;
+            }
+            if (this.precomputedMode === 'error') {
+              res.writeHead(503, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'unavailable' }));
+              return;
+            }
+            res.writeHead(200, { 'Content-Type': 'application/vnd.api+json' });
+            res.end(
+              JSON.stringify(
+                precomputedAssignmentsFor(targetingKey, targetingAttributes, ++this.precomputedCreatedAtCounter)
+              )
+            );
+          });
+          return;
+        }
+
+        // The feature flags rules request goes through the proxy root: upstream sends it
+        // to `<flaggingProxy>/?dd_env=<env>` (the proxy is expected to route internally),
+        // so it arrives here as a GET with a dd_env query param.
+        if (req.method === 'GET' && url.searchParams.has('dd_env')) {
+          this.rulesRequests.push({
+            timestamp: Date.now(),
+            url: url.toString(),
+            headers: req.headers as Record<string, string>,
+          });
+          if (this.rulesMode === 'hang') {
+            // Never respond: the SDK must abort after its fetch timeout.
+            return;
+          }
+          if (this.rulesMode === 'unavailable') {
+            req.resume();
+            res.writeHead(403, { 'Content-Type': 'application/vnd.api+json' });
+            res.end(
+              JSON.stringify({
+                errors: [{ detail: 'Allow local rule evaluation in client SDKs is disabled for this application' }],
+              })
+            );
+            return;
+          }
+          if (this.rulesMode === 'error') {
+            req.resume();
+            res.writeHead(503, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'unavailable' }));
+            return;
+          }
+          req.resume();
+          const body = flagsBinary();
+          res.writeHead(200, { 'Content-Type': 'application/protobuf', 'Content-Length': String(body.length) });
+          res.end(body);
+          return;
+        }
 
         if (req.method === 'GET' && ddforwardSubdomain === 'quota') {
           const admitted = this.quotaDecision === 'quota_ok';
@@ -340,7 +532,20 @@ export class Intake {
 
           try {
             const parsedBody: unknown = JSON.parse(rawBody.toString());
-            if (ddforward.startsWith('/api/v2/spans')) {
+            if (ddforward.startsWith('/api/v2/exposures')) {
+              for (const item of parsedBody as Record<string, unknown>[]) {
+                this.exposures.push({ timestamp: Date.now(), body: item, headers, ddforward });
+              }
+              if (this.exposuresMode === 'reject') {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'exposures intake failure' }));
+                return;
+              }
+            } else if (ddforward.startsWith('/api/v2/flagevaluation')) {
+              for (const item of parsedBody as Record<string, unknown>[]) {
+                this.flagEvaluations.push({ timestamp: Date.now(), body: item, ddforward });
+              }
+            } else if (ddforward.startsWith('/api/v2/spans')) {
               this.storeTraces(parsedBody);
             } else if (ddforward.startsWith('/api/v2/logs')) {
               this.storeLogs(parsedBody, headers, ddforward);
@@ -587,6 +792,10 @@ export class Intake {
 
   clear(): void {
     this.rumEvents = [];
+    this.rulesRequests = [];
+    this.precomputedRequests = [];
+    this.exposures = [];
+    this.flagEvaluations = [];
     this.logs = [];
     this.logRequestSizes = [];
     this.replaySegments = [];
@@ -598,4 +807,202 @@ export class Intake {
   getPort(): number {
     return this.port;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Feature flags rules fixture. Lives in this file (not a sibling module) because
+// playground/tsconfig.test.json includes only intake.ts from e2e/lib.
+// ---------------------------------------------------------------------------
+
+/**
+ * Hand-authored rules-based flags configuration for the e2e app (M0 S5: the protobuf
+ * body is built at runtime from this object — `configurationToString` ->
+ * base64 -> binary — so no generator script or committed binary is needed).
+ *
+ * Flags:
+ * - `targeted-flag` (string): 'variant-a' when the `plan` attribute is 'pro',
+ *   'str-default' otherwise.
+ * - `split-flag` (boolean): 50/50 md5 shard on the targeting key; 'split-key-1' is
+ *   off and 'split-key-5' is on.
+ * - `disabled-flag` (boolean): no allocation, always the application default.
+ */
+const PROTO = 'datadog.ffe.flagging.ufc.v1.';
+const type = (name: string, value: Record<string, unknown>) => ({ $typeName: PROTO + name, ...value }) as never;
+
+const STRINGS = ['pro', 'free', 'plan', 'on', 'off', 'variant-a', 'str-default'];
+const stringIndex = (value: string) => STRINGS.indexOf(value);
+
+const fixture = type('FlagsConfiguration', {
+  environmentName: 'e2e',
+  flags: {
+    'targeted-flag': type('Flag', {
+      minimumFeatureLevel: 0,
+      variationType: 1,
+      variations: [
+        type('Variation', {
+          keyStringIndex: stringIndex('variant-a'),
+          value: { case: 'stringValueIndex', value: stringIndex('variant-a') },
+        }),
+        type('Variation', {
+          keyStringIndex: stringIndex('str-default'),
+          value: { case: 'stringValueIndex', value: stringIndex('str-default') },
+        }),
+      ],
+      allocations: [
+        type('Allocation', {
+          key: 'targeted-pro',
+          partitionKey: [],
+          targetingConditionIndex: 0,
+          splits: [type('Split', { ranges: [], variationIndex: 0, serialId: 1, reason: 3 })],
+          logExposureEvent: true,
+        }),
+        type('Allocation', {
+          key: 'targeted-fallback',
+          partitionKey: [],
+          splits: [type('Split', { ranges: [], variationIndex: 1, reason: 3 })],
+          logExposureEvent: true,
+        }),
+      ],
+    }),
+    'split-flag': type('Flag', {
+      minimumFeatureLevel: 0,
+      variationType: 4,
+      variations: [
+        type('Variation', { keyStringIndex: stringIndex('on'), value: { case: 'booleanValue', value: true } }),
+        type('Variation', { keyStringIndex: stringIndex('off'), value: { case: 'booleanValue', value: false } }),
+      ],
+      allocations: [
+        type('Allocation', {
+          key: 'split-allocation',
+          partitionKey: [
+            type('PartitionKey', {
+              kind: {
+                case: 'shardMd5',
+                value: type('Md5ShardPartitionKey', { salt: 'e2e-salt', attributeIndex: 1, totalShards: 100n }),
+              },
+            }),
+          ],
+          splits: [
+            type('Split', {
+              ranges: [type('PartitionRange', { from: 0n, to: 50n })],
+              variationIndex: 0,
+              serialId: 2,
+              reason: 2,
+            }),
+            type('Split', {
+              ranges: [type('PartitionRange', { from: 50n, to: 100n })],
+              variationIndex: 1,
+              serialId: 2,
+              reason: 2,
+            }),
+          ],
+          logExposureEvent: true,
+        }),
+      ],
+    }),
+    'disabled-flag': type('Flag', {
+      minimumFeatureLevel: 0,
+      variationType: 4,
+      variations: [
+        type('Variation', { keyStringIndex: stringIndex('on'), value: { case: 'booleanValue', value: true } }),
+      ],
+      allocations: [],
+    }),
+  },
+  attributes: [
+    type('AttributeReference', {
+      kind: {
+        case: 'attributePath',
+        value: type('AttributePath', {
+          segments: [
+            type('AttributePathSegment', { kind: { case: 'objectKeyStringIndex', value: stringIndex('plan') } }),
+          ],
+        }),
+      },
+    }),
+    type('AttributeReference', { kind: { case: 'targetingKey', value: {} } }),
+  ],
+  strings: STRINGS,
+  regexes: [],
+  versions: [],
+  jsonStrings: [],
+  conditions: [
+    type('Condition', {
+      kind: {
+        case: 'stringMembership',
+        value: type('StringMembershipCondition', {
+          attributeIndex: 0,
+          stringIndexes: [stringIndex('pro')],
+          negate: false,
+        }),
+      },
+    }),
+  ],
+});
+
+const wire = configurationToString({ rules: { response: fixture } });
+const wireJSON = JSON.parse(wire) as { rules: { response: string } };
+
+/** The rules endpoint response body: the protobuf configuration binary. */
+export const flagsBinary = (): Buffer => Buffer.from(wireJSON.rules.response, 'base64');
+
+// ---------------------------------------------------------------------------
+// Feature flags precomputed assignments (M7). Computed at request time from a
+// hand-authored table keyed by the request's targeting key and attributes, so
+// the scenarios assert real assignment values without a committed fixture.
+// ---------------------------------------------------------------------------
+
+/** One recorded `/precompute-assignments` request. */
+export interface PrecomputedRequest {
+  timestamp: number;
+  url: string;
+  headers: Record<string, string>;
+  targetingKey: string;
+  targetingAttributes: Record<string, string | number | boolean>;
+}
+
+/**
+ * The assignments response for a context, mirroring the rules fixture semantics:
+ * - `targeted-flag` (string): 'variant-a' when `plan` is 'pro', 'str-default' otherwise;
+ * - `split-flag` (boolean): a stable bucket per targeting key ('split-key-1' is off,
+ *   'split-key-5' is on, like the rules fixture's known shards);
+ * - `disabled-flag`: absent, so it always evaluates to the application default.
+ *
+ * `createdAt` changes per response when `clock` advances, so scenarios can assert
+ * that a new configuration identity re-logs exposures (D29).
+ */
+function precomputedAssignmentsFor(
+  targetingKey: string,
+  attributes: Record<string, string | number | boolean>,
+  clock: number
+): { data: { attributes: { createdAt: string; flags: Record<string, unknown> } } } {
+  const isPro = attributes.plan === 'pro';
+  const flags: Record<string, unknown> = {
+    'targeted-flag': {
+      allocationKey: isPro ? 'targeted-pro' : 'targeted-fallback',
+      variationKey: isPro ? 'variant-a' : 'str-default',
+      variationType: 'string',
+      variationValue: isPro ? 'variant-a' : 'str-default',
+      reason: 'STATIC',
+      doLog: true,
+      serialId: 1,
+    },
+    'split-flag': {
+      allocationKey: 'split-allocation',
+      variationKey: targetingKey === 'split-key-5' ? 'on' : 'off',
+      variationType: 'boolean',
+      variationValue: targetingKey === 'split-key-5',
+      reason: 'SPLIT',
+      doLog: true,
+      serialId: 2,
+    },
+  };
+  return {
+    data: {
+      attributes: {
+        createdAt: `created-at-${clock}`,
+        flags,
+      },
+    },
+  };
 }

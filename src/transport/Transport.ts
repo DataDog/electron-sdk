@@ -58,6 +58,15 @@ export class Transport {
     if (this.config.sessionReplaySampleRate > 0) {
       tracks.push(EventTrack.REPLAY);
     }
+
+    // Exposures are only sent when feature flags run with exposure logging on; the
+    // track is consent-aware like every other one.
+    if (this.config.featureFlags !== undefined && this.config.featureFlags.enableExposureLogging) {
+      tracks.push(EventTrack.EXPOSURES);
+    }
+    if (this.config.featureFlags !== undefined && this.config.featureFlags.enableFlagEvaluationTracking) {
+      tracks.push(EventTrack.FLAGEVALUATION);
+    }
     return tracks;
   }
 

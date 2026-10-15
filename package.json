@@ -32,7 +32,17 @@
       "require": "./dist/esbuild-plugin.cjs",
       "import": "./dist/esbuild-plugin.mjs"
     },
-    "./preload": "./dist/preload.js"
+    "./preload": "./dist/preload.js",
+    "./renderer": {
+      "types": "./dist/renderer.d.ts",
+      "require": "./dist/renderer.cjs",
+      "import": "./dist/renderer.mjs"
+    },
+    "./child": {
+      "types": "./dist/child.d.ts",
+      "require": "./dist/child.cjs",
+      "import": "./dist/child.mjs"
+    }
   },
   "typesVersions": {
     "*": {
@@ -47,6 +57,12 @@
       ],
       "esbuild-plugin": [
         "./dist/esbuild-plugin.d.ts"
+      ],
+      "renderer": [
+        "./dist/renderer.d.ts"
+      ],
+      "child": [
+        "./dist/child.d.ts"
       ]
     }
   },
@@ -81,6 +97,16 @@
     "dist/esbuild-plugin.mjs.map",
     "dist/esbuild-plugin.d.ts",
     "dist/preload.js",
+    "dist/renderer.cjs",
+    "dist/renderer.cjs.map",
+    "dist/renderer.mjs",
+    "dist/renderer.mjs.map",
+    "dist/renderer.d.ts",
+    "dist/child.cjs",
+    "dist/child.cjs.map",
+    "dist/child.mjs",
+    "dist/child.mjs.map",
+    "dist/child.d.ts",
     "README.md",
     "LICENSE",
     "LICENSE-3rdparty.csv"
@@ -114,9 +140,13 @@
   },
   "devDependencies": {
     "@datadog/browser-core": "7.5.0",
+    "@datadog/flagging-core": "3.2.0",
     "@datadog/js-core": "0.0.5",
+    "@datadog/openfeature-browser": "2.1.0",
     "@electron/get": "2.0.3",
     "@eslint/js": "10.0.1",
+    "@openfeature/core": "1.12.0",
+    "@openfeature/web-sdk": "1.10.0",
     "@playwright/test": "1.61.1",
     "@rollup/plugin-commonjs": "29.0.3",
     "@rollup/plugin-json": "6.1.0",
@@ -150,6 +180,8 @@
     "dd-trace": "6.10.0"
   },
   "peerDependencies": {
+    "@openfeature/core": "^1.9.2",
+    "@openfeature/web-sdk": "^1.5.0",
     "electron": ">=39"
   },
   "repository": {
@@ -168,5 +200,13 @@
     "*.{js,mjs,cjs,json,yml,yaml,md}": [
       "prettier --write"
     ]
+  },
+  "peerDependenciesMeta": {
+    "@openfeature/core": {
+      "optional": true
+    },
+    "@openfeature/web-sdk": {
+      "optional": true
+    }
   }
 }

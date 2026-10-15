@@ -12,6 +12,14 @@ import { BridgeWindowPage } from './bridgeWindowPage';
 // declare exposed IPC methods called directly in tests
 interface ElectronAppWindow {
   electronAPI: {
+    openFlagsWindow: (options: {
+      partition?: string;
+      location?: FlagsWindowLocation;
+      marker: string;
+    }) => Promise<number>;
+    navigateFlagsWindow: (id: number, location: FlagsWindowLocation, marker: string) => Promise<void>;
+    crashFlagsWindow: (id: number, marker: string) => Promise<boolean>;
+    evaluateInFlagsWindow: (id: number, flagKey: string) => Promise<{ value: unknown; variant?: string }>;
     generateTelemetryErrors: (count: number) => Promise<void>;
     generateManualError: (startTime?: number, context?: Record<string, string>) => Promise<void>;
     addDurationVital: (name: string, options: AddDurationVitalOptions) => Promise<void>;
@@ -26,6 +34,14 @@ interface ElectronAppWindow {
     mainNetFetch: (url: string) => Promise<number>;
     mainFireAndForget: () => Promise<void>;
     triggerMainSend: () => Promise<void>;
+    registerFlagsProvider: (context?: Record<string, unknown>) => Promise<string | undefined>;
+    setFlagsContext: (context: Record<string, unknown>) => Promise<void>;
+    evaluateFlag: (
+      type: 'boolean' | 'string',
+      flagKey: string,
+      defaultValue: unknown
+    ) => Promise<{ value: unknown; variant?: string; reason?: string; errorCode?: string }>;
+    getFlagsProviderStatus: () => Promise<string>;
     flushTransport: () => Promise<void>;
     setGlobalContext: (context: Record<string, unknown>) => Promise<void>;
     setGlobalContextProperty: (key: string, value: unknown) => Promise<void>;
@@ -53,6 +69,8 @@ interface ElectronAppWindow {
 /**
  * Page Object to interact with the main app window
  */
+export type FlagsWindowLocation = 'file' | 'http-localhost' | 'http-127';
+
 export class MainPage {
   constructor(private readonly page: Page) {}
 
@@ -202,6 +220,86 @@ export class MainPage {
     await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.triggerMainSend());
   }
 
+  registerFlagsProvider(context?: Record<string, unknown>): Promise<string | undefined> {
+    return this.page.evaluate(
+      ([context]) => (globalThis as unknown as ElectronAppWindow).electronAPI.registerFlagsProvider(context),
+      [context] as const
+    );
+  }
+
+  setFlagsContext(context: Record<string, unknown>): Promise<void> {
+    return this.page.evaluate(
+      ([context]) => (globalThis as unknown as ElectronAppWindow).electronAPI.setFlagsContext(context),
+      [context] as const
+    );
+  }
+
+  evaluateFlag(
+    type: 'boolean' | 'string',
+    flagKey: string,
+    defaultValue: unknown
+  ): Promise<{ value: unknown; variant?: string; reason?: string; errorCode?: string }> {
+    return this.page.evaluate(
+      ([type, flagKey, defaultValue]) =>
+        (globalThis as unknown as ElectronAppWindow).electronAPI.evaluateFlag(type, flagKey, defaultValue),
+      [type, flagKey, defaultValue] as const
+    );
+  }
+
+  /**
+   * Open a window with the app preload on a given session and origin, loading the main window
+   * page (which registers the renderer flags provider). `marker` is appended as the query string
+   * so the window can be found by url.
+   */
+  async openFlagsWindow(
+    electronApp: ElectronApplication,
+    options: { partition?: string; location?: FlagsWindowLocation; marker: string }
+  ): Promise<{ id: number; page: Page }> {
+    const windowPromise = electronApp.waitForEvent('window', {
+      predicate: (page) => page.url().includes(options.marker),
+      timeout: 15_000,
+    });
+    const idPromise = this.page.evaluate(
+      ([options]) => (globalThis as unknown as ElectronAppWindow).electronAPI.openFlagsWindow(options),
+      [options] as const
+    );
+    const [id, page] = await Promise.all([idPromise, windowPromise.catch(() => undefined)]);
+    const resolvedPage = page ?? electronApp.windows().find((candidate) => candidate.url().includes(options.marker));
+    if (resolvedPage === undefined) {
+      throw new Error(`flags window ${options.marker} did not open`);
+    }
+    await resolvedPage.waitForLoadState('load');
+    return { id, page: resolvedPage };
+  }
+
+  navigateFlagsWindow(id: number, location: FlagsWindowLocation, marker: string): Promise<void> {
+    return this.page.evaluate(
+      ([id, location, marker]) =>
+        (globalThis as unknown as ElectronAppWindow).electronAPI.navigateFlagsWindow(id, location, marker),
+      [id, location, marker] as const
+    );
+  }
+
+  /** Crash the window's renderer process for real and reload it; resolves with whether it crashed. */
+  crashFlagsWindow(id: number, marker: string): Promise<boolean> {
+    return this.page.evaluate(
+      ([id, marker]) => (globalThis as unknown as ElectronAppWindow).electronAPI.crashFlagsWindow(id, marker),
+      [id, marker] as const
+    );
+  }
+
+  /** Evaluate a string flag in a flags window, driven from main (works after a renderer crash). */
+  evaluateInFlagsWindow(id: number, flagKey: string): Promise<{ value: unknown; variant?: string }> {
+    return this.page.evaluate(
+      ([id, flagKey]) => (globalThis as unknown as ElectronAppWindow).electronAPI.evaluateInFlagsWindow(id, flagKey),
+      [id, flagKey] as const
+    );
+  }
+
+  getFlagsProviderStatus(): Promise<string> {
+    return this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.getFlagsProviderStatus());
+  }
+
   async flushTransport() {
     await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.flushTransport());
   }
@@ -336,5 +434,77 @@ export class MainPage {
       (globalThis as unknown as ElectronAppWindow).electronAPI.crashAndReloadRendererProcess()
     );
     await this.waitForIpcPropagation();
+  }
+}
+
+interface FlagsChildrenControls {
+  fork: (name: string, endpoint?: 'frames' | 'none') => number;
+  call: (name: string, method: string, params?: Record<string, unknown>) => Promise<{ id: number; result: unknown }>;
+  killAndRefork: (name: string) => Promise<number>;
+  state: () => { openChannels: number; listeners: Record<string, { message: number; exit: number }> };
+  spawnWorker: (mode: 'serve' | 'once') => Promise<{ result: unknown; exited: boolean }>;
+  spawnUtility: () => Promise<unknown>;
+}
+
+interface FlagsChildrenGlobal {
+  __ddE2E: { flagsChildren: FlagsChildrenControls };
+}
+
+/**
+ * Drives the e2e app's spawned flags processes from the main process (works before any
+ * window or init()): forked ELECTRON_RUN_AS_NODE children, a utility process and a worker.
+ */
+export class FlagsChildren {
+  constructor(private readonly electronApp: ElectronApplication) {}
+
+  fork(name: string, endpoint: 'frames' | 'none' = 'frames'): Promise<number> {
+    return this.electronApp.evaluate(
+      (_electron, [name, endpoint]) =>
+        (globalThis as unknown as FlagsChildrenGlobal).__ddE2E.flagsChildren.fork(name, endpoint),
+      [name, endpoint] as const
+    );
+  }
+
+  call<T>(name: string, method: string, params: Record<string, unknown> = {}): Promise<{ id: number; result: T }> {
+    return this.electronApp.evaluate(
+      (_electron, [name, method, params]) =>
+        (globalThis as unknown as FlagsChildrenGlobal).__ddE2E.flagsChildren.call(name, method, params),
+      [name, method, params] as const
+    ) as Promise<{ id: number; result: T }>;
+  }
+
+  async evaluate(name: string, flagKey: string, defaultValue = 'default') {
+    return (
+      await this.call<{ value: string; variant?: string; errorCode?: string; status: string }>(name, 'evaluate', {
+        flagKey,
+        defaultValue,
+      })
+    ).result;
+  }
+
+  killAndRefork(name: string): Promise<number> {
+    return this.electronApp.evaluate(
+      (_electron, name) => (globalThis as unknown as FlagsChildrenGlobal).__ddE2E.flagsChildren.killAndRefork(name),
+      name
+    );
+  }
+
+  state() {
+    return this.electronApp.evaluate(() =>
+      (globalThis as unknown as FlagsChildrenGlobal).__ddE2E.flagsChildren.state()
+    );
+  }
+
+  spawnWorker(mode: 'serve' | 'once') {
+    return this.electronApp.evaluate(
+      (_electron, mode) => (globalThis as unknown as FlagsChildrenGlobal).__ddE2E.flagsChildren.spawnWorker(mode),
+      mode
+    );
+  }
+
+  spawnUtility() {
+    return this.electronApp.evaluate(() =>
+      (globalThis as unknown as FlagsChildrenGlobal).__ddE2E.flagsChildren.spawnUtility()
+    );
   }
 }

@@ -4,7 +4,7 @@ import type { InitConfiguration } from './config';
 
 import { display } from './tools/display';
 vi.mock('./tools/display', () => ({
-  display: { error: vi.fn() },
+  display: { error: vi.fn(), warn: vi.fn() },
 }));
 
 describe('buildConfiguration', () => {
@@ -782,4 +782,163 @@ describe('buildConfiguration', () => {
       });
     }
   );
+
+  describe('featureFlags', () => {
+    it('is disabled when absent', () => {
+      expect(buildConfiguration({ ...DEFAULT_CONFIG })?.featureFlags).toBeUndefined();
+    });
+
+    it('applies every default', () => {
+      const configuration = buildConfiguration({ ...DEFAULT_CONFIG, env: 'e2e', featureFlags: {} });
+      expect(configuration!.featureFlags).toEqual({
+        env: 'e2e',
+        evaluationMode: 'precomputed',
+        refreshInterval: 300000,
+        fetchTimeout: 5000,
+        persistConfiguration: true,
+        enableExposureLogging: true,
+        enableRumFeatureFlagTracking: true,
+        enableFlagEvaluationTracking: true,
+        excludedPartitions: [],
+      });
+    });
+
+    it('enableFlagEvaluationTracking defaults to true and validates booleans, naming the option', () => {
+      const errorSpy = vi.spyOn(display, 'error').mockImplementation(() => undefined);
+      const configuration = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        env: 'e2e',
+        featureFlags: { enableFlagEvaluationTracking: 'yes' as never },
+      });
+      expect(configuration!.featureFlags!.enableFlagEvaluationTracking).toBe(true);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('featureFlags.enableFlagEvaluationTracking'));
+      const disabled = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        env: 'e2e',
+        featureFlags: { enableFlagEvaluationTracking: false },
+      });
+      expect(disabled!.featureFlags!.enableFlagEvaluationTracking).toBe(false);
+    });
+
+    it('keeps excludedPartitions and disables flags with display.error for an invalid value', () => {
+      const errorSpy = vi.spyOn(display, 'error').mockImplementation(() => undefined);
+      const configuration = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        env: 'e2e',
+        featureFlags: { excludedPartitions: ['persist:target', ''] },
+      });
+      expect(configuration!.featureFlags!.excludedPartitions).toEqual(['persist:target', '']);
+      for (const invalid of ['persist:target', [42], [{}]]) {
+        const rejected = buildConfiguration({
+          ...DEFAULT_CONFIG,
+          env: 'e2e',
+          featureFlags: { excludedPartitions: invalid as never },
+        });
+        expect(rejected!.featureFlags).toBeUndefined();
+      }
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('featureFlags.excludedPartitions'));
+    });
+
+    it('evaluationMode defaults to precomputed, accepts rules and falls back with display.error on an invalid value', () => {
+      const configuration = buildConfiguration({ ...DEFAULT_CONFIG, env: 'e2e', featureFlags: {} });
+      expect(configuration!.featureFlags!.evaluationMode).toBe('precomputed');
+      const rules = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        env: 'e2e',
+        featureFlags: { evaluationMode: 'rules' },
+      });
+      expect(rules!.featureFlags!.evaluationMode).toBe('rules');
+      const invalid = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        env: 'e2e',
+        featureFlags: { evaluationMode: 'local' as never },
+      });
+      expect(invalid!.featureFlags!.evaluationMode).toBe('precomputed');
+      expect(display.error).toHaveBeenCalledWith(expect.stringContaining('featureFlags.evaluationMode'));
+    });
+
+    it('clamps refreshInterval below 60s with a warning and keeps 0 as disabled', () => {
+      const configuration = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        env: 'e2e',
+        featureFlags: { refreshInterval: 30000 },
+      });
+      expect(configuration!.featureFlags!.refreshInterval).toBe(60000);
+      expect(display.warn).toHaveBeenCalledWith(expect.stringContaining('refreshInterval'));
+      const zero = buildConfiguration({ ...DEFAULT_CONFIG, env: 'e2e', featureFlags: { refreshInterval: 0 } });
+      expect(zero!.featureFlags!.refreshInterval).toBe(0);
+    });
+
+    it('clamps fetchTimeout to [500, 60000] with a warning', () => {
+      const low = buildConfiguration({ ...DEFAULT_CONFIG, env: 'e2e', featureFlags: { fetchTimeout: 10 } });
+      expect(low!.featureFlags!.fetchTimeout).toBe(500);
+      const high = buildConfiguration({ ...DEFAULT_CONFIG, env: 'e2e', featureFlags: { fetchTimeout: 120000 } });
+      expect(high!.featureFlags!.fetchTimeout).toBe(60000);
+      expect(display.warn).toHaveBeenCalledWith(expect.stringContaining('fetchTimeout'));
+    });
+
+    it('uses the default with display.error for invalid numbers and booleans', () => {
+      const configuration = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        env: 'e2e',
+        featureFlags: {
+          refreshInterval: Number.NaN,
+          fetchTimeout: -1,
+          persistConfiguration: 'yes' as unknown as boolean,
+        },
+      });
+      expect(configuration!.featureFlags!.refreshInterval).toBe(300000);
+      expect(configuration!.featureFlags!.fetchTimeout).toBe(5000);
+      expect(configuration!.featureFlags!.persistConfiguration).toBe(true);
+      expect(display.error).toHaveBeenCalledWith(expect.stringContaining('refreshInterval'));
+    });
+
+    it('disables flags with display.error when no env resolves but init still returns a configuration', () => {
+      const configuration = buildConfiguration({ ...DEFAULT_CONFIG, featureFlags: {} });
+      expect(configuration).toBeDefined();
+      expect(configuration!.featureFlags).toBeUndefined();
+      expect(display.error).toHaveBeenCalledWith(expect.stringContaining('env'));
+    });
+
+    it('uses the featureFlags env over the SDK env', () => {
+      const configuration = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        env: 'sdk-env',
+        featureFlags: { env: 'flags-env' },
+      });
+      expect(configuration!.featureFlags!.env).toBe('flags-env');
+    });
+
+    it('disables flags with display.error for a non-string, unparsable or non-http(s) flaggingProxy', () => {
+      expect(
+        buildConfiguration({ ...DEFAULT_CONFIG, env: 'e2e', featureFlags: { flaggingProxy: 42 as unknown as string } })
+          ?.featureFlags
+      ).toBeUndefined();
+      expect(
+        buildConfiguration({ ...DEFAULT_CONFIG, env: 'e2e', featureFlags: { flaggingProxy: 'not a url' } })
+          ?.featureFlags
+      ).toBeUndefined();
+      expect(
+        buildConfiguration({ ...DEFAULT_CONFIG, env: 'e2e', featureFlags: { flaggingProxy: 'ftp://host.example.com' } })
+          ?.featureFlags
+      ).toBeUndefined();
+      expect(display.error).toHaveBeenCalledWith(expect.stringContaining('flaggingProxy'));
+    });
+
+    it('prepends https:// to a flaggingProxy without protocol', () => {
+      const configuration = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        env: 'e2e',
+        featureFlags: { flaggingProxy: 'flags.example.com' },
+      });
+      expect(configuration!.featureFlags!.flaggingProxy).toBe('https://flags.example.com');
+    });
+
+    it('leaves the existing configuration unchanged when featureFlags is absent', () => {
+      const without = buildConfiguration({ ...DEFAULT_CONFIG });
+      const baseline = buildConfiguration({ ...DEFAULT_CONFIG });
+      expect(without).toEqual(baseline);
+      expect(without?.featureFlags).toBeUndefined();
+    });
+  });
 });

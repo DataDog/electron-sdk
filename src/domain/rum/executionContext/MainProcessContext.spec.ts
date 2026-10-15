@@ -123,6 +123,31 @@ describe('MainProcessContext', () => {
     expect(newView.view.is_active).toBe(true);
   });
 
+  it('requestViewUpdate bumps document_version and emits through the throttle (leading, then one trailing)', () => {
+    rawRumEvents.length = 0;
+    const views = () => rawRumEvents.filter((e) => e.data.type === 'view').map((e) => e.data as RawRumView);
+    context.requestViewUpdate();
+    context.requestViewUpdate();
+    context.requestViewUpdate();
+    expect(views().map((view) => view._dd.document_version)).toEqual([2]);
+    vi.advanceTimersByTime(3000);
+    expect(views().map((view) => [view._dd.document_version, view.view.is_active])).toEqual([
+      [2, true],
+      [3, true],
+    ]);
+  });
+
+  it('a view update still pending at SESSION_EXPIRED never re-emits the expired view as active', () => {
+    context.requestViewUpdate();
+    vi.advanceTimersByTime(10);
+    context.requestViewUpdate(); // trailing update scheduled
+    rawRumEvents.length = 0;
+    eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+    vi.advanceTimersByTime(3000);
+    const views = rawRumEvents.filter((e) => e.data.type === 'view').map((e) => e.data as RawRumView);
+    expect(views.map((view) => view.view.is_active)).toEqual([false]);
+  });
+
   it('SESSION_EXPIRED emits a final inactive view and a final execution_context update with no exit_reason, at the pinned startTime', () => {
     const originalStartTime = rawRumEvents[0].startTime;
     // Advance the clock without reaching PROCESS_UPDATE_INTERVAL, so only the elapsed "now" moves
