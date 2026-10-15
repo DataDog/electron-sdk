@@ -27,7 +27,6 @@ export class ProfilingCollection {
   // after a renewal is still dropped if its own session was denied. Absence means "not denied" (allowed, check
   // in flight, or not checked because consent was not granted, i.e. optimistic).
   private readonly quotaDeniedSessions = new Map<string, QuotaReason>();
-  private quotaCheckedSessionId: string | undefined;
   private readonly subscriptions: Subscription[];
 
   constructor(
@@ -95,17 +94,15 @@ export class ProfilingCollection {
     }
   }
 
-  // Check the current session's quota once, when it starts or at the first grant during it: the check sends the
-  // session id to Datadog, so it needs consent, and is skipped for an unsampled session, whose profiles are dropped.
+  // Check the current session's quota when it starts or when consent is granted: the check sends the session id to
+  // Datadog, so it needs consent, and is skipped for an unsampled session, whose profiles are dropped.
   private maybeCheckQuota(): void {
     const session = this.sessionManager.getSession();
     if (
       session.status === 'active' &&
-      session.id !== this.quotaCheckedSessionId &&
       this.trackingConsentManager.get() === 'granted' &&
       this.isProfilingSampled(session.id)
     ) {
-      this.quotaCheckedSessionId = session.id;
       this.triggerQuotaCheck(session.id);
     }
   }

@@ -349,18 +349,6 @@ describe('ProfilingCollection', () => {
       }
     );
 
-    it.each<TrackingConsent>(['pending', 'not-granted'])(
-      'checks the quota of a session once, even when consent is %s then granted again',
-      (state) => {
-        new ProfilingCollection(eventManager, makeSessionManager(), config, hooks, consentManager);
-
-        consentManager.update(state);
-        consentManager.update('granted');
-
-        expect(quotaCheckModule.checkProfilingQuota).toHaveBeenCalledTimes(1);
-      }
-    );
-
     it('re-triggers the quota check for the renewed session', async () => {
       // First session is denied; the renewed session is allowed.
       vi.mocked(quotaCheckModule.checkProfilingQuota)
