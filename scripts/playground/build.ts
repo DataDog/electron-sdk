@@ -6,12 +6,12 @@ import { PLAYGROUND_DIR, getGitSha, resolvePlaygroundVersion } from './lib/versi
  * Build the playground with its version baked into the renderers.
  * Usage: [PLAYGROUND_VERSION=x] node scripts/playground/build.ts [--watch]
  */
-runMain(() => {
+runMain(async () => {
   const version = resolvePlaygroundVersion(process.env, () => getGitSha(PLAYGROUND_DIR));
   printLog(`Playground version: ${version}`);
   if (process.argv.includes('--watch')) {
-    watchPlayground(version);
+    await watchPlayground(version);
   } else {
-    buildPlayground(version);
+    await buildPlayground(version);
   }
 });
