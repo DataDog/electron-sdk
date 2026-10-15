@@ -5,7 +5,8 @@ import type { RumViewEvent } from '@datadog/electron-sdk';
 
 test.use({ rumBrowserSdk: {} });
 
-// Bridge windows profile; the file:// main-process view cannot (no Document-Policy header).
+// Bridge windows profile; the file:// main-process view cannot (no Document-Policy header). The file:// bridge window
+// only profiles when the app opts in to the header (`fileProfiling`).
 
 function profilingContext(event: ReceivedEvent<RumViewEvent>): RumViewEvent['_dd']['profiling'] {
   return event.body._dd.profiling;
@@ -95,5 +96,31 @@ test.describe('sampled out', () => {
     // (equivalent to absent for the backend: the session links no profile, so has_profile stays false).
     const [bridgeView] = await intake.waitForEventCount('view', 1, { predicate: isBridgeView });
     expect(bridgeView.body._dd).toHaveProperty('profiling', null);
+  });
+});
+
+test.describe('file:// bridge window', () => {
+  test.use({ fileProfiling: true });
+
+  test('renderer profile reaches the intake with root-relative resources', async ({
+    electronApp,
+    mainPage,
+    intake,
+  }) => {
+    await mainPage.flushTransport();
+
+    const bridgeWindowPage = await mainPage.openBridgeFileWindow(electronApp);
+
+    await bridgeWindowPage.generateLongTask(500);
+    await bridgeWindowPage.triggerProfilingFlush();
+
+    await mainPage.flushTransport();
+
+    const [profilingRequest] = await intake.waitForProfilingRequest({ timeout: 10000 });
+
+    // The raw file:// profile carries the app path in its resources: they must reach the intake root-relative.
+    const resources = profilingRequest.trace?.resources ?? [];
+    expect(resources).toContain('/bridge-window.js');
+    expect(resources.filter((resource) => resource.startsWith('file://'))).toEqual([]);
   });
 });

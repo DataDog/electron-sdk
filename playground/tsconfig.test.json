@@ -18,6 +18,6 @@
     "outDir": "./dist/types",
     "rootDir": ".."
   },
-  "include": ["test/**/*.ts", "../e2e/lib/intake.ts"],
+  "include": ["test/**/*.ts", "../e2e/lib/intake.ts", "../e2e/lib/appPathCheck.ts"],
   "exclude": ["node_modules"]
 }

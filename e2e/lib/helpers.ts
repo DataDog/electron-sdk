@@ -2,7 +2,7 @@ import { test as base, _electron as electron, type ElectronApplication, type Pag
 import { join } from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { Intake } from './intake';
+import { Intake, registerAppPath } from './intake';
 import { TestServer } from './testServer';
 import { MainPage } from './mainPage';
 import { assertExpectedElectronVersion, getCompatibilityRun } from './compatibility';
@@ -45,6 +45,7 @@ export interface TestFixtures {
   initialIntakeQuotaDecision: 'quota_ok' | 'quota_ko';
   sdkConfigOverrides: Partial<InitConfiguration> | null;
   beforeSendRumEnabled: boolean;
+  fileProfiling: boolean;
 }
 
 /**
@@ -60,7 +61,11 @@ export const test = base.extend<TestFixtures>({
       await intake.start();
       intake.setQuotaResponse(initialIntakeQuotaDecision);
       await use(intake);
-      await intake.stop();
+      try {
+        intake.assertNoAppPath();
+      } finally {
+        await intake.stop();
+      }
     },
     { option: true },
   ],
@@ -76,10 +81,11 @@ export const test = base.extend<TestFixtures>({
     { option: true },
   ],
 
-  electronApp: async ({ intake, rumBrowserSdk, sdkConfigOverrides, beforeSendRumEnabled }, use) => {
+  electronApp: async ({ intake, rumBrowserSdk, sdkConfigOverrides, beforeSendRumEnabled, fileProfiling }, use) => {
     const userDataDir = await createUserDataDir();
     const electronApp = await launchApp(intake, userDataDir, rumBrowserSdk, sdkConfigOverrides, {
       ...(beforeSendRumEnabled && { DD_E2E_BEFORE_SEND_RUM: '1' }),
+      ...(fileProfiling && { DD_E2E_FILE_PROFILING: '1' }),
     });
     await use(electronApp);
     await electronApp.close();
@@ -103,6 +109,8 @@ export const test = base.extend<TestFixtures>({
   sdkConfigOverrides: [null, { option: true }],
 
   beforeSendRumEnabled: [false, { option: true }],
+
+  fileProfiling: [false, { option: true }],
 });
 
 async function launchApp(
@@ -164,6 +172,7 @@ async function launchApp(
   });
   try {
     await assertExpectedElectronVersion(electronApp);
+    await registerAppPath(intake, electronApp);
     return electronApp;
   } catch (error) {
     await electronApp.close();

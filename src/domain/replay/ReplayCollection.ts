@@ -5,6 +5,7 @@ import type { Configuration } from '../../config';
 import type { FormatHooks } from '../../assembly';
 import { correctedChildSampleRate, isSessionSampled } from '../../tools/Sampler';
 import { StreamingDeflate } from '../../tools/StreamingDeflate';
+import type { PathScrubber } from '../../tools/pathScrubber';
 import type { SessionManager } from '../session';
 import { addError, clearTimeout, monitor, setTimeout } from '../telemetry';
 import { registerReplayContext } from './replayContext';
@@ -54,7 +55,8 @@ export class ReplayCollection {
     private readonly eventManager: EventManager,
     private readonly config: Configuration,
     private readonly sessionManager: SessionManager,
-    hooks: FormatHooks
+    hooks: FormatHooks,
+    private readonly pathScrubber: Pick<PathScrubber, 'scrub'>
   ) {
     // Enrich renderer view events with this session's replay stats. Registered here (rather than by the
     // caller) so all replay-specific assembly logic lives with the collection, mirroring ProfilingCollection.
@@ -171,7 +173,7 @@ export class ReplayCollection {
     }
 
     const indexInView = this.getNextSegmentIndex(context.view.id);
-    this.segment = new Segment(context, this.nextCreationReason, indexInView);
+    this.segment = new Segment(context, this.nextCreationReason, indexInView, this.pathScrubber);
     this.nextCreationReason = CreationReason.INIT;
     this.scheduleFlush();
     return this.segment;
