@@ -100,6 +100,7 @@ export class ProfilingCollection {
   private maybeCheckQuota(): void {
     const session = this.sessionManager.getSession();
     if (
+      session.status === 'active' &&
       session.id !== this.quotaCheckedSessionId &&
       this.trackingConsentManager.get() === 'granted' &&
       this.isProfilingSampled(session.id)

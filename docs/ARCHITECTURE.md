@@ -149,7 +149,7 @@ See `src/assembly/` and `src/assembly/commonContext.ts`.
 
 When `enableExecutionContext` is set, `ExecutionContextCollection` (`src/domain/rum/executionContext/`) replaces `ViewCollection` and composes the lifecycle of two independent trackers:
 
-- **`MainProcessContext`** owns a session-scoped fake view and main execution context for the main process: both are created together on init and on every session renewal, and closed together on session expiry, sharing one `instance_id` (the OS process pid) across every session the process lives through. It registers its own format hooks, tagging main-process RUM events with `execution_context.id`/`type` and spans with `_dd.execution_context.id`, backed by a disk-persisted history so a crash replayed at the next launch (see Error Reporting) still resolves to the execution context of the process that actually crashed.
+- **`MainProcessContext`** owns a session-scoped fake view and main execution context for the main process: both are created together when a session starts, at init or on renewal, and closed together on session expiry, sharing one `instance_id` (the OS process pid) across every session the process lives through. It registers its own format hooks, tagging main-process RUM events with `execution_context.id`/`type` and spans with `_dd.execution_context.id`, backed by a disk-persisted history so a crash replayed at the next launch (see Error Reporting) still resolves to the execution context of the process that actually crashed.
 - **`RendererProcessContexts`** tracks one execution context per renderer webContents, created at `web-contents-created` — plus a backfill from `webContents.getAllWebContents()` at start, for any webContents already open when tracking begins (e.g. a deferred `init()` called after a window opened) — rotated on the same session expiry/renewal boundaries, and ended on real process destruction: `destroyed` (`exit_reason: 'clean-exit'`) or `render-process-gone` (the real crash/kill/OOM reason). A crashed webContents that the app reloads is re-registered from the reload's own `did-start-navigation` (on its main frame), before any of the reloaded page's scripts run, since Electron reuses the same webContents object across a crash and never re-fires `web-contents-created` for it. It tags renderer RUM events from its own in-memory state via a separate format hook.
   Each context also carries a `name` derived from `webContents.getURL()` (see `deriveExecutionContextName`), resolved on `dom-ready` rather than waiting for the periodic heartbeat, then frozen for the context's lifetime. Because a crash revival's `did-start-navigation` fires before the new navigation commits, `getURL()` there can still return the pre-crash URL — a `pendingNavigation` flag blocks that state from resolving its name until its own `dom-ready` fires, carried through a session renewal if one lands first.
 
@@ -166,7 +166,8 @@ period it ends, so a lookup returns the consent that applies to data captured at
 
 ### Consent and batch storage
 
-SDK initialization creates one `TrackingConsentManager` shared by the transport's batch managers.
+SDK initialization creates one `TrackingConsentManager`, shared by the session manager and the transport's batch
+managers.
 `Transport` routes events to one `BatchManager` per active track (RUM, logs, spans, replay, profiling).
 The manager coordinates a consent-aware writer and a consumer that reads only authorized batches.
 
@@ -215,6 +216,18 @@ like other events.
 Only the start time is checked: a view, span or profile that starts while consent is granted and is written after a
 refusal and a new grant is kept whole, including what it captured while refused. Consent changes reach the disk
 asynchronously: a crash that follows a refusal before the refusal is saved is accepted at the next launch.
+
+### Consent and session lifecycle
+
+A refusal ends tracking rather than pausing it: the session expires, the main-process view and the execution contexts
+close with it, and no session starts while consent is refused, at init or on user activity. Leaving
+`not-granted` starts a new session. The final updates emitted when a refusal ends the session are not stored.
+
+Moving between `granted` and `pending` keeps the session and its documents; updates written while `pending` follow
+that period's decision.
+
+Transport subscribes to consent when it is created, before the session manager, and subscribers are notified in that
+order: the documents of the session started on leaving `not-granted` for `pending` find their pending store.
 
 ## Error Reporting
 

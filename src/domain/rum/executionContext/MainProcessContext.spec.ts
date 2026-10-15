@@ -15,7 +15,7 @@ import { MainProcessContext } from './MainProcessContext';
 import { PROCESS_UPDATE_INTERVAL } from './executionContext.constants';
 import { EventManager, EventKind, EventFormat, EventSource, LifecycleKind, type RawRumEvent } from '../../../event';
 import { createFormatHooks, type FormatHooks } from '../../../assembly';
-import type { SessionManager } from '../../session';
+import type { Session, SessionManager } from '../../session';
 import type { RawRumExecutionContext, RawRumView } from '../types';
 
 vi.mock('node:fs/promises');
@@ -205,6 +205,24 @@ describe('MainProcessContext', () => {
     expect(
       hooks.triggerRum({ eventType: 'view', startTime: renewedStartTime, source: EventSource.MAIN })
     ).toMatchObject({ execution_context: { id: renewedContextId } });
+  });
+
+  it('starts no state while consent is refused at start, until a session starts', async () => {
+    context.stop();
+    rawRumEvents.length = 0;
+    let session: Session = { status: 'not-granted' };
+    const refusedSessionManager = { getSession: () => session } as unknown as SessionManager;
+
+    context = await MainProcessContext.start(eventManager, createFormatHooks(), refusedSessionManager);
+
+    expect(rawRumEvents).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
+
+    session = { id: 'session-2', status: 'active' };
+    eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+
+    expect(rawRumEvents.map((e) => e.data.type)).toEqual(['view', 'execution_context']);
+    expect((rawRumEvents[0].data as RawRumView).view.id).toBe('session-2');
   });
 
   describe('with a pre-existing history file left open by a previous run', () => {
