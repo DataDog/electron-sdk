@@ -8,7 +8,7 @@ vi.mock('../../../tools/display', () => ({
   display: { error: vi.fn() },
 }));
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { timeStampNow } from '@datadog/js-core/time';
 import { DISCARDED } from '@datadog/js-core/assembly';
 import { MainProcessContext } from './MainProcessContext';
@@ -26,7 +26,7 @@ describe('MainProcessContext', () => {
   let hooks: FormatHooks;
   let rawRumEvents: RawRumEvent[];
   let currentSessionId: string;
-  let sessionManager: SessionManager;
+  let getTrackedSessionId: Mock<SessionManager['getTrackedSessionId']>;
   let context: MainProcessContext;
 
   beforeEach(async () => {
@@ -43,7 +43,11 @@ describe('MainProcessContext', () => {
     });
 
     currentSessionId = 'session-1';
-    sessionManager = { getSession: () => ({ id: currentSessionId, status: 'tracked' }) } as unknown as SessionManager;
+    getTrackedSessionId = vi.fn(() => currentSessionId);
+    const sessionManager = {
+      getSession: () => ({ id: currentSessionId, status: 'tracked' }),
+      getTrackedSessionId,
+    } as unknown as SessionManager;
 
     context = await MainProcessContext.start(eventManager, hooks, sessionManager);
   });
@@ -102,6 +106,35 @@ describe('MainProcessContext', () => {
     expect(hooks.triggerSpan({ startTime: executionContext.startTime!, source: EventSource.MAIN })).toMatchObject({
       meta: { '_dd.execution_context.id': contextData.id },
     });
+  });
+
+  it('tags main logs with the execution context, without adding a fake view or tagging renderer logs', () => {
+    const executionContext = rawRumEvents.find((e) => e.data.type === 'execution_context')!;
+    const contextData = (executionContext.data as RawRumExecutionContext).execution_context;
+
+    expect(hooks.triggerLogs({ startTime: executionContext.startTime!, source: EventSource.MAIN })).toEqual({
+      execution_context: { id: contextData.id, type: 'main-process', name: 'Main Process' },
+    });
+    expect(hooks.triggerLogs({ startTime: executionContext.startTime!, source: EventSource.RENDERER })).toBeUndefined();
+  });
+
+  it('only correlates logs whose timestamp belongs to a tracked RUM session', () => {
+    const startTime = rawRumEvents[0].startTime!;
+    getTrackedSessionId.mockReturnValue(undefined);
+    expect(hooks.triggerLogs({ startTime, source: EventSource.MAIN })).toBeUndefined();
+    expect(getTrackedSessionId).toHaveBeenCalledWith(startTime);
+
+    vi.advanceTimersByTime(1000);
+    getTrackedSessionId.mockImplementation((at) => (at === startTime ? 'session-1' : undefined));
+    expect(hooks.triggerLogs({ startTime, source: EventSource.MAIN })).toHaveProperty('execution_context.id');
+    expect(hooks.triggerLogs({ startTime: timeStampNow(), source: EventSource.MAIN })).toBeUndefined();
+  });
+
+  it('keeps logs without an execution context during a session gap', () => {
+    eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+    vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL / 2);
+
+    expect(hooks.triggerLogs({ startTime: timeStampNow(), source: EventSource.MAIN })).toBeUndefined();
   });
 
   it('SESSION_RENEW starts a new pair with a new execution_context.id but the same instance_id', () => {
@@ -204,6 +237,12 @@ describe('MainProcessContext', () => {
     expect(
       hooks.triggerRum({ eventType: 'view', startTime: renewedStartTime, source: EventSource.MAIN })
     ).toMatchObject({ execution_context: { id: renewedContextId } });
+    expect(hooks.triggerLogs({ startTime: originalStartTime, source: EventSource.MAIN })).toMatchObject({
+      execution_context: { id: originalContextId },
+    });
+    expect(hooks.triggerLogs({ startTime: renewedStartTime, source: EventSource.MAIN })).toMatchObject({
+      execution_context: { id: renewedContextId },
+    });
   });
 
   it('starts no state while consent is refused at start, until a session starts', async () => {
