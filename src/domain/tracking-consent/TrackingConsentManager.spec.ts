@@ -36,8 +36,13 @@ describe('TrackingConsentManager', () => {
     await vi.advanceTimersByTimeAsync(0);
     const hooks = createFormatHooks();
     const manager = await TrackingConsentManager.init(hooks, initialConsent);
-    const isDiscardedAt = (time: number) =>
-      hooks.triggerRum({ eventType: 'error', startTime: time as TimeStamp, source: EventSource.MAIN }) === DISCARDED;
+    // Spans get the same check as RUM events: every decision below is asserted for both.
+    const isDiscardedAt = (time: number) => {
+      const startTime = time as TimeStamp;
+      const discarded = hooks.triggerRum({ eventType: 'error', startTime, source: EventSource.MAIN }) === DISCARDED;
+      expect(hooks.triggerSpan({ startTime, source: EventSource.MAIN }) === DISCARDED).toBe(discarded);
+      return discarded;
+    };
     return { manager, isDiscardedAt };
   }
 
