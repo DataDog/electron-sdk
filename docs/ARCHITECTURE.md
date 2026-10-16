@@ -111,7 +111,7 @@ The `EventManager` provides a handler-based pipeline for processing events.
 
 #### Event Kinds
 
-- **`RawEvent`**: emitted by main-process domain code, contains event-specific data and a format (`RUM` | `TELEMETRY` | `PROFILE`). Most renderer events bypass this kind entirely (see `RendererPipeline`).
+- **`RawEvent`**: emitted by main-process domain code, contains event-specific data and a format (`RUM` | `LOGS` | `TELEMETRY` | `PROFILE`). Most renderer events bypass this kind entirely (see `RendererPipeline`).
 - **`ServerEvent`**: ready for transport, tagged with a track (`RUM` | `LOGS` | `SPANS` | `PROFILE`) and a source (`MAIN` | `RENDERER`).
 - **`LifecycleEvent`**: internal signals (e.g., `END_USER_ACTIVITY`, `SESSION_RENEW`), not sent to intake.
 
@@ -125,7 +125,7 @@ See `src/event/` and `src/domain/assembly.ts`.
 
 Two handlers transform events into `ServerEvent`s:
 
-- **`MainAssembly`**: handles main-process `RawEvent`s (excluding profile events), enriches them via `triggerRum` / `triggerTelemetry` hooks, and emits `ServerEvent`s with `source: MAIN`.
+- **`MainAssembly`**: handles main-process `RawEvent`s (excluding profile events), enriches them via `triggerRum` / `triggerTelemetry` / `triggerLogs` hooks, and emits `ServerEvent`s with `source: MAIN`.
 - **`RendererPipeline`**: owns the renderer IPC channel, receives pre-assembled RUM, telemetry, and log events from the Browser SDK, enriches them via `triggerRum` / `triggerTelemetry` / `triggerLogs` with `source: EventSource.RENDERER`, and emits `ServerEvent`s with `source: RENDERER` directly, bypassing the `RawEvent` pipeline entirely.
 
 `MainAssembly` and `RendererPipeline` apply the configured `beforeSendRum` callback after Electron enrichment and before
@@ -168,7 +168,8 @@ period it ends, so a lookup returns the consent that applies to data captured at
 
 SDK initialization creates one `TrackingConsentManager`, shared by the session manager and the transport's batch
 managers.
-`Transport` routes events to one `BatchManager` per active track (RUM, logs, spans, replay, profiling).
+`Transport` routes events to one `BatchManager` per active track (RUM, spans, replay, profiling), with
+separate managers for main-process and renderer logs.
 The manager coordinates a consent-aware writer and a consumer that reads only authorized batches.
 
 Here, **authorized** means the data has received consent, even if the current consent later changes.
@@ -286,8 +287,18 @@ optional `session` field is omitted.
 
 ## Logs
 
-The SDK has no main-process logging API. It relays `log` events assembled by the renderer's Browser
-Logs SDK onto a separate **LOGS track** (`/api/v2/logs`). In bridge mode the Browser SDK sends only to
+The main-process `logger` emits raw LOGS events through `LogsCollection` and `MainAssembly`. It uses
+Browser-style level methods, normalizes arbitrary error values while preserving native Node stacks, attaches errors with
+`source_type:nodejs`, and applies `logsSampleRate` before assembly. The format hooks add application,
+service, user, account, and optional session and main-process view context. Custom attributes are
+flattened into the log, with SDK identity objects reserved and log fields taking precedence. RUM global context is not added.
+Assembly sanitizes the complete payload once to snapshot caller data. Collection limits sampled logs
+per status to 3,000 per minute using timestamp windows, without timers. Transport checks the full
+serialized UTF-8 log against 1 MB before queuing disk writes; logs batches rejected with HTTP 413 are
+warned and discarded. Other upload failures retain the existing retry behavior.
+
+The SDK also relays `log` events assembled by the renderer's Browser Logs SDK onto the **LOGS track**
+(`/api/v2/logs`). In bridge mode the Browser SDK sends only to
 the host, so failing to relay an event would lose it. Transport therefore registers the LOGS handler
 before `RendererPipeline` opens the IPC listener; the track stays active even when sampling is zero so
 persisted batches from an earlier launch can be recovered.
@@ -295,7 +306,12 @@ persisted batches from an earlier launch can be recovered.
 `RendererPipeline` validates `date`, then preserves the renderer-owned log
 fields. Main-process hooks replace the stub application and session ids and fill missing `usr` and
 `account` context. Logs without a covering main-process session are still forwarded with null session
-ids. Uploads keep `ddsource=browser`, while `DD-EVP-ORIGIN: electron` identifies the uploader.
+ids. Renderer uploads keep `ddsource=browser`; main-process uploads use `ddsource=electron`.
+`DD-EVP-ORIGIN: electron` identifies the uploader in both cases. Transport uses separate batch managers:
+`dd_logs` retains the legacy browser source, while `dd_main_logs` contains main-process logs. Both
+stores use the existing consent, rotation, retry, and recovery machinery and remain active at sampling
+zero to upload already accepted data. Pending-data cleanup covers both at startup. Each store has
+the existing per-store batch limits.
 
 Browser Logs uses an always-tracked session stub in bridge mode, so renderer
 `DD_LOGS.init({ sessionSampleRate })` does not sample bridged logs. Electron instead applies

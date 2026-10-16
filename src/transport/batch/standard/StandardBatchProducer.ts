@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { StandardServerEvent } from '../../../event';
 import { BatchProducer } from '../BatchProducer';
 import type { BatchProducerConfig } from '../BatchProducer';
+import { display } from '../../../tools/display';
 
 /** Configuration for a {@link StandardBatchProducer} instance. */
 export interface StandardBatchProducerConfig extends BatchProducerConfig {
@@ -10,6 +11,8 @@ export interface StandardBatchProducerConfig extends BatchProducerConfig {
   batchSize: number;
   /** Optional maximum number of events in a batch file before it is rotated. */
   maxEventsPerBatch?: number;
+  /** Optional byte limit for a serialized event, excluding the newline separator. */
+  maxEventBytes?: number;
 }
 
 /**
@@ -19,6 +22,7 @@ export interface StandardBatchProducerConfig extends BatchProducerConfig {
 export class StandardBatchProducer extends BatchProducer {
   private batchSize: number;
   private maxEventsPerBatch: number | undefined;
+  private maxEventBytes: number | undefined;
   private currentBatchFile: string | null = null;
   private currentBatchSize = 0;
   private currentBatchEventCount = 0;
@@ -27,6 +31,7 @@ export class StandardBatchProducer extends BatchProducer {
     super(config);
     this.batchSize = config.batchSize;
     this.maxEventsPerBatch = config.maxEventsPerBatch;
+    this.maxEventBytes = config.maxEventBytes;
   }
 
   /**
@@ -47,10 +52,13 @@ export class StandardBatchProducer extends BatchProducer {
 
   /** Serializes the event's `data` as a JSON line and appends it to the current batch file, rotating first if the size limit would be exceeded. */
   protected async writeData(event: StandardServerEvent) {
-    await this.ensureTrackDirectoryExists();
-
     const serialized = `${JSON.stringify(event.data)}\n`;
     const dataSize = Buffer.byteLength(serialized, 'utf8');
+    if (this.maxEventBytes !== undefined && dataSize - 1 > this.maxEventBytes) {
+      display.warn(`Dropping log exceeding the ${this.maxEventBytes} byte serialized size limit.`);
+      return;
+    }
+    await this.ensureTrackDirectoryExists();
 
     const exceedsByteLimit = this.currentBatchSize + dataSize > this.batchSize;
     const reachedEventLimit =

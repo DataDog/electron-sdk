@@ -5,6 +5,58 @@ import type { AddDurationVitalOptions, DurationVitalOptions, RumCollection } fro
 import { addUsage, callMonitored } from './domain/telemetry';
 import { display } from './tools/display';
 import { isFiniteNumber, isValidString, VALID_VITAL_NAME_REGEX } from './tools/validation';
+import type { LogsCollection, LogStatus } from './domain/logs';
+
+let logsApi: LogsCollection | undefined;
+let warnedBeforeLogsInit = false;
+
+export function setLogsApi(api: LogsCollection | undefined): void {
+  logsApi = api;
+  warnedBeforeLogsInit = false;
+}
+
+/**
+ * Main-process logger. Call after awaiting `init()`. Signatures match the Browser Logs logger:
+ * level methods accept `(message, context?, error?)`, and `log` also accepts a status before the error.
+ * Custom attributes are top-level; SDK identity objects are reserved and log fields take precedence.
+ * Early calls are dropped with a warning once; error values need not be Error instances.
+ *
+ * @example
+ * ```ts
+ * logger.info('Workspace opened', { workspaceId: '123' });
+ * logger.error('Sync failed', { workspaceId: '123' }, new Error('Connection lost'));
+ * logger.log('Retrying sync', { attempt: 2 }, 'warn');
+ * ```
+ */
+export const logger = {
+  log(message: string, context?: object, status: LogStatus = 'info', error?: unknown): void {
+    callMonitored(() => {
+      if (!logsApi) {
+        if (!warnedBeforeLogsInit) {
+          display.warn('logger: await init() before logging. Log will not be sent.');
+          warnedBeforeLogsInit = true;
+        }
+        return;
+      }
+      logsApi.log(message, context, status, error);
+    });
+  },
+  ok: createLogMethod('ok'),
+  debug: createLogMethod('debug'),
+  info: createLogMethod('info'),
+  notice: createLogMethod('notice'),
+  warn: createLogMethod('warn'),
+  error: createLogMethod('error'),
+  critical: createLogMethod('critical'),
+  alert: createLogMethod('alert'),
+  emerg: createLogMethod('emerg'),
+};
+
+function createLogMethod(status: LogStatus) {
+  return (message: string, context?: object, error?: unknown): void => {
+    logger.log(message, context, status, error);
+  };
+}
 
 type DurationVitalMethod = 'addDurationVital' | 'startDurationVital' | 'stopDurationVital';
 type DurationVitalApi = Pick<

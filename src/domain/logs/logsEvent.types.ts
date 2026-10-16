@@ -1,5 +1,7 @@
+export type LogSource = 'browser' | 'electron';
+
 /**
- * A log event as the Browser Logs SDK assembles it, handwritten rather than generated.
+ * A main-process or Browser Logs event, handwritten rather than generated.
  *
  * Unlike RUM and telemetry events, logs have no schema in `rum-events-format` — the Browser SDK
  * declares its own `LogsEvent` in `packages/browser-logs/src/logsEvent.types.ts`. Only the fields
@@ -23,7 +25,7 @@ export interface LogsEvent {
   message: string;
   status: string;
   service?: string;
-  /** Comma-separated `key:value` list built by the renderer from its own env/service/version. */
+  /** Comma-separated `key:value` list identifying the originating SDK and service. */
   ddtags?: string;
   /** RUM application the log belongs to. Replaced by the main process. */
   application_id?: string;

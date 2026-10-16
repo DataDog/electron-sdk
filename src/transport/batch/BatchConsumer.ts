@@ -1,3 +1,4 @@
+import { display } from '../../tools/display';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { getUserAgent } from '../userAgent';
@@ -11,6 +12,8 @@ export interface BatchConsumerConfig {
   intakeUrl: string;
   /** Datadog client token sent as `DD-API-KEY`. */
   clientToken: string;
+  /** Split logs rejected with HTTP 413, dropping only individually rejected logs. */
+  splitOnPayloadTooLarge?: boolean;
 }
 
 /**
@@ -24,7 +27,7 @@ export abstract class BatchConsumer {
   protected clientToken: string;
   protected userAgent: string | undefined;
 
-  constructor(config: BatchConsumerConfig) {
+  constructor(private readonly config: BatchConsumerConfig) {
     this.trackPath = config.trackPath;
     this.intakeUrl = config.intakeUrl;
     this.clientToken = config.clientToken;
@@ -73,28 +76,54 @@ export abstract class BatchConsumer {
 
   /**
    * Reads a batch file, delegates request construction to {@link buildRequest},
-   * sends it, and deletes the file on success.
+   * sends it, and deletes the file on success. Logs rejected with HTTP 413 are
+   * retried in progressively smaller groups, preserving unfinished lines on disk.
    * If {@link buildRequest} returns `null` the file is deleted without a network call
    * (empty or malformed batch — nothing to send).
    */
   protected async uploadBatch(filePath: string): Promise<boolean> {
-    const lines = await this.readBatchFile(filePath);
-    const request = await this.buildRequest(lines);
-
-    if (!request) {
-      await fs.unlink(filePath).catch(() => undefined);
-      return true;
-    }
-
+    let lines = await this.readBatchFile(filePath);
+    let groupSize = lines.length;
     try {
-      const response = await fetch(request);
-      if (response.ok) {
-        await fs.unlink(filePath);
-        return true;
+      for (;;) {
+        const request = await this.buildRequest(lines.slice(0, groupSize));
+        if (request) {
+          const response = await fetch(request);
+          if (response.status === 413 && this.config.splitOnPayloadTooLarge) {
+            if (groupSize > 1) {
+              groupSize = Math.ceil(groupSize / 2);
+              continue;
+            }
+            display.warn('Dropping log rejected individually by intake as too large (HTTP 413).');
+          } else if (!response.ok) {
+            return false;
+          }
+        }
+        lines = lines.slice(groupSize);
+        if (lines.length === 0) {
+          await fs.unlink(filePath);
+          return true;
+        }
+        // Checkpoint accepted/dropped groups before sending more. Use an atomic replacement:
+        // a failed write must leave the original batch available for retry.
+        await this.saveRemainingLines(filePath, lines);
+        groupSize = Math.min(groupSize, lines.length);
       }
-      return false;
     } catch {
       return false;
+    }
+  }
+
+  private async saveRemainingLines(filePath: string, lines: string[]): Promise<void> {
+    // Uploads are serialized per store. Reuse one scratch file so interrupted checkpoints
+    // cannot accumulate; .retry is never recovered as a completed batch.
+    const temporaryPath = path.join(this.trackPath, 'upload.retry');
+    try {
+      await fs.writeFile(temporaryPath, `${lines.join('\n')}\n`, 'utf8');
+      await fs.rename(temporaryPath, filePath);
+    } catch (error) {
+      await fs.unlink(temporaryPath).catch(() => undefined);
+      throw error;
     }
   }
 

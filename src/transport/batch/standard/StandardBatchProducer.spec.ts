@@ -7,7 +7,7 @@ import { display } from '../../../tools/display';
 
 vi.mock('node:fs/promises');
 vi.mock('../../../tools/display', () => ({
-  display: { error: vi.fn() },
+  display: { error: vi.fn(), warn: vi.fn() },
 }));
 const fsMocks = mockFs();
 
@@ -101,6 +101,22 @@ describe('StandardBatchProducer', () => {
   });
 
   describe('post() + write queue', () => {
+    it('drops oversized UTF-8 events and keeps events at the configured byte limit', async () => {
+      const data = { message: '😀'.repeat(10) };
+      const serialized = JSON.stringify(data);
+      const producer = await StandardBatchProducer.create(
+        makeConfig({ maxEventBytes: Buffer.byteLength(serialized, 'utf8') })
+      );
+      const warning = vi.mocked(display.warn).mockClear();
+
+      producer.post({ data: { message: `${data.message}x` } });
+      producer.post({ data });
+      await producer.flush();
+
+      expect(fsMocks.appendFile).toHaveBeenCalledExactlyOnceWith(expect.any(String), `${serialized}\n`, 'utf8');
+      expect(warning).toHaveBeenCalledOnce();
+    });
+
     it('serializes each post as JSON + newline and appends to the same .tmp file until rotation', async () => {
       const producer = await StandardBatchProducer.create(config);
 
