@@ -1,5 +1,6 @@
 import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import type {
+  LogStatus,
   AccountInfo,
   AddDurationVitalOptions,
   DurationVitalOptions,
@@ -14,6 +15,12 @@ import { BridgeWindowPage } from './bridgeWindowPage';
 interface ElectronAppWindow {
   electronAPI: {
     generateTelemetryErrors: (count: number) => Promise<void>;
+    generateMainLog: (
+      message: string,
+      status: LogStatus,
+      context?: Record<string, unknown>,
+      errorMessage?: string
+    ) => Promise<void>;
     generateManualError: (startTime?: number, context?: Record<string, string>) => Promise<void>;
     addDurationVital: (name: string, options: AddDurationVitalOptions) => Promise<void>;
     startDurationVital: (name: string, options?: DurationVitalOptions) => Promise<void>;
@@ -118,6 +125,24 @@ export class MainPage {
 
   async generateUnhandledRejection() {
     await this.page.locator('#generate-unhandled-rejection').click();
+  }
+
+  async generateMainLog(
+    message: string,
+    status: LogStatus = 'info',
+    context?: Record<string, unknown>,
+    errorMessage?: string
+  ) {
+    await this.page.evaluate(
+      ({ message, status, context, errorMessage }) =>
+        (globalThis as unknown as ElectronAppWindow).electronAPI.generateMainLog(
+          message,
+          status,
+          context,
+          errorMessage
+        ),
+      { message, status, context, errorMessage }
+    );
   }
 
   async generateManualError(startTime?: number, context?: Record<string, string>) {

@@ -2,9 +2,25 @@ import { app } from 'electron';
 
 import { resolveBatchSize, resolveUploadFrequency, type Configuration } from '../config';
 import type { TrackingConsentManager } from '../domain/tracking-consent';
-import { EventKind, EventTrack, type EventManager, type ServerEvent } from '../event';
+import { EventKind, EventSource, EventTrack, type EventManager, type ServerEvent } from '../event';
 import { BatchManager, BatchMigration, getTrackPath } from './batch';
 import type { PathScrubber } from '../tools/pathScrubber';
+import type { LogSource } from '../domain/logs';
+
+interface StoreDescriptor {
+  trackType: EventTrack;
+  logsSource?: LogSource;
+  source?: EventSource;
+}
+
+const STORES: StoreDescriptor[] = [
+  { trackType: EventTrack.RUM },
+  { trackType: EventTrack.SPANS },
+  { trackType: EventTrack.LOGS, logsSource: 'browser', source: EventSource.RENDERER },
+  { trackType: EventTrack.LOGS, logsSource: 'electron', source: EventSource.MAIN },
+  { trackType: EventTrack.PROFILE },
+  { trackType: EventTrack.REPLAY },
+];
 
 /**
  * Orchestrates event transport by routing server events from registered domains
@@ -32,11 +48,11 @@ export class Transport {
   ) {
     const transport = new Transport(config, eventManager, trackingConsentManager, pathScrubber);
     // A new process cannot authorize a previous process's undecided data, even for disabled tracks.
-    for (const track of Object.values(EventTrack)) {
-      await BatchMigration.clearPendingData(getTrackPath(transport.basePath, track));
+    for (const { trackType, logsSource } of STORES) {
+      await BatchMigration.clearPendingData(getTrackPath(transport.basePath, trackType, logsSource));
     }
-    for (const track of transport.getTracks()) {
-      await transport.setupTrackBatching(track);
+    for (const store of transport.getStores()) {
+      await transport.setupStore(store);
     }
 
     return transport;
@@ -47,28 +63,24 @@ export class Transport {
    * (matching the `profiles` capability gating in RendererPipeline), to avoid idle disk and scheduler
    * work in apps that never enable profiling.
    *
-   * LOGS is unconditional even though only renderers produce logs today and many apps never will. Its
+   * Both LOGS sources are unconditional even though many apps never produce logs. Each
    * handler must be ready before RendererPipeline opens the IPC listener because EventManager does not
    * queue unclaimed events. Keeping it active at `logsSampleRate: 0` also lets a later process launch
    * recover and upload logs that were already accepted and persisted under an earlier configuration.
    */
-  private getTracks(): EventTrack[] {
-    const tracks: EventTrack[] = [EventTrack.RUM, EventTrack.SPANS, EventTrack.LOGS];
-    if (this.config.profilingSampleRate > 0) {
-      tracks.push(EventTrack.PROFILE);
-    }
-
-    if (this.config.sessionReplaySampleRate > 0) {
-      tracks.push(EventTrack.REPLAY);
-    }
-    return tracks;
+  private getStores(): StoreDescriptor[] {
+    return STORES.filter(
+      ({ trackType }) =>
+        (trackType !== EventTrack.PROFILE || this.config.profilingSampleRate > 0) &&
+        (trackType !== EventTrack.REPLAY || this.config.sessionReplaySampleRate > 0)
+    );
   }
 
   /**
    * Creates a {@link BatchManager} configured with the resolved batch size,
    * upload frequency, and storage path for the given track type.
    */
-  private async createBatchManager(trackType: EventTrack) {
+  private async createBatchManager({ trackType, logsSource }: StoreDescriptor) {
     const path = this.basePath;
     const batchSize = resolveBatchSize(this.config);
     const uploadFrequency = resolveUploadFrequency(this.config);
@@ -80,6 +92,7 @@ export class Transport {
         trackType,
         batchSize,
         uploadFrequency,
+        logsSource,
       },
       this.trackingConsentManager,
       this.pathScrubber
@@ -93,14 +106,14 @@ export class Transport {
    * Create a batch manager for a specific track
    * and register an event handler that forwards matching server events.
    */
-  private async setupTrackBatching(track: EventTrack) {
-    const batchManager = await this.createBatchManager(track);
-
+  private async setupStore(store: StoreDescriptor) {
+    const batchManager = await this.createBatchManager(store);
     this.eventManager.registerHandler<ServerEvent>({
-      canHandle: (event): event is ServerEvent => event.kind === EventKind.SERVER && event.track === track,
-      handle: (event) => {
-        batchManager.post(event);
-      },
+      canHandle: (event): event is ServerEvent =>
+        event.kind === EventKind.SERVER &&
+        event.track === store.trackType &&
+        (store.source === undefined || (event.track === EventTrack.LOGS && event.source === store.source)),
+      handle: (event) => batchManager.post(event),
     });
   }
 

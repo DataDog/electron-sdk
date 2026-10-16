@@ -109,6 +109,7 @@ describe('BatchManager', () => {
           trackPath: '/mock/path/dd_logs',
           batchSize: BatchSizes.MEDIUM,
           maxEventsPerBatch: 1_000,
+          maxEventBytes: 1_000_000,
         },
         identityPathScrubber
       );

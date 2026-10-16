@@ -1,3 +1,4 @@
+import { sanitize, type Context } from '@datadog/browser-core';
 import { timeStampNow } from '@datadog/js-core/time';
 import { combine, deepClone, isIndexableObject, type RecursivePartial } from '@datadog/js-core/util';
 import { DISCARDED } from '@datadog/js-core/assembly';
@@ -46,6 +47,32 @@ export class MainAssembly {
   private assembleMainProcessEvent(event: StandardRawEvent): ServerEvent | DISCARDED {
     const startTime = event.startTime ?? timeStampNow();
     const source = EventSource.MAIN;
+
+    if (event.format === EventFormat.LOGS) {
+      const hookResult = this.hooks.triggerLogs({ startTime, source });
+      if (hookResult !== DISCARDED) {
+        return {
+          kind: EventKind.SERVER,
+          track: EventTrack.LOGS,
+          source,
+          // Collection already bounded and snapshotted the message, context, and error.
+          // Reserve identity objects as a whole, even when SDK context is absent.
+          data: {
+            ...event.context,
+            usr: undefined,
+            account: undefined,
+            view: undefined,
+            session: undefined,
+            session_id: undefined,
+            user_action: undefined,
+            source: undefined,
+            ddsource: undefined,
+            ...(sanitize(hookResult) as Context),
+            ...event.data,
+          },
+        };
+      }
+    }
 
     if (event.format === EventFormat.RUM) {
       const hookResult = this.hooks.triggerRum({
