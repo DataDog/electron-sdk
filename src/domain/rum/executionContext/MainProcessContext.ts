@@ -41,7 +41,7 @@ interface MainProcessState {
  * together on SESSION_EXPIRED. Each new state gets a fresh execution_context.id and view.id, but the emitted
  * execution_context event's instance_id is always the OS process pid, constant across every session
  * the process lives through. Also registers the format hooks that tag every other main-process RUM
- * event and span with the execution context active at that event's timestamp, backed by a
+ * event, log and span with the execution context active at that event's timestamp, backed by a
  * disk-persisted history so a crash file replayed from a previous run still resolves to the
  * context that was active when the crash happened.
  */
@@ -70,6 +70,12 @@ export class MainProcessContext {
     });
     const context = new MainProcessContext(eventManager, fakeViewContext, mainHistory, sessionManager);
 
+    const getExecutionContext = (startTime: TimeStamp) => {
+      const entry = mainHistory.find(startTime);
+      if (entry === undefined) return SKIPPED;
+      return { execution_context: { id: entry.id, type: entry.type, name: MAIN_PROCESS_EXECUTION_CONTEXT_NAME } };
+    };
+
     hooks.registerRum(({ source, eventType, startTime }) => {
       // execution_context events (main's own and every renderer's) are fully self-authored —
       // this hook only tags *other* event types with the context active at their own startTime.
@@ -77,9 +83,12 @@ export class MainProcessContext {
       // (undefined) one, since both this event and the renderer's own reach here with source
       // MAIN — RendererProcessContexts's own tagging code also runs in the main process.
       if (source !== EventSource.MAIN || eventType === 'execution_context') return SKIPPED;
-      const entry = mainHistory.find(startTime);
-      if (entry === undefined) return SKIPPED;
-      return { execution_context: { id: entry.id, type: entry.type, name: MAIN_PROCESS_EXECUTION_CONTEXT_NAME } };
+      return getExecutionContext(startTime);
+    });
+
+    hooks.registerLogs(({ source, startTime }) => {
+      if (source !== EventSource.MAIN) return SKIPPED;
+      return getExecutionContext(startTime);
     });
 
     hooks.registerSpan(({ startTime }) => {

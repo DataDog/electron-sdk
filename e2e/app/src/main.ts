@@ -41,6 +41,8 @@ function serveBridgeWindowOverAppProtocol(): void {
 import {
   init,
   addError,
+  logger,
+  type LogStatus,
   _flushTransport,
   stopSession,
   getInternalContext,
@@ -180,6 +182,13 @@ void app.whenReady().then(async () => {
   ipcMain.handle('generateUnhandledRejection', () => {
     void Promise.reject(new Error('test unhandled rejection'));
   });
+
+  ipcMain.handle(
+    'generateMainLog',
+    (_event, message: string, status: LogStatus, context?: Record<string, unknown>, errorMessage?: string) => {
+      logger.log(message, context, status, errorMessage === undefined ? undefined : new Error(errorMessage));
+    }
+  );
 
   ipcMain.handle('generateManualError', (_event, startTime?: number, context?: Record<string, string>) => {
     addError(new Error('test manual error'), { context: context ?? { foo: 'bar' }, startTime });

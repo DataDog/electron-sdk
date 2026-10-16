@@ -104,6 +104,23 @@ describe('MainProcessContext', () => {
     });
   });
 
+  it('tags main logs with the execution context, without adding a fake view or tagging renderer logs', () => {
+    const executionContext = rawRumEvents.find((e) => e.data.type === 'execution_context')!;
+    const contextData = (executionContext.data as RawRumExecutionContext).execution_context;
+
+    expect(hooks.triggerLogs({ startTime: executionContext.startTime!, source: EventSource.MAIN })).toEqual({
+      execution_context: { id: contextData.id, type: 'main-process', name: 'Main Process' },
+    });
+    expect(hooks.triggerLogs({ startTime: executionContext.startTime!, source: EventSource.RENDERER })).toBeUndefined();
+  });
+
+  it('keeps logs without an execution context during a session gap', () => {
+    eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+    vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL / 2);
+
+    expect(hooks.triggerLogs({ startTime: timeStampNow(), source: EventSource.MAIN })).toBeUndefined();
+  });
+
   it('SESSION_RENEW starts a new pair with a new execution_context.id but the same instance_id', () => {
     const initialContextId = (
       rawRumEvents.find((e) => e.data.type === 'execution_context')!.data as RawRumExecutionContext
@@ -204,6 +221,12 @@ describe('MainProcessContext', () => {
     expect(
       hooks.triggerRum({ eventType: 'view', startTime: renewedStartTime, source: EventSource.MAIN })
     ).toMatchObject({ execution_context: { id: renewedContextId } });
+    expect(hooks.triggerLogs({ startTime: originalStartTime, source: EventSource.MAIN })).toMatchObject({
+      execution_context: { id: originalContextId },
+    });
+    expect(hooks.triggerLogs({ startTime: renewedStartTime, source: EventSource.MAIN })).toMatchObject({
+      execution_context: { id: renewedContextId },
+    });
   });
 
   it('starts no state while consent is refused at start, until a session starts', async () => {

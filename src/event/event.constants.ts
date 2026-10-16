@@ -14,6 +14,7 @@ export const EventTrack = {
 export type EventTrack = (typeof EventTrack)[keyof typeof EventTrack];
 
 export const EventFormat = {
+  LOGS: 'logs',
   RUM: 'rum',
   TELEMETRY: 'telemetry',
   PROFILE: 'profile',

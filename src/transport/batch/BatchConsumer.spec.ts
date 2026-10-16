@@ -1,3 +1,4 @@
+import { display } from '../../tools/display';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BatchConsumer } from './BatchConsumer';
 import type { BatchConsumerConfig } from './BatchConsumer';
@@ -88,6 +89,30 @@ describe('BatchConsumer — upload/send/delete behaviour', () => {
 
       expect(fsMocks.unlink).not.toHaveBeenCalled();
     });
+
+    it.each([true, false])(
+      'drops an individually rejected log only when splitting is enabled: %s',
+      async (splitOnPayloadTooLarge) => {
+        const warning = vi.spyOn(display, 'warn').mockImplementation(() => undefined);
+        const files = new Set(['batch.log']);
+        fsMocks.readdir.mockImplementation(() => Promise.resolve([...files]));
+        fsMocks.readFile.mockResolvedValue('{"message":"oversized"}');
+        fsMocks.unlink.mockImplementation(() => {
+          files.clear();
+          return Promise.resolve();
+        });
+        vi.mocked(fetch).mockResolvedValue({ ok: false, status: 413 } as Response);
+        try {
+          const consumer = new TestConsumer({ ...config, splitOnPayloadTooLarge }, TEST_REQUEST);
+          await consumer.upload();
+          await consumer.upload();
+          expect(fetch).toHaveBeenCalledTimes(splitOnPayloadTooLarge ? 1 : 2);
+          expect(warning).toHaveBeenCalledTimes(splitOnPayloadTooLarge ? 1 : 0);
+        } finally {
+          warning.mockRestore();
+        }
+      }
+    );
 
     it('keeps the file when fetch throws a network error', async () => {
       fsMocks.readdir.mockResolvedValue(['batch.log']);

@@ -1,4 +1,5 @@
-import { beforeEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { display, SANITIZE_DEFAULT_MAX_CHARACTER_COUNT } from '@datadog/browser-core';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { EventSource } from '../../event';
 import { createFormatHooks, type FormatHooks, type RumEventType } from '../../assembly';
@@ -22,6 +23,28 @@ describe('UserContext', () => {
   beforeEach(() => {
     hooks = createFormatHooks();
     userContext = new UserContext(hooks);
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  describe('logs context', () => {
+    it('bounds reserved fields independently for main logs and leaves renderer context unchanged', () => {
+      vi.spyOn(display, 'warn').mockImplementation(() => undefined);
+      const oversized = 'x'.repeat(SANITIZE_DEFAULT_MAX_CHARACTER_COUNT + 1);
+      userContext.setContext({
+        id: 'user-1',
+        name: oversized,
+        email: 'alice@example.com',
+        extraInfo: { oversized },
+      });
+
+      expect(hooks.triggerLogs({ startTime: T0, source: EventSource.MAIN })).toEqual({
+        usr: { id: 'user-1', name: undefined, email: 'alice@example.com' },
+      });
+      expect(hooks.triggerLogs({ startTime: T0, source: EventSource.RENDERER })).toEqual({
+        usr: { id: 'user-1', name: oversized, email: 'alice@example.com', oversized },
+      });
+    });
   });
 
   describe('when user is not set', () => {
@@ -93,6 +116,9 @@ describe('UserContext', () => {
       userContext = new UserContext(hooks, history);
 
       expect(triggerRum('error')).toEqual({ usr: { id: 'historical-user', plan: 'premium' } });
+      expect(hooks.triggerLogs({ startTime: T0, source: EventSource.MAIN })).toEqual({
+        usr: { id: 'historical-user', plan: 'premium' },
+      });
       expect(triggerSpan()).toEqual({
         meta: {
           'usr.id': 'historical-user',

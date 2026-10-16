@@ -96,24 +96,36 @@ describe('BatchManager', () => {
       expect(mockProducerCreate).toHaveBeenCalledTimes(1);
     });
 
-    it('limits LOGS batches to the intake maximum of 1,000 entries', async () => {
-      await BatchManager.create(
-        config,
-        createBatchConfig({ trackType: EventTrack.LOGS }),
-        consentManager,
-        identityPathScrubber
-      );
+    it.each([undefined, 'browser', 'electron'] as const)(
+      'configures limits and retries for logs source %s',
+      async (logsSource) => {
+        const { StandardBatchConsumer } = await import('./standard/StandardBatchConsumer');
+        const trackPath = logsSource === 'electron' ? '/mock/path/dd_main_logs' : '/mock/path/dd_logs';
+        await BatchManager.create(
+          config,
+          createBatchConfig({ trackType: EventTrack.LOGS, logsSource }),
+          consentManager,
+          identityPathScrubber
+        );
 
-      expect(mockProducerCreate).toHaveBeenCalledWith(
-        {
-          trackPath: '/mock/path/dd_logs',
-          batchSize: BatchSizes.MEDIUM,
-          maxEventsPerBatch: 1_000,
-        },
-        identityPathScrubber
-      );
-      expect(mockProducerCreate).toHaveBeenCalledTimes(1);
-    });
+        expect(mockProducerCreate).toHaveBeenCalledWith(
+          {
+            trackPath,
+            batchSize: BatchSizes.MEDIUM,
+            maxEventsPerBatch: 1_000,
+            ...(logsSource === 'electron' ? { maxEventBytes: 1_000_000 } : {}),
+          },
+          identityPathScrubber
+        );
+        expect(mockProducerCreate).toHaveBeenCalledTimes(1);
+        expect(StandardBatchConsumer).toHaveBeenCalledWith({
+          trackPath,
+          intakeUrl: 'https://mock-intake.com/api/v2/rum',
+          clientToken: 'test-token',
+          ...(logsSource === 'electron' ? { splitOnPayloadTooLarge: true } : {}),
+        });
+      }
+    );
 
     it('creates a StandardBatchConsumer with the resolved trackPath, intakeUrl and clientToken', async () => {
       const { StandardBatchConsumer } = await import('./standard/StandardBatchConsumer');
