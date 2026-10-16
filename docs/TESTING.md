@@ -2,12 +2,29 @@
 
 Unit and E2E testing strategy and infrastructure.
 
+## Test Layers
+
+- Unit tests cover every branch and gate the PR adds or changes. E2E tests assert the behavior a customer can observe,
+  end to end.
+- Don't duplicate e2e coverage with an intermediate integration spec, and don't move unit-level edge cases to e2e.
+- Cover third-party behavior that the PR starts relying on (e.g. dd-trace span semantics) with a test, so a dependency
+  upgrade can't silently break it.
+- Cover every public entry point that the PR's feature touches (e.g. custom context provided through `addError`, not
+  only through the context API).
+
+## Writing Tests
+
+- Assert the value the code produces or forwards, not only that a call happened.
+- One focused case per behavior: tests of the same behavior that only differ by their inputs are redundant. Keep one
+  representative case, or parametrize when each input exercises a distinct branch.
+- Keep test doubles simple: mock only what is needed.
+
 ## Unit Testing
 
 ### Strategy
 
 - Mock network and disk access (fetch API, `node:fs`) to avoid real I/O in tests.
-- Transitive dependency mocks are acceptable to only test orchestration. Consider integration / e2e test to exercise real code path.
+- Mocking direct collaborators to test a component's orchestration is fine.
 - Co-locate specs with source files (`src/**/*.spec.ts`).
 
 ## E2E Testing
@@ -15,6 +32,10 @@ Unit and E2E testing strategy and infrastructure.
 ### Strategy
 
 Testing a new feature end-to-end means updating the `e2e/app/` to exercise it, then adding a scenario that asserts on the captured intake events.
+
+- Each test defines the setup it exercises (e.g. its own `beforeSend`) rather than relying on cases hardcoded in the
+  e2e app, so its intent reads from the test itself.
+- Add scenarios to the existing scenario file of the feature area rather than creating a new file per PR.
 
 ### Directory Structure
 
