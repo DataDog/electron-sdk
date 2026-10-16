@@ -234,6 +234,7 @@ await esbuild.build({
 - **User & Account Info** — Attach user and account identity to all RUM events and traces
 - **Operation Monitoring** _(experimental)_ — Track start / succeed / fail steps of critical user-facing workflows
 - **Event Filtering and Scrubbing** — Modify or discard RUM events with `beforeSendRum`
+- **Source Maps** — Resolve main process and renderer stack traces to your original source code
 
 ### Event Filtering and Scrubbing
 
@@ -444,6 +445,54 @@ datadogRum.init({
 ```
 
 The Electron SDK advertises a `records` capability over the bridge, so the Browser SDK streams replay records to the main process instead of uploading them itself — no `startSessionReplayRecording()` call is required. See [Renderer process setup](#renderer-process-setup) for general Browser SDK configuration.
+
+### Source Maps
+
+Stack traces and URLs collected in an Electron app contain the app's install path, for example `/Users/alice/Applications/MyApp.app/Contents/Resources/app.asar/dist/main/index.js` in the main process, or `file:///Users/alice/…/app.asar/dist/renderer/index.js` in a renderer. These paths change with each installation, so they never match source maps uploaded at build time, and they expose the user's install directory.
+
+The SDK rewrites the app path (as returned by `app.getAppPath()`) to `/` in every event before it leaves the machine: the frames above become `/dist/main/index.js` and `/dist/renderer/index.js`. Only the app path is rewritten: other local paths, such as files in the user data folder or outside the app, are sent as is. URLs of renderers loaded from a custom protocol or `http(s)://` contain no install path and are left unchanged.
+
+**1. Generate source maps with their sources.** Configure your bundler to emit source maps that embed the original code (`sourcesContent`), as described in the [Browser source maps guide](https://docs.datadoghq.com/real_user_monitoring/guide/upload-javascript-source-maps/). If the main process is compiled by `tsc` without a bundler, set both `sourceMap: true` and `inlineSources: true`, otherwise stack traces resolve but show no code snippets.
+
+**2. Use a different service for the main process and the renderers.** Once the app path is rewritten, the main process and a renderer can both report the same path, for example `/dist/index.js` when both are built to `dist/`. Datadog looks up source maps by service, version, and path, so separate services keep them apart: the main process reports under the `service` passed to the Electron SDK `init()`, and renderers under the `service` passed to the Browser SDK `init()`. Set a `version` in both the Electron SDK and the Browser SDK `init()`: it is not set by default, and the upload's `--release-version` must match it.
+
+**3. Upload the source maps with [`datadog-ci`](https://github.com/DataDog/datadog-ci).** The `--service` and `--release-version` must match the SDK configuration, and `--minified-path-prefix` must be the path at which the uploaded files appear in stack traces. Run `datadog-ci` from your git working tree: it sends the repository URL and the commit of the uploaded sources, so Error Tracking links stack frames to your code. The examples below assume an app packaged with its `dist/` folder.
+
+Main process, built to `dist/main/`:
+
+```sh
+datadog-ci sourcemaps upload ./dist/main \
+  --service my-electron-app-main \
+  --release-version "$VERSION" \
+  --minified-path-prefix /dist/main/
+```
+
+Renderer loaded from `file://`, built to `dist/renderer/`:
+
+```sh
+datadog-ci sourcemaps upload ./dist/renderer \
+  --service my-electron-app-renderer \
+  --release-version "$VERSION" \
+  --minified-path-prefix /dist/renderer/
+```
+
+Renderer loaded from a custom protocol (requires Browser SDK >= 7.9.0), for example `app://app/` serving the files of `dist/renderer/`:
+
+```sh
+datadog-ci sourcemaps upload ./dist/renderer \
+  --service my-electron-app-renderer \
+  --release-version "$VERSION" \
+  --minified-path-prefix app://app/
+```
+
+Renderer loaded from `http(s)://`, for example a local server serving the files of `dist/renderer/` at its root:
+
+```sh
+datadog-ci sourcemaps upload ./dist/renderer \
+  --service my-electron-app-renderer \
+  --release-version "$VERSION" \
+  --minified-path-prefix /
+```
 
 ## API
 
