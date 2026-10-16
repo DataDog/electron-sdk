@@ -1,81 +1,82 @@
 # Code Review Guide
 
-What to look for when reviewing a PR. Linters, the formatter, and the type checker already run in CI — don't
-repeat what they enforce. Focus on the project-specific concerns below.
+What to look for when reviewing a PR. Linters, the formatter, and the type checker already run in CI: don't repeat what
+they enforce. Check the diff against `docs/CONVENTIONS.md` and `docs/TESTING.md`, then focus on the project-specific
+risks below.
 
 ## What to look for
 
-### Async correctness
+### Async ordering and lifecycle
 
-Electron SDK code is highly concurrent: IPC messages, file I/O, session events, and span callbacks
-all interleave. Look for:
+IPC messages, file I/O, session events, and span callbacks all interleave. Look for:
 
-- **Race conditions**: async calls that are not awaited or whose results can arrive out of order (e.g.
-  creating a new session before the old one is flushed, recovering batch files that collide with
-  existing ones).
+- **Race conditions**: async calls that are not awaited or whose results can arrive out of order (e.g. creating a new
+  session before the old one is flushed, recovering batch files that collide with existing ones).
 - **Unserialized writes**: concurrent writes to shared state or disk without serialization.
-- **Preload timing**: preload registration must complete before windows are created; async
-  initialization must complete before events can flow.
+- **Init and shutdown ordering**: preload registration completes before windows are created; async initialization
+  completes before events can flow; before-quit produces the final segments and spans before the last transport flush,
+  and waits for in-flight uploads.
+- **Re-entrancy**: calling a method again does not stack another pending listener or timer.
+- **Renderer lifecycle**: events or queued IPC arriving after a renderer is closed, crash revival, a renderer process
+  shared by several windows, destroyed `WebContents` retained in memory.
 
-### Error handling
+### Session and time attribution
 
-The SDK favors observable failures over silent ones:
+Resolve the session and contexts from the event's timestamp, not from the current state: an event recorded before a
+session renewal belongs to the previous session.
 
-- Prefer throwing or reporting via telemetry over defensive null-checks for invalid payloads. Errors thrown from monitored callbacks are captured by the SDK's error wrapper and reported as telemetry.
-- Validate external inputs (IPC messages, public API calls) early and fail loudly. Internal code can
-  trust its invariants.
-- Don't introduce `?.` or fallback values for conditions that should not be possible — surface them
-  instead.
+### Data at boundaries
+
+- Files recovered from disk can be truncated by a crash: drop them rather than throw.
+- Size limits are expressed in bytes: measure the UTF-8 encoded size, not `string.length`.
+
+See the error handling rules in `docs/CONVENTIONS.md`.
+
+### Privacy and consent
+
+- Tracking consent gates fail closed: no data reaches authorized storage or the network without consent, and a failed
+  clear is retried.
+- Identity and customer data are not retained on disk past their lifetime (e.g. after logout or session expiry).
 
 ### SDK observability
 
-All callbacks driven by Node.js or Electron (IPC handlers, `diagnostics_channel` subscribers, event
-listeners) must be wrapped with `monitor()` so errors are captured by telemetry rather than
-silently lost. This applies to Promise `.then`/`.catch` callbacks into SDK code too.
+All callbacks driven by Node.js or Electron (IPC handlers, `diagnostics_channel` subscribers, event listeners) must be
+wrapped with `monitor()` so errors are captured by telemetry rather than silently lost. This applies to Promise
+`.then`/`.catch` callbacks into SDK code too.
 
-Use the SDK's `setTimeout`, `setInterval`, and `throttle` from `src/domain/telemetry/timer.ts`
-instead of raw `global.setTimeout`/`global.setInterval`.
+Use the SDK's `setTimeout`, `setInterval`, and `throttle` from `src/domain/telemetry/timer.ts` instead of raw
+`global.setTimeout`/`global.setInterval`.
 
 See `monitor` and `callMonitored` in `src/domain/telemetry/Telemetry.ts`.
 
 ### Backward compatibility
 
-Breaking changes must be intentional. Watch for:
+Breaking changes must be intentional and flagged in the PR title (💥). The SDK is in 0.x: breaking changes are
+acceptable, as long as they are deliberate. Watch for:
 
-- Public API changes (renamed/removed methods, changed signatures in `InitConfiguration` or public
-  classes).
-- Event field renames or removals — downstream dashboards and monitors rely on stable field names.
+- Public API changes (renamed/removed methods, changed signatures in `InitConfiguration` or public classes).
+- Event field renames or removals: downstream dashboards and monitors rely on stable field names.
 - Changed default values for configuration options.
 
-### Documentation
+### Docs drift
 
-- New or modified classes should have a JSDoc comment explaining their responsibility and role in
-  the system.
-- New or modified public APIs should have a JSDoc comment with a clear description and at least one
-  `@example`.
-
-See `docs/CONVENTIONS.md` for full JSDoc conventions.
-
-### Test quality
-
-- **No redundant assertions**: multiple tests asserting the same behavior with different inputs add
-  maintenance cost without coverage benefit — one parametrized case or a single representative
-  example is enough.
-- **Simple mocks**: avoid unnecessary indirection in test doubles; mock only what is needed.
+README, `docs/ARCHITECTURE.md`, and the PR description match the final code, not an earlier iteration of the PR.
 
 ### Bundler and packager coverage
 
-Changes to bundler plugin code (`vite-plugin`, `webpack-plugin`, `esbuild-plugin`), preload
-resolution, dd-trace initialization order, or dependency copying may behave differently across the
-supported integration apps (electron-builder-vite, electron-vite, electron-vite-esm,
-forge-esbuild-cjs, forge-esbuild-esm, forge-vite, forge-webpack).
+Changes to bundler plugin code (`vite-plugin`, `webpack-plugin`, `esbuild-plugin`), preload resolution, dd-trace
+initialization order, or dependency copying may behave differently across the integration apps in
+`e2e/integration/apps/`.
 
-Check whether the change warrants a new or updated scenario in `e2e/integration/scenarios/` and
-whether the affected apps are covered.
+Check whether the change warrants a new or updated scenario in `e2e/integration/scenarios/`. One representative app is
+enough unless the change is toolchain-specific.
 
-### Reuse over reinvention
+## What not to flag
 
-Before adding a new utility, check `@datadog/browser-core` and `@datadog/js-core` — utilities are
-progressively migrating to `@datadog/js-core`, so check both. This applies to small type guards and
-predicates too: use `getType` / `isIndexableObject` from `@datadog/js-core/util` for object shape
-checks rather than open-coding `typeof x === 'object' && x !== null`.
+- A finding already fixed, or dismissed with a reason, earlier on the same PR.
+- Exotic timing or environments: rapid state flips during async work, a wall clock moving backward, several sessions
+  within the same millisecond.
+- Unrealistic parsing edge cases (e.g. an own `__proto__` key, percent-encoded unreserved characters in a host).
+- Performance concerns without evidence (a measurement or a hot path).
+- Issues that predate the PR, or that the next PR of a stack handles.
+- Missing `CHANGELOG.md` entries: the changelog is generated at release time.
