@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSessionId: () => ipcRenderer.invoke('getSessionId'),
   generateUncaughtException: () => ipcRenderer.invoke('generateUncaughtException'),
   generateUnhandledRejection: () => ipcRenderer.invoke('generateUnhandledRejection'),
+  generateMainLog: (message: string, status: string, context?: Record<string, unknown>, errorMessage?: string) =>
+    ipcRenderer.invoke('generateMainLog', message, status, context, errorMessage),
   generateManualError: (startTime?: number, context?: Record<string, string>) =>
     ipcRenderer.invoke('generateManualError', startTime, context),
   addDurationVital: (name: string, options: Record<string, unknown>) =>

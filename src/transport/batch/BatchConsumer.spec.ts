@@ -1,3 +1,4 @@
+import { display } from '../../tools/display';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BatchConsumer } from './BatchConsumer';
 import type { BatchConsumerConfig } from './BatchConsumer';
@@ -87,6 +88,27 @@ describe('BatchConsumer — upload/send/delete behaviour', () => {
       await consumer.upload();
 
       expect(fsMocks.unlink).not.toHaveBeenCalled();
+    });
+
+    it.each([true, false])('discards HTTP 413 only when enabled for logs: %s', async (discardOnPayloadTooLarge) => {
+      const warning = vi.spyOn(display, 'warn').mockImplementation(() => undefined);
+      const files = new Set(['batch.log']);
+      fsMocks.readdir.mockImplementation(() => Promise.resolve([...files]));
+      fsMocks.readFile.mockResolvedValue('{"message":"oversized"}');
+      fsMocks.unlink.mockImplementation(() => {
+        files.clear();
+        return Promise.resolve();
+      });
+      vi.mocked(fetch).mockResolvedValue({ ok: false, status: 413 } as Response);
+      try {
+        const consumer = new TestConsumer({ ...config, discardOnPayloadTooLarge }, TEST_REQUEST);
+        await consumer.upload();
+        await consumer.upload();
+        expect(fetch).toHaveBeenCalledTimes(discardOnPayloadTooLarge ? 1 : 2);
+        expect(warning).toHaveBeenCalledTimes(discardOnPayloadTooLarge ? 1 : 0);
+      } finally {
+        warning.mockRestore();
+      }
     });
 
     it('keeps the file when fetch throws a network error', async () => {
