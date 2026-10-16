@@ -10,7 +10,7 @@ import type { EventManager, RawProfileEvent, ServerProfileEvent, SessionRenewEve
 import { EventFormat, EventKind, EventSource, EventTrack, LifecycleKind } from '../../event';
 import { correctedChildSampleRate, isSessionSampled } from '../../tools/Sampler';
 import { monitor } from '../telemetry';
-import type { QuotaReason, QuotaResult } from './quotaCheck';
+import type { QuotaResult } from './quotaCheck';
 import { checkProfilingQuota } from './quotaCheck';
 
 // The browser SDK attaches its profiling context only to these event types (see the browser SDK's
@@ -22,11 +22,11 @@ const PROFILING_EVENT_TYPES: readonly RumEventType[] = ['view', 'long_task', 'ac
  * and aligns the `_dd.profiling` context of renderer RUM events with its sampling and quota decisions.
  */
 export class ProfilingCollection {
-  // Sessions denied by the backend quota, keyed by session id (value is the denial reason). A profile is
-  // gated on the quota decision of the session that captured it, not the current one, so a profile flushed
-  // after a renewal is still dropped if its own session was denied. Absence means "not denied" (allowed, check
-  // in flight, or not checked because consent was not granted, i.e. optimistic).
-  private readonly quotaDeniedSessions = new Map<string, QuotaReason>();
+  // Quota answer of each checked session, keyed by session id. A profile is gated on the answer for the session that
+  // captured it, not the current one, so a profile flushed after a renewal is still dropped if its own session was
+  // denied. A session is added without answer when its check is sent, so that it is checked once even when a renewal
+  // and a grant trigger it together. No entry or no answer yet means "not denied" (optimistic).
+  private readonly quotaResults = new Map<string, QuotaResult | undefined>();
   private readonly subscriptions: Subscription[];
 
   constructor(
@@ -60,10 +60,10 @@ export class ProfilingCollection {
         // `has_profile` stays false either way).
         return { _dd: { profiling: null } };
       }
-      const quotaDeniedReason = this.quotaDeniedSessions.get(sessionId);
-      if (quotaDeniedReason !== undefined) {
+      const quotaResult = this.quotaResults.get(sessionId);
+      if (quotaResult?.decision === 'quota_ko') {
         return {
-          _dd: { profiling: { status: 'stopped', quota_reason: quotaDeniedReason } },
+          _dd: { profiling: { status: 'stopped', quota_reason: quotaResult.reason } },
         };
       }
       // Sampled in and allowed: keep the renderer's own `_dd.profiling`.
@@ -94,12 +94,13 @@ export class ProfilingCollection {
     }
   }
 
-  // Check the current session's quota when it starts or when consent is granted: the check sends the session id to
-  // Datadog, so it needs consent, and is skipped for an unsampled session, whose profiles are dropped.
+  // Check the current session's quota once, when it starts or when consent is granted: the check sends the session id
+  // to Datadog, so it needs consent, and is skipped for an unsampled session, whose profiles are dropped.
   private maybeCheckQuota(): void {
     const session = this.sessionManager.getSession();
     if (
       session.status === 'active' &&
+      !this.quotaResults.has(session.id) &&
       this.trackingConsentManager.get() === 'granted' &&
       this.isProfilingSampled(session.id)
     ) {
@@ -115,13 +116,10 @@ export class ProfilingCollection {
   }
 
   private triggerQuotaCheck(sessionId: string): void {
+    this.quotaResults.set(sessionId, undefined);
     void checkProfilingQuota(this.config, sessionId).then(
       monitor((result: QuotaResult) => {
-        if (result.decision === 'quota_ko') {
-          // Record the denial against the session it was checked for, so profiles are gated on their own
-          // session's decision.
-          this.quotaDeniedSessions.set(sessionId, result.reason);
-        }
+        this.quotaResults.set(sessionId, result);
       })
     );
   }
@@ -141,7 +139,7 @@ export class ProfilingCollection {
     if (sessionId === undefined || !this.isProfilingSampled(sessionId)) {
       return null;
     }
-    if (this.quotaDeniedSessions.has(sessionId)) {
+    if (this.quotaResults.get(sessionId)?.decision === 'quota_ko') {
       return null;
     }
 

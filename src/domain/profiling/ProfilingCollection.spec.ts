@@ -3,6 +3,7 @@ import { ProfilingCollection } from './ProfilingCollection';
 import { SKIPPED } from '@datadog/js-core/assembly';
 import { EventFormat, EventKind, EventManager, EventSource, EventTrack, LifecycleKind } from '../../event';
 import type { RawProfileEvent, ServerProfileEvent, SessionRenewEvent } from '../../event';
+import type { Session } from '../session';
 import { createTestConfiguration } from '../../mocks.specUtil';
 import { createFormatHooks, type FormatHooks } from '../../assembly';
 import { TrackingConsentManager, type TrackingConsent } from '../tracking-consent';
@@ -348,6 +349,33 @@ describe('ProfilingCollection', () => {
         expect(quotaCheckModule.checkProfilingQuota).toHaveBeenCalledExactlyOnceWith(config, SECOND_UUID);
       }
     );
+
+    it('checks the quota of a session once, even when consent is pending then granted again', () => {
+      new ProfilingCollection(eventManager, makeSessionManager(), config, hooks, consentManager);
+
+      consentManager.update('pending');
+      consentManager.update('granted');
+
+      expect(quotaCheckModule.checkProfilingQuota).toHaveBeenCalledTimes(1);
+    });
+
+    it('checks once the session that a grant renews', () => {
+      consentManager.update('not-granted');
+      let session: Session = { status: 'not-granted' };
+      const sessionManager = { getSession: () => session, getTrackedSessionId: () => undefined };
+      // Like SessionManager, subscribed before the collection: leaving not-granted renews the session first.
+      consentManager.subscribe(({ current }) => {
+        if (current === 'granted') {
+          session = { id: SECOND_UUID, status: 'active' };
+          eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+        }
+      });
+      new ProfilingCollection(eventManager, sessionManager, config, hooks, consentManager);
+
+      consentManager.update('granted');
+
+      expect(quotaCheckModule.checkProfilingQuota).toHaveBeenCalledExactlyOnceWith(config, SECOND_UUID);
+    });
 
     it('re-triggers the quota check for the renewed session', async () => {
       // First session is denied; the renewed session is allowed.
