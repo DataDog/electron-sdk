@@ -1,3 +1,4 @@
+import { display } from '../../tools/display';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { getUserAgent } from '../userAgent';
@@ -11,6 +12,8 @@ export interface BatchConsumerConfig {
   intakeUrl: string;
   /** Datadog client token sent as `DD-API-KEY`. */
   clientToken: string;
+  /** Logs rejected with HTTP 413 cannot succeed unchanged; retain other retry behavior. */
+  discardOnPayloadTooLarge?: boolean;
 }
 
 /**
@@ -24,7 +27,7 @@ export abstract class BatchConsumer {
   protected clientToken: string;
   protected userAgent: string | undefined;
 
-  constructor(config: BatchConsumerConfig) {
+  constructor(private readonly config: BatchConsumerConfig) {
     this.trackPath = config.trackPath;
     this.intakeUrl = config.intakeUrl;
     this.clientToken = config.clientToken;
@@ -88,6 +91,11 @@ export abstract class BatchConsumer {
 
     try {
       const response = await fetch(request);
+      if (response.status === 413 && this.config.discardOnPayloadTooLarge) {
+        display.warn('Dropping logs batch rejected by intake as too large (HTTP 413).');
+        await fs.unlink(filePath);
+        return true;
+      }
       if (response.ok) {
         await fs.unlink(filePath);
         return true;

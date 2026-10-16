@@ -1,8 +1,9 @@
+import { display } from '../../tools/display';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createFormatHooks } from '../../assembly';
 import { BatchManager } from './BatchManager';
 import { TrackingConsentManager } from '../../domain/tracking-consent';
-import { EventKind, EventTrack } from '../../event';
+import { EventKind, EventTrack, EventSource } from '../../event';
 import type { ServerEvent } from '../../event';
 import { BatchSizes, BatchUploadFrequencies } from '../../config';
 import { createTestConfiguration } from '../../mocks.specUtil';
@@ -139,6 +140,40 @@ describe('BatchManager', () => {
   });
 
   describe('post', () => {
+    it.each(['message', 'error', 'context'])(
+      'rejects an oversized log %s before queuing writes and preserves the next log',
+      async (field) => {
+        const warning = vi.spyOn(display, 'warn').mockImplementation(() => undefined);
+        const manager = await BatchManager.create(
+          config,
+          createBatchConfig({ trackType: EventTrack.LOGS }),
+          consentManager
+        );
+        try {
+          const payload = '😀'.repeat(250_001);
+          const event = {
+            kind: EventKind.SERVER,
+            track: EventTrack.LOGS,
+            source: EventSource.MAIN,
+            data: {
+              date: Date.now(),
+              status: 'info',
+              message: 'normal',
+              [field]: field === 'error' ? { stack: payload } : payload,
+            },
+          } as const;
+          manager.post(event);
+          const valid = { ...event, data: { date: Date.now(), status: 'info', message: 'next log' } };
+          manager.post(valid);
+          expect(mockProducerPost).toHaveBeenCalledExactlyOnceWith(valid);
+          expect(warning).toHaveBeenCalledOnce();
+        } finally {
+          manager.stop();
+          warning.mockRestore();
+        }
+      }
+    );
+
     it('should delegate to producer.post', async () => {
       const manager = await BatchManager.create(config, batchConfig, consentManager);
       const event = {

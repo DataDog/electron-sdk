@@ -85,6 +85,45 @@ await init({
 
 In order to monitor the renderer process, you must [set up the Browser SDK](https://docs.datadoghq.com/real_user_monitoring/application_monitoring/browser/setup/) in pages loaded by the renderer.
 
+#### Main-process log collection
+
+After awaiting Electron SDK initialization, use its default `logger` in the **main process**:
+
+```ts
+import { init, logger as electronLogger } from '@datadog/electron-sdk';
+
+await init({
+  clientToken: '<CLIENT_TOKEN>',
+  applicationId: '<APPLICATION_ID>',
+  service: 'my-electron-app',
+  site: 'datadoghq.com',
+});
+
+electronLogger.info('Workspace opened', { workspaceId: '123' });
+electronLogger.error('Sync failed', { workspaceId: '123' }, new Error('Connection lost'));
+electronLogger.log('Retrying sync', { attempt: 2 }, 'warn');
+```
+
+The level methods (`ok`, `debug`, `info`, `notice`, `warn`, `error`, `critical`, `alert`, `emerg`) accept
+`(message, context?, error?)`, matching the Browser Logs logger. `log(message, context?, status?, error?)`
+defaults to `info`. Call after `init()` resolves; earlier calls are dropped with a warning once.
+
+Main-process logs use `source:electron`. Supplied errors include native Node stacks, causes, custom
+`dd_fingerprint`, `handling:handled`, and `error.source_type:nodejs`. Thrown strings, objects, and errors
+from other JavaScript contexts are accepted. Error `dd_context` and message context become top-level
+attributes; message context wins over error context. SDK identity objects (`usr`, `account`, `view`,
+`session`) are reserved in full, even when unset, and SDK log fields take precedence.
+Application, service, user, account, and any tracked RUM session are attached automatically. Logs are
+still sent without a tracked RUM session. The SDK's RUM global context is not added to logs.
+Main-process collection allows up to 3,000 sampled logs per status per minute, matching Browser Logs.
+Logs exceeding 1 MB of serialized UTF-8 data (including context and errors) are dropped with a warning.
+Logs batches rejected by intake with HTTP 413 are discarded rather than retried unchanged.
+
+Use `datadogLogs.logger` from `@datadog/browser-logs` in renderers, as described below. Renderer logs
+keep `source:browser`; the Electron SDK uploads both sources in separate persisted batches, including
+when retrying failed uploads after an app restart. Main-process logging is explicit: this API does not
+capture console output or automatically duplicate RUM errors as logs.
+
 #### Renderer log collection
 
 Logs assembled by the Browser Logs SDK are forwarded through the Electron bridge and uploaded by the
@@ -114,7 +153,7 @@ process instead of uploading them directly. See the
 [Browser Logs setup guide](https://docs.datadoghq.com/logs/log_collection/javascript/) for additional
 renderer configuration options.
 
-Configure renderer-log sampling on the Electron SDK in the main process:
+Configure log sampling on the Electron SDK in the main process:
 
 ```ts
 await init({
@@ -123,11 +162,11 @@ await init({
   service: 'my-electron-app',
   site: 'datadoghq.com',
   allowedRendererHosts: ['*'],
-  logsSampleRate: 25, // forwards 25% of renderer logs
+  logsSampleRate: 25, // sends 25% of main-process and renderer logs
 });
 ```
 
-`logsSampleRate` defaults to `100` and is applied independently to each bridged log. It is separate
+`logsSampleRate` defaults to `100` and is applied independently to each main-process or bridged log. It is separate
 from RUM `sessionSampleRate`. The Browser Logs SDK does not apply its own `sessionSampleRate` in bridge
 mode, so the Electron setting is authoritative.
 
@@ -558,7 +597,7 @@ interface FeatureOperationOptions {
 | `env`                     | `string`                                 | No       | —          | Application environment                                                                                                                                                              |
 | `version`                 | `string`                                 | No       | —          | Application version                                                                                                                                                                  |
 | `sessionSampleRate`       | `number`                                 | No       | `100`      | Percentage of sessions to collect (0–100). `0` collects no sessions; `100` collects all sessions.                                                                                    |
-| `logsSampleRate`          | `number`                                 | No       | `100`      | Percentage of bridged renderer logs to forward (0–100), sampled independently per log. In bridge mode this replaces the Browser Logs `sessionSampleRate`.                            |
+| `logsSampleRate`          | `number`                                 | No       | `100`      | Percentage of main-process and renderer logs to send (0–100), sampled independently per log. In bridge mode this replaces the Browser Logs `sessionSampleRate`.                      |
 | `traceSampleRate`         | `number`                                 | No       | `100`      | Percentage of main-process traces to keep when no `traceSamplingRules` rule matches (0–100).                                                                                         |
 | `traceSamplingRules`      | `TraceSamplingRule[]`                    | No       | `[]`       | Ordered sampling rules for main-process traces. The first matching rule determines the percentage of traces to keep; unmatched traces use `traceSampleRate`.                         |
 | `sessionReplaySampleRate` | `number`                                 | No       | `0`        | Percentage of sampled sessions that record session replay (0–100). `0` disables renderer session replay. Applied as a child of `sessionSampleRate`.                                  |

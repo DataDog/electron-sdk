@@ -1,3 +1,4 @@
+import { sanitize } from '@datadog/browser-core';
 import { timeStampNow } from '@datadog/js-core/time';
 import { combine, deepClone, isIndexableObject, type RecursivePartial } from '@datadog/js-core/util';
 import { DISCARDED } from '@datadog/js-core/assembly';
@@ -16,6 +17,7 @@ import type { FormatHooks } from './hooks';
 import { MainRumEvent } from '../domain/rum';
 import { TelemetryEvent } from '../domain/telemetry';
 import { BeforeSend } from './BeforeSend';
+import type { LogsEvent } from '../domain/logs';
 
 // Raw events assembled through the standard main-process hook pipeline.
 type StandardRawEvent = Exclude<RawEvent, RawProfileEvent | RawReplayEvent>;
@@ -46,6 +48,35 @@ export class MainAssembly {
   private assembleMainProcessEvent(event: StandardRawEvent): ServerEvent | DISCARDED {
     const startTime = event.startTime ?? timeStampNow();
     const source = EventSource.MAIN;
+
+    if (event.format === EventFormat.LOGS) {
+      const hookResult = this.hooks.triggerLogs({ startTime, source });
+      if (hookResult !== DISCARDED) {
+        return {
+          kind: EventKind.SERVER,
+          track: EventTrack.LOGS,
+          source,
+          // Reserve identity objects as a whole, even when SDK context is absent. Sanitize once,
+          // synchronously, to snapshot caller-owned values before transport queues disk writes.
+          data: sanitize(
+            {
+              ...event.context,
+              usr: undefined,
+              account: undefined,
+              view: undefined,
+              session: undefined,
+              session_id: undefined,
+              user_action: undefined,
+              source: undefined,
+              ddsource: undefined,
+              ...hookResult,
+              ...event.data,
+            },
+            Infinity
+          ) as LogsEvent,
+        };
+      }
+    }
 
     if (event.format === EventFormat.RUM) {
       const hookResult = this.hooks.triggerRum({
