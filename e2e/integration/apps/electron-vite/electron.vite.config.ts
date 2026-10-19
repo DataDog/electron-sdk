@@ -6,6 +6,11 @@ const copyRuntimeDependencies = process.env.DD_ELECTRON_COPY_RUNTIME_DEPENDENCIE
 export default defineConfig({
   main: {
     plugins: [datadogVitePlugin({ copyRuntimeDependencies })],
+    build: {
+      externalizeDeps: {
+        exclude: ['@datadog/electron-sdk'],
+      },
+    },
   },
   preload: {},
   renderer: {},

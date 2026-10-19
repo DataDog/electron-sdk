@@ -6,13 +6,11 @@
  * because `require('electron')` runs before `@datadog/electron-sdk/instrument`.
  *
  * This plugin:
- * 1. Externalizes dd-trace and the electron-sdk so they remain as runtime
- *    requires (not bundled), preserving runtime instrumentation.
- * 2. Prepends SDK instrumentation (via @datadog/electron-sdk/instrument)
- *    to the very top of the main process entry chunk, before any hoisted
- *    requires. No manual import needed.
- * 3. Copies dd-trace and @datadog/electron-sdk into the build output's
- *    node_modules so they are available at runtime in packaged apps.
+ * 1. Externalizes dd-trace while allowing the Electron SDK to be bundled.
+ * 2. Prepends a loader for the emitted SDK instrumentation to the main process
+ *    entry chunk, before any hoisted requires. No manual import is needed.
+ * 3. Emits self-contained instrumentation and preload assets, and optionally
+ *    copies dd-trace's runtime dependency tree for packagers that do not stage it.
  *
  * Usage:
  *   import { datadogVitePlugin } from '@datadog/electron-sdk/vite-plugin';
@@ -28,25 +26,20 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type { DatadogBundlerPluginOptions } from './bundler-plugin-options';
+import { createInstrumentationBanner, emitSdkRuntimeAssets } from './sdk-runtime-assets';
 
 export type { DatadogBundlerPluginOptions } from './bundler-plugin-options';
 
 interface VitePlugin {
   name: string;
   config?: () => { build: { rollupOptions: { external: RegExp[] } } };
-  renderChunk?: (code: string, chunk: { isEntry: boolean }, options: { format: string }) => string | null;
+  renderChunk?: (
+    code: string,
+    chunk: { isEntry: boolean; fileName: string },
+    options: { format: string }
+  ) => string | null;
   writeBundle?: (options: { dir?: string }) => void;
 }
-
-const CJS_BANNER =
-  'try { require("node:module").createRequire(__filename)("@datadog/electron-sdk/instrument"); } catch {}';
-
-// ESM modules don't have a global require, so we use createRequire to load instrument.ts,
-// which handles defaultSession preload registration and IPC patching via patchBrowserWindow.
-const ESM_BANNER = `
-import { createRequire as __ddCR } from "module";
-try { __ddCR(import.meta.url)("@datadog/electron-sdk/instrument"); } catch {}
-`.trim();
 
 /**
  * Creates the Datadog Vite plugin.
@@ -65,28 +58,27 @@ export function datadogVitePlugin(pluginOptions: DatadogBundlerPluginOptions = {
       return {
         build: {
           rollupOptions: {
-            external: [/^dd-trace/, /^@datadog\/electron-sdk/],
+            external: [/^dd-trace/],
           },
         },
       };
     },
     renderChunk(code, chunk, options) {
       if (!chunk.isEntry) return null;
-      const banner = options.format === 'es' ? ESM_BANNER : CJS_BANNER;
+      const banner = createInstrumentationBanner(options.format === 'es' ? 'esm' : 'cjs', chunk.fileName);
       return `${banner}\n${code}`;
     },
   };
 
-  if (pluginOptions.copyRuntimeDependencies === false) return plugin;
-
   plugin.writeBundle = (outputOptions) => {
-    // Copy externalized packages and their transitive dependencies into
-    // node_modules alongside the bundle output so they are available at
-    // runtime in packaged apps (e.g. Electron Forge asars) where the
-    // project's node_modules is not included.
     const outDir = outputOptions.dir;
     if (!outDir) return;
 
+    emitSdkRuntimeAssets(currentFile, outDir);
+    if (pluginOptions.copyRuntimeDependencies === false) return;
+
+    // dd-trace remains external and needs its runtime dependency tree staged
+    // when the application packager does not handle external dependencies.
     const destModules = join(outDir, 'node_modules');
     const visited = new Set<string>();
 
@@ -121,7 +113,6 @@ export function datadogVitePlugin(pluginOptions: DatadogBundlerPluginOptions = {
     }
 
     copyPackageTree('dd-trace');
-    copyPackageTree('@datadog/electron-sdk');
   };
 
   return plugin;

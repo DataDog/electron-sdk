@@ -6,7 +6,7 @@ import { display } from '../tools/display';
 // of the bundle. The env var must be set before dd-trace's register.js is loaded — if it
 // loads without 'electron' in DD_TRACE_DISABLED_INSTRUMENTATIONS it registers a RITM hook
 // that wraps net.request, causing duplicate spans alongside our own patchNet wrapper.
-const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
+const _require = createRequire(typeof __filename !== 'undefined' ? __filename : import.meta.url);
 
 const _existing = process.env['DD_TRACE_DISABLED_INSTRUMENTATIONS'];
 process.env['DD_TRACE_DISABLED_INSTRUMENTATIONS'] = _existing ? `${_existing},electron` : 'electron';

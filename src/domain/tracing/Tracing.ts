@@ -4,7 +4,7 @@ import { isCurrentSessionSampled } from '../../common';
 import { addError } from '../telemetry';
 import type { Configuration, TraceSamplingRule } from '../../config';
 
-const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
+const _require = createRequire(typeof __filename !== 'undefined' ? __filename : import.meta.url);
 
 interface ExporterWithFlush {
   flush(done: () => void): void;

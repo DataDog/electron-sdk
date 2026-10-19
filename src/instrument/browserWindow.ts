@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import { callMonitored } from '../domain/telemetry';
 import { display } from '../tools/display';
 
-const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
+const _require = createRequire(typeof __filename !== 'undefined' ? __filename : import.meta.url);
 
 function resolvePackage(id: string): string {
   return _require.resolve(id);

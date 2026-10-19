@@ -13,6 +13,18 @@ describe('resolvePreloadPath', () => {
     expect(result).toBe('/node_modules/@datadog/electron-sdk/dist/preload.js');
   });
 
+  it('resolves the colocated preload when the SDK package is not available', async () => {
+    const { resolvePreloadPath } = await import('./browserWindow');
+    const resolve = vi.fn((id: string) => {
+      if (id === './preload') return '/app/.datadog/preload.js';
+      throw new Error('MODULE_NOT_FOUND');
+    });
+
+    expect(resolvePreloadPath(resolve)).toBe('/app/.datadog/preload.js');
+    expect(resolve).toHaveBeenNthCalledWith(1, '@datadog/electron-sdk/preload');
+    expect(resolve).toHaveBeenNthCalledWith(2, './preload');
+  });
+
   it('returns undefined and warns when the package cannot be resolved', async () => {
     const { resolvePreloadPath } = await import('./browserWindow');
     const result = resolvePreloadPath(() => {

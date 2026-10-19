@@ -46,6 +46,8 @@ test.describe('electron-builder runtime dependency packaging @integration', () =
     const workflow = variant === 'packager-copy' ? 'packager-copy' : 'default-copy';
     const expectsPluginCopy = workflow === 'default-copy';
     const buildOutput = dirname(findDevMainScript(appDir, variant));
+    expect(existsSync(join(buildOutput, '.datadog', 'instrument.cjs'))).toBe(true);
+    expect(existsSync(join(buildOutput, '.datadog', 'preload.js'))).toBe(true);
     expect(existsSync(join(buildOutput, 'node_modules'))).toBe(expectsPluginCopy);
 
     const binary = findPackagedBinary(appDir, variant);
@@ -67,15 +69,23 @@ test.describe('electron-builder runtime dependency packaging @integration', () =
       expect(archiveEntries).toContain('/node_modules/@datadog/electron-sdk/package.json');
       expect(archiveEntries).toContain('/node_modules/dd-trace/package.json');
       expect(archiveEntries).toContain(`/dist/${workflow}/main.js`);
-      expect(archiveEntries.includes(`/dist/${workflow}/node_modules/@datadog/electron-sdk/package.json`)).toBe(
-        expectsPluginCopy
-      );
+      expect(archiveEntries).toContain(`/dist/${workflow}/.datadog/instrument.cjs`);
+      expect(archiveEntries).toContain(`/dist/${workflow}/.datadog/preload.js`);
+      expect(archiveEntries).not.toContain(`/dist/${workflow}/node_modules/@datadog/electron-sdk/package.json`);
       expect(archiveEntries.includes(`/dist/${workflow}/node_modules/dd-trace/package.json`)).toBe(expectsPluginCopy);
     } else {
+      expect(archiveEntries.some((entry) => entry.endsWith('/.datadog/instrument.cjs'))).toBe(true);
+      expect(archiveEntries.some((entry) => entry.endsWith('/.datadog/preload.js'))).toBe(true);
       const hasNestedDependencies = archiveEntries.some(
         (entry) => entry.endsWith('/node_modules/dd-trace/package.json') && !entry.startsWith('/node_modules/')
       );
       expect(hasNestedDependencies).toBe(expectsPluginCopy);
+      expect(
+        archiveEntries.some(
+          (entry) =>
+            entry.endsWith('/node_modules/@datadog/electron-sdk/package.json') && !entry.startsWith('/node_modules/')
+        )
+      ).toBe(false);
       if (!expectsPluginCopy) {
         expect(archiveEntries).toContain('/node_modules/@datadog/electron-sdk/package.json');
         expect(archiveEntries).toContain('/node_modules/dd-trace/package.json');

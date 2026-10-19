@@ -5,12 +5,12 @@ import { datadogVitePlugin } from './vite-plugin';
 import { DatadogWebpackPlugin } from './webpack-plugin';
 
 describe('runtime dependency copying', () => {
-  it('can be delegated to the packager for Vite', () => {
+  it('keeps the Vite output hook when dd-trace staging is delegated to the packager', () => {
     expect(datadogVitePlugin().writeBundle).toBeTypeOf('function');
-    expect(datadogVitePlugin({ copyRuntimeDependencies: false }).writeBundle).toBeUndefined();
+    expect(datadogVitePlugin({ copyRuntimeDependencies: false }).writeBundle).toBeTypeOf('function');
   });
 
-  it('can be delegated to the packager for esbuild', () => {
+  it('keeps the esbuild output hook when dd-trace staging is delegated to the packager', () => {
     const defaultOnEnd = vi.fn();
     datadogEsbuildPlugin().setup({ initialOptions: {}, onEnd: defaultOnEnd });
     expect(defaultOnEnd).toHaveBeenCalledOnce();
@@ -20,10 +20,10 @@ describe('runtime dependency copying', () => {
       initialOptions: {},
       onEnd: managedOnEnd,
     });
-    expect(managedOnEnd).not.toHaveBeenCalled();
+    expect(managedOnEnd).toHaveBeenCalledOnce();
   });
 
-  it('can be delegated to the packager for webpack', () => {
+  it('keeps the webpack output hook when dd-trace staging is delegated to the packager', () => {
     let defaultAfterEmitCalls = 0;
     new DatadogWebpackPlugin().apply(
       createWebpackCompiler(() => {
@@ -38,7 +38,31 @@ describe('runtime dependency copying', () => {
         managedAfterEmitCalls += 1;
       })
     );
-    expect(managedAfterEmitCalls).toBe(0);
+    expect(managedAfterEmitCalls).toBe(1);
+  });
+
+  it('externalizes dd-trace but allows Vite to bundle the Electron SDK', () => {
+    const external = datadogVitePlugin().config?.().build.rollupOptions.external ?? [];
+
+    expect(external.some((pattern) => pattern.test('dd-trace'))).toBe(true);
+    expect(external.some((pattern) => pattern.test('@datadog/electron-sdk'))).toBe(false);
+  });
+
+  it('externalizes dd-trace but allows esbuild to bundle the Electron SDK', () => {
+    const initialOptions: { external?: string[] } = {};
+    datadogEsbuildPlugin().setup({ initialOptions, onEnd: vi.fn() });
+
+    expect(initialOptions.external).toContain('dd-trace');
+    expect(initialOptions.external).not.toContain('@datadog/electron-sdk');
+  });
+
+  it('externalizes dd-trace but allows webpack to bundle the Electron SDK', () => {
+    const compiler = createWebpackCompiler(vi.fn());
+    new DatadogWebpackPlugin().apply(compiler);
+
+    const externals = compiler.options.externals as RegExp[];
+    expect(externals.some((pattern) => pattern.test('dd-trace'))).toBe(true);
+    expect(externals.some((pattern) => pattern.test('@datadog/electron-sdk'))).toBe(false);
   });
 });
 

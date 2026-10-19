@@ -19,7 +19,7 @@ import { createRequire } from 'node:module';
 import './instrument-prelude';
 import { instrumentElectron } from '../instrument/instrumentElectron';
 
-const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
+const _require = createRequire(typeof __filename !== 'undefined' ? __filename : import.meta.url);
 
 try {
   const electron = _require('electron') as string | typeof import('electron');

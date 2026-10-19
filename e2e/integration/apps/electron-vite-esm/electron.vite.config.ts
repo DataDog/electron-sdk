@@ -7,6 +7,9 @@ export default defineConfig({
   main: {
     plugins: [datadogVitePlugin({ copyRuntimeDependencies })],
     build: {
+      externalizeDeps: {
+        exclude: ['@datadog/electron-sdk'],
+      },
       rollupOptions: {
         output: {
           format: 'es',

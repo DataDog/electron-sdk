@@ -1,8 +1,9 @@
 export interface DatadogBundlerPluginOptions {
   /**
-   * Copy the SDK, dd-trace, and their runtime dependencies into the build output.
+   * Copy dd-trace and its runtime dependencies into the build output.
    *
-   * Disable this when the application packager stages external dependencies.
+   * The SDK instrumentation and preload assets are always emitted by the plugin.
+   * Disable this option when the application packager stages external dependencies.
    *
    * @default true
    */
