@@ -63,7 +63,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   transport = await Transport.create(config, eventManager, trackingConsentManager);
   sessionManager = await SessionManager.start(eventManager, hooks, config, trackingConsentManager);
 
-  new ProfilingCollection(eventManager, sessionManager, config, hooks);
+  new ProfilingCollection(eventManager, sessionManager, config, hooks, trackingConsentManager);
   replayCollection = new ReplayCollection(eventManager, config, sessionManager, hooks);
 
   if (tracing.enabled) {
