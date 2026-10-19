@@ -20,6 +20,8 @@ import {
   setGlobalContextProperty,
   removeGlobalContextProperty,
   clearGlobalContext,
+  setTrackingConsent,
+  type TrackingConsent,
   setUserInfo,
   clearUserInfo,
   addUserExtraInfo,
@@ -190,6 +192,12 @@ ipcMain.handle('main:remove-global-context-property', () => {
 
 ipcMain.handle('main:clear-global-context', () => {
   clearGlobalContext();
+});
+
+// --- Tracking consent handler ---
+
+ipcMain.handle('main:set-tracking-consent', (_event, consent: TrackingConsent) => {
+  setTrackingConsent(consent);
 });
 
 // --- User & Account context handlers ---

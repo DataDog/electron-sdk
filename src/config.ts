@@ -3,6 +3,7 @@ import { isIndexableObject } from '@datadog/js-core/util';
 import { ONE_KIBI_BYTE, ONE_MEBI_BYTE, DefaultPrivacyLevel } from '@datadog/browser-core';
 import { display } from './tools/display';
 import type { RumEvent } from './domain/rum';
+import type { TrackingConsent } from './domain/tracking-consent';
 import { isFiniteNumber, isOneOf, isValidString } from './tools/validation';
 
 const VALID_DATADOG_SITES = [
@@ -15,6 +16,8 @@ const VALID_DATADOG_SITES = [
   'ddog-gov.com',
   'datad0g.com', // Internal staging site
 ] as const;
+
+export const VALID_TRACKING_CONSENTS: readonly TrackingConsent[] = ['granted', 'pending', 'not-granted'];
 
 export const BatchSizes = {
   SMALL: 16 * ONE_KIBI_BYTE,
@@ -80,6 +83,19 @@ export interface InitConfiguration {
   env?: string;
   version?: string;
   sessionSampleRate?: number;
+  /**
+   * Initial tracking consent of the end user, defaults to `'granted'`:
+   * - `'granted'`: data is collected and sent.
+   * - `'pending'`: data is collected and kept on disk, then sent if consent is granted, or deleted
+   *   if it is refused or still pending at the next launch.
+   * - `'not-granted'`: no new data is kept or sent; data stored earlier with consent is still sent.
+   *
+   * Update it with `setTrackingConsent()`, whose calls made before `init()` take precedence over
+   * this option. The SDK does not restore the consent at the next launch, so pass it at each
+   * launch. An invalid value aborts `init()`.
+   * @example trackingConsent: 'pending'
+   */
+  trackingConsent?: TrackingConsent;
   /**
    * Percentage of logs received from renderer processes to forward (0–100), defaults to `100`.
    * Applied independently to each bridged log.
@@ -169,6 +185,7 @@ export interface Configuration {
   version?: string;
   proxy?: string;
   sessionSampleRate: number;
+  trackingConsent: TrackingConsent;
   logsSampleRate: number;
   traceSampleRate: number;
   traceSamplingRules: TraceSamplingRule[];
@@ -219,6 +236,19 @@ function validateRequiredString(value: unknown, fieldName: string): string | und
 function validateSite(value: unknown): string | undefined {
   if (!isOneOf(value, VALID_DATADOG_SITES)) {
     display.error(`Configuration error: 'site' must be one of: ${VALID_DATADOG_SITES.join(', ')}`);
+    return undefined;
+  }
+  return value;
+}
+
+// Unlike validateEnumOption, which falls back to the default, an invalid or null consent aborts
+// init(): the default grants consent.
+function validateTrackingConsent(value: unknown): TrackingConsent | undefined {
+  if (value === undefined) {
+    return 'granted';
+  }
+  if (!isOneOf(value, VALID_TRACKING_CONSENTS)) {
+    display.error(`Configuration error: 'trackingConsent' must be one of: ${VALID_TRACKING_CONSENTS.join(', ')}`);
     return undefined;
   }
   return value;
@@ -440,6 +470,11 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     return undefined;
   }
 
+  const trackingConsent = validateTrackingConsent(initConfig.trackingConsent);
+  if (trackingConsent === undefined) {
+    return undefined;
+  }
+
   return {
     site,
     service,
@@ -449,6 +484,7 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     version: validateOptionalString(initConfig.version),
     proxy,
     sessionSampleRate,
+    trackingConsent,
     logsSampleRate,
     traceSampleRate,
     traceSamplingRules,

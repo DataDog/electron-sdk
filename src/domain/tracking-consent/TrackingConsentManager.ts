@@ -35,7 +35,7 @@ export class TrackingConsentManager {
     hooks.registerSpan(checkConsent);
   }
 
-  static async init(hooks: FormatHooks, initialConsent: TrackingConsent = 'granted'): Promise<TrackingConsentManager> {
+  static async init(hooks: FormatHooks, initialConsent: TrackingConsent): Promise<TrackingConsentManager> {
     const history = await DiskValueHistory.init<TrackingConsent>({
       filePath: path.join(app.getPath('userData'), TRACKING_CONSENT_HISTORY_FILE_NAME),
       expireDelay: SESSION_TIME_OUT_DELAY,

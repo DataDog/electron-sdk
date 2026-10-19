@@ -28,7 +28,7 @@ function report(
   configuration: Configuration,
   context: Partial<ConfigurationTelemetryContext> = {}
 ): RawTelemetryConfigurationData {
-  reportConfiguration(configuration, { useTracing: false, ...context });
+  reportConfiguration(configuration, { useTracing: false, trackingConsent: 'granted', ...context });
   expect(addConfiguration).toHaveBeenCalledTimes(1);
   return vi.mocked(addConfiguration).mock.calls[0][0];
 }
@@ -64,6 +64,10 @@ describe('reportConfiguration', () => {
 
   it('reports the default trace sample rate', () => {
     expect(report(createTestConfiguration()).trace_sample_rate).toBe(100);
+  });
+
+  it('reports the tracking consent the SDK applies', () => {
+    expect(report(createTestConfiguration(), { trackingConsent: 'pending' }).tracking_consent).toBe('pending');
   });
 
   it('reports the privacy level applied to renderers', () => {

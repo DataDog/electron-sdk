@@ -31,7 +31,7 @@ describe('TrackingConsentManager', () => {
     vi.useRealTimers();
   });
 
-  async function launch(initialConsent?: TrackingConsent) {
+  async function launch(initialConsent: TrackingConsent = 'granted') {
     // Let the previous launch finish writing its history.
     await vi.advanceTimersByTimeAsync(0);
     const hooks = createFormatHooks();
@@ -46,10 +46,9 @@ describe('TrackingConsentManager', () => {
     return { manager, isDiscardedAt };
   }
 
-  it('starts granted and discards events captured before its creation', async () => {
-    const { manager, isDiscardedAt } = await launch();
+  it('discards events captured before its creation', async () => {
+    const { isDiscardedAt } = await launch();
 
-    expect(manager.get()).toBe('granted');
     expect(isDiscardedAt(999)).toBe(true);
     expect(isDiscardedAt(1000)).toBe(false);
   });

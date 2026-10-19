@@ -23,6 +23,8 @@ vi.mock('./domain/telemetry', () => ({
 }));
 vi.mock('./tools/display', () => ({ display }));
 
+import type { TrackingConsent } from './domain/tracking-consent';
+
 import {
   addDurationVital,
   clearGlobalContext,
@@ -279,5 +281,91 @@ describe.sequential('global context public API', () => {
       expect(globalContextApi.setProperty).not.toHaveBeenCalled();
       expect(addUsage).toHaveBeenCalledWith({ feature: 'set-global-context-property' });
     });
+  });
+});
+
+describe.sequential('tracking consent public API', () => {
+  let api: typeof import('./api');
+  const manager = { update: vi.fn() };
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    // The consent last set by the app is module state: each test starts from a fresh module.
+    vi.resetModules();
+    api = await import('./api');
+  });
+
+  it('updates the registered manager directly', () => {
+    api.setTrackingConsentApi(manager);
+
+    api.setTrackingConsent('pending');
+
+    expect(manager.update).toHaveBeenCalledExactlyOnceWith('pending');
+  });
+
+  it('reports usage after applying the consent', () => {
+    api.setTrackingConsentApi(manager);
+
+    api.setTrackingConsent('granted');
+
+    expect(addUsage).toHaveBeenCalledExactlyOnceWith({ feature: 'set-tracking-consent', tracking_consent: 'granted' });
+    expect(manager.update.mock.invocationCallOrder[0]).toBeLessThan(addUsage.mock.invocationCallOrder[0]);
+  });
+
+  it('handles an invalid consent as a refusal', () => {
+    api.setTrackingConsentApi(manager);
+
+    api.setTrackingConsent('denied' as never);
+
+    expect(display.error).toHaveBeenCalledExactlyOnceWith(
+      'setTrackingConsent: consent must be one of: granted, pending, not-granted. It is handled as not-granted.'
+    );
+    expect(manager.update).toHaveBeenCalledExactlyOnceWith('not-granted');
+    expect(addUsage).toHaveBeenCalledExactlyOnceWith({
+      feature: 'set-tracking-consent',
+      tracking_consent: 'not-granted',
+    });
+  });
+
+  it.each<[string, TrackingConsent[], TrackingConsent]>([
+    ['a consent set', ['not-granted'], 'not-granted'],
+    ['the last consent set', ['not-granted', 'granted'], 'granted'],
+    ['a refusal for an invalid consent set', ['denied' as never], 'not-granted'],
+  ])('applies %s before init() to the manager it registers', (_title, calls, expected) => {
+    calls.forEach((consent) => api.setTrackingConsent(consent));
+
+    api.setTrackingConsentApi(manager);
+
+    expect(manager.update).toHaveBeenCalledExactlyOnceWith(expected);
+  });
+
+  it('leaves the init option when no consent was set', () => {
+    api.setTrackingConsentApi(manager);
+
+    expect(manager.update).not.toHaveBeenCalled();
+  });
+
+  it.each<[string, () => void]>([
+    [
+      'before a failed init()',
+      () => {
+        api.setTrackingConsent('not-granted');
+        api.setTrackingConsentApi(manager);
+      },
+    ],
+    [
+      'after a failed init() registered its manager',
+      () => {
+        api.setTrackingConsentApi(manager);
+        api.setTrackingConsent('not-granted');
+      },
+    ],
+  ])('applies a consent set %s to the manager of the retried init()', (_title, failedInit) => {
+    failedInit();
+    const retriedManager = { update: vi.fn() };
+
+    api.setTrackingConsentApi(retriedManager);
+
+    expect(retriedManager.update).toHaveBeenCalledExactlyOnceWith('not-granted');
   });
 });

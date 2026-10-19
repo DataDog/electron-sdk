@@ -155,19 +155,25 @@ When `enableExecutionContext` is set, `ExecutionContextCollection` (`src/domain/
 
 **Fake views.** Every RUM event needs a `view.id` to resolve against, but the main process has no real navigable page to attach one to. Fake views are synthetically created by the SDK to carry execution-context events during the transition phase where execution-context events still require a `view.id`. Every event type associated with a fake view carries `view.is_fake: true`, so the backend and frontend can filter it out. `ViewContext` (`src/domain/rum/view/ViewContext.ts`) is what tags main-process events with this fake view instead of a real one when execution-context tracking is enabled — pointing at the same `id` `MainProcessContext` maintains as an actual `view` RUM document.
 
-## Internal Tracking Consent State
+## Tracking Consent
 
-`TrackingConsentManager` defaults to `granted`. Changes notify monitored subscribers synchronously after updating
-the state. Consumers own their subscriptions and unsubscribe when stopped.
+`init()` creates its `TrackingConsentManager` with the `trackingConsent` option, `granted` by default. A consent set
+with `setTrackingConsent()` before `init()`, or while it runs, takes precedence, as in the Browser SDK: `init()`
+applies the value set last to the manager once created, including in an `init()` retried after a failure. Later
+calls update the manager directly. `setTrackingConsent()` handles an invalid value as a refusal, before `init()` as
+after.
 
-Its timestamped history is persisted like the session and view histories, so that an event is judged by the
+Changes notify monitored subscribers synchronously after updating the state. Consumers own their subscriptions and
+unsubscribe when stopped.
+
+The manager's timestamped history is persisted like the session and view histories, so that an event is judged by the
 consent of its own time, even when it is assembled at a later launch. A decision is recorded over the whole `pending`
 period it ends, so a lookup returns the consent that applies to data captured at that time.
 
 ### Consent and batch storage
 
-SDK initialization creates one `TrackingConsentManager`, shared by the session manager and the transport's batch
-managers.
+SDK initialization creates one `TrackingConsentManager`, shared by the session manager, `ProfilingCollection` and the
+transport's batch managers.
 `Transport` routes events to one `BatchManager` per active track (RUM, logs, spans, replay, profiling).
 The manager coordinates a consent-aware writer and a consumer that reads only authorized batches.
 
@@ -268,7 +274,9 @@ Each type is gated by its own sampling, deduplication and rate-limiting policy:
   one per process and it must not be starved by a burst of errors.
 
 The configuration event is reported at the end of `init()` — the transport must be registered for it
-to reach a batch, and every component whose state it describes must be constructed. It reports
+to reach a batch, and every component whose state it describes must be constructed. When consent is
+not granted at that point, it is reported at the first grant, as in the Browser SDK: while consent is
+refused nothing would store it, and while it is pending a refusal would delete it. It reports
 _effective_ values (`src/domain/telemetry/configurationTelemetry.ts`): an unset option still produces
 behaviour, so defaults are resolved rather than reported as absent.
 
@@ -276,6 +284,9 @@ Usage events are reported by the public API functions themselves (`src/index.ts`
 the first statement of each call so that a call rejected by argument validation still counts as
 adoption. Only the schema's `feature` discriminator is sent, never the caller's arguments. APIs the
 schema has no feature for are reported as the closest one, with a comment at the call site.
+`setTrackingConsent()` is the exception: its schema requires the consent, so it reports the consent
+it applied. Like the Browser SDK, it reports it after applying it, so that the event is stored under
+that consent: a refusal is not sent.
 
 #### Renderer telemetry
 
@@ -395,10 +406,12 @@ All spans are enriched with `_dd.application.id`, `_dd.session.id`, and `_dd.vie
 `traceSamplingRules` and `traceSampleRate` are applied by dd-trace when a root trace is sampled. Rules are ordered,
 the first match wins, and `traceSampleRate` is the fallback when no rule matches. Within a sampled RUM session, each
 root trace is sampled independently, so the session can contain both kept and rejected traces. Child spans inherit the
-root decision. Trace context is never propagated from an unsampled RUM session. For rejected traces in a sampled
-session, Electron `net` requests omit trace headers, while global `fetch` and `node:http` propagate the rejected sampling
-decision so downstream spans inherit it. Rejected traces are not sent to the spans intake. Their HTTP spans still
-produce RUM resources without trace or span identifiers.
+root decision. Trace context is never propagated from an unsampled RUM session, nor while no session is active: before
+the first session decision, after a session expires until activity renews it, or while consent is refused. A `pending`
+consent does not end or prevent the session, so trace context propagates as when consent is granted. For rejected
+traces in a sampled session, Electron `net` requests omit trace headers, while global `fetch` and `node:http` propagate
+the rejected sampling decision so downstream spans inherit it. Rejected traces are not sent to the spans intake. Their
+HTTP spans still produce RUM resources without trace or span identifiers.
 
 ### Preload injection
 
@@ -413,7 +426,7 @@ The SDK injects a preload script (`@datadog/electron-sdk/preload`) into every re
 
 The preload fetches bridge configuration from the main process synchronously at load time via a `datadog:bridge-config` IPC request. This config drives renderer behavior: `defaultPrivacyLevel`, `allowedRendererHosts`, and the advertised `capabilities` (the bridge features the Browser SDK may use, e.g. profiling or session replay).
 
-The responder is registered at **instrument time** (when `@datadog/electron-sdk/instrument` loads), backed by a process-global holder keyed with `Symbol.for('@datadog/electron-sdk:bridgeConfig')`. The holder is seeded with fallback values (`defaultPrivacyLevel: 'mask'`, `allowedRendererHosts: ['*', '']`, and capabilities advertising the SDK's supported features) so the bridge works immediately, even before `init()` runs. When `init()` executes, `RendererPipeline` calls `setBridgeConfig` to replace the holder's value with the real configuration.
+The responder is registered at **instrument time** (when `@datadog/electron-sdk/instrument` loads), backed by a process-global holder keyed with `Symbol.for('@datadog/electron-sdk:bridgeConfig')`. The holder is seeded with fallback values (`defaultPrivacyLevel: 'mask'`, `allowedRendererHosts: ['*', '']`, and capabilities advertising the SDK's supported features) so renderers use the bridge even before `init()` runs, rather than running the Browser SDK standalone, which uploads with its own client token, outside the tracking consent. Their events are dropped until `init()` registers the bridge listener. When `init()` executes, `RendererPipeline` calls `setBridgeConfig` to replace the holder's value with the real configuration.
 
 The process-global (`Symbol.for`) is required because `instrument` and the `init()` bundle are separate CommonJS module instances: a module-level variable would not be shared between them, so they would always read the fallback.
 
@@ -472,5 +485,6 @@ The `copyPackageTree` function in all three bundler plugins walks only the `depe
 
 - **Required fields** (e.g. `clientToken`): validation returns `undefined` to signal initialization should abort; no exceptions thrown.
 - **Optional fields** (e.g. `env`): invalid values silently fall back to `undefined`.
+- **Enum fields** (e.g. `batchSize`): invalid values are reported and fall back to the default, except `trackingConsent`, whose default grants consent: an invalid or `null` value aborts initialization.
 
 See `src/config.ts`.

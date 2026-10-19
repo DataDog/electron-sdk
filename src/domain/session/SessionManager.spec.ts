@@ -40,10 +40,11 @@ describe('sessionManager', () => {
   beforeEach(async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
-    // The sampling decision is process-wide: reset what an earlier test left.
+    // The sampling decision is process-wide: start from true, so a test expecting false proves the
+    // manager wrote it.
     setCurrentSessionSampled(true);
     mfs.writeFile.mockResolvedValue(undefined);
-    trackingConsentManager = await TrackingConsentManager.init(createFormatHooks());
+    trackingConsentManager = await TrackingConsentManager.init(createFormatHooks(), 'granted');
     eventManager = new EventManager();
     lifecycleEvents = [];
     eventManager.registerHandler<LifecycleEvent>({

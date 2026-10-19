@@ -178,6 +178,7 @@ export class Intake {
   private profilingRequests: ProfilingRequest[] = [];
   private port = 0;
   private quotaDecision: 'quota_ok' | 'quota_ko' = 'quota_ok';
+  private quotaCheckCount = 0;
 
   private storeRumEvents(parsedBody: unknown, headers: Record<string, string>, ddforward: string) {
     const items = Array.isArray(parsedBody) ? (parsedBody as unknown[]) : [parsedBody];
@@ -277,6 +278,7 @@ export class Intake {
         const ddforwardSubdomain = url.searchParams.get('ddforwardSubdomain') ?? '';
 
         if (req.method === 'GET' && ddforwardSubdomain === 'quota') {
+          this.quotaCheckCount++;
           const admitted = this.quotaDecision === 'quota_ok';
           // Mirror the real quota API: `reason` is an admission reason, not the decision itself
           // (a denial reports why, e.g. `quota_exceeded`).
@@ -509,6 +511,11 @@ export class Intake {
     return this.traces.flatMap((trace) => trace.spans).filter(predicate);
   }
 
+  /** Number of profiling quota checks received. */
+  getQuotaCheckCount(): number {
+    return this.quotaCheckCount;
+  }
+
   getProfilingRequests(): ProfilingRequest[] {
     return [...this.profilingRequests];
   }
@@ -593,6 +600,7 @@ export class Intake {
     this.traces = [];
     this.profilingRequests = [];
     this.quotaDecision = 'quota_ok';
+    this.quotaCheckCount = 0;
   }
 
   getPort(): number {
