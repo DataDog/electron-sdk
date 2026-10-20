@@ -16,7 +16,7 @@ This initializes the git submodule, installs playground and e2e app dependencies
 
 ### Manual Checks
 
-Run appropriate tests based on your changes:
+Run tools with `yarn <command>` or from `node_modules/.bin`, never `npx`. Run appropriate tests based on your changes:
 
 - **Format & tint**: `yarn lint-staged` - Format and lint only staged files
 - **Type check**: `yarn typecheck` - Verify TypeScript types
