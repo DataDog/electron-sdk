@@ -232,18 +232,21 @@ describe('PathScrubber', () => {
     });
 
     it.each([
-      ['root', '/'],
-      ['drive root', 'C:\\'],
-      ['single folder on a Windows drive', 'C:\\Users'],
-      ['single segment', '/Users'],
-      ['empty', ''],
-    ])('skips a degenerate app path (%s), displayed without the path itself, and sends no telemetry', (_, appPath) => {
-      const scrubber = createScrubber(appPath);
+      ['root', '/', 'file:///etc/hosts'],
+      ['drive root', 'C:\\', 'C:\\Windows\\x'],
+      ['single folder on a Windows drive', 'C:\\Users', 'C:\\Users\\bob\\x'],
+      ['single segment', '/Users', '/Users/bob/x'],
+      ['empty', '', 'file:///etc/hosts'],
+    ])(
+      'skips a degenerate app path (%s), displayed without the path itself, and sends no telemetry',
+      (_, appPath, input) => {
+        const scrubber = createScrubber(appPath);
 
-      expect(scrubString(scrubber, '/etc/hosts')).toBe('/etc/hosts');
-      expect(vi.mocked(display.error).mock.calls).toEqual([['Path scrubbing skipped appPath: degenerate path']]);
-      expect(addError).not.toHaveBeenCalled();
-    });
+        expect(scrubString(scrubber, input)).toBe(input);
+        expect(vi.mocked(display.error).mock.calls).toEqual([['Path scrubbing skipped appPath: degenerate path']]);
+        expect(addError).not.toHaveBeenCalled();
+      }
+    );
   });
 
   describe('failures', () => {
