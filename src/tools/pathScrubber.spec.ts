@@ -103,6 +103,11 @@ describe('PathScrubber', () => {
   describe('Windows paths', () => {
     it.each([
       ['raw path in a stack frame', `at f (${WINDOWS_APP}\\dist\\main.js:3:1)`, 'at f (/dist/main.js:3:1)'],
+      [
+        'multiple occurrences and escaped newlines',
+        `Error: boom\n    at f (${WINDOWS_APP}\\dist\\a.js:1:1)\n    at g (${WINDOWS_APP}\\dist\\b.js:2:2)`,
+        'Error: boom\n    at f (/dist/a.js:1:1)\n    at g (/dist/b.js:2:2)',
+      ],
       ['lowercase drive letter', `c${WINDOWS_APP.slice(1)}\\dist\\main.js`, '/dist/main.js'],
       ['different case', 'C:\\Users\\Alice\\AppData\\Local\\Programs\\My App\\resources\\app.asar\\x', '/x'],
       ['all lowercase', `${WINDOWS_APP.toLowerCase()}\\x`, '/x'],
