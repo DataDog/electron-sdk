@@ -12,8 +12,8 @@ export const TRACKING_CONSENT_HISTORY_FILE_NAME = '_dd_tracking_consent_history'
 
 /**
  * Owns the consent state and its persisted, timestamped history, with synchronous change notifications.
- * Assembly discards RUM events captured during a refused period, including events recovered at a later launch,
- * such as crashes.
+ * Its format hooks discard RUM events and spans that started in a refused period or in no known period, including
+ * events recovered at a later launch, such as crashes.
  */
 export class TrackingConsentManager {
   private readonly changes = new Observable<TrackingConsentChange>();
@@ -29,11 +29,10 @@ export class TrackingConsentManager {
     }
     this.updateHistory(initialConsent);
 
-    hooks.registerRum(({ startTime }) => {
-      // Events of an undecided pending period are held by the batch storage until its decision.
-      const consent = this.history.find(startTime);
-      return consent === 'granted' || consent === 'pending' ? SKIPPED : DISCARDED;
-    });
+    const checkConsent = ({ startTime }: { startTime: TimeStamp }) =>
+      this.allowsDataCapturedAt(startTime) ? SKIPPED : DISCARDED;
+    hooks.registerRum(checkConsent);
+    hooks.registerSpan(checkConsent);
   }
 
   static async init(hooks: FormatHooks, initialConsent: TrackingConsent = 'granted'): Promise<TrackingConsentManager> {
@@ -46,6 +45,15 @@ export class TrackingConsentManager {
 
   get(): TrackingConsent {
     return this.history.find(timeStampNow())!;
+  }
+
+  /**
+   * Whether data captured at a time may be written to batch storage: the time falls in a granted period, or in the
+   * undecided pending period, whose data is held by batch storage until the decision.
+   */
+  allowsDataCapturedAt(time: TimeStamp): boolean {
+    const consent = this.history.find(time);
+    return consent === 'granted' || consent === 'pending';
   }
 
   /** Update the state and notify subscribers. Repeating the active state has no effect. */
