@@ -142,7 +142,7 @@ export class Segment {
     // the player sees one large blob and can only parse segment 0.
     const metadataJson = JSON.stringify(this.metadata);
     // metadataJson = '{"start":...}' — drop the opening '{' to splice into the records object
-    // Scrubbed before measuring: rawBytesCount is sent as raw_segment_size and must match the uploaded bytes.
+    // Scrubbed before measuring: rawBytesCount is sent as raw_segment_size, the size of the segment once decompressed.
     const serializedSegment = this.pathScrubber.scrub(
       `{"records":${JSON.stringify(this.records)},${metadataJson.slice(1)}\n`
     );
