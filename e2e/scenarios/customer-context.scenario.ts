@@ -108,24 +108,26 @@ test('attaches both user and account info to the same event', async ({ mainPage,
   expect(error.account).toEqual({ id: 'account-1', name: 'Acme Corp' });
 });
 
-test('enriches spans with usr.* tags when user context is set', async ({ mainPage, intake }) => {
+test('enriches spans with usr.* tags when user context is set', async ({ mainPage, intake, testServer }) => {
   await mainPage.setUserInfo({ id: 'user-1', name: 'Alice' });
 
-  await mainPage.mainPing();
+  const url = testServer.urlFor(200);
+  await mainPage.mainNetFetch(url);
   await mainPage.flushTransport();
 
-  const span = await intake.waitForSpan((s) => s.name === 'electron.main.handle' && s.resource === 'ping');
+  const span = await intake.waitForSpan((s) => s.name === 'http.request' && s.meta['http.url'] === url);
   expect(span.meta['usr.id']).toBe('user-1');
   expect(span.meta['usr.name']).toBe('Alice');
 });
 
-test('enriches spans with account.* tags when account context is set', async ({ mainPage, intake }) => {
+test('enriches spans with account.* tags when account context is set', async ({ mainPage, intake, testServer }) => {
   await mainPage.setAccountInfo({ id: 'account-1', name: 'Acme Corp' });
 
-  await mainPage.mainPing();
+  const url = testServer.urlFor(200);
+  await mainPage.mainNetFetch(url);
   await mainPage.flushTransport();
 
-  const span = await intake.waitForSpan((s) => s.name === 'electron.main.handle' && s.resource === 'ping');
+  const span = await intake.waitForSpan((s) => s.name === 'http.request' && s.meta['http.url'] === url);
   expect(span.meta['account.id']).toBe('account-1');
   expect(span.meta['account.name']).toBe('Acme Corp');
 });

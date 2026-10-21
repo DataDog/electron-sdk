@@ -279,8 +279,6 @@ void app.whenReady().then(async () => {
     addAccountExtraInfo(extraInfo);
   });
 
-  ipcMain.handle('ping', () => 'pong');
-
   ipcMain.handle('openRendererProcess', () => {
     testRendererWindow = new BrowserWindow({
       width: 400,
@@ -323,14 +321,6 @@ void app.whenReady().then(async () => {
       }, 500);
     });
     wc.forcefullyCrashRenderer();
-  });
-
-  ipcMain.on('mainFireAndForget', (event) => {
-    event.sender.send('mainFireAndForgetAck');
-  });
-
-  ipcMain.handle('triggerMainSend', () => {
-    mainWindow?.webContents.send('mainPush', 'hello');
   });
 
   ipcMain.handle('crash', () => {

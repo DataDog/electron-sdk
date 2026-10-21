@@ -147,13 +147,13 @@ ipcMain.handle('main:fetch-api-fetch', async () => {
   return (await res.json()) as unknown;
 });
 
-async function fetchWithNet(): Promise<unknown> {
-  const res = await net.fetch('https://httpbin.org/json');
+async function fetchWithNet(url: string): Promise<unknown> {
+  const res = await net.fetch(url);
   return (await res.json()) as unknown;
 }
 
-ipcMain.handle('main:fetch-api-net', fetchWithNet);
-ipcMain.handle('main:fetch-api-net-drop', fetchWithNet);
+ipcMain.handle('main:fetch-api-net', () => fetchWithNet('https://httpbin.org/json'));
+ipcMain.handle('main:fetch-api-net-drop', () => fetchWithNet('https://httpbin.org/json?trace=drop'));
 
 // IPC handler to crash the main process
 ipcMain.handle('crash', () => {
@@ -281,7 +281,7 @@ void app
       service: 'playground-main',
       version: readPlaygroundVersion(),
       env: 'dev',
-      traceSamplingRules: [{ name: 'electron.main.handle', resource: 'main:fetch-api-net-drop', sampleRate: 0 }],
+      traceSamplingRules: [{ tags: { 'http.url': '*trace=drop' }, sampleRate: 0 }],
       sessionReplaySampleRate: 100,
       profilingSampleRate: 100,
       beforeSendRum: (event) => {
