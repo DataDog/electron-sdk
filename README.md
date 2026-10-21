@@ -79,7 +79,7 @@ await init({
 });
 ```
 
-> **Deferred init caveat:** if `init()` is called after some windows are already open, those windows keep the fallback bridge configuration (`defaultPrivacyLevel: 'mask'` and the default advertised capabilities) until they are reloaded. The view they were showing is judged by the consent the previous launch ended with, and attached to that launch's session if it was still active, or dropped. SDK telemetry is only processed and collected once `init()` runs — at that point the configured `allowedRendererHosts` is enforced on all messages uniformly, regardless of when each window loaded. To wait for the end user's consent, call `init()` at startup with `trackingConsent: 'pending'` or `'not-granted'` instead of deferring it (see [Tracking Consent](#tracking-consent)).
+> **Deferred init caveat:** windows opened before `init()` are not reliably monitored until they are reloaded: they keep a fallback configuration, and what they collected before `init()` can be dropped or attributed to the previous launch. To wait for the end user's consent, call `init()` at startup with `trackingConsent: 'pending'` rather than deferring it (see [Tracking Consent](#tracking-consent)).
 
 #### Renderer process setup
 
