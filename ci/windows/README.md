@@ -47,6 +47,6 @@ The suite exercises both packaged dependency-copy variants and crash reporting a
 Validate changes on Windows, Linux, and macOS because preparation and test helpers are shared.
 
 Display telemetry is checked against Electron's actual display count, which can be zero in a
-container. The Windows payload regression checks packager-copy Vite output using a PowerShell 5.1
+container. The Windows payload regression checks packager-owned Vite output using a PowerShell 5.1
 archive/extraction round trip below the legacy path limit. This workflow uses the full Windows Server
 image, not Server Core. Use it for functional tests; performance measurements need a separate baseline.

@@ -1,15 +1,16 @@
 /**
  * esbuild plugin for Electron apps using the Datadog Electron SDK.
  *
- * This plugin handles early Electron instrumentation and dependency externalization
- * for both CJS and ESM esbuild output formats.
- *
- * For CJS output: prepends a banner that loads @datadog/electron-sdk/instrument,
- * which patches BrowserWindow with automatic preload injection.
- *
- * For ESM output: prepends a banner that loads @datadog/electron-sdk/instrument
- * via createRequire (ESM modules don't have a global require). instrument.ts
- * handles defaultSession preload registration and IPC patching via patchBrowserWindow.
+ * This plugin:
+ * 1. Externalizes dd-trace and @datadog/electron-sdk so they remain as runtime
+ *    dependencies instead of being bundled.
+ * 2. Prepends a banner that loads @datadog/electron-sdk/instrument before the
+ *    main entry, using require for CJS output and createRequire for ESM output.
+ *    This registers the SDK preload and patches BrowserWindow for automatic
+ *    preload injection.
+ * 3. Copies dd-trace, @datadog/electron-sdk, and their runtime dependencies
+ *    into the build output's node_modules only when `copyRuntimeDependencies: true`.
+ *    Copying is disabled by default; the application packager must stage them.
  *
  * Usage:
  *   import { datadogEsbuildPlugin } from '@datadog/electron-sdk/esbuild-plugin';
@@ -55,7 +56,7 @@ try { __ddCR(import.meta.url)("@datadog/electron-sdk/instrument"); } catch {}
  * Creates the Datadog esbuild plugin.
  *
  * @example
- * plugins: [datadogEsbuildPlugin({ copyRuntimeDependencies: false })]
+ * plugins: [datadogEsbuildPlugin()]
  */
 export function datadogEsbuildPlugin(pluginOptions: DatadogBundlerPluginOptions = {}): EsbuildPlugin {
   return {
@@ -80,7 +81,7 @@ export function datadogEsbuildPlugin(pluginOptions: DatadogBundlerPluginOptions 
       }
       build.initialOptions.external = external;
 
-      if (pluginOptions.copyRuntimeDependencies === false) return;
+      if (pluginOptions.copyRuntimeDependencies !== true) return;
 
       const currentFile = typeof __filename !== 'undefined' ? __filename : fileURLToPath(import.meta.url);
       const _require = createRequire(currentFile);

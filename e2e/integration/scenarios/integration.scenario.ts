@@ -43,8 +43,8 @@ test.describe('electron-builder runtime dependency packaging @integration', () =
     );
 
     const appDir = getIntegrationAppDirectory(app, variant);
-    const workflow = variant === 'packager-copy' ? 'packager-copy' : 'default-copy';
-    const expectsPluginCopy = workflow === 'default-copy';
+    const workflow = variant === 'plugin-copy' ? 'plugin-copy' : 'default-copy';
+    const expectsPluginCopy = variant === 'plugin-copy';
     const buildOutput = dirname(findDevMainScript(appDir, variant));
     expect(existsSync(join(buildOutput, 'node_modules'))).toBe(expectsPluginCopy);
 

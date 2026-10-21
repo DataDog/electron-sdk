@@ -14,8 +14,8 @@ test.describe('Windows unsigned payload extraction @integration @windows', () =>
 
   test('extracts the packager-owned Vite output below the legacy path limit', async ({ app, mode, variant }) => {
     test.skip(
-      app !== 'electron-builder-vite' || mode !== 'packaged' || variant !== 'packager-copy',
-      'electron-builder-vite packager-copy packaged only'
+      app !== 'electron-builder-vite' || mode !== 'packaged' || variant !== null,
+      'electron-builder-vite default packaged only'
     );
 
     const appDirectory = getIntegrationAppDirectory(app, variant);
@@ -30,8 +30,8 @@ test.describe('Windows unsigned payload extraction @integration @windows', () =>
       // Reproduce the loose dd-trace MAX_PATH hazard from https://github.com/DataDog/electron-sdk/pull/182.
       // The fixture explicitly enables copying, preserving this check across the default change in
       // https://github.com/DataDog/electron-sdk/pull/216.
-      const pluginCopyAppDirectory = getIntegrationAppDirectory(app, null);
-      const pluginCopyOutput = dirname(findDevMainScript(pluginCopyAppDirectory, null));
+      const pluginCopyAppDirectory = getIntegrationAppDirectory(app, 'plugin-copy');
+      const pluginCopyOutput = dirname(findDevMainScript(pluginCopyAppDirectory, 'plugin-copy'));
       const pluginCopyFiles = await listPayloadFiles(pluginCopyOutput);
       const overlongDependencies = pluginCopyFiles.filter(
         (file) =>
