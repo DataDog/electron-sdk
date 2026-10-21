@@ -35,24 +35,27 @@ const HOST_ENV_ALLOWLIST = [
   'PWDEBUG',
 ];
 
+export interface IntakeFixtures {
+  intake: Intake;
+  initialIntakeQuotaDecision: 'quota_ok' | 'quota_ko';
+}
+
 export interface TestFixtures {
   electronApp: ElectronApplication;
   window: Page;
   mainPage: MainPage;
-  intake: Intake;
   testServer: TestServer;
   rumBrowserSdk: Record<string, unknown> | null;
-  initialIntakeQuotaDecision: 'quota_ok' | 'quota_ko';
   sdkConfigOverrides: Partial<InitConfiguration> | null;
   beforeSendRumEnabled: boolean;
   fileProfiling: boolean;
 }
 
 /**
- * Custom Playwright test with Electron app fixtures.
- * Automatically launches the app before each test and closes it after.
+ * Playwright test with only the intake, for tests that launch their app themselves. The intake fails the test if a
+ * payload contains the app path registered at launch.
  */
-export const test = base.extend<TestFixtures>({
+export const intakeTest = base.extend<IntakeFixtures>({
   initialIntakeQuotaDecision: ['quota_ok', { option: true }],
 
   intake: [
@@ -69,7 +72,13 @@ export const test = base.extend<TestFixtures>({
     },
     { option: true },
   ],
+});
 
+/**
+ * Custom Playwright test with Electron app fixtures.
+ * Automatically launches the app before each test and closes it after.
+ */
+export const test = intakeTest.extend<TestFixtures>({
   testServer: [
     // eslint-disable-next-line no-empty-pattern
     async ({}, use) => {

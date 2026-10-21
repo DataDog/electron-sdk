@@ -54,7 +54,7 @@ Tests import custom `test` and `expect` from `lib/helpers.ts` (not directly from
 
 ### Intake Server
 
-The intake server (`e2e/lib/intake.ts`) runs on a dynamic port (OS-assigned) to avoid conflicts. It is managed as a Playwright fixture for automatic startup/teardown.
+The intake server (`e2e/lib/intake.ts`) runs on a dynamic port (OS-assigned) to avoid conflicts. It is managed as a Playwright fixture for automatic startup/teardown. Tests that launch their app themselves still get the intake from the fixture: `intakeTest` in E2E (the intake without the auto-launched app), or `intake` without `electronApp` in integration.
 
 Integration scenarios inherit a 60-second test timeout from `e2e/playwright.config.ts`. Their
 `flushUntilEventArrives` helper defaults to 30 seconds for event delivery, leaving room for app startup and other steps.
