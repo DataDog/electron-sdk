@@ -260,8 +260,7 @@ setTrackingConsent(accepted ? 'granted' : 'not-granted');
   link to the data sent if consent is granted. They carry none while consent is refused.
 - The SDK does not restore the consent at the next launch: pass it at each launch. Data kept while consent is pending
   is deleted at the next launch if no decision was made.
-- Call `setTrackingConsent()` once `init()` has resolved: an earlier call can be ignored, and is then reported as an
-  error.
+- Call `setTrackingConsent()` once `init()` has resolved: an earlier call can be ignored.
 - An invalid `trackingConsent` aborts `init()`, and an invalid value passed to `setTrackingConsent()` is handled as
   `'not-granted'`.
 - The SDK starts Electron's crash reporter, which writes native crash dumps locally regardless of consent. At the next

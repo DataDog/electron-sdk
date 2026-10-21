@@ -50,8 +50,8 @@ export function setTrackingConsentApi(api: TrackingConsentApi): void {
  *   `'pending'` or `'granted'` starts a new one.
  *
  * The SDK does not restore the consent at the next launch: set `trackingConsent` in `init()` at
- * each launch, and call this method once `init()` has resolved: an earlier call can be ignored,
- * and is then reported as an error. An invalid value is handled as `'not-granted'`.
+ * each launch, and call this method once `init()` has resolved: an earlier call can be ignored. An
+ * invalid value is handled as `'not-granted'`.
  *
  * @example
  * ```ts
@@ -62,14 +62,6 @@ export function setTrackingConsentApi(api: TrackingConsentApi): void {
  */
 export function setTrackingConsent(consent: TrackingConsent): void {
   callMonitored(() => {
-    if (!trackingConsentApi) {
-      // Reported, unlike other APIs called before init(): under the 'granted' default, a lost refusal would go
-      // unnoticed.
-      display.error(
-        'setTrackingConsent: called before init() resolved. This call is ignored: pass the consent known at startup with the trackingConsent option.'
-      );
-      return;
-    }
     let trackingConsent = consent;
     if (!isOneOf(consent, VALID_TRACKING_CONSENTS)) {
       // Ignoring the call would keep collecting under a decision the app tried to change.
@@ -78,7 +70,7 @@ export function setTrackingConsent(consent: TrackingConsent): void {
       );
       trackingConsent = 'not-granted';
     }
-    trackingConsentApi.update(trackingConsent);
+    trackingConsentApi?.update(trackingConsent);
     // Reported after the update, so the event is stored under the consent it reports: a refusal is
     // not sent.
     addUsage({ feature: 'set-tracking-consent', tracking_consent: trackingConsent });

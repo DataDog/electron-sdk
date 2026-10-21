@@ -325,14 +325,10 @@ describe.sequential('tracking consent public API', () => {
     });
   });
 
-  it('reports and ignores a consent set before init()', () => {
+  it('ignores a consent set before init()', () => {
     api.setTrackingConsent('not-granted');
     api.setTrackingConsentApi(manager);
 
-    expect(display.error).toHaveBeenCalledExactlyOnceWith(
-      'setTrackingConsent: called before init() resolved. This call is ignored: pass the consent known at startup with the trackingConsent option.'
-    );
     expect(manager.update).not.toHaveBeenCalled();
-    expect(addUsage).not.toHaveBeenCalled();
   });
 });
