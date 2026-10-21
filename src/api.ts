@@ -26,7 +26,6 @@ type TrackingConsentApi = Pick<TrackingConsentManager, 'update'>;
 let durationVitalApi: DurationVitalApi | undefined;
 let globalContextApi: GlobalContextApi | undefined;
 let trackingConsentApi: TrackingConsentApi | undefined;
-// Kept after init() registers its manager, so that a retried init() does not fall back to its option.
 let lastSetTrackingConsent: TrackingConsent | undefined;
 
 export function setDurationVitalApi(api: DurationVitalApi | undefined): void {

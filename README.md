@@ -454,7 +454,7 @@ The Electron SDK advertises a `records` capability over the bridge, so the Brows
 
 ### `init(config: InitConfiguration): Promise<boolean>`
 
-Initialize the SDK, once per launch. Returns `true` on success, `false` if the configuration is invalid or another `init()` call is still running or already succeeded.
+Initialize the SDK, once per launch. Returns `true` on success, `false` if the configuration is invalid or `init()` was already called with a valid configuration.
 
 ### `setTrackingConsent(consent: TrackingConsent): void`
 

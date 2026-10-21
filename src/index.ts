@@ -27,8 +27,8 @@ let tracing: Tracing | undefined;
 let userContext: UserContext | undefined;
 let accountContext: AccountContext | undefined;
 let replayCollection: ReplayCollection | undefined;
-// Set while init() runs and once it succeeded: a second init() would leave the first one collecting under a
-// consent that setTrackingConsent() no longer reaches.
+// Set once init() has a valid configuration, even if it then fails: a later init() would register a new consent
+// manager, leaving what the first one started under a consent that setTrackingConsent() no longer reaches.
 let initStarted = false;
 
 /**
@@ -40,30 +40,20 @@ export interface InternalContext {
 }
 
 /**
- * Initialize the Electron SDK, once per launch: a call made while another runs or after one succeeded
- * resolves to `false`.
+ * Initialize the Electron SDK, once per launch: after a call with a valid configuration, later calls resolve to
+ * `false`.
  */
 export async function init(configuration: InitConfiguration): Promise<boolean> {
   if (initStarted) {
     display.error('init() was already called: this call is ignored.');
     return false;
   }
-  initStarted = true;
-  try {
-    initStarted = await start(configuration);
-  } catch (error) {
-    initStarted = false;
-    throw error;
-  }
-  return initStarted;
-}
-
-async function start(configuration: InitConfiguration): Promise<boolean> {
   const config = buildConfiguration(configuration);
 
   if (!config) {
     return false;
   }
+  initStarted = true;
 
   tracing = new Tracing(config);
 

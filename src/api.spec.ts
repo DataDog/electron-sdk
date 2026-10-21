@@ -344,28 +344,4 @@ describe.sequential('tracking consent public API', () => {
 
     expect(manager.update).not.toHaveBeenCalled();
   });
-
-  it.each<[string, () => void]>([
-    [
-      'before a failed init()',
-      () => {
-        api.setTrackingConsent('not-granted');
-        api.setTrackingConsentApi(manager);
-      },
-    ],
-    [
-      'after a failed init() registered its manager',
-      () => {
-        api.setTrackingConsentApi(manager);
-        api.setTrackingConsent('not-granted');
-      },
-    ],
-  ])('applies a consent set %s to the manager of the retried init()', (_title, failedInit) => {
-    failedInit();
-    const retriedManager = { update: vi.fn() };
-
-    api.setTrackingConsentApi(retriedManager);
-
-    expect(retriedManager.update).toHaveBeenCalledExactlyOnceWith('not-granted');
-  });
 });
