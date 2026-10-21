@@ -57,6 +57,8 @@ export interface ReplaySegment {
   /** Parsed JSON from the multipart `event` field — segment metadata + size fields. */
   metadata: Record<string, unknown>;
   headers: Record<string, string>;
+  /** The compressed `segment` blob, undefined if the part was absent. */
+  compressed?: Buffer;
   /**
    * The rrweb records decoded from the compressed `segment` blob, when it was a
    * standalone-inflatable ZLIB stream (the common single-segment case). Undefined
@@ -160,6 +162,50 @@ export const byRendererTelemetryType =
   (event: ReceivedEvent<TelemetryEvent>): boolean =>
     isRendererTelemetry(event) && byTelemetryType(type)(event);
 
+/** A segment as the replay player reads it: its records, and the metadata serialized with them. */
+export interface DecodedReplaySegment {
+  records: unknown[];
+  index_in_view: number;
+  has_full_snapshot: boolean;
+}
+
+const ZLIB_HEADER_SIZE = 2;
+// The final empty deflate block (2 bytes), then the Adler-32 checksum (4 bytes).
+const ZLIB_TRAILER_SIZE = 6;
+
+/**
+ * Decodes one session's segments, in the order received, as the backend stitches them (see `StreamingDeflate`). Each
+ * trailer holds the Adler-32 of the session so far, so decoding throws when segments are duplicated, out of order or
+ * missing before the last one received; segments missing after it go undetected.
+ */
+export function decodeSessionReplay(segments: ReplaySegment[]): DecodedReplaySegment[] {
+  if (segments.length === 0) {
+    return [];
+  }
+  const blobs = segments.map(({ compressed }) => {
+    if (!compressed) throw new Error('Replay segment received without its segment blob');
+    return compressed;
+  });
+  const last = blobs[blobs.length - 1];
+  const stitched = Buffer.concat([
+    blobs[0].subarray(0, ZLIB_HEADER_SIZE),
+    ...blobs.map((blob) => blob.subarray(ZLIB_HEADER_SIZE, blob.length - ZLIB_TRAILER_SIZE)),
+    last.subarray(last.length - ZLIB_TRAILER_SIZE),
+  ]);
+  // Every segment ends with a newline: the stitched stream holds one segment per line.
+  return zlib
+    .inflateSync(stitched)
+    .toString('utf8')
+    .split('\n')
+    .filter((line) => line !== '')
+    .map((line) => JSON.parse(line) as DecodedReplaySegment);
+}
+
+/** The records of one session's segments as JSON, to look for the text a page rendered. */
+export function replayRecordsJson(segments: ReplaySegment[]): string {
+  return JSON.stringify(decodeSessionReplay(segments).map(({ records }) => records));
+}
+
 /**
  * Fake Datadog intake used to assert what the SDK sends.
  *
@@ -229,7 +275,7 @@ export class Intake {
 
     if (!metadata) return;
 
-    const segment: ReplaySegment = { timestamp: Date.now(), metadata, headers };
+    const segment: ReplaySegment = { timestamp: Date.now(), metadata, headers, compressed };
 
     if (compressed) {
       try {
