@@ -26,7 +26,6 @@ type TrackingConsentApi = Pick<TrackingConsentManager, 'update'>;
 let durationVitalApi: DurationVitalApi | undefined;
 let globalContextApi: GlobalContextApi | undefined;
 let trackingConsentApi: TrackingConsentApi | undefined;
-let lastSetTrackingConsent: TrackingConsent | undefined;
 
 export function setDurationVitalApi(api: DurationVitalApi | undefined): void {
   durationVitalApi = api;
@@ -38,11 +37,6 @@ export function setGlobalContextApi(api: GlobalContextApi | undefined): void {
 
 export function setTrackingConsentApi(api: TrackingConsentApi): void {
   trackingConsentApi = api;
-  // A consent set before init(), or while init() was creating the manager, takes precedence over the
-  // init option.
-  if (lastSetTrackingConsent !== undefined) {
-    api.update(lastSetTrackingConsent);
-  }
 }
 
 /**
@@ -55,10 +49,9 @@ export function setTrackingConsentApi(api: TrackingConsentApi): void {
  *   deleted. Data stored earlier with consent is still sent. The session ends, and the next
  *   `'pending'` or `'granted'` starts a new one.
  *
- * The SDK does not restore the consent at the next launch: call this method or set
- * `trackingConsent` in `init()` at each launch. A call made before `init()` takes precedence over
- * its `trackingConsent` option, as in the Browser SDK. An invalid value is handled as
- * `'not-granted'`.
+ * The SDK does not restore the consent at the next launch: set `trackingConsent` in `init()` at
+ * each launch, and call this method once `init()` has resolved. An earlier call is ignored. An
+ * invalid value is handled as `'not-granted'`.
  *
  * @example
  * ```ts
@@ -69,6 +62,14 @@ export function setTrackingConsentApi(api: TrackingConsentApi): void {
  */
 export function setTrackingConsent(consent: TrackingConsent): void {
   callMonitored(() => {
+    if (!trackingConsentApi) {
+      // Reported, unlike other APIs called before init(): under the 'granted' default, a lost refusal would go
+      // unnoticed.
+      display.error(
+        'setTrackingConsent: called before init(), this call is ignored. Pass the consent known at startup with the trackingConsent option.'
+      );
+      return;
+    }
     let trackingConsent = consent;
     if (!isOneOf(consent, VALID_TRACKING_CONSENTS)) {
       // Ignoring the call would keep collecting under a decision the app tried to change.
@@ -77,8 +78,7 @@ export function setTrackingConsent(consent: TrackingConsent): void {
       );
       trackingConsent = 'not-granted';
     }
-    lastSetTrackingConsent = trackingConsent;
-    trackingConsentApi?.update(trackingConsent);
+    trackingConsentApi.update(trackingConsent);
     // Reported after the update, so the event is stored under the consent it reports: a refusal is
     // not sent.
     addUsage({ feature: 'set-tracking-consent', tracking_consent: trackingConsent });

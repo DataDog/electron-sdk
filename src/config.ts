@@ -90,9 +90,8 @@ export interface InitConfiguration {
    *   if it is refused or still pending at the next launch.
    * - `'not-granted'`: no new data is kept or sent; data stored earlier with consent is still sent.
    *
-   * Update it with `setTrackingConsent()`, whose calls made before `init()` take precedence over
-   * this option. The SDK does not restore the consent at the next launch, so pass it at each
-   * launch. An invalid value aborts `init()`.
+   * Update it with `setTrackingConsent()` once `init()` has resolved. The SDK does not restore the
+   * consent at the next launch, so pass it at each launch. An invalid value aborts `init()`.
    * @example trackingConsent: 'pending'
    */
   trackingConsent?: TrackingConsent;

@@ -1,6 +1,5 @@
 import { app, screen } from 'electron';
 import { resolveUploadFrequency, type Configuration } from '../../config';
-import type { TrackingConsent } from '../tracking-consent';
 import { addConfiguration } from './Telemetry';
 import type { RawTelemetryConfigurationData } from './rawTelemetryData.types';
 
@@ -12,8 +11,6 @@ export interface ConfigurationTelemetryContext {
   useTracing: boolean;
   /** dd-trace's version, when it could be read. */
   tracerVersion?: string;
-  /** The consent once `init()` created the manager: the last `setTrackingConsent()` value, or the option. */
-  trackingConsent: TrackingConsent;
 }
 
 /**
@@ -32,7 +29,7 @@ export function reportConfiguration(configuration: Configuration, context: Confi
 
 function buildConfigurationTelemetry(
   configuration: Configuration,
-  { useTracing, tracerVersion, trackingConsent }: ConfigurationTelemetryContext
+  { useTracing, tracerVersion }: ConfigurationTelemetryContext
 ): RawTelemetryConfigurationData {
   return {
     session_sample_rate: configuration.sessionSampleRate,
@@ -43,7 +40,7 @@ function buildConfigurationTelemetry(
     telemetry_usage_sample_rate: configuration.telemetryUsageSampleRate,
     profiling_sample_rate: configuration.profilingSampleRate,
     default_privacy_level: configuration.defaultPrivacyLevel,
-    tracking_consent: trackingConsent,
+    tracking_consent: configuration.trackingConsent,
     use_proxy: configuration.proxy !== undefined,
     // Both fields carry the upload frequency, which is correct rather than redundant. The schema's
     // `batch_size` is a batch *window duration* in milliseconds (mobile sends `BatchSize.windowDurationMs`,

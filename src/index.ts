@@ -61,7 +61,6 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   const hooks = createFormatHooks();
   const trackingConsentManager = await TrackingConsentManager.init(hooks, config.trackingConsent);
   setTrackingConsentApi(trackingConsentManager);
-  const initialTrackingConsent = trackingConsentManager.get();
 
   registerCommonContext(config, hooks);
   userContext = await UserContext.init(hooks);
@@ -93,10 +92,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   // component whose state it describes must be constructed. Monitored so a failure anywhere in the
   // telemetry pipeline degrades telemetry rather than rejecting `init()`.
   const { telemetryInitialized: useTracing, version: tracerVersion } = tracing;
-  const report = () =>
-    callMonitored(() =>
-      reportConfiguration(config, { useTracing, tracerVersion, trackingConsent: initialTrackingConsent })
-    );
+  const report = () => callMonitored(() => reportConfiguration(config, { useTracing, tracerVersion }));
   if (trackingConsentManager.get() === 'granted') {
     report();
   } else {

@@ -23,8 +23,6 @@ vi.mock('./domain/telemetry', () => ({
 }));
 vi.mock('./tools/display', () => ({ display }));
 
-import type { TrackingConsent } from './domain/tracking-consent';
-
 import {
   addDurationVital,
   clearGlobalContext,
@@ -290,7 +288,7 @@ describe.sequential('tracking consent public API', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    // The consent last set by the app is module state: each test starts from a fresh module.
+    // The registered manager is module state: each test starts from a fresh module.
     vi.resetModules();
     api = await import('./api');
   });
@@ -327,21 +325,14 @@ describe.sequential('tracking consent public API', () => {
     });
   });
 
-  it.each<[string, TrackingConsent[], TrackingConsent]>([
-    ['a consent set', ['not-granted'], 'not-granted'],
-    ['the last consent set', ['not-granted', 'granted'], 'granted'],
-    ['a refusal for an invalid consent set', ['denied' as never], 'not-granted'],
-  ])('applies %s before init() to the manager it registers', (_title, calls, expected) => {
-    calls.forEach((consent) => api.setTrackingConsent(consent));
-
+  it('reports and ignores a consent set before init()', () => {
+    api.setTrackingConsent('not-granted');
     api.setTrackingConsentApi(manager);
 
-    expect(manager.update).toHaveBeenCalledExactlyOnceWith(expected);
-  });
-
-  it('leaves the init option when no consent was set', () => {
-    api.setTrackingConsentApi(manager);
-
+    expect(display.error).toHaveBeenCalledExactlyOnceWith(
+      'setTrackingConsent: called before init(), this call is ignored. Pass the consent known at startup with the trackingConsent option.'
+    );
     expect(manager.update).not.toHaveBeenCalled();
+    expect(addUsage).not.toHaveBeenCalled();
   });
 });

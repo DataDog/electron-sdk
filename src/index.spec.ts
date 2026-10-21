@@ -29,7 +29,7 @@ vi.mock('./transport/batch', async (importOriginal) => ({
 let sdk: typeof import('./index');
 
 beforeEach(async () => {
-  // init() runs once per launch, and the consent last set by the app is module state: each test loads the SDK fresh.
+  // init() runs once per launch, and the consent manager it registers is module state: each test loads the SDK fresh.
   vi.resetModules();
   sdk = await import('./index');
 });
@@ -76,14 +76,10 @@ it('creates transport before the session manager', async () => {
   expect(startSession).not.toHaveBeenCalled();
 });
 
-type Consent = TrackingConsent | undefined;
-it.each<[string, Consent, Consent, Consent, TrackingConsent]>([
-  ['the default consent', undefined, undefined, undefined, 'granted'],
-  ['the init option', 'not-granted', undefined, undefined, 'not-granted'],
-  ['a consent set before init()', 'granted', 'not-granted', undefined, 'not-granted'],
-  ['a grant set before init() over a refusing option', 'not-granted', 'granted', undefined, 'granted'],
-  ['a consent set while init() is in progress', 'granted', undefined, 'not-granted', 'not-granted'],
-])('starts the session manager under %s', async (_title, option, setBefore, setDuring, expected) => {
+it.each<[string, TrackingConsent | undefined, TrackingConsent]>([
+  ['the default consent', undefined, 'granted'],
+  ['the init option', 'not-granted', 'not-granted'],
+])('starts the session manager under %s', async (_title, option, expected) => {
   const { SessionManager } = await import('./domain/session');
   createBatchManager.mockResolvedValue({ post: vi.fn() });
   let consentAtSessionStart: TrackingConsent | undefined;
@@ -92,28 +88,10 @@ it.each<[string, Consent, Consent, Consent, TrackingConsent]>([
     return Promise.reject(new Error('stop before collection'));
   });
 
-  if (setBefore) sdk.setTrackingConsent(setBefore);
-  const initializing = sdk.init(createTestConfiguration({ allowedRendererHosts: ['*'], trackingConsent: option }));
-  if (setDuring) sdk.setTrackingConsent(setDuring);
-
-  await expect(initializing).rejects.toThrow('stop before collection');
+  await expect(
+    sdk.init(createTestConfiguration({ allowedRendererHosts: ['*'], trackingConsent: option }))
+  ).rejects.toThrow('stop before collection');
   expect(consentAtSessionStart).toBe(expected);
-});
-
-it('creates the transport under a consent set before init()', async () => {
-  const { Transport } = await import('./transport');
-  let consentAtTransportCreation: TrackingConsent | undefined;
-  vi.spyOn(Transport, 'create').mockImplementation((_config, _events, trackingConsentManager) => {
-    consentAtTransportCreation = trackingConsentManager.get();
-    return Promise.reject(new Error('stop before collection'));
-  });
-
-  sdk.setTrackingConsent('not-granted');
-  await expect(sdk.init(createTestConfiguration({ allowedRendererHosts: ['*'] }))).rejects.toThrow(
-    'stop before collection'
-  );
-
-  expect(consentAtTransportCreation).toBe('not-granted');
 });
 
 it('ignores an init() called after one with a valid configuration, even a failed one', async () => {
@@ -171,15 +149,6 @@ describe('after a complete init()', () => {
     await expect(initFully('granted')).resolves.toBe(true);
 
     expect(reportedConsents()).toEqual(['granted']);
-  });
-
-  it('reports a consent set before init() in configuration telemetry', async () => {
-    sdk.setTrackingConsent('pending');
-    await expect(initFully('granted')).resolves.toBe(true);
-
-    sdk.setTrackingConsent('granted');
-
-    expect(reportedConsents()).toEqual(['pending']);
   });
 
   it('reports the configuration of a pending start at the first grant, even after a refusal', async () => {

@@ -157,10 +157,9 @@ When `enableExecutionContext` is set, `ExecutionContextCollection` (`src/domain/
 
 ## Tracking Consent
 
-`init()` creates its `TrackingConsentManager` with the `trackingConsent` option, `granted` by default. A consent set
-with `setTrackingConsent()` before `init()`, or while it runs, takes precedence, as in the Browser SDK: `init()`
-applies the value set last to the manager once created. Later `setTrackingConsent()` calls update the manager
-directly, and an invalid value is handled as a refusal, before `init()` as after.
+`init()` creates its `TrackingConsentManager` with the `trackingConsent` option, `granted` by default, and
+`setTrackingConsent()` updates it, handling an invalid value as a refusal. A call made before the manager exists is
+ignored, as on mobile: the app controls when `init()` runs, so the consent known at startup goes through the option.
 
 Changes notify monitored subscribers synchronously after updating the state. Consumers own their subscriptions and
 unsubscribe when stopped.
