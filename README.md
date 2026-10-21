@@ -140,10 +140,15 @@ and their runtime dependencies into the build output. It defaults to `false`: th
 packager must include those dependencies in the packaged app. Set `copyRuntimeDependencies: true`
 only as a best-effort compatibility fallback when the packager cannot stage them.
 
+Keep `@datadog/electron-sdk` in the application's production `dependencies`; it brings `dd-trace`
+as a runtime dependency. Applications already using `copyRuntimeDependencies: false` with working
+packager staging need no configuration change.
+
 ##### Electron Forge
 
-Keep `copyRuntimeDependencies` disabled. Configure Forge to package root `node_modules` alongside its
-bundler output so Electron Packager can stage production dependencies normally.
+When using Forge's Vite or Webpack plugin, keep `copyRuntimeDependencies` disabled and configure
+Forge to package root `node_modules` alongside its bundler output so Electron Packager can stage
+production dependencies normally.
 
 **Forge Vite:** add an `ignore` function to `packagerConfig` in `forge.config.ts`:
 
@@ -174,7 +179,9 @@ manager requirements.
 ##### Other packagers
 
 `copyRuntimeDependencies` defaults to `false` for every Datadog bundler plugin. Keep the default and
-configure the application packager to stage production dependencies.
+configure the application packager to stage production dependencies. electron-builder and plain
+Forge already do this by default when packaging the application source; preserve that behavior in
+custom packaging configurations.
 
 Add the corresponding Datadog plugin to the main-process bundler configuration.
 
