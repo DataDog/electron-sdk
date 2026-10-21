@@ -50,8 +50,8 @@ export function setTrackingConsentApi(api: TrackingConsentApi): void {
  *   `'pending'` or `'granted'` starts a new one.
  *
  * The SDK does not restore the consent at the next launch: set `trackingConsent` in `init()` at
- * each launch, and call this method once `init()` has resolved. An earlier call is ignored. An
- * invalid value is handled as `'not-granted'`.
+ * each launch, and call this method once `init()` has resolved: an earlier call can be ignored,
+ * and is then reported as an error. An invalid value is handled as `'not-granted'`.
  *
  * @example
  * ```ts
@@ -66,7 +66,7 @@ export function setTrackingConsent(consent: TrackingConsent): void {
       // Reported, unlike other APIs called before init(): under the 'granted' default, a lost refusal would go
       // unnoticed.
       display.error(
-        'setTrackingConsent: called before init(), this call is ignored. Pass the consent known at startup with the trackingConsent option.'
+        'setTrackingConsent: called before init() resolved. This call is ignored: pass the consent known at startup with the trackingConsent option.'
       );
       return;
     }

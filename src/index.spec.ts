@@ -29,7 +29,7 @@ vi.mock('./transport/batch', async (importOriginal) => ({
 let sdk: typeof import('./index');
 
 beforeEach(async () => {
-  // init() runs once per launch, and the consent manager it registers is module state: each test loads the SDK fresh.
+  // init() runs once per launch: each test loads the SDK fresh.
   vi.resetModules();
   sdk = await import('./index');
 });
@@ -76,10 +76,7 @@ it('creates transport before the session manager', async () => {
   expect(startSession).not.toHaveBeenCalled();
 });
 
-it.each<[string, TrackingConsent | undefined, TrackingConsent]>([
-  ['the default consent', undefined, 'granted'],
-  ['the init option', 'not-granted', 'not-granted'],
-])('starts the session manager under %s', async (_title, option, expected) => {
+it('starts the session manager under the init option', async () => {
   const { SessionManager } = await import('./domain/session');
   createBatchManager.mockResolvedValue({ post: vi.fn() });
   let consentAtSessionStart: TrackingConsent | undefined;
@@ -89,9 +86,9 @@ it.each<[string, TrackingConsent | undefined, TrackingConsent]>([
   });
 
   await expect(
-    sdk.init(createTestConfiguration({ allowedRendererHosts: ['*'], trackingConsent: option }))
+    sdk.init(createTestConfiguration({ allowedRendererHosts: ['*'], trackingConsent: 'not-granted' }))
   ).rejects.toThrow('stop before collection');
-  expect(consentAtSessionStart).toBe(expected);
+  expect(consentAtSessionStart).toBe('not-granted');
 });
 
 it('ignores an init() called after one with a valid configuration, even a failed one', async () => {

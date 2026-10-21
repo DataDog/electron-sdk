@@ -293,7 +293,7 @@ describe.sequential('tracking consent public API', () => {
     api = await import('./api');
   });
 
-  it('updates the registered manager directly', () => {
+  it('updates the registered manager', () => {
     api.setTrackingConsentApi(manager);
 
     api.setTrackingConsent('pending');
@@ -330,7 +330,7 @@ describe.sequential('tracking consent public API', () => {
     api.setTrackingConsentApi(manager);
 
     expect(display.error).toHaveBeenCalledExactlyOnceWith(
-      'setTrackingConsent: called before init(), this call is ignored. Pass the consent known at startup with the trackingConsent option.'
+      'setTrackingConsent: called before init() resolved. This call is ignored: pass the consent known at startup with the trackingConsent option.'
     );
     expect(manager.update).not.toHaveBeenCalled();
     expect(addUsage).not.toHaveBeenCalled();
