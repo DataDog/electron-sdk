@@ -246,6 +246,8 @@ describe('patchNet', () => {
     req.emit('response', makeResponse(201));
 
     expect(mockSpan.setTag).toHaveBeenCalledWith('http.status_code', '201');
+    // dd-trace exports a root span on finish(), so a status tagged afterwards would be lost.
+    expect(mockSpan.setTag).toHaveBeenCalledBefore(mockSpan.finish);
     expect(mockSpan.finish).toHaveBeenCalledTimes(1);
   });
 
