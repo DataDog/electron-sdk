@@ -257,9 +257,10 @@ await init({
 });
 ```
 
-Only returning `false` discards the event. View and native crash events cannot be discarded. The editable fields are:
+Only returning `false` discards the event. View, execution context, and native crash events cannot be discarded. The
+editable fields are:
 
-- All events: `context`, `service`, `version`, `view.name`, `view.url`, and `view.referrer`
+- All events: `context`, `service`, `version`, `view.name`, `view.url`, `view.referrer`, and `execution_context.name`
 - Views: `view.performance.lcp.resource_url`
 - Errors: `error.message`, `error.stack`, `error.handling_stack`, `error.resource.url`, `error.fingerprint`, and `_dd.debug_ids`
 - Resources: `resource.url`, GraphQL variables, request/response headers, and WebSocket close reasons and protocols
