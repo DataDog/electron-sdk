@@ -264,7 +264,7 @@ test.describe('session renewal', () => {
     // The renewal-triggering click itself never reaches the intake as an 'action' event: the
     // browser SDK relays it only once its dead-click validation window elapses, by which point the
     // renewed view has already opened at a later startTime than the click's own pinned startTime,
-    // so ViewContext's container.view tagging discards it. A second click, sent once the renewal
+    // so FakeViewContext's container.view tagging discards it. A second click, sent once the renewal
     // has completed, is a real renderer-sourced action tagged via RendererProcessContexts's own
     // renderer hook, and demonstrates the rotation took effect.
     await mainPage.generateActivity();

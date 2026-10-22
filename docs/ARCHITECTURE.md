@@ -74,7 +74,7 @@ flowchart LR
     subgraph "Hook Providers"
         CC[commonContext]
         SC[sessionContext]
-        VC[viewContext]
+        VC[fakeViewContext]
         UC[userContext]
         AC[accountContext]
     end
@@ -141,7 +141,7 @@ passed to `beforeSendRum`.
 - **`DISCARDED`**: drops the event entirely
 - **`SKIPPED`**: this callback has nothing to contribute
 
-Hooks are used by different parts of the SDK to attach their context (e.g., `registerCommonContext` adds `application`, `service`; `sessionContext` adds `session.id`; `viewContext` adds `view.id`).
+Hooks are used by different parts of the SDK to attach their context (e.g., `registerCommonContext` adds `application`, `service`; `sessionContext` adds `session.id`; `fakeViewContext` adds `view.id`).
 
 See `src/assembly/` and `src/assembly/commonContext.ts`.
 
@@ -153,7 +153,7 @@ See `src/assembly/` and `src/assembly/commonContext.ts`.
 - **`RendererProcessContexts`** tracks one execution context per renderer webContents, created at `web-contents-created` — plus a backfill from `webContents.getAllWebContents()` at start, for any webContents already open when tracking begins (e.g. a deferred `init()` called after a window opened) — rotated on the same session expiry/renewal boundaries, and ended on real process destruction: `destroyed` (`exit_reason: 'clean-exit'`) or `render-process-gone` (the real crash/kill/OOM reason). A crashed webContents that the app reloads is re-registered from the reload's own `did-start-navigation` (on its main frame), before any of the reloaded page's scripts run, since Electron reuses the same webContents object across a crash and never re-fires `web-contents-created` for it. It tags renderer RUM events from its own in-memory state via a separate format hook.
   Each context also carries a `name` derived from `webContents.getURL()` (see `deriveExecutionContextName`), resolved on `dom-ready` rather than waiting for the periodic heartbeat, then frozen for the context's lifetime. Because a crash revival's `did-start-navigation` fires before the new navigation commits, `getURL()` there can still return the pre-crash URL — a `pendingNavigation` flag blocks that state from resolving its name until its own `dom-ready` fires, carried through a session renewal if one lands first.
 
-**Fake views.** Every RUM event needs a `view.id` to resolve against, but the main process has no real navigable page to attach one to. Fake views are synthetically created by the SDK to carry execution-context events during the transition phase where execution-context events still require a `view.id`. Every event type associated with a fake view carries `view.is_fake: true`, so the backend and frontend can filter it out. `ViewContext` (`src/domain/rum/view/ViewContext.ts`) is what tags main-process events with this fake view, pointing at the same `id` `MainProcessContext` maintains as an actual `view` RUM document.
+**Fake views.** Every RUM event needs a `view.id` to resolve against, but the main process has no real navigable page to attach one to. Fake views are synthetically created by the SDK to carry execution-context events during the transition phase where execution-context events still require a `view.id`. Every event type associated with a fake view carries `view.is_fake: true`, so the backend and frontend can filter it out. `FakeViewContext` (`src/domain/rum/executionContext/FakeViewContext.ts`) attaches this fake view to main-process events (and as `container.view` to renderer events), pointing at the same `id` `MainProcessContext` maintains as an actual `view` RUM document.
 
 ### Payload Scrubbing
 
