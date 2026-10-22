@@ -61,14 +61,14 @@ describe('ViewContext', () => {
   });
 
   describe('after add()', () => {
-    it('RUM hook returns id, name, url for main source', async () => {
+    it('RUM hook tags MAIN events with the fake view', async () => {
       const hooks = createFormatHooks();
       const context = await ViewContext.init(hooks, EXPIRE_DELAY);
 
       context.add(VIEW_ID);
 
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toMatchObject({
-        view: { id: VIEW_ID, name: 'main process', url: 'electron://main-process' },
+      expect(hooks.triggerRum({ eventType: 'view', startTime: timeStampNow(), source: EventSource.MAIN })).toEqual({
+        view: { id: VIEW_ID, url: 'electron://fake', is_fake: true },
       });
     });
 
@@ -123,17 +123,6 @@ describe('ViewContext', () => {
       context.add(VIEW_ID);
 
       expect(hooks.triggerTelemetry({ startTime: T0, source: EventSource.RENDERER })).toBeUndefined();
-    });
-
-    it('tags MAIN events with the fake view shape when isExecutionContextEnabled is true', async () => {
-      const hooks = createFormatHooks();
-      const context = await ViewContext.init(hooks, EXPIRE_DELAY, { isExecutionContextEnabled: true });
-
-      context.add(VIEW_ID);
-
-      expect(hooks.triggerRum({ eventType: 'view', startTime: timeStampNow(), source: EventSource.MAIN })).toEqual({
-        view: { id: VIEW_ID, url: 'electron://fake', is_fake: true },
-      });
     });
 
     it('reflects the latest add()', async () => {

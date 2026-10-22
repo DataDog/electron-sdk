@@ -62,7 +62,7 @@ export class MainProcessContext {
     hooks: FormatHooks,
     sessionManager: SessionManager
   ): Promise<MainProcessContext> {
-    const viewContext = await ViewContext.init(hooks, undefined, { isExecutionContextEnabled: true });
+    const viewContext = await ViewContext.init(hooks);
     const filePath = path.join(app.getPath('userData'), MAIN_EXECUTION_CONTEXT_HISTORY_FILE_NAME);
     const mainHistory = await DiskValueHistory.init<MainExecutionContextDiskEntry>({
       filePath,

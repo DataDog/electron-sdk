@@ -156,7 +156,6 @@ function buildSdkConfig(intake: Intake): InitConfiguration {
     telemetrySampleRate: 100,
     defaultPrivacyLevel: 'mask',
     allowedRendererHosts: ['*'],
-    enableExecutionContext: true,
   };
 }
 
