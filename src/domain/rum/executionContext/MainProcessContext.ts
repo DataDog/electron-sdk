@@ -15,7 +15,7 @@ import type { FormatHooks } from '../../../assembly';
 import { SESSION_TIME_OUT_DELAY, type SessionManager } from '../../session';
 import type { RawRumExecutionContext, RawRumView } from '../types';
 import { setInterval, clearInterval } from '../../telemetry';
-import { ViewContext } from '../view';
+import { FakeViewContext } from './FakeViewContext';
 import { DiskValueHistory } from '../../../tools/DiskValueHistory';
 import { PROCESS_UPDATE_INTERVAL } from './executionContext.constants';
 
@@ -52,7 +52,7 @@ export class MainProcessContext {
 
   private constructor(
     private readonly eventManager: EventManager,
-    private readonly viewContext: ViewContext,
+    private readonly fakeViewContext: FakeViewContext,
     private readonly mainHistory: DiskValueHistory<MainExecutionContextDiskEntry>,
     private readonly sessionManager: SessionManager
   ) {}
@@ -62,13 +62,13 @@ export class MainProcessContext {
     hooks: FormatHooks,
     sessionManager: SessionManager
   ): Promise<MainProcessContext> {
-    const viewContext = await ViewContext.init(hooks);
+    const fakeViewContext = await FakeViewContext.init(hooks);
     const filePath = path.join(app.getPath('userData'), MAIN_EXECUTION_CONTEXT_HISTORY_FILE_NAME);
     const mainHistory = await DiskValueHistory.init<MainExecutionContextDiskEntry>({
       filePath,
       expireDelay: SESSION_TIME_OUT_DELAY,
     });
-    const context = new MainProcessContext(eventManager, viewContext, mainHistory, sessionManager);
+    const context = new MainProcessContext(eventManager, fakeViewContext, mainHistory, sessionManager);
 
     hooks.registerRum(({ source, eventType, startTime }) => {
       // execution_context events (main's own and every renderer's) are fully self-authored —
@@ -129,8 +129,8 @@ export class MainProcessContext {
     // whatever a previous, since-exited process instance left open) left active, before
     // registering this one. Safe to call unconditionally: closing an already-closed entry is a
     // no-op.
-    this.viewContext.close(startTime);
-    this.viewContext.add(sessionId, startTime);
+    this.fakeViewContext.close(startTime);
+    this.fakeViewContext.add(sessionId, startTime);
     this.mainHistory.closeActive(startTime);
     this.mainHistory.add({ id: executionContextId, type: 'main-process' }, startTime);
 
@@ -145,7 +145,7 @@ export class MainProcessContext {
     // startTime): otherwise main-process telemetry timestamped in the gap before the next
     // SESSION_RENEW would still resolve to this now-expired state.
     const endTime = timeStampNow();
-    this.viewContext.close(endTime);
+    this.fakeViewContext.close(endTime);
     this.mainHistory.closeActive(endTime);
     this.state.documentVersion++;
     this.emitViewEvent(false);
