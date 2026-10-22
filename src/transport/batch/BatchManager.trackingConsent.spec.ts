@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFormatHooks } from '../../assembly';
 import { TrackingConsentManager, type TrackingConsent } from '../../domain/tracking-consent';
-import { EventKind, EventTrack, type ServerEvent } from '../../event';
+import { EventKind, EventSource, EventTrack, type ServerEvent } from '../../event';
 import { createTestConfiguration } from '../../mocks.specUtil';
 import { BatchManager } from './BatchManager';
 import type { BatchConfig } from './batchConfig.types';
@@ -146,6 +146,33 @@ describe('BatchManager tracking consent storage', () => {
     expect(await pendingDirectories(path.join(basePath, 'rum'))).toEqual([]);
     expect(await logFiles(path.join(basePath, 'rum'))).toEqual([]);
   });
+
+  it.each(['granted', 'pending', 'not-granted'] as const)(
+    'applies %s consent to SDK-generated main-process diagnostic logs',
+    async (consent) => {
+      const state = await createConsentManager(consent);
+      manager = await BatchManager.create(
+        config,
+        { ...createBatchConfig(EventTrack.LOGS), logsSource: 'electron' },
+        state
+      );
+      manager.post({
+        kind: EventKind.SERVER,
+        track: EventTrack.LOGS,
+        source: EventSource.MAIN,
+        data: { date: Date.now(), message: 'Log rate limit reached', status: 'error', origin: 'agent' },
+      });
+      await manager.flush();
+
+      const directory = path.join(basePath, 'dd_main_logs');
+      expect(await logFiles(directory)).toHaveLength(consent === 'granted' ? 1 : 0);
+      const pendingPaths = await pendingDirectories(directory);
+      expect(pendingPaths).toHaveLength(consent === 'pending' ? 1 : 0);
+      if (consent === 'pending') {
+        expect(await logFiles(pendingPaths[0])).toHaveLength(1);
+      }
+    }
+  );
 
   it.each(['flush', 'scheduled cycle'] as const)(
     'retries a rejected store deletion on %s without another consent transition',

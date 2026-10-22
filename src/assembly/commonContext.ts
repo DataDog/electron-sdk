@@ -1,4 +1,3 @@
-import { SKIPPED } from '@datadog/js-core/assembly';
 import type { Configuration } from '../config';
 import { EventSource } from '../event';
 import type { FormatHooks } from './hooks';
@@ -8,6 +7,8 @@ import { display } from '../tools/display';
  * Define the common attributes for the events of each format
  */
 export function registerCommonContext(configuration: Configuration, hooks: FormatHooks) {
+  const ddtags = buildDdtags(configuration);
+
   // Electron owns RUM session, replay, and profiling sampling for bridge events. Renderer tracing
   // remains controlled by the Browser SDK, so its trace sample rate must be preserved.
   const sharedSamplingConfiguration = {
@@ -32,7 +33,7 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
           version: configuration.version,
           application: { id: configuration.applicationId },
           session: { type: 'user' },
-          ddtags: buildDdtags(configuration),
+          ddtags,
           _dd: {
             format_version: 2,
             configuration: {
@@ -56,7 +57,7 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
           service: 'electron-sdk',
           version: __SDK_VERSION__,
           application: { id: configuration.applicationId },
-          ddtags: buildDdtags(configuration),
+          ddtags,
           _dd: { format_version: 2 },
         };
     }
@@ -70,10 +71,12 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
       // application is the only one of these the main process owns.
       case EventSource.RENDERER:
         return { application_id: configuration.applicationId };
-      // The SDK has no main-process logging API yet (RUM-15047); when it gains one, its identity fields
-      // belong here, next to the RUM and telemetry cases above.
       case EventSource.MAIN:
-        return SKIPPED;
+        return {
+          application_id: configuration.applicationId,
+          service: configuration.service,
+          ddtags,
+        };
     }
   });
 

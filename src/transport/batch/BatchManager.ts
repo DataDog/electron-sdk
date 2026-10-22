@@ -19,6 +19,8 @@ import { getTrackPath } from './batchPaths';
 
 /** Maximum array length accepted by the Logs HTTP intake. */
 const MAX_LOGS_EVENTS_PER_BATCH = 1_000;
+/** Bound the entire serialized log, including context/stacks, before writing to disk. */
+const MAX_LOG_BYTES = 1_000_000;
 
 /**
  * Coordinates consent-aware disk writes and uploads for a single track type.
@@ -43,13 +45,13 @@ export class BatchManager {
   /** Creates and fully initializes a BatchManager instance. */
   static async create(config: Configuration, batchConfig: BatchConfig, consentManager: TrackingConsentManager) {
     const { uploadFrequency } = batchConfig;
-    const trackPath = getTrackPath(batchConfig.path, batchConfig.trackType);
+    const trackPath = getTrackPath(batchConfig.path, batchConfig.trackType, batchConfig.logsSource);
     const router = await ConsentAwareBatchRouter.create(
       trackPath,
       (directory) => BatchManager.createProducer(batchConfig, directory),
       consentManager
     );
-    const consumer = BatchManager.createConsumer(config, batchConfig.trackType, trackPath);
+    const consumer = BatchManager.createConsumer(config, batchConfig, trackPath);
     const manager = new BatchManager(router, consumer, uploadFrequency);
     manager.start();
 
@@ -158,17 +160,21 @@ export class BatchManager {
     const standardProducerConfig: StandardBatchProducerConfig = {
       trackPath,
       batchSize,
-      ...(trackType === EventTrack.LOGS ? { maxEventsPerBatch: MAX_LOGS_EVENTS_PER_BATCH } : {}),
+      ...(trackType === EventTrack.LOGS
+        ? { maxEventsPerBatch: MAX_LOGS_EVENTS_PER_BATCH, maxEventBytes: MAX_LOG_BYTES }
+        : {}),
     };
     return StandardBatchProducer.create(standardProducerConfig);
   }
 
   /** The consumer scans the track root, never pending stores or migration directories. */
-  private static createConsumer(config: Configuration, trackType: EventTrack, trackPath: string): BatchConsumer {
+  private static createConsumer(config: Configuration, batchConfig: BatchConfig, trackPath: string): BatchConsumer {
+    const { trackType, logsSource } = batchConfig;
     const consumerConfig: BatchConsumerConfig = {
       trackPath,
-      intakeUrl: computeIntakeUrlForTrack(config.site, trackType, { proxy: config.proxy }),
+      intakeUrl: computeIntakeUrlForTrack(config.site, trackType, { proxy: config.proxy, logsSource }),
       clientToken: config.clientToken,
+      ...(trackType === EventTrack.LOGS ? { splitOnPayloadTooLarge: true } : {}),
     };
     if (trackType === EventTrack.REPLAY) {
       return new ReplayBatchConsumer(consumerConfig);

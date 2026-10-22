@@ -3,7 +3,7 @@ import { createFormatHooks } from '../assembly';
 import { BatchSizes, BatchUploadFrequencies } from '../config';
 import { TrackingConsentManager } from '../domain/tracking-consent';
 import type { RawEvent, ServerEvent, ServerProfileEvent } from '../event';
-import { EventKind, EventTrack, EventManager } from '../event';
+import { EventKind, EventSource, EventTrack, EventManager } from '../event';
 import { createTestConfiguration } from '../mocks.specUtil';
 import { Transport } from './Transport';
 
@@ -56,7 +56,7 @@ describe('Transport', () => {
     it('should share the same consent manager across all tracks', async () => {
       await Transport.create(config, eventManager, trackingConsentManager);
 
-      expect(mockBatchCreate).toHaveBeenCalledTimes(5);
+      expect(mockBatchCreate).toHaveBeenCalledTimes(6);
       for (const [, , consentManager] of mockBatchCreate.mock.calls) {
         expect(consentManager).toBe(trackingConsentManager);
       }
@@ -75,9 +75,11 @@ describe('Transport', () => {
       finishCleanup();
       await startup;
       expect(mockClearPendingData.mock.calls.map(([trackPath]) => trackPath).sort()).toEqual(
-        ['rum', 'spans', 'dd_logs', 'profile', 'replay'].map((track) => `/mock/user/data/${track}`).sort()
+        ['rum', 'spans', 'dd_logs', 'dd_main_logs', 'profile', 'replay']
+          .map((track) => `/mock/user/data/${track}`)
+          .sort()
       );
-      expect(mockBatchCreate).toHaveBeenCalledTimes(3);
+      expect(mockBatchCreate).toHaveBeenCalledTimes(4);
     });
 
     it('should setup the PROFILE track when profiling is enabled', async () => {
@@ -93,7 +95,7 @@ describe('Transport', () => {
 
       const tracks = mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType);
       expect(tracks).not.toContain(EventTrack.PROFILE);
-      expect(tracks).toEqual([EventTrack.RUM, EventTrack.SPANS, EventTrack.LOGS, EventTrack.REPLAY]);
+      expect(tracks).toEqual([EventTrack.RUM, EventTrack.SPANS, EventTrack.LOGS, EventTrack.LOGS, EventTrack.REPLAY]);
     });
 
     it('should always setup the LOGS track', async () => {
@@ -114,6 +116,33 @@ describe('Transport', () => {
   });
 
   describe('event handling', () => {
+    it('routes main and renderer logs to distinct batch managers', async () => {
+      const posts: { source?: string; post: ReturnType<typeof vi.fn> }[] = [];
+      mockBatchCreate.mockResolvedValueOnce({ post: vi.fn(), flush: mockBatchFlush, stop: vi.fn() });
+      mockBatchCreate.mockResolvedValueOnce({ post: vi.fn(), flush: mockBatchFlush, stop: vi.fn() });
+      for (const source of [undefined, 'electron']) {
+        const post = vi.fn();
+        posts.push({ source, post });
+        mockBatchCreate.mockResolvedValueOnce({ post, flush: mockBatchFlush, stop: vi.fn() });
+      }
+      await Transport.create(
+        createTestConfiguration({ profilingSampleRate: 0, sessionReplaySampleRate: 0 }),
+        eventManager,
+        trackingConsentManager
+      );
+      for (const source of [EventSource.MAIN, EventSource.RENDERER]) {
+        eventManager.notify({
+          kind: EventKind.SERVER,
+          track: EventTrack.LOGS,
+          source,
+          data: { date: Date.now(), status: 'info', message: source },
+        });
+      }
+      expect(posts[0].post).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ source: EventSource.RENDERER }));
+      expect(posts[1].post).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ source: EventSource.MAIN }));
+      expect(mockBatchCreate.mock.calls[3][1]).toMatchObject({ logsSource: 'electron' });
+    });
+
     it('should handle SERVER events matching domain track type', async () => {
       await Transport.create(config, eventManager, trackingConsentManager);
 
@@ -180,8 +209,8 @@ describe('Transport', () => {
       const transport = await Transport.create(config, eventManager, trackingConsentManager);
       await transport.flush();
 
-      // RUM + SPANS + LOGS + PROFILE + REPLAY
-      expect(mockBatchFlush).toHaveBeenCalledTimes(5);
+      // RUM + SPANS + renderer LOGS + main LOGS + PROFILE + REPLAY
+      expect(mockBatchFlush).toHaveBeenCalledTimes(6);
     });
   });
 
