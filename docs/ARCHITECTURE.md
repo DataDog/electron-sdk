@@ -1,25 +1,82 @@
 # Architecture
 
-Describes general patterns with examples — detailed component documentation lives as JSDoc on the classes themselves (e.g., `SessionManager`, `ViewCollection`).
+Describes general patterns with examples; detailed component documentation lives as JSDoc on the classes themselves (e.g., `SessionManager`, `ViewCollection`).
 
-## Overview
+## Monitoring Architecture
+
+```mermaid
+graph TB
+    subgraph Electron App
+        subgraph Renderer Process
+            BP[Browser SDK]
+        end
+
+        subgraph Main Process
+            DDT[dd-trace]
+            SDK[Electron SDK]
+        end
+    end
+
+    DD[(Datadog)]
+
+    %% Browser SDK → Electron SDK via bridge
+    BP -->|"Browser SDK events<br/>(IPC bridge)"| SDK
+
+    %% dd-trace → Electron SDK via diagnostic channel
+    DDT -->|"HTTP spans<br/>IPC spans<br/>(diagnostics_channel)"| SDK
+
+    %% Electron SDK internal sources
+    SDK -->|"span → resource conversion<br/>RUM data collection<br/>RUM APIs<br/>session + main process view"| SDK
+
+    %% Electron SDK → Datadog
+    SDK -->|"enriched events<br/>(HTTP)"| DD
+
+    %% Styling
+    classDef sdk fill:#fce8e6,stroke:#d93025
+    classDef trace fill:#e6f4ea,stroke:#137333
+    classDef browser fill:#fef7e0,stroke:#e37400
+    classDef ext fill:#f3e8fd,stroke:#7627bb
+
+    class BP browser
+    class DDT trace
+    class SDK sdk
+    class DD ext
+```
+
+### Main Process
+
+The Electron SDK captures RUM sessions, collects RUM events, and forwards them to Datadog, enriching Browser SDK events and dd-trace spans with RUM and Electron context. The SDK owns Electron API instrumentation; dd-trace provides the span runtime and publishes finished spans to the SDK via `diagnostics_channel`.
+
+More details in the [How tracing works](#how-tracing-works) section.
+
+### Renderer Process
+
+The SDK injects a preload script into every renderer process that exposes `DatadogEventBridge`. When present, the Browser SDK detects the bridge and routes events through IPC to the Electron SDK instead of sending them directly to Datadog servers.
+More details in the [Preload injection](#preload-injection) section.
+
+## Event Pipeline
 
 ```mermaid
 flowchart LR
     subgraph Sources
         RUM[RUM collection]
+        RRUM[Renderer RUM bridge]
+        RLOGS[Renderer Logs bridge]
         TEL[Telemetry]
     end
 
     subgraph Assembly
         HOOKS{Format Hooks}
         COMBINE[combine]
+        BEFORE_SEND[beforeSendRum]
     end
 
     subgraph "Hook Providers"
         CC[commonContext]
         SC[sessionContext]
         VC[viewContext]
+        UC[userContext]
+        AC[accountContext]
     end
 
     subgraph Transport
@@ -29,12 +86,18 @@ flowchart LR
     end
 
     RUM -- RawRumEvent --> COMBINE
+    RRUM -- RumEvent --> COMBINE
+    RLOGS -- LogsEvent --> COMBINE
     TEL -- RawTelemetryEvent --> COMBINE
     CC -. "application.id, service, ..." .-> HOOKS
     SC -. "session.id" .-> HOOKS
     VC -. "view.id, view.name, ..." .-> HOOKS
+    UC -. "usr" .-> HOOKS
+    AC -. "account" .-> HOOKS
     HOOKS --> COMBINE
-    COMBINE -- ServerEvent --> BM
+    COMBINE -- RUM event --> BEFORE_SEND
+    BEFORE_SEND -- ServerEvent --> BM
+    COMBINE -- Telemetry/logs ServerEvent --> BM
     BM --> BP
     BM --> BC
     BP -. "write" .-> DISK[Disk]
@@ -42,53 +105,381 @@ flowchart LR
     BC -. "send" .-> INT[HTTP intake]
 ```
 
-## Event Pipeline
+### Event Manager
 
 The `EventManager` provides a handler-based pipeline for processing events.
 
-### Event Kinds
+#### Event Kinds
 
-- **`RawEvent`** — Emitted by domain code, contains event-specific data, a source (`MAIN` | `RENDERER`), and a format (`RUM` | `TELEMETRY`).
-- **`ServerEvent`** — Ready for transport, tagged with a track (`RUM` | `LOGS`).
-- **`LifecycleEvent`** — Internal signals (e.g., `END_USER_ACTIVITY`, `SESSION_RENEW`), not sent to intake.
+- **`RawEvent`**: emitted by main-process domain code, contains event-specific data and a format (`RUM` | `TELEMETRY` | `PROFILE`). Most renderer events bypass this kind entirely (see `RendererPipeline`).
+- **`ServerEvent`**: ready for transport, tagged with a track (`RUM` | `LOGS` | `SPANS` | `PROFILE`) and a source (`MAIN` | `RENDERER`).
+- **`LifecycleEvent`**: internal signals (e.g., `END_USER_ACTIVITY`, `SESSION_RENEW`), not sent to intake.
 
-### Handler Pattern
+#### Handler Pattern
 
 Handlers register on `EventManager` with `canHandle` (type guard) and `handle` (processing + optional `notify` callback to emit derived events).
 
 See `src/event/` and `src/domain/assembly.ts`.
 
-## Assembly and Format Hooks
+### Assembly and Format Hooks
 
-The `Assembly` handler transforms `RawEvent` into `ServerEvent` by enriching raw data with contextual properties via format hooks.
+Two handlers transform events into `ServerEvent`s:
 
-### Format Hooks
+- **`MainAssembly`**: handles main-process `RawEvent`s (excluding profile events), enriches them via `triggerRum` / `triggerTelemetry` hooks, and emits `ServerEvent`s with `source: MAIN`.
+- **`RendererPipeline`**: owns the renderer IPC channel, receives pre-assembled RUM, telemetry, and log events from the Browser SDK, enriches them via `triggerRum` / `triggerTelemetry` / `triggerLogs` with `source: EventSource.RENDERER`, and emits `ServerEvent`s with `source: RENDERER` directly, bypassing the `RawEvent` pipeline entirely.
 
-`createFormatHooks()` creates per-format hook pairs (`registerRum`/`triggerRum`, `registerTelemetry`/`triggerTelemetry`). Each hook callback can return:
+`MainAssembly` and `RendererPipeline` apply the configured `beforeSendRum` callback after Electron enrichment and before
+emitting the final `ServerRumEvent`, with `source` identifying the originating process. Renderer events may already have
+passed through the Browser SDK's `beforeSend` before crossing the bridge. Telemetry, logs, profiles, and spans are not
+passed to `beforeSendRum`.
 
-- **Partial data** — merged into the event via `combine()`
-- **`DISCARDED`** — drops the event entirely
-- **`SKIPPED`** — this callback has nothing to contribute
+#### Format Hooks
 
-Hooks are used by different parts of the SDK to attach their context (e.g., `registerCommonContext` adds `session`, `application`, `service`; `sessionManager` adds `session.id`).
+`createFormatHooks()` creates per-format hook pairs (`registerRum`/`triggerRum`, `registerTelemetry`/`triggerTelemetry`, `registerLogs`/`triggerLogs`, `registerSpan`/`triggerSpan`). Each hook callback receives a `source: EventSource` param (MAIN or RENDERER) and can return:
 
-See `src/domain/hooks/` and `src/domain/commonContext.ts`.
+- **Partial data**: merged into the event via `combine()`
+- **`DISCARDED`**: drops the event entirely
+- **`SKIPPED`**: this callback has nothing to contribute
 
-## SDK Telemetry
+Hooks are used by different parts of the SDK to attach their context (e.g., `registerCommonContext` adds `application`, `service`; `sessionContext` adds `session.id`; `viewContext` adds `view.id`).
 
-Internal observability for the SDK itself. Captures SDK errors and sends them as telemetry events.
+See `src/assembly/` and `src/assembly/commonContext.ts`.
 
-- **Sampling**: controlled by `telemetrySampleRate` config, evaluated once per session.
-- **Rate limiting**: capped per session, counter resets on `SESSION_RENEW`.
-- **Error collection**: wrappers catch uncaught errors and errors in callbacks, emitting them as telemetry events.
+#### Execution Context
 
-See `src/domain/telemetry/`.
+When `enableExecutionContext` is set, `ExecutionContextCollection` (`src/domain/rum/executionContext/`) replaces `ViewCollection` and composes the lifecycle of two independent trackers:
+
+- **`MainProcessContext`** owns a session-scoped fake view and main execution context for the main process: both are created together when a session starts, at init or on renewal, and closed together on session expiry, sharing one `instance_id` (the OS process pid) across every session the process lives through. It registers its own format hooks, tagging main-process RUM events with `execution_context.id`/`type` and spans with `_dd.execution_context.id`, backed by a disk-persisted history so a crash replayed at the next launch (see Error Reporting) still resolves to the execution context of the process that actually crashed.
+- **`RendererProcessContexts`** tracks one execution context per renderer webContents, created at `web-contents-created` — plus a backfill from `webContents.getAllWebContents()` at start, for any webContents already open when tracking begins (e.g. a deferred `init()` called after a window opened) — rotated on the same session expiry/renewal boundaries, and ended on real process destruction: `destroyed` (`exit_reason: 'clean-exit'`) or `render-process-gone` (the real crash/kill/OOM reason). A crashed webContents that the app reloads is re-registered from the reload's own `did-start-navigation` (on its main frame), before any of the reloaded page's scripts run, since Electron reuses the same webContents object across a crash and never re-fires `web-contents-created` for it. It tags renderer RUM events from its own in-memory state via a separate format hook.
+  Each context also carries a `name` derived from `webContents.getURL()` (see `deriveExecutionContextName`), resolved on `dom-ready` rather than waiting for the periodic heartbeat, then frozen for the context's lifetime. Because a crash revival's `did-start-navigation` fires before the new navigation commits, `getURL()` there can still return the pre-crash URL — a `pendingNavigation` flag blocks that state from resolving its name until its own `dom-ready` fires, carried through a session renewal if one lands first.
+
+**Fake views.** Every RUM event needs a `view.id` to resolve against, but the main process has no real navigable page to attach one to. Fake views are synthetically created by the SDK to carry execution-context events during the transition phase where execution-context events still require a `view.id`. Every event type associated with a fake view carries `view.is_fake: true`, so the backend and frontend can filter it out. `ViewContext` (`src/domain/rum/view/ViewContext.ts`) is what tags main-process events with this fake view instead of a real one when execution-context tracking is enabled — pointing at the same `id` `MainProcessContext` maintains as an actual `view` RUM document.
+
+## Internal Tracking Consent State
+
+`TrackingConsentManager` defaults to `granted`. Changes notify monitored subscribers synchronously after updating
+the state. Consumers own their subscriptions and unsubscribe when stopped.
+
+Its timestamped history is persisted like the session and view histories, so that an event is judged by the
+consent of its own time, even when it is assembled at a later launch. A decision is recorded over the whole `pending`
+period it ends, so a lookup returns the consent that applies to data captured at that time.
+
+### Consent and batch storage
+
+SDK initialization creates one `TrackingConsentManager`, shared by the session manager and the transport's batch
+managers.
+`Transport` routes events to one `BatchManager` per active track (RUM, logs, spans, replay, profiling).
+The manager coordinates a consent-aware writer and a consumer that reads only authorized batches.
+
+Here, **authorized** means the data has received consent, even if the current consent later changes.
+A **pending period** is one stay in `pending`, ending at the next grant or refusal. Each period owns a
+new directory and producer, so an old cleanup failure cannot mix its files with the next period's data.
+
+```text
+rum/                              authorized batches; the consumer scans this directory only
+  batch-….log
+  pending-<uuid>/                 one pending period, never reused by another period
+  authorized-pending-<uuid>/      consent granted; migration to rum/ still unfinished
+```
+
+`ConsentAwareBatchRouter` creates the producers and captures the destination when an event is posted:
+the track root for `granted`, the current pending store for `pending`, or no write for `not-granted`.
+`PendingBatchStore` owns the pending writer and retries failed creation while its period is active.
+On leaving `pending`, the router hands that store and its decision to `BatchMigration`. The migrator closes
+the store to new events, finishes earlier writes and closes open batch files, then moves or deletes the store.
+Failed operations are retried on upload cycles and explicit flushes. Their failure does not prevent
+other stores or authorized uploads from progressing.
+
+Before moving individual files, authorization renames the directory to `authorized-pending-<uuid>`.
+This records the grant on disk: after restart, unfinished moves can resume. A crash before that rename
+succeeds leaves undecided storage, which `Transport` clears at startup for **all** tracks, even disabled ones.
+
+The existing best-effort limit of 100 completed batches applies to the authorized root. A separate limit
+of 100 applies across all remaining pending and migration directories together, so creating new periods
+does not multiply the allowance. Open files and filesystem failures can temporarily exceed these limits.
+
+### Consent at assembly
+
+Batch storage applies the consent current when an event is written. Logs, telemetry and replay records are written
+within seconds of their capture, but other data can be written later, possibly after a consent change: a crash is
+written at the next launch, and its saved session, view and customer context is not proof that it was captured with
+consent; a span is written when its whole trace ends, and a profile when its recording ends.
+
+Format hooks therefore discard RUM events and spans whose start time falls in a refused period, or in no known
+period. Profiles bypass format hooks, so `ProfilingCollection` applies the same check to their start time.
+A `pending` period takes the decision that ended it, like its pending batches: a grant keeps its events, and a
+refusal discards them even if consent is granted again later. Events of a still undecided `pending` period are left
+to the batch storage. A new process cannot grant the previous one's undecided period, so startup records it as
+refused, as it deletes its pending batches. Recovered crashes are then stored according to the current consent,
+like other events.
+
+Only the start time is checked: a view, span or profile that starts while consent is granted and is written after a
+refusal and a new grant is kept whole, including what it captured while refused. Consent changes reach the disk
+asynchronously: a crash that follows a refusal before the refusal is saved is accepted at the next launch.
+
+### Consent and session lifecycle
+
+A refusal ends tracking rather than pausing it: the session expires, the main-process view and the execution contexts
+close with it, and no session starts while consent is refused, at init or on user activity. Leaving
+`not-granted` starts a new session. The final updates emitted when a refusal ends the session are not stored.
+
+Moving between `granted` and `pending` keeps the session and its documents; updates written while `pending` follow
+that period's decision.
+
+Transport subscribes to consent when it is created, before the session manager, and subscribers are notified in that
+order: the documents of the session started on leaving `not-granted` for `pending` find their pending store.
+
+## Error Reporting
+
+Failures are routed by _who can act on them_:
+
+- **Datadog, via SDK telemetry** — for failures in the SDK's own logic, i.e. bugs the SDK team can fix.
+  Reported through `addError` and the `monitor`/`callMonitored` wrappers, which capture errors from SDK
+  code reached by a Node.js/Electron callback, listener, or promise settlement instead of letting them
+  surface into the host app. Sampled (`telemetrySampleRate`) and rate-limited per session. See
+  `src/domain/telemetry/`.
+  See [Telemetry types](#telemetry-types) for the other telemetry the SDK reports.
+- **The customer, via console logs** — for environment failures the SDK cannot fix but the integrating
+  app can: disk full or unwritable, a corrupt batch file on disk, a missing peer dependency. Surfaced
+  through `display` (`src/tools/display`) at `warn`/`error`, and deliberately kept out of telemetry
+  since they are not SDK bugs.
+
+### Telemetry types
+
+`Telemetry` (`src/domain/telemetry/Telemetry.ts`) collects three event types, all emitted as
+`RawEvent`s with `format: TELEMETRY` and assembled onto the RUM track:
+
+| Type            | Entry point        | Reports                              |
+| --------------- | ------------------ | ------------------------------------ |
+| `log` (error)   | `addError`         | Failures in the SDK's own logic      |
+| `configuration` | `addConfiguration` | The resolved SDK configuration       |
+| `usage`         | `addUsage`         | Which public APIs the host app calls |
+
+Each type is gated by its own sampling, deduplication and rate-limiting policy:
+
+- **Sampling** is drawn once per process. `telemetrySampleRate` gates all telemetry; `configuration`
+  and `usage` are then gated by `telemetryConfigurationSampleRate` / `telemetryUsageSampleRate` on top
+  of it. The combined rate is reported as `effective_sample_rate` so the backend can scale the data
+  back up — it is not recoverable from the event otherwise.
+- **Deduplication** drops an identical event for the rest of the session. Usage events would otherwise
+  exhaust the budget when an instrumented API is called in a loop, and repeated errors add no
+  information.
+- **Rate limiting** caps a session at 100 events. `configuration` events are exempt: there is at most
+  one per process and it must not be starved by a burst of errors.
+
+The configuration event is reported at the end of `init()` — the transport must be registered for it
+to reach a batch, and every component whose state it describes must be constructed. It reports
+_effective_ values (`src/domain/telemetry/configurationTelemetry.ts`): an unset option still produces
+behaviour, so defaults are resolved rather than reported as absent.
+
+Usage events are reported by the public API functions themselves (`src/index.ts`, `src/api.ts`), as
+the first statement of each call so that a call rejected by argument validation still counts as
+adoption. Only the schema's `feature` discriminator is sent, never the caller's arguments. APIs the
+schema has no feature for are reported as the closest one, with a comment at the call site.
+
+#### Renderer telemetry
+
+The browser SDK sends pre-assembled telemetry over the bridge as `internal_telemetry`. `RendererPipeline`
+validates the payload and forwards it on the RUM track without re-sampling or deduplicating it; the
+browser SDK has already applied its telemetry configuration and limits.
+
+Main-process context replaces the renderer's application and stub session while preserving the browser
+SDK fields that describe the event. If no tracked main-process session covers the event date, the
+optional `session` field is omitted.
+
+## Logs
+
+The SDK has no main-process logging API. It relays `log` events assembled by the renderer's Browser
+Logs SDK onto a separate **LOGS track** (`/api/v2/logs`). In bridge mode the Browser SDK sends only to
+the host, so failing to relay an event would lose it. Transport therefore registers the LOGS handler
+before `RendererPipeline` opens the IPC listener; the track stays active even when sampling is zero so
+persisted batches from an earlier launch can be recovered.
+
+`RendererPipeline` validates `date`, then preserves the renderer-owned log
+fields. Main-process hooks replace the stub application and session ids and fill missing `usr` and
+`account` context. Logs without a covering main-process session are still forwarded with null session
+ids. Uploads keep `ddsource=browser`, while `DD-EVP-ORIGIN: electron` identifies the uploader.
+
+Browser Logs uses an always-tracked session stub in bridge mode, so renderer
+`DD_LOGS.init({ sessionSampleRate })` does not sample bridged logs. Electron instead applies
+`logsSampleRate` independently to each valid log before enrichment; it defaults to 100. It is separate
+from RUM `sessionSampleRate`, and sampled-in logs have no relay cap.
+
+LOGS batches rotate at either the configured byte threshold or 1,000 events, keeping each JSON array
+within the Logs intake request limit without dropping events.
+
+## Profiling
+
+Profiles originate in the renderer (the Browser SDK's profiler) and reach the main process over the bridge
+as `PROFILE` events. `ProfilingCollection` gates them on consent, profiling sampling and a backend quota check, then
+emits `ServerProfileEvent`s on the `PROFILE` track (transported as multipart, separate from RUM). The quota check
+sends the session id to Datadog, so it only runs while consent is granted; profiles received before its answer are
+forwarded.
+
+The Electron SDK is **authoritative for the profiling quota decision** and enriches the renderer's RUM
+events' `_dd.profiling` context accordingly (via a `registerRum` hook, merged by `combine`):
+
+- On `quota_ko` it sets `status: 'stopped'` and `quota_reason`, mirroring the Browser SDK's `stopProfiling`.
+- For a session it sampled out, it suppresses the context (`_dd.profiling: null`, since `combine` cannot
+  delete a key; `null` is equivalent to absent for the backend).
+- Otherwise it contributes nothing: the **renderer owns `status` / `error_reason`**.
+
+This keeps `_dd.profiling` consistent whether an app runs the Browser SDK standalone or inside Electron.
+Two bridge limitations are intentionally out of scope (documented in `RendererPipeline` and
+`ProfilingCollection`): capabilities are advertised globally rather than per session, and the SDK cannot
+signal the renderer to stop its profiler on `quota_ko`.
+
+## Instrumentation & Tracing
+
+The SDK instruments the Electron main process to collect spans for outgoing HTTP requests and IPC calls. It also injects a preload script into every renderer process, enabling the Browser SDK to route RUM events through IPC to the Electron SDK.
+
+### Responsibilities
+
+Instrumentation is split between the SDK and dd-trace:
+
+**Electron SDK** owns the patching layer, patching Electron's native APIs directly:
+
+- `patchBrowserWindow` (`src/instrument/browserWindow.ts`): injects the SDK's preload script into renderer processes.
+- `patchIpcMain` + `patchWebContents` (`src/instrument/ipc.ts`): wraps `ipcMain` handlers and `webContents.send/sendToFrame` to create IPC spans.
+- `patchNet` (`src/instrument/net.ts`): wraps `net.fetch` and `net.request` to create HTTP spans.
+
+**dd-trace** provides the span runtime and export pipeline:
+
+- Span creation API (`ddTrace.startSpan()`, `ddTrace.inject()`, `ddTrace.extract()`): used by the SDK's patches to create and propagate spans.
+- The `electron` exporter: collects finished spans and publishes them to a Node.js diagnostics channel (`datadog:apm:electron:export`).
+
+dd-trace's own `electron` instrumentation plugin is explicitly disabled by setting `DD_TRACE_DISABLED_INSTRUMENTATIONS=electron` in `instrument-prelude.ts`, preventing it from double-wrapping `net` and `ipcMain` alongside the SDK's patches. This will be removed once the `electron` plugin is dropped from dd-trace.
+
+### IPC span coverage
+
+IPC tracing covers the **main process**: `ipcMain` consumers and `webContents.send`/`sendToFrame` producers. Renderer-side `ipcRenderer` tracing is out of scope for now and will be added later as dd-trace’s renderer IPC instrumentation was already non-functional in practice.
+
+### Instrumentation entry point (`@datadog/electron-sdk/instrument`)
+
+Must be loaded before `require('electron')`:
+
+```typescript
+import '@datadog/electron-sdk/instrument'; // must be first
+import { app, BrowserWindow } from 'electron';
+```
+
+On load it:
+
+1. Loads the tracing runtime before Electron.
+2. Calls `patchBrowserWindow`, `patchIpcMain`, `patchWebContents`, and `patchNet`.
+
+The regular SDK `init()` then initializes dd-trace with the `electron` exporter and the resolved tracing
+configuration.
+
+Bundlers may reorder module evaluation and break this requirement; use the bundler plugins (see [Bundler plugins](#bundler-plugins)).
+
+### How spans flow
+
+```
+Instrumented code (net.fetch, net.request, ipcMain.handle, webContents.send)
+    ↓
+SDK patches call ddTrace.startSpan() / inject() / extract()
+    ↓
+dd-trace electron exporter → diagnostics channel 'datadog:apm:electron:export'
+    ↓
+SpanProcessor (filters SDK-internal requests, enriches with electron context)
+    ↓
+All spans → Transport → /api/v2/spans
+HTTP spans → Assembly → Transport → /api/v2/rum (as RUM resources)
+```
+
+All spans are enriched with `_dd.application.id`, `_dd.session.id`, and `_dd.view.id`. Trace and span IDs are converted to **hexadecimal strings** for the spans intake.
+
+### Trace sampling rules
+
+`traceSamplingRules` and `traceSampleRate` are applied by dd-trace when a root trace is sampled. Rules are ordered,
+the first match wins, and `traceSampleRate` is the fallback when no rule matches. Within a sampled RUM session, each
+root trace is sampled independently, so the session can contain both kept and rejected traces. Child spans inherit the
+root decision. Trace context is never propagated from an unsampled RUM session. For rejected traces in a sampled
+session, Electron `net` requests omit trace headers, while global `fetch` and `node:http` propagate the rejected sampling
+decision so downstream spans inherit it. Rejected traces are not sent to the spans intake. Their HTTP spans still
+produce RUM resources without trace or span identifiers.
+
+### Preload injection
+
+The SDK injects a preload script (`@datadog/electron-sdk/preload`) into every renderer process. The preload exposes `DatadogEventBridge` via `contextBridge`, enabling the Browser SDK to route RUM events through IPC to the Electron SDK instead of sending them directly to Datadog.
+
+`patchBrowserWindow` registers the preload via two complementary mechanisms:
+
+- `app.on('session-created')`: registers the preload on every session as it is created, covering windows on any session (default or a custom `partition`/`session`) without depending on how the app constructs `BrowserWindow`. This is robust even when a static ESM `import { BrowserWindow } from 'electron'` captured the original class before instrumentation ran.
+- `session.defaultSession.registerPreloadScript()` on `app` ready: the default session usually already exists by the time instrumentation runs (so `session-created` has fired for it before the listener was attached), so it is registered explicitly.
+
+### Bridge-config lifecycle
+
+The preload fetches bridge configuration from the main process synchronously at load time via a `datadog:bridge-config` IPC request. This config drives renderer behavior: `defaultPrivacyLevel`, `allowedRendererHosts`, and the advertised `capabilities` (the bridge features the Browser SDK may use, e.g. profiling or session replay).
+
+The responder is registered at **instrument time** (when `@datadog/electron-sdk/instrument` loads), backed by a process-global holder keyed with `Symbol.for('@datadog/electron-sdk:bridgeConfig')`. The holder is seeded with fallback values (`defaultPrivacyLevel: 'mask'`, `allowedRendererHosts: ['*', '']`, and capabilities advertising the SDK's supported features) so the bridge works immediately, even before `init()` runs. When `init()` executes, `RendererPipeline` calls `setBridgeConfig` to replace the holder's value with the real configuration.
+
+The process-global (`Symbol.for`) is required because `instrument` and the `init()` bundle are separate CommonJS module instances: a module-level variable would not be shared between them, so they would always read the fallback.
+
+Advertised capabilities tell the Browser SDK which bridge features it may use, but the Electron SDK configuration stays authoritative for what is actually sent to Datadog: the main process gates delivery regardless of what a renderer advertised. Narrowing the advertised capabilities from config (for example when a feature is disabled) is therefore an opportunistic optimization to avoid unnecessary renderer-side work, not a data-control mechanism. Combined with the read-once behavior, a window opened before `init()` keeps the fallback capabilities until it reloads, so it may briefly do work for a capability the config would have narrowed; delivery is still gated by the main process.
+
+### Bundler plugins
+
+The instrumentation entry point must run before `require('electron')`. Bundlers can break this ordering requirement in different ways:
+
+- **Vite** (`datadogVitePlugin` from `@datadog/electron-sdk/vite-plugin`): hoists all `require()` calls to the top of the bundle, breaking import order. The plugin externalizes dd-trace and the SDK and prepends the instrumentation banner before hoisted requires. Runtime dependencies are staged by the application packager unless `copyRuntimeDependencies: true` is set.
+- **Webpack** (`DatadogWebpackPlugin` from `@datadog/electron-sdk/webpack-plugin`): preserves module execution order (lazy evaluation via `__webpack_require__`), so import order is maintained. The plugin externalizes dd-trace and the SDK, prepends the instrumentation banner, and excludes them from `@vercel/webpack-asset-relocator-loader`. Runtime dependencies are staged by the application packager unless `copyRuntimeDependencies: true` is set.
+- **esbuild** (`datadogEsbuildPlugin` from `@datadog/electron-sdk/esbuild-plugin`): also preserves module execution order. The plugin externalizes dd-trace and the SDK and prepends the instrumentation banner. Runtime dependencies are staged by the application packager unless `copyRuntimeDependencies: true` is set, in which case the plugin copies them via an `onEnd` hook. In ESM output the banner loads `instrument` via `createRequire`, since ES modules have no global `require`.
+
+Packager-owned staging is the preferred path. Forge Vite and Webpack applications override
+`packagerConfig.ignore` to retain root `node_modules` alongside `.vite` or `.webpack`; see
+`docs/RUNTIME_DEPENDENCIES.md`.
+
+See `src/entries/instrument.ts`, `src/entries/vite-plugin.ts`, `src/entries/webpack-plugin.ts`, and `src/entries/esbuild-plugin.ts`.
+
+### dd-trace as a bundled dependency
+
+dd-trace is declared as a **direct runtime dependency** in `package.json`, not as an optional or peer dependency. When customers install `@datadog/electron-sdk`, they get dd-trace automatically.
+
+#### Why bundle it
+
+The SDK is tightly coupled to a specific dd-trace build:
+
+- The SDK initializes dd-trace with the `electron` exporter, a custom exporter built specifically for the Electron SDK.
+- The `SpanProcessor` subscribes to a specific diagnostics channel (`datadog:apm:electron:export`) that dd-trace publishes to.
+
+Making it a direct dependency ensures a single, tested version is always present. The alternatives were considered:
+
+| Approach                                             | Pros                                                                                | Cons                                                                                                                                                                     |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Direct dependency** (current)                      | Guaranteed compatible version; no setup burden on customers; deterministic behavior | Larger install footprint; version locked to SDK releases                                                                                                                 |
+| **Peer dependency**                                  | Customer controls version; smaller SDK package                                      | Version mismatch risk; customer must install separately; hard to guarantee the custom `electron` exporter exists in their version                                        |
+| **Optional dependency**                              | —                                                                                   | SDK does not work without dd-trace; same mismatch risk as peer; confusing DX                                                                                             |
+| **Vendored / embedded in SDK bundle** (POC approach) | Single file, no transitive deps                                                     | Fragile: dd-trace uses dynamic requires, native module loading, and runtime path resolution that break when bundled into a single file; would need constant re-vendoring |
+
+#### Optional dependencies in plugin-owned staging
+
+dd-trace declares optional dependencies (OpenTelemetry bindings, OpenFeature, ASM, IAST, etc.) that
+are irrelevant for Electron. These optional dependencies may or may not install in the customer's
+`node_modules` depending on platform and package manager behavior. When
+`copyRuntimeDependencies: true` is set, the **bundler plugins only copy `dependencies`, not
+`optionalDependencies`**, when populating the build output's `node_modules`. Applications using the
+default packager-owned staging depend on their packager's behavior and may retain installed optional
+dependencies.
+
+#### Dependency size
+
+| What                                                                     | Size      | Notes                                          |
+| ------------------------------------------------------------------------ | --------- | ---------------------------------------------- |
+| dd-trace (plugin-copied, no optional deps)                               | ~7 MB     | The core dd-trace package                      |
+| Runtime transitive deps (dc-polyfill, import-in-the-middle, acorn, etc.) | ~1 MB     | Required by dd-trace at runtime                |
+| **Total copied by bundler plugins**                                      | **~8 MB** | What `copyPackageTree` stages                  |
+| electron-sdk own dist                                                    | ~4 MB     | SDK code + WASM chunks                         |
+| dd-trace optional deps (not copied by plugins)                           | Unknown   | Inclusion depends on managed packager behavior |
+
+The `copyPackageTree` function in all three bundler plugins walks only the `dependencies` field of each package's `package.json`, so plugin-owned staging excludes ~84 MB of optional native modules. Applications whose packager does not stage external dependencies can enable this copy with `copyRuntimeDependencies: true`.
 
 ## Two-Tier Configuration
 
 `InitConfiguration` (user API) → `buildConfiguration()` → `Configuration` (internal, validated).
 
-- **Required fields** (e.g. `clientToken`): validation returns `undefined` to signal initialization should abort — no exceptions thrown.
+- **Required fields** (e.g. `clientToken`): validation returns `undefined` to signal initialization should abort; no exceptions thrown.
 - **Optional fields** (e.g. `env`): invalid values silently fall back to `undefined`.
 
 See `src/config.ts`.

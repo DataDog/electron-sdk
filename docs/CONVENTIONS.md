@@ -1,71 +1,171 @@
 # Coding Conventions
 
-## Code Documentation
+## Design
 
-Update relevant code documentation (JSDoc comments, inline comments) when modifying function behavior. Keep documentation in sync with implementation.
+### Minimal First
 
-### Public API JSDoc
+Implement the minimal design that handles the cases at hand. Don't add a defensive mechanism (queue, buffer, retry,
+flush, retention) without a concrete case it handles: list it as a follow-up with what would trigger adding it.
 
-Public exports in `src/index.ts` are the customer's first contact with the SDK and surface in IDEs as autocompletion / hover docs. Keep the JSDoc focused on the **API contract**, not the implementation.
+### Single Responsibility
 
-- Describe what the function does, what each parameter means, and what gets emitted on the wire.
-- Mark experimental/preview status (`@experimental`) and deprecations (`@deprecated`).
-- Cross-link to the README "feature" section with `@see README "<section name>"` for usage walkthroughs, parallel-operation patterns, and error semantics.
-- **Do not put implementation reasoning in JSDoc** — internal scope routing, why local tracking is or isn't done, IPC bridge mechanics, etc. belong in `docs/ARCHITECTURE.md` or in a comment above the implementation, not in the public surface. Customers don't need it; they need to know how to call the function.
+A component owns one concern, and logic sits next to the data it operates on. A function reads at a single level of
+abstraction: extract helpers rather than mixing orchestration and details (e.g. `init` only wires components).
 
-### `@deprecated` aliases
+When an existing API doesn't fit, extend it rather than working around it.
 
-When renaming a public API after it has shipped (even as preview), keep the old name as a deprecated alias rather than breaking consumers:
+### Naming
 
-- Tag the old export with `@deprecated Use <newName> instead.` JSDoc — IDEs surface the strikethrough at the call site.
-- Have the old function delegate to the new one and emit a one-time runtime warning per method (track which warnings have fired in a `Set<string>` on the owning class).
-- Drop the deprecated alias in the next major release.
+One concept, one name: reuse the existing term across code, config, env vars, and docs rather than introducing a
+synonym. Don't mix vocabularies from different SDKs (e.g. mobile "event mapper" vs browser "beforeSend").
 
-See the `*FeatureOperation` → `*Operation` rename in `OperationCollection.ts` for the canonical implementation.
+### Cross-SDK Parity
 
-## Public API Checklist
+Browser SDK, mobile SDKs, and dd-trace implementations are the default reference: matching their behavior and API eases
+maintenance and customer usage. Diverge only when the behavior doesn't make sense for Electron, and don't port a
+behavior that has no use case on our platform just because another SDK has it.
 
-When adding or renaming a top-level export from `src/index.ts`, every change below MUST land in the same PR:
+When logic is copied from another SDK, say so in a comment, with a link to the source and a TODO referencing a ticket if
+it should eventually be shared.
 
-- [ ] `src/index.ts` — export with full JSDoc (contract + `@experimental`/`@deprecated` if applicable).
-- [ ] Domain implementation (`src/domain/.../*Collection.ts`) — actual behavior + unit tests.
-- [ ] **`README.md`** — usage example under the matching `## API` subsection. Public docs live here; don't put walkthroughs in JSDoc.
-- [ ] **Playground** — IPC handler + button so the new API is exercisable locally without writing a one-off Electron app.
-- [ ] **e2e harness** (`e2e/app/src/main.ts`, `e2e/app/src/preload.ts`, `e2e/lib/mainPage.ts`) + at least one scenario in `e2e/scenarios/` exercising the API end-to-end against the local intake mock.
-- [ ] If the public surface changes, **rebuild `dist/`** before typechecking the playground / e2e: they consume `@datadog/electron-sdk` via portal/yarn workspace and read from `dist/index.d.ts`. Stale dist is the most common cause of "Module has no exported member 'X'" after a rename.
+### State Abstraction
 
-## Defensive Input Validation at the Public API
+When several fields evolve together, extract them into a meaningful abstraction (typed interface/object) rather than
+keeping loose private fields.
 
-TypeScript signatures only constrain TS callers. JS callers (and consumers compiling with looser settings) can pass anything. For public APIs that route into the event pipeline:
+### DRY
 
-- Use `unknown` for the validation function's signature even if the public function is typed: `function validateArgs(method, name: unknown, options: unknown): boolean`.
-- Use `@datadog/browser-core`'s `isIndexableObject(value)` to narrow `unknown` to a record shape before reading properties.
-- Define small reusable type guards co-located with the validator: `function isValidString(value: unknown): value is string { return typeof value === 'string' && value.trim().length > 0 }`.
-- Reject and log via `displayError` (drop the event); see "displayError vs displayWarn" below.
-- Pin the runtime contract with tests that bypass the type system (`badValue as unknown as ExpectedType`) — see `OperationCollection.spec.ts` "rejects non-object … as options" cases.
+Avoid code duplication. When the same logic is needed in multiple places, extract a shared method.
 
-## Derive Types from Generated Schemas
+### Reuse
 
-`src/domain/rum/rumEvent.types.ts` is auto-generated from `rum-events-format` schemas. When a domain-internal type needs to mirror a schema field's enum or shape, **derive** it rather than duplicating the literals:
+Before adding a new utility, check `@datadog/browser-core` and `@datadog/js-core`: utilities are progressively migrating
+to `@datadog/js-core`, so check both. This applies to small type guards too: use `getType` / `isIndexableObject` from
+`@datadog/js-core/util` rather than open-coding `typeof x === 'object' && x !== null`.
 
-```ts
-// good — single source of truth
-type StepType = NonNullable<RumVitalOperationStepEvent['vital']>['step_type'];
-
-// avoid — drifts when the schema changes
-type StepType = 'start' | 'end' | 'update' | 'retry';
+```typescript
+import { generateUUID, Observable, ONE_MINUTE } from '@datadog/browser-core';
 ```
 
-Schema regenerations propagate automatically. See `src/domain/rum/rawRumData.types.ts` for `RawRumVital` derivation pattern.
+## Classes
 
-## `displayError` vs `displayWarn`
+### Classes over Factory Functions
 
-`src/tools/display.ts` exports both:
+Prefer classes over factory functions for stateful tools. Classes provide clear visibility modifiers (`private`,
+`readonly`) and a familiar API surface.
 
-- **`displayError`** — the SDK is **dropping** the event or refusing to do something the customer asked. Examples: blank operation `name`, non-object `options`, invalid `failureReason`. Customer needs to fix this for the data to flow.
-- **`displayWarn`** — the SDK is **still emitting** the event but flagging something suspicious. Examples: operation `name` doesn't match the backend's character-set regex (backend is the source of truth, so we emit and let it decide). Customer may want to fix this but their data isn't being lost.
+When a class requires async initialization (e.g. loading from disk), use a **static async factory** with a private
+constructor. The factory only resolves the async dependencies; all domain setup (subscriptions, wiring) lives in the
+constructor:
 
-Match the existing convention; don't escalate a warning to an error or vice versa without considering the drop-vs-emit semantics.
+```typescript
+class MyTool {
+  private constructor(store: Store, initialState: State) {
+    // domain setup
+  }
+
+  static async start(path: string): Promise<MyTool> {
+    const store = await Store.load(path);
+    return new MyTool(store, store.read());
+  }
+}
+```
+
+This ensures instances are always fully initialized: callers cannot get an instance without going through the factory.
+
+Don't add a separate instance `start()` method when it would always be called right after construction: the
+constructor starts the component and `stop()` releases it. Avoid fully static classes: use module-level functions, or a static method on the
+class that uses it.
+
+### Cleanup
+
+A component that owns a releasable resource (a timer, an observable subscription, a file watcher) must expose a `stop()`
+that releases it. Instantiating such a component in a test then requires releasing that resource on teardown — via
+`stop()`, or by controlling it (e.g. `vi.useFakeTimers()` for timers) — so it does not leak into other tests.
+
+Components that hold no such resource don't need a `stop()`, and a `stop()` with no production caller is fine as long as
+it releases a real resource. Format hooks are tied to SDK lifetime and don't need cleanup.
+
+## Public API
+
+### Runtime Validation
+
+TypeScript signatures don't constrain JavaScript callers. Validators accept `unknown` and narrow it before reading
+properties. Reuse `src/tools/validation.ts` helpers and `isIndexableObject` from `@datadog/js-core/util`.
+
+Test the runtime contract with values that bypass the type system (`badValue as unknown as ExpectedType`), asserting
+the diagnostic and whether the event is emitted. See `validateArgs` in
+[`OperationCollection.ts`](../src/domain/rum/operation/OperationCollection.ts) and its co-located tests.
+
+### Deprecated Aliases
+
+When preserving compatibility during an API rename, keep the old export as a thin alias, mark it with
+`@deprecated Use <newName> instead.`, and warn once per deprecated method, naming its replacement. Forward to the
+canonical implementation so validation and event construction stay shared. See `handleDeprecated` in
+[`OperationCollection.ts`](../src/domain/rum/operation/OperationCollection.ts).
+
+Honor an alias's documented removal schedule. Other deliberate breaking changes remain allowed during 0.x releases
+under the [backward compatibility policy](REVIEW.md#backward-compatibility).
+
+### Types from Schemas
+
+Derive internal types from generated schema fields instead of duplicating their enums or shapes:
+
+```typescript
+type StepType = NonNullable<RumVitalOperationStepEvent['vital']>['step_type'];
+```
+
+See [`rawRumData.types.ts`](../src/domain/rum/types/rawRumData.types.ts) for examples and
+[RUM Events Schema Management](DEVELOPMENT.md#rum-events-schema-management) for source files and regeneration commands.
+
+## Error Handling
+
+The SDK never throws into customer code, and favors observable failures over silent ones:
+
+| Source of the problem                       | Handling                                                               |
+| ------------------------------------------- | ---------------------------------------------------------------------- |
+| Invalid configuration                       | Report with `display.error`; `init` resolves to `false`                |
+| Invalid public API call                     | Report with `display.error` and ignore the call                        |
+| Invalid external data (IPC, files on disk)  | Validate early and drop                                                |
+| Broken internal invariant                   | Throw: `monitor()` reports it as telemetry. No `?.` or fallback values |
+| Customer callback failure (e.g. beforeSend) | Report with `display.error` and keep the event; no SDK telemetry       |
+
+For rejected public API input, `display.error` explains why the call is ignored. Use `display.warn` when collection
+continues: operation names outside the backend character set and invalid `failureReason` values warn but still emit.
+Keep each API's established validation behavior; diagnostic wording must match whether the event is sent.
+
+## Telemetry
+
+- Don't send customer-configured values (e.g. tags, context) in SDK telemetry.
+- A new configuration option is reported in configuration telemetry (`reportConfiguration`).
+- A new public API reports its usage with `addUsage({ feature: '<api-name>' })`.
+
+## Documentation
+
+### Comments
+
+Comments explain why, not what: default to no comment when the code reads on its own. Keep them short, back claims with
+evidence, and wrap them at the Prettier `printWidth` (120).
+
+Comments and docs describe the current state, not the change that produced it: no "this PR" or "the new behavior".
+Reference an explicit PR or ticket when history matters. Update them when modifying the behavior they describe.
+
+### JSDoc
+
+- Classes: a JSDoc comment explaining their responsibility and role in the system.
+- Customer-facing API (exports of `src/index.ts`, bundler plugin entry points) and `InitConfiguration` options: a
+  description and at least one `@example`.
+- Public exported types (event schemas, unions, generated types): a description only.
+
+Public API JSDoc describes the contract: behavior, parameters, emitted data, and `@experimental` / `@deprecated` status
+where applicable. Link to the README's feature section for usage walkthroughs. Scope routing, IPC mechanics, and other
+implementation reasoning belong in `docs/ARCHITECTURE.md` or internal comments.
+
+### Public Docs
+
+- A PR documents only what is true once it lands; behavior shipped by a later PR is documented by that PR.
+- The README documents a feature once it is exposed to customers or enabled by default, with every option key. Don't
+  document test-only options.
 
 ## File I/O
 
@@ -93,56 +193,15 @@ await fs.unlink(filePath);
 
 **Note:** The playground uses sync APIs for simplicity, but SDK code should use async APIs.
 
-## Browser-Core Utilities
-
-Prefer utilities from `@datadog/browser-core` over custom implementations. Examples:
-
-- `generateUUID()` - UUID v4 generation
-- `Observable` - Pub/sub pattern
-- `ONE_HOUR`, `ONE_MINUTE`, `ONE_SECOND` - Time constants
-
-```typescript
-import { generateUUID, Observable, ONE_MINUTE } from '@datadog/browser-core';
-```
-
 ## Imports and Exports
 
 - **`node:` protocol** for Node.js builtins (enforced by `unicorn/prefer-node-protocol`)
-- **Barrel imports** when an `index.ts` exists (enforced by `force-barrel-imports`)
+- **Barrel imports** when an `index.ts` exists (enforced by `local/no-internal-modules`)
 - **Only export what is needed** — keep internal implementation details private
 
-## Cleanup
+## File Organization
 
-Components should provide a `stop()` method that unsubscribes listeners to avoid leaking between tests and to support a future full SDK stop. Format hooks are tied to SDK lifetime and don't need cleanup.
-
-## DRY
-
-Avoid code duplication. When the same logic is needed in multiple places, extract a shared method.
-
-## State Abstraction
-
-When several fields evolve together, extract them into a meaningful abstraction (typed interface/object) rather than keeping loose private fields.
-
-## Classes over Factory Functions
-
-Prefer classes over factory functions for stateful tools. Classes provide clear visibility modifiers (`private`, `readonly`) and a familiar API surface.
-
-When a class requires async initialization (e.g. loading from disk), use a **static async factory** with a private constructor:
-
-```typescript
-class MyTool<T> {
-  private constructor(/* ... */) {}
-
-  static async init<T>(opts: { /* ... */ }): Promise<MyTool<T>> {
-    // async setup
-    return new MyTool(/* ... */);
-  }
-}
-```
-
-This ensures instances are always fully initialized — callers cannot forget to call `init()`.
-
-## Class File Organization
+### Classes
 
 ```
 /**
@@ -159,3 +218,12 @@ class Name {
 ```
 
 JSDoc and class declaration at the top, methods ordered by usage to facilitate review and code exploration.
+
+### Modules
+
+Constants and types first, then each exported function followed by the internal helpers it uses, in order of first use.
+A helper shared by several functions goes after its first user.
+
+## Pull Requests
+
+Keep a PR to one purpose: unrelated changes go in a separate PR.

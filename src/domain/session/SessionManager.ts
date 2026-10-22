@@ -1,40 +1,28 @@
-import { app } from 'electron';
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
-import { deepClone, generateUUID, ONE_MINUTE, type Subscription } from '@datadog/browser-core';
+import { ONE_MINUTE, timeStampNow, type TimeStamp } from '@datadog/js-core/time';
+import { deepClone } from '@datadog/js-core/util';
+import { generateUUID, type Subscription } from '@datadog/browser-core';
 import { type EndUserActivityEvent, EventKind, EventManager, LifecycleKind } from '../../event';
 import type { FormatHooks } from '../../assembly';
-import { addError, setTimeout } from '../telemetry';
-import { displayError } from '../../tools/display';
+import type { Configuration } from '../../config';
+import { setTimeout } from '../telemetry';
+import type { TrackingConsentChange, TrackingConsentManager } from '../tracking-consent';
 import { SessionContext } from './SessionContext';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
+import { isSessionSampled } from '../../tools/Sampler';
+import { setCurrentSessionSampled } from '../../common';
 
 export const SESSION_EXPIRATION_DELAY = 15 * ONE_MINUTE;
-export const SESSION_FILE_NAME = '_dd_s';
 
-export interface Session {
-  id: string;
-  status: SessionStatus;
-}
-
-export type SessionStatus = 'active' | 'expired';
-
-/**
- * Session state stored on disk
- */
-interface SessionState {
-  id: string;
-  created: number;
-  lastActivity: number;
-}
+export type Session = { id: string; status: 'active' | 'expired' } | { status: 'not-granted' };
 
 /**
  * Track session lifecycle
- * - store the Session on SESSION_FILE_NAME
- * - on start, if no Session is already active, create a new Session
+ * - on start, create a new Session unless tracking consent is refused
  * - after SESSION_EXPIRATION_DELAY without activity, expire the Session
  * - after SESSION_TIME_OUT_DELAY if the Session is still active, expire the Session
  * - on activity, if the Session is expired, create a new Session
+ * - when tracking consent is refused, expire the Session and ignore activity; create a new Session when consent leaves
+ *   not-granted
  */
 export class SessionManager {
   private currentSession!: Session;
@@ -42,14 +30,22 @@ export class SessionManager {
   private inactivityTimeoutId: ReturnType<typeof setTimeout> | undefined;
   private sessionTimeoutId: ReturnType<typeof setTimeout> | undefined;
   private activitySubscription: Subscription | undefined;
+  private consentSubscription: Subscription | undefined;
 
   private constructor(
     private readonly eventManager: EventManager,
-    private readonly hooks: FormatHooks
+    private readonly hooks: FormatHooks,
+    private readonly configuration: Configuration,
+    private readonly trackingConsentManager: TrackingConsentManager
   ) {}
 
-  static async start(eventManager: EventManager, hooks: FormatHooks): Promise<SessionManager> {
-    const manager = new SessionManager(eventManager, hooks);
+  static async start(
+    eventManager: EventManager,
+    hooks: FormatHooks,
+    configuration: Configuration,
+    trackingConsentManager: TrackingConsentManager
+  ): Promise<SessionManager> {
+    const manager = new SessionManager(eventManager, hooks, configuration, trackingConsentManager);
     await manager.init();
     return manager;
   }
@@ -58,86 +54,105 @@ export class SessionManager {
     return deepClone(this.currentSession);
   }
 
+  // Id of the tracked session (active and sampled) covering the given time, defaulting to now, or
+  // undefined. Backed by SessionContext so it stays consistent with what the RUM/span/telemetry hooks
+  // attribute; pass a capture time to attribute an event to the session that produced it rather than
+  // the current one (e.g. a profile flushed asynchronously after a renewal).
+  getTrackedSessionId(at: TimeStamp = timeStampNow()): string | undefined {
+    return this.sessionContext.getTrackedSessionId(at);
+  }
+
   expire(): void {
     this.expireSession();
   }
 
   stop(): void {
     this.clearTimers();
+    setCurrentSessionSampled(false);
     if (this.activitySubscription) {
       this.activitySubscription.unsubscribe();
       this.activitySubscription = undefined;
     }
+    if (this.consentSubscription) {
+      this.consentSubscription.unsubscribe();
+      this.consentSubscription = undefined;
+    }
   }
 
   private async init(): Promise<void> {
-    const now = Date.now();
-    const existingState = await loadSessionState();
-
     this.sessionContext = await SessionContext.init(this.hooks);
-
-    if (existingState && isSessionValid(existingState, now)) {
-      this.currentSession = { id: existingState.id, status: 'active' };
-      this.sessionContext.add(existingState.id);
-      existingState.lastActivity = now;
-      await saveSessionState(existingState);
-      this.scheduleInactivityTimeout();
-      this.scheduleSessionTimeout(existingState.created);
+    this.sessionContext.close();
+    if (this.trackingConsentManager.get() === 'not-granted') {
+      this.setSession({ status: 'not-granted' });
     } else {
-      this.sessionContext.close();
-      await this.createNewSession();
+      this.createNewSession();
     }
 
+    this.consentSubscription = this.trackingConsentManager.subscribe((change) => this.onConsentChange(change));
     this.activitySubscription = this.eventManager.registerHandler<EndUserActivityEvent>({
       canHandle: (event): event is EndUserActivityEvent =>
         event.kind === EventKind.LIFECYCLE && event.lifecycle === LifecycleKind.END_USER_ACTIVITY,
       handle: () => {
-        this.updateActivity().catch(addError);
+        this.updateActivity();
       },
     });
   }
 
-  private async createNewSession(): Promise<void> {
-    const now = Date.now();
-    const state: SessionState = {
-      id: generateUUID(),
-      created: now,
-      lastActivity: now,
-    };
+  private onConsentChange({ current }: TrackingConsentChange): void {
+    if (current === 'not-granted') {
+      this.expireSession();
+      this.setSession({ status: 'not-granted' });
+    } else if (this.currentSession.status === 'not-granted') {
+      this.renewSession();
+    }
+  }
 
-    this.currentSession = { id: state.id, status: 'active' };
-    this.sessionContext.add(state.id);
-    await saveSessionState(state);
+  // Updates the session and the sampling flag read by main-process tracing together, so they cannot diverge.
+  private setSession(session: Session, isSampled = false): void {
+    this.currentSession = session;
+    setCurrentSessionSampled(isSampled);
+  }
+
+  private createNewSession(): void {
+    const now = Date.now();
+    const id = generateUUID();
+    const isSampled = isSessionSampled(id, this.configuration.sessionSampleRate);
+
+    this.setSession({ id, status: 'active' }, isSampled);
+    if (isSampled) {
+      this.sessionContext.add(id);
+    }
 
     this.scheduleInactivityTimeout();
-    this.scheduleSessionTimeout(state.created);
+    this.scheduleSessionTimeout(now);
   }
 
   private expireSession(): void {
+    if (this.currentSession.status !== 'active') {
+      return;
+    }
+
     this.clearTimers();
-    this.currentSession.status = 'expired';
+    this.setSession({ id: this.currentSession.id, status: 'expired' });
     this.sessionContext.close();
-    deleteSessionFile().catch(addError);
     this.eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
   }
 
-  private async updateActivity(): Promise<void> {
+  private updateActivity(): void {
+    if (this.currentSession.status === 'not-granted') {
+      return;
+    }
     if (this.currentSession.status === 'expired') {
-      await this.createNewSession();
-      this.eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+      this.renewSession();
       return;
     }
-
-    const state = await loadSessionState();
-    if (!state || state.id !== this.currentSession.id) {
-      addError(new Error('SessionManager: Invalid session state'));
-      return;
-    }
-
-    state.lastActivity = Date.now();
-    await saveSessionState(state);
 
     this.scheduleInactivityTimeout();
+  }
+
+  private renewSession(): void {
+    this.createNewSession();
+    this.eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
   }
 
   private scheduleInactivityTimeout(): void {
@@ -166,44 +181,5 @@ export class SessionManager {
       clearTimeout(this.sessionTimeoutId);
       this.sessionTimeoutId = undefined;
     }
-  }
-}
-
-function getSessionFilePath(): string {
-  return path.join(app.getPath('userData'), SESSION_FILE_NAME);
-}
-
-function isSessionValid(state: SessionState, now: number): boolean {
-  const isNotExpired = now - state.lastActivity < SESSION_EXPIRATION_DELAY;
-  const isNotTimedOut = now - state.created < SESSION_TIME_OUT_DELAY;
-  return isNotExpired && isNotTimedOut;
-}
-
-async function loadSessionState(): Promise<SessionState | undefined> {
-  try {
-    const filePath = getSessionFilePath();
-    await fs.access(filePath);
-    const content = await fs.readFile(filePath, 'utf-8');
-    return JSON.parse(content) as SessionState;
-  } catch {
-    return undefined;
-  }
-}
-
-async function saveSessionState(state: SessionState): Promise<void> {
-  try {
-    const filePath = getSessionFilePath();
-    await fs.writeFile(filePath, JSON.stringify(state), 'utf-8');
-  } catch (error) {
-    displayError('Failed to save session state:', error);
-  }
-}
-
-async function deleteSessionFile(): Promise<void> {
-  try {
-    const filePath = getSessionFilePath();
-    await fs.unlink(filePath);
-  } catch {
-    // File might not exist, ignore error
   }
 }

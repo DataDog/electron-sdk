@@ -1,33 +1,64 @@
 import { app } from 'electron';
 
-import { BatchSizes, BatchUploadFrequencies, type Configuration } from '../config';
+import { resolveBatchSize, resolveUploadFrequency, type Configuration } from '../config';
+import type { TrackingConsentManager } from '../domain/tracking-consent';
 import { EventKind, EventTrack, type EventManager, type ServerEvent } from '../event';
-import { BatchManager } from './batch';
+import { BatchManager, BatchMigration, getTrackPath } from './batch';
 
 /**
  * Orchestrates event transport by routing server events from registered domains
  * through dedicated {@link BatchManager} instances for disk-buffered delivery.
  */
 export class Transport {
-  private tracks: EventTrack[] = [EventTrack.RUM];
   private batchManagers: BatchManager[] = [];
   private basePath: string;
 
   private constructor(
     private readonly config: Configuration,
-    private readonly eventManager: EventManager
+    private readonly eventManager: EventManager,
+    private readonly trackingConsentManager: TrackingConsentManager
   ) {
     this.basePath = app.getPath('userData');
   }
 
   /** Creates and fully initializes a Transport instance. */
-  static async create(config: Configuration, eventManager: EventManager) {
-    const transport = new Transport(config, eventManager);
-    for (const track of transport.tracks) {
+  static async create(
+    config: Configuration,
+    eventManager: EventManager,
+    trackingConsentManager: TrackingConsentManager
+  ) {
+    const transport = new Transport(config, eventManager, trackingConsentManager);
+    // A new process cannot authorize a previous process's undecided data, even for disabled tracks.
+    for (const track of Object.values(EventTrack)) {
+      await BatchMigration.clearPendingData(getTrackPath(transport.basePath, track));
+    }
+    for (const track of transport.getTracks()) {
       await transport.setupTrackBatching(track);
     }
 
     return transport;
+  }
+
+  /**
+   * Tracks to buffer and upload. The PROFILE track is only set up when profiling can produce data
+   * (matching the `profiles` capability gating in RendererPipeline), to avoid idle disk and scheduler
+   * work in apps that never enable profiling.
+   *
+   * LOGS is unconditional even though only renderers produce logs today and many apps never will. Its
+   * handler must be ready before RendererPipeline opens the IPC listener because EventManager does not
+   * queue unclaimed events. Keeping it active at `logsSampleRate: 0` also lets a later process launch
+   * recover and upload logs that were already accepted and persisted under an earlier configuration.
+   */
+  private getTracks(): EventTrack[] {
+    const tracks: EventTrack[] = [EventTrack.RUM, EventTrack.SPANS, EventTrack.LOGS];
+    if (this.config.profilingSampleRate > 0) {
+      tracks.push(EventTrack.PROFILE);
+    }
+
+    if (this.config.sessionReplaySampleRate > 0) {
+      tracks.push(EventTrack.REPLAY);
+    }
+    return tracks;
   }
 
   /**
@@ -36,17 +67,19 @@ export class Transport {
    */
   private async createBatchManager(trackType: EventTrack) {
     const path = this.basePath;
-    const batchSize = this.config.batchSize ? BatchSizes[this.config.batchSize] : BatchSizes.MEDIUM;
-    const uploadFrequency = this.config.uploadFrequency
-      ? BatchUploadFrequencies[this.config.uploadFrequency]
-      : BatchUploadFrequencies.NORMAL;
+    const batchSize = resolveBatchSize(this.config);
+    const uploadFrequency = resolveUploadFrequency(this.config);
 
-    const manager = await BatchManager.create(this.config, {
-      path,
-      trackType,
-      batchSize,
-      uploadFrequency,
-    });
+    const manager = await BatchManager.create(
+      this.config,
+      {
+        path,
+        trackType,
+        batchSize,
+        uploadFrequency,
+      },
+      this.trackingConsentManager
+    );
     this.batchManagers.push(manager);
 
     return manager;
@@ -62,7 +95,7 @@ export class Transport {
     this.eventManager.registerHandler<ServerEvent>({
       canHandle: (event): event is ServerEvent => event.kind === EventKind.SERVER && event.track === track,
       handle: (event) => {
-        batchManager.post(event.data);
+        batchManager.post(event);
       },
     });
   }

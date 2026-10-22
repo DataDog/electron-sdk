@@ -2,6 +2,7 @@
   "name": "electron-vite",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "yarn@4.17.1",
   "main": "out/main/index.js",
   "integration": {
     "devMain": "out/main/index.js",
@@ -16,13 +17,13 @@
     "package": "electron-vite build && electron-builder --dir --publish never"
   },
   "dependencies": {
-    "@datadog/browser-rum": "6.32.0",
+    "@datadog/browser-rum": "7.5.0",
     "@datadog/electron-sdk": "file:../../integration-sdk.tgz"
   },
   "devDependencies": {
-    "@types/node": "24.10.11",
-    "electron": "40.2.1",
-    "electron-builder": "26.8.1",
+    "@types/node": "24.13.3",
+    "electron": "41.1.0",
+    "electron-builder": "26.15.3",
     "electron-vite": "5.0.0",
     "typescript": "5.9.3"
   }

@@ -1,23 +1,36 @@
 import { defineConfig } from '@playwright/test';
 import type { IntegrationFixtures } from './integration/lib/integrationFixture';
 
-const INTEGRATION_APPS = ['forge-webpack', 'forge-vite', 'electron-vite', 'electron-builder-vite'] as const;
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { getCompatibilityRun } from './lib/compatibility';
+const INTEGRATION_APPS = readdirSync(join(__dirname, 'integration/apps'), { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+  .sort();
 const INTEGRATION_MODES = ['dev', 'packaged'] as const;
 
 export type IntegrationApp = (typeof INTEGRATION_APPS)[number];
 export type IntegrationMode = (typeof INTEGRATION_MODES)[number];
+export type IntegrationVariant = null | 'plugin-copy';
 
 export default defineConfig<IntegrationFixtures>({
-  timeout: 30000,
+  timeout: 60000, // Integration scenarios include app startup and event propagation.
   workers: 1, // Serial execution
   retries: process.env.CI ? 2 : 0,
-  reporter: process.env.CI ? [['html'], ['list']] : 'list',
+  maxFailures: process.platform === 'win32' ? 3 : 0,
+  reporter: [
+    ...(process.env.CI ? [['html'] as const] : []),
+    ['list'],
+    ...(process.platform === 'win32' ? [['./lib/windowsFailureReporter.ts'] as const] : []),
+  ],
   use: {
-    trace: 'on-first-retry',
+    trace: process.platform === 'win32' ? 'retain-on-failure' : 'on-first-retry',
   },
   projects: [
     {
       name: 'e2e',
+      timeout: 30000,
       testDir: './scenarios',
       testMatch: '**/*.scenario.ts',
     },
@@ -26,8 +39,14 @@ export default defineConfig<IntegrationFixtures>({
         name: `${app}-${mode}`,
         testDir: './integration/scenarios',
         testMatch: '**/*.scenario.ts',
-        use: { app, mode },
+        use: { app, mode, variant: null },
       }))
     ),
+    ...(getCompatibilityRun() ? INTEGRATION_APPS : ['electron-builder-vite']).map((app) => ({
+      name: `${app}-plugin-copy-packaged`,
+      testDir: './integration/scenarios',
+      testMatch: '**/*.scenario.ts',
+      use: { app, mode: 'packaged' as const, variant: 'plugin-copy' as const },
+    })),
   ],
 });

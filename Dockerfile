@@ -1,4 +1,4 @@
-FROM node:25.3.0-bookworm-slim
+FROM node:25.9.0-bookworm-slim
 
 RUN apt-get update && apt-get install -y -q --no-install-recommends \
     xvfb \

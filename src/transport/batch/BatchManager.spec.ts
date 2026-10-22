@@ -1,33 +1,53 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { createFormatHooks } from '../../assembly';
 import { BatchManager } from './BatchManager';
-import { BatchConsumer } from './BatchConsumer';
-import { EventTrack } from '../../event';
+import { TrackingConsentManager } from '../../domain/tracking-consent';
+import { EventKind, EventTrack } from '../../event';
+import type { ServerEvent } from '../../event';
 import { BatchSizes, BatchUploadFrequencies } from '../../config';
 import { createTestConfiguration } from '../../mocks.specUtil';
+import type { BatchConfig } from './batchConfig.types';
 
-const { mockProducerPost, mockProducerFlush, mockConsumerUpload, mockProducerCreate } = vi.hoisted(() => {
-  const mockProducerPost = vi.fn();
-  const mockProducerFlush = vi.fn().mockResolvedValue(undefined);
-  const mockConsumerUpload = vi.fn().mockResolvedValue(undefined);
-  const mockProducerCreate = vi.fn().mockResolvedValue({
-    post: mockProducerPost,
-    flush: mockProducerFlush,
+vi.mock('electron', () => ({ app: { getPath: () => '/mock/user/data' } }));
+vi.mock('node:fs/promises');
+
+const { mockProducerPost, mockProducerFlush, mockConsumerUpload, mockProducerCreate, mockProfileProducerCreate } =
+  vi.hoisted(() => {
+    const mockProducerPost = vi.fn();
+    const mockProducerFlush = vi.fn().mockResolvedValue(undefined);
+    const mockConsumerUpload = vi.fn().mockResolvedValue(undefined);
+    const mockProducerCreate = vi.fn().mockResolvedValue({ post: mockProducerPost, flush: mockProducerFlush });
+    const mockProfileProducerCreate = vi.fn().mockResolvedValue({
+      post: vi.fn(),
+      flush: vi.fn().mockResolvedValue(undefined),
+    });
+
+    return { mockProducerPost, mockProducerFlush, mockConsumerUpload, mockProducerCreate, mockProfileProducerCreate };
   });
 
-  return { mockProducerPost, mockProducerFlush, mockConsumerUpload, mockProducerCreate };
-});
-
-vi.mock('./BatchProducer', () => ({
-  BatchProducer: {
-    create: mockProducerCreate,
-  },
+vi.mock('./standard/StandardBatchProducer', () => ({
+  StandardBatchProducer: { create: mockProducerCreate },
 }));
 
-vi.mock('./BatchConsumer', () => ({
-  BatchConsumer: vi.fn().mockImplementation(function () {
-    return {
-      upload: mockConsumerUpload,
-    };
+vi.mock('./standard/StandardBatchConsumer', () => ({
+  StandardBatchConsumer: vi.fn().mockImplementation(function (this: unknown) {
+    return { upload: mockConsumerUpload };
+  }),
+}));
+
+vi.mock('./profiling/ProfileBatchProducer', () => ({
+  ProfileBatchProducer: { create: mockProfileProducerCreate },
+}));
+
+vi.mock('./profiling/ProfileBatchConsumer', () => ({
+  ProfileBatchConsumer: vi.fn().mockImplementation(function (this: unknown) {
+    return { upload: vi.fn().mockResolvedValue(undefined) };
+  }),
+}));
+
+vi.mock('./BatchMigration', () => ({
+  BatchMigration: vi.fn().mockImplementation(function () {
+    return { flush: vi.fn().mockResolvedValue(undefined) };
   }),
 }));
 
@@ -35,30 +55,26 @@ vi.mock('../utils', () => ({
   computeIntakeUrlForTrack: vi.fn(() => 'https://mock-intake.com/api/v2/rum'),
 }));
 
-interface BatchManagerConfig {
-  path: string;
-  trackType: EventTrack;
-  batchSize: number;
-  uploadFrequency: number;
-}
-
-function createBatchConfig(): BatchManagerConfig {
+function createBatchConfig(overrides?: Partial<BatchConfig>): BatchConfig {
   return {
     path: '/mock/path',
     trackType: EventTrack.RUM,
     batchSize: BatchSizes.MEDIUM,
     uploadFrequency: BatchUploadFrequencies.NORMAL,
+    ...overrides,
   };
 }
 
 describe('BatchManager', () => {
   let config: ReturnType<typeof createTestConfiguration>;
-  let batchConfig: BatchManagerConfig;
+  let batchConfig: BatchConfig;
+  let consentManager: TrackingConsentManager;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     config = createTestConfiguration();
+    consentManager = await TrackingConsentManager.init(createFormatHooks());
     batchConfig = createBatchConfig();
   });
 
@@ -66,30 +82,55 @@ describe('BatchManager', () => {
     vi.useRealTimers();
   });
 
-  describe('create', () => {
-    it('should create BatchProducer with correct config', async () => {
-      await BatchManager.create(config, batchConfig);
+  describe('create — producer/consumer wiring', () => {
+    it('creates a StandardBatchProducer with the resolved trackPath and batchSize for standard tracks', async () => {
+      await BatchManager.create(config, batchConfig, consentManager);
 
       expect(mockProducerCreate).toHaveBeenCalledWith({
         trackPath: '/mock/path/rum',
         batchSize: BatchSizes.MEDIUM,
       });
+      expect(mockProducerCreate).toHaveBeenCalledTimes(1);
     });
 
-    it('should create BatchConsumer with correct config', async () => {
-      await BatchManager.create(config, batchConfig);
+    it('limits LOGS batches to the intake maximum of 1,000 entries', async () => {
+      await BatchManager.create(config, createBatchConfig({ trackType: EventTrack.LOGS }), consentManager);
 
-      expect(BatchConsumer).toHaveBeenCalledWith({
+      expect(mockProducerCreate).toHaveBeenCalledWith({
+        trackPath: '/mock/path/dd_logs',
+        batchSize: BatchSizes.MEDIUM,
+        maxEventsPerBatch: 1_000,
+      });
+      expect(mockProducerCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it('creates a StandardBatchConsumer with the resolved trackPath, intakeUrl and clientToken', async () => {
+      const { StandardBatchConsumer } = await import('./standard/StandardBatchConsumer');
+      await BatchManager.create(config, batchConfig, consentManager);
+
+      expect(StandardBatchConsumer).toHaveBeenCalledWith({
         trackPath: '/mock/path/rum',
         intakeUrl: 'https://mock-intake.com/api/v2/rum',
         clientToken: 'test-token',
       });
     });
 
-    it('should start the upload cycle', async () => {
-      await BatchManager.create(config, batchConfig);
+    it('creates a ProfileBatchProducer/Consumer pair for the profile track', async () => {
+      const { ProfileBatchConsumer } = await import('./profiling/ProfileBatchConsumer');
+      await BatchManager.create(config, createBatchConfig({ trackType: EventTrack.PROFILE }), consentManager);
 
-      // Fast-forward past upload frequency
+      expect(mockProfileProducerCreate).toHaveBeenCalledWith({ trackPath: '/mock/path/profile' });
+      expect(ProfileBatchConsumer).toHaveBeenCalledWith({
+        trackPath: '/mock/path/profile',
+        intakeUrl: 'https://mock-intake.com/api/v2/rum',
+        clientToken: 'test-token',
+      });
+      expect(mockProducerCreate).not.toHaveBeenCalled();
+    });
+
+    it('should start the upload cycle after creation', async () => {
+      await BatchManager.create(config, batchConfig, consentManager);
+
       await vi.advanceTimersByTimeAsync(batchConfig.uploadFrequency + 100);
 
       expect(mockProducerFlush).toHaveBeenCalled();
@@ -99,18 +140,22 @@ describe('BatchManager', () => {
 
   describe('post', () => {
     it('should delegate to producer.post', async () => {
-      const manager = await BatchManager.create(config, batchConfig);
-      const data = { test: 'data' };
+      const manager = await BatchManager.create(config, batchConfig, consentManager);
+      const event = {
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        data: { test: 'data' },
+      } as unknown as ServerEvent;
 
-      manager.post(data);
+      manager.post(event);
 
-      expect(mockProducerPost).toHaveBeenCalledWith(data);
+      expect(mockProducerPost).toHaveBeenCalledWith(event);
     });
   });
 
   describe('flush', () => {
     it('should flush producer and upload consumer', async () => {
-      const manager = await BatchManager.create(config, batchConfig);
+      const manager = await BatchManager.create(config, batchConfig, consentManager);
       await manager.flush();
 
       expect(mockProducerFlush).toHaveBeenCalled();
@@ -121,7 +166,7 @@ describe('BatchManager', () => {
       let resolveFlush!: () => void;
       mockProducerFlush.mockReturnValueOnce(new Promise<void>((resolve) => (resolveFlush = resolve)));
 
-      const manager = await BatchManager.create(config, batchConfig);
+      const manager = await BatchManager.create(config, batchConfig, consentManager);
       const firstFlush = manager.flush();
       const secondFlush = manager.flush();
 
@@ -132,18 +177,39 @@ describe('BatchManager', () => {
       expect(mockProducerFlush).toHaveBeenCalledTimes(1);
       expect(mockConsumerUpload).toHaveBeenCalledTimes(1);
     });
+
+    it('runs a fresh cycle after an in-flight scheduled cycle instead of dropping the flush', async () => {
+      let resolveScheduled!: () => void;
+      mockProducerFlush.mockReturnValueOnce(new Promise<void>((resolve) => (resolveScheduled = resolve)));
+
+      const manager = await BatchManager.create(config, batchConfig, consentManager);
+
+      // Fire the periodic cycle; its producer.flush() stays pending, simulating an in-flight upload.
+      await vi.advanceTimersByTimeAsync(batchConfig.uploadFrequency);
+      expect(mockProducerFlush).toHaveBeenCalledTimes(1);
+      expect(mockConsumerUpload).not.toHaveBeenCalled();
+
+      // A flush() arriving now (e.g. on quit, after a final segment was rotated) must not be dropped:
+      // it queues a full cycle behind the active one so the newly rotated files are uploaded.
+      const flushPromise = manager.flush();
+      resolveScheduled();
+      await flushPromise;
+
+      expect(mockProducerFlush).toHaveBeenCalledTimes(2);
+      expect(mockConsumerUpload).toHaveBeenCalledTimes(2);
+
+      manager.stop();
+    });
   });
 
   describe('stop', () => {
     it('should stop the upload cycle', async () => {
-      const manager = await BatchManager.create(config, batchConfig);
+      const manager = await BatchManager.create(config, batchConfig, consentManager);
       manager.stop();
 
-      // Clear any previous calls
       mockProducerFlush.mockClear();
       mockConsumerUpload.mockClear();
 
-      // Advance time - should not trigger upload cycle
       await vi.advanceTimersByTimeAsync(batchConfig.uploadFrequency * 2);
 
       expect(mockProducerFlush).not.toHaveBeenCalled();
@@ -153,9 +219,8 @@ describe('BatchManager', () => {
 
   describe('upload cycle', () => {
     it('should schedule recurring uploads at configured frequency', async () => {
-      const manager = await BatchManager.create(config, batchConfig);
+      const manager = await BatchManager.create(config, batchConfig, consentManager);
 
-      // Advance through multiple cycles
       await vi.advanceTimersByTimeAsync(batchConfig.uploadFrequency + 100);
       expect(mockProducerFlush).toHaveBeenCalledTimes(1);
       expect(mockConsumerUpload).toHaveBeenCalledTimes(1);

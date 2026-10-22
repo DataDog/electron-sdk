@@ -1,4 +1,5 @@
 export * from './RumCollection';
-export { ErrorOptions } from './error';
-export * from './rawRumData.types';
-export * from './rumEvent.types';
+export type { AddDurationVitalOptions, DurationVitalOptions } from './vital';
+export type { ErrorOptions } from './error';
+export type { FailureReason, FeatureOperationOptions } from './operation';
+export * from './types';

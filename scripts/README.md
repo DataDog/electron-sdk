@@ -9,8 +9,17 @@ scripts/
 │   ├── command.ts    # Shell-injection-safe command runner
 │   ├── executionUtils.ts  # runMain, printLog, printError
 │   └── filesUtils.ts     # findPackageJsonFiles
+├── playground/       # Playground build and source map upload (same layout: entry points + lib/)
 └── cli               # Bash commands (cmd_<name> pattern)
 ```
+
+## Compatibility testing
+
+- `yarn test:compatibility:init <target>` builds and checks the SDK package contents before preparing the apps for an Electron target.
+- `yarn test:compatibility <target> [Playwright options]` runs the prepared target's E2E and integration tests.
+- `yarn test:compatibility:ci:generate` generates the Linux/macOS/Windows child pipeline.
+
+See the [compatibility guide](../e2e/compatibility/README.md) for targets, CI filters, and examples.
 
 ## Preferences
 

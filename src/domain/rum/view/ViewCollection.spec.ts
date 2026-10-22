@@ -7,12 +7,13 @@ vi.mock('electron', () => ({
 }));
 
 vi.mock('../../../tools/display', () => ({
-  displayError: vi.fn(),
+  display: { error: vi.fn() },
 }));
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { type TimeStamp } from '@datadog/browser-core';
+import type { TimeStamp } from '@datadog/js-core/time';
 import { ViewCollection, SESSION_KEEP_ALIVE_INTERVAL, VIEW_UPDATE_THROTTLE_DELAY } from './ViewCollection';
+import { ViewContext } from './ViewContext';
 import {
   EventManager,
   EventKind,
@@ -24,7 +25,7 @@ import {
 } from '../../../event';
 import { createFormatHooks, type FormatHooks } from '../../../assembly';
 import { createServerRumEvent, createServerRumView } from '../../../mocks.specUtil';
-import { RawRumView } from '../rawRumData.types';
+import { RawRumView, MainRumEvent, RumErrorEvent } from '../types';
 
 vi.mock('node:fs/promises');
 const mfs = mockFs();
@@ -83,10 +84,47 @@ describe('ViewCollection', () => {
     });
   });
 
+  it.each(['startup', 'renewal'])(
+    'attributes the %s view when the clock advances before history registration',
+    async (phase) => {
+      // The wrapper calls the original method with its actual ViewContext receiver below.
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      const originalAdd = ViewContext.prototype.add;
+      const add = vi.spyOn(ViewContext.prototype, 'add').mockImplementation(function (this: ViewContext, ...args) {
+        // Simulate crossing a millisecond boundary after capturing the event's start time.
+        vi.setSystemTime(Date.now() + 1);
+        return originalAdd.apply(this, args);
+      });
+
+      try {
+        vi.setSystemTime(10);
+        if (phase === 'startup') {
+          viewCollection.stop();
+          hooks = createFormatHooks();
+          rawRumEvents.length = 0;
+          viewCollection = await ViewCollection.start(eventManager, hooks);
+        } else {
+          eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+          rawRumEvents.length = 0;
+          eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+        }
+
+        const event = rawRumEvents[0];
+        expect(
+          hooks.triggerRum({ eventType: 'view', startTime: event.startTime!, source: EventSource.MAIN })
+        ).toMatchObject({
+          view: { id: (event.data as RawRumView).view.id },
+        });
+      } finally {
+        add.mockRestore();
+      }
+    }
+  );
+
   describe('hook registration', () => {
     it('injects view attributes into RUM hooks', () => {
       const initialViewAttributes = (rawRumEvents[0].data as RawRumView).view;
-      const result = hooks.triggerRum({ eventType: 'view', startTime: T0 });
+      const result = hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN });
 
       expect(result).toMatchObject({
         view: { id: initialViewAttributes.id },
@@ -95,7 +133,7 @@ describe('ViewCollection', () => {
 
     it('injects view attributes into telemetry hooks', () => {
       const initialView = (rawRumEvents[0].data as RawRumView).view;
-      const result = hooks.triggerTelemetry({ startTime: T0 });
+      const result = hooks.triggerTelemetry({ startTime: T0, source: EventSource.MAIN });
 
       expect(result).toEqual({ view: { id: initialView.id } });
     });
@@ -121,6 +159,14 @@ describe('ViewCollection', () => {
       const data = rawRumEvents[1].data as RawRumView;
       expect(data.view.is_active).toBe(false);
       expect(data._dd.document_version).toBe(2);
+    });
+
+    it('does not emit another update when the view is already inactive', () => {
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+      eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+
+      expect(rawRumEvents).toHaveLength(2);
+      expect((rawRumEvents[1].data as RawRumView)._dd.document_version).toBe(2);
     });
 
     it('stops periodic updates after expiration', () => {
@@ -153,7 +199,7 @@ describe('ViewCollection', () => {
 
       eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
 
-      const result = hooks.triggerRum({ eventType: 'view', startTime: T0 });
+      const result = hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN });
       const newViewId = (rawRumEvents[1].data as RawRumView).view.id;
       expect(result).toMatchObject({ view: { id: newViewId } });
       expect(newViewId).not.toBe(originalViewId);
@@ -170,9 +216,13 @@ describe('ViewCollection', () => {
       expect(newViewId).not.toBe(originalViewId);
 
       // event started at T0 (before renewal at T10) → attributed to original view
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toMatchObject({ view: { id: originalViewId } });
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toMatchObject({
+        view: { id: originalViewId },
+      });
       // event started at T10 → attributed to new view
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T10 })).toMatchObject({ view: { id: newViewId } });
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T10, source: EventSource.MAIN })).toMatchObject({
+        view: { id: newViewId },
+      });
     });
 
     it('restarts periodic updates', () => {
@@ -187,22 +237,19 @@ describe('ViewCollection', () => {
   });
 
   describe('event counters', () => {
-    it.each(['action', 'error', 'resource'] as const)(
-      'increments %s counter on corresponding ServerRumEvent',
-      (type) => {
-        eventManager.notify({
-          kind: EventKind.SERVER,
-          track: EventTrack.RUM,
-          source: EventSource.MAIN,
-          data: createServerRumEvent(type),
-        });
+    it.each(['error', 'resource'] as const)('increments %s counter on corresponding ServerRumEvent', (type) => {
+      eventManager.notify({
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        source: EventSource.MAIN,
+        data: createServerRumEvent<MainRumEvent>(type),
+      });
 
-        expect(rawRumEvents).toHaveLength(2);
-        const data = rawRumEvents[1].data as RawRumView;
-        expect(data.view[type].count).toBe(1);
-        expect(data._dd.document_version).toBe(2);
-      }
-    );
+      expect(rawRumEvents).toHaveLength(2);
+      const data = rawRumEvents[1].data as RawRumView;
+      expect(data.view[type].count).toBe(1);
+      expect(data._dd.document_version).toBe(2);
+    });
 
     it('does not count view type ServerEvents', () => {
       eventManager.notify({
@@ -221,7 +268,7 @@ describe('ViewCollection', () => {
         kind: EventKind.SERVER,
         track: EventTrack.RUM,
         source: EventSource.RENDERER,
-        data: createServerRumEvent('error'),
+        data: createServerRumEvent<RumErrorEvent>('error'),
       });
 
       // Only the initial event, no update
@@ -242,12 +289,12 @@ describe('ViewCollection', () => {
   });
 
   describe('throttled view updates', () => {
-    function notifyServerRumEvent(type: 'action' | 'error' | 'resource') {
+    function notifyServerRumEvent(type: 'error' | 'resource') {
       eventManager.notify({
         kind: EventKind.SERVER,
         track: EventTrack.RUM,
         source: EventSource.MAIN,
-        data: createServerRumEvent(type),
+        data: createServerRumEvent<MainRumEvent>(type),
       });
     }
 
@@ -268,15 +315,15 @@ describe('ViewCollection', () => {
     it('trailing update contains final accumulated counters and document_version', () => {
       notifyServerRumEvent('resource');
       notifyServerRumEvent('error');
-      notifyServerRumEvent('action');
+      notifyServerRumEvent('resource');
 
       vi.advanceTimersByTime(VIEW_UPDATE_THROTTLE_DELAY);
 
       const trailing = rawRumEvents[rawRumEvents.length - 1].data as RawRumView;
-      expect(trailing.view.resource.count).toBe(1);
+      expect(trailing.view.resource.count).toBe(2);
       expect(trailing.view.error.count).toBe(1);
-      expect(trailing.view.action.count).toBe(1);
-      // initial=1, leading=2 (first resource), trailing=4 (after error+action increments)
+      expect(trailing.view.action.count).toBe(0);
+      // initial=1, leading=2 (first resource), trailing=4 (after error+resource increments)
       expect(trailing._dd.document_version).toBe(4);
     });
 

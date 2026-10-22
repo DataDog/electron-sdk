@@ -5,3 +5,5 @@ coverage
 yarn.lock
 rum-events-format
 minidump-processor/pkg
+.worktrees
+.claude/worktrees

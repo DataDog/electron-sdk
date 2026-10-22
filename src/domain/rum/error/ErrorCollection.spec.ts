@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ErrorCollection } from './ErrorCollection';
 import { EventFormat, EventKind, EventManager, type RawRumEvent } from '../../../event';
-import type { RawRumError } from '../rawRumData.types';
+import type { RawRumError } from '../types';
 
 describe('ErrorCollection', () => {
   let eventManager: EventManager;
@@ -37,6 +37,7 @@ describe('ErrorCollection', () => {
       expect(data.error.type).toBe('Error');
       expect(data.error.stack).toBeDefined();
       expect(data.error.id).toBeDefined();
+      expect(data.error.source_type).toBe('nodejs');
     });
 
     it('emits an error event with fallback message from a non-Error value', () => {

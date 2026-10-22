@@ -1,8 +1,8 @@
 {
   "name": "@datadog/electron-sdk",
-  "version": "0.1.3",
+  "version": "0.10.0",
   "description": "DataDog SDK for Electron applications",
-  "packageManager": "yarn@4.12.0",
+  "packageManager": "yarn@4.17.1",
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -12,16 +12,41 @@
       "require": "./dist/index.cjs",
       "import": "./dist/index.mjs"
     },
-    "./preload": {
-      "types": "./dist/preload.d.ts",
-      "require": "./dist/preload-auto.cjs",
-      "import": "./dist/preload.mjs"
-    }
+    "./instrument": {
+      "types": "./dist/instrument.d.ts",
+      "require": "./dist/instrument.cjs",
+      "import": "./dist/instrument.mjs"
+    },
+    "./vite-plugin": {
+      "types": "./dist/vite-plugin.d.ts",
+      "require": "./dist/vite-plugin.cjs",
+      "import": "./dist/vite-plugin.mjs"
+    },
+    "./webpack-plugin": {
+      "types": "./dist/webpack-plugin.d.ts",
+      "require": "./dist/webpack-plugin.cjs",
+      "import": "./dist/webpack-plugin.mjs"
+    },
+    "./esbuild-plugin": {
+      "types": "./dist/esbuild-plugin.d.ts",
+      "require": "./dist/esbuild-plugin.cjs",
+      "import": "./dist/esbuild-plugin.mjs"
+    },
+    "./preload": "./dist/preload.js"
   },
   "typesVersions": {
     "*": {
-      "preload": [
-        "./dist/preload.d.ts"
+      "instrument": [
+        "./dist/instrument.d.ts"
+      ],
+      "vite-plugin": [
+        "./dist/vite-plugin.d.ts"
+      ],
+      "webpack-plugin": [
+        "./dist/webpack-plugin.d.ts"
+      ],
+      "esbuild-plugin": [
+        "./dist/esbuild-plugin.d.ts"
       ]
     }
   },
@@ -35,18 +60,34 @@
     "dist/wasm.chunk.cjs.map",
     "dist/wasm.chunk.mjs",
     "dist/wasm.chunk.mjs.map",
-    "dist/preload-auto.cjs",
-    "dist/preload-auto.cjs.map",
-    "dist/preload.d.ts",
-    "dist/preload.mjs",
-    "dist/preload.mjs.map",
+    "dist/instrument.cjs",
+    "dist/instrument.cjs.map",
+    "dist/instrument.mjs",
+    "dist/instrument.mjs.map",
+    "dist/instrument.d.ts",
+    "dist/vite-plugin.cjs",
+    "dist/vite-plugin.cjs.map",
+    "dist/vite-plugin.mjs",
+    "dist/vite-plugin.mjs.map",
+    "dist/vite-plugin.d.ts",
+    "dist/webpack-plugin.cjs",
+    "dist/webpack-plugin.cjs.map",
+    "dist/webpack-plugin.mjs",
+    "dist/webpack-plugin.mjs.map",
+    "dist/webpack-plugin.d.ts",
+    "dist/esbuild-plugin.cjs",
+    "dist/esbuild-plugin.cjs.map",
+    "dist/esbuild-plugin.mjs",
+    "dist/esbuild-plugin.mjs.map",
+    "dist/esbuild-plugin.d.ts",
+    "dist/preload.js",
     "README.md",
     "LICENSE",
     "LICENSE-3rdparty.csv"
   ],
   "scripts": {
     "repo:init": "yarn install && scripts/cli init_submodule && yarn dev:init && yarn test:e2e:init",
-    "prepack": "rm -rf dist/ && yarn build",
+    "prepack": "node scripts/clean-build-output.ts && yarn build",
     "prepare": "husky",
     "json-schemas:sync": "scripts/cli sync_schemas",
     "json-schemas:generate": "scripts/cli generate_schemas",
@@ -66,36 +107,47 @@
     "lint": "yarn dev:init && yarn test:e2e:init && eslint . --max-warnings 0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "release": "node scripts/prepare-release.ts"
+    "release": "node scripts/prepare-release.ts",
+    "test:compatibility:init": "node scripts/prepare-compatibility-target.ts",
+    "test:compatibility": "node scripts/run-compatibility-tests.ts",
+    "test:compatibility:ci:generate": "node scripts/generate-compatibility-ci.ts"
   },
   "devDependencies": {
-    "@datadog/browser-core": "6.26.0",
-    "@eslint/js": "10.0.0",
-    "@playwright/test": "1.58.2",
-    "@rollup/plugin-commonjs": "29.0.0",
+    "@datadog/browser-core": "7.5.0",
+    "@datadog/js-core": "0.0.5",
+    "@electron/get": "5.1.0",
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.61.1",
+    "@rollup/plugin-commonjs": "29.0.3",
+    "@rollup/plugin-json": "6.1.0",
     "@rollup/plugin-node-resolve": "16.0.3",
     "@rollup/plugin-replace": "6.0.3",
-    "@rollup/plugin-typescript": "12.1.2",
-    "@types/node": "24.10.11",
-    "@vitest/coverage-v8": "4.0.18",
-    "@vitest/ui": "4.0.18",
-    "concurrently": "9.2.1",
-    "electron": "40.2.1",
-    "eslint": "10.0.2",
+    "@rollup/plugin-typescript": "12.3.0",
+    "@types/node": "24.13.3",
+    "@vitest/coverage-v8": "4.1.11",
+    "@vitest/ui": "4.1.11",
+    "concurrently": "10.0.3",
+    "electron": "41.1.0",
+    "eslint": "10.7.0",
     "eslint-config-prettier": "10.1.8",
-    "eslint-plugin-prettier": "5.5.5",
-    "eslint-plugin-unicorn": "63.0.0",
+    "eslint-plugin-prettier": "5.5.6",
+    "eslint-plugin-unicorn": "76.0.0",
     "husky": "9.1.7",
+    "jsdom": "30.0.1",
     "json-schema-to-typescript": "bcaudan/json-schema-to-typescript#bcaudan/add-readonly-support",
-    "lint-staged": "16.3.1",
-    "playwright": "1.58.2",
-    "prettier": "3.8.1",
-    "rollup": "4.59.0",
-    "rollup-plugin-dts": "6.3.0",
+    "lint-staged": "17.1.0",
+    "playwright": "1.61.1",
+    "prettier": "3.9.5",
+    "rollup": "4.62.2",
+    "rollup-plugin-dts": "6.4.1",
     "tslib": "2.8.1",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.57.0",
-    "vitest": "4.0.18"
+    "typescript-eslint": "8.64.0",
+    "vitest": "4.1.11",
+    "yaml": "2.9.0"
+  },
+  "dependencies": {
+    "dd-trace": "6.10.0"
   },
   "peerDependencies": {
     "electron": ">=39"
@@ -105,8 +157,8 @@
     "url": "git+https://github.com/DataDog/electron-sdk.git"
   },
   "volta": {
-    "node": "25.3.0",
-    "yarn": "4.12.0"
+    "node": "25.9.0",
+    "yarn": "4.17.1"
   },
   "lint-staged": {
     "*.{ts,mts,cts}": [

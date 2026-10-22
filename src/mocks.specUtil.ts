@@ -2,7 +2,48 @@ import { type MockInstance } from 'vitest';
 import * as fs from 'node:fs/promises';
 import type { Configuration } from './config';
 import { RawRumView, RumActionEvent, RumErrorEvent, RumEvent, RumResourceEvent, RumViewEvent } from './domain/rum';
-import { combine, mergeInto, RecursivePartial, ServerDuration } from '@datadog/browser-core';
+import { type ServerDuration } from '@datadog/js-core/time';
+import { combine, mergeInto, type RecursivePartial } from '@datadog/js-core/util';
+
+export interface MockSender {
+  once: (event: string, handler: (...args: unknown[]) => void) => void;
+  on: (event: string, handler: (...args: unknown[]) => void) => void;
+  off: (event: string, handler: (...args: unknown[]) => void) => void;
+  listenerCount: (event: string) => number;
+  triggerDestroyed: () => void;
+  triggerFrameNavigate: (frameProcessId: number, frameRoutingId: number) => void;
+}
+
+export function createMockSender(): MockSender {
+  const persistentHandlers = new Map<string, ((...args: unknown[]) => void)[]>();
+  const addHandler = (event: string, handler: (...args: unknown[]) => void) => {
+    const handlers = persistentHandlers.get(event) ?? [];
+    handlers.push(handler);
+    persistentHandlers.set(event, handlers);
+  };
+  return {
+    once: addHandler,
+    on: addHandler,
+    off: (event: string, handler: (...args: unknown[]) => void) => {
+      const handlers = persistentHandlers.get(event) ?? [];
+      persistentHandlers.set(
+        event,
+        handlers.filter((h) => h !== handler)
+      );
+    },
+    listenerCount: (event: string) => (persistentHandlers.get(event) ?? []).length,
+    triggerDestroyed: () => {
+      // Snapshot and clear before invoking (simulates .once auto-removal).
+      const handlers = [...(persistentHandlers.get('destroyed') ?? [])];
+      persistentHandlers.set('destroyed', []);
+      handlers.forEach((h) => h());
+    },
+    triggerFrameNavigate: (frameProcessId: number, frameRoutingId: number) => {
+      const handlers = [...(persistentHandlers.get('did-frame-navigate') ?? [])];
+      handlers.forEach((h) => h(undefined, 'https://evil.com', 0, '', false, frameProcessId, frameRoutingId));
+    },
+  };
+}
 
 export function mockFs() {
   const mocks = {
@@ -35,9 +76,20 @@ export function createTestConfiguration(overrides: Partial<Configuration> = {}):
     service: 'test-service',
     clientToken: 'test-token',
     applicationId: 'test-app-id',
+    sessionSampleRate: 100,
+    logsSampleRate: 100,
+    traceSampleRate: 100,
+    traceSamplingRules: [],
+    sessionReplaySampleRate: 100,
+    profilingSampleRate: 100,
     telemetrySampleRate: 100,
+    telemetryConfigurationSampleRate: 100,
+    telemetryUsageSampleRate: 100,
+    batchSize: 'MEDIUM',
+    uploadFrequency: 'NORMAL',
     defaultPrivacyLevel: 'mask',
-    allowedWebViewHosts: [],
+    allowedRendererHosts: ['*', ''],
+    enableExecutionContext: false,
     ...overrides,
   };
 }
@@ -58,7 +110,7 @@ export function createRawRumView(overrides?: RecursivePartial<RawRumView>): RawR
       _dd: { document_version: 1 },
     },
     overrides
-  ) as RawRumView;
+  );
 }
 
 export function createServerRumEvent<T extends RumEvent>(type: RumEvent['type'], overrides?: RecursivePartial<T>): T {

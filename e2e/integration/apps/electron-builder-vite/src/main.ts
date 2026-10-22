@@ -1,9 +1,11 @@
+import '@datadog/electron-sdk/instrument';
 import { join } from 'node:path';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { _flushTransport, init, type InitConfiguration } from '@datadog/electron-sdk';
 
 const isDebugMode = process.env.PWDEBUG === '1';
 let mainWindow: BrowserWindow | null = null;
+let customSessionWindow: BrowserWindow | null = null;
 
 void init(getConfiguration());
 
@@ -15,8 +17,23 @@ ipcMain.handle('crash', () => {
   process.crash();
 });
 
-void app.whenReady().then(async () => {
-  mainWindow = new BrowserWindow({
+ipcMain.handle('mainFetch', async (_event, url: string) => {
+  const res = await fetch(url);
+  await res.text();
+  return res.status;
+});
+
+// Opens a window on a non-default session to exercise custom-session preload injection.
+ipcMain.handle('openCustomSessionWindow', () => {
+  customSessionWindow = createWindow('persist:dd-custom-session');
+});
+
+void app.whenReady().then(() => {
+  mainWindow = createWindow();
+});
+
+function createWindow(partition?: string): BrowserWindow {
+  const window = new BrowserWindow({
     width: 800,
     height: 600,
     show: isDebugMode,
@@ -24,11 +41,13 @@ void app.whenReady().then(async () => {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      partition,
     },
   });
 
-  void mainWindow.loadFile(join(__dirname, 'renderer/index.html'));
-});
+  void window.loadFile(join(__dirname, 'renderer/index.html'));
+  return window;
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

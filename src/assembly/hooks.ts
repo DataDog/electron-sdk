@@ -1,16 +1,37 @@
-import { combine, DISCARDED, SKIPPED, type RecursivePartial, type TimeStamp } from '@datadog/browser-core';
+import type { TimeStamp } from '@datadog/js-core/time';
+import { combine, type RecursivePartial } from '@datadog/js-core/util';
+import { DISCARDED, SKIPPED } from '@datadog/js-core/assembly';
 import type { RumEvent } from '../domain/rum';
 import type { TelemetryEvent } from '../domain/telemetry';
+import type { LogsEvent } from '../domain/logs';
+import { RawSpanData } from '../domain/tracing/rawTracingData.types';
+import { EventSource } from '../event';
 
 export type RumEventType = RumEvent['type'];
 
 export interface RumAssembleParams {
   eventType: RumEventType;
   startTime: TimeStamp;
+  source: EventSource;
+  /** For renderer events: the view ID reported by the renderer's browser RUM SDK. */
+  rendererViewId?: string;
+  /** For renderer events: the webContents id of the sender, used to look up its execution context. */
+  webContentsId?: number;
 }
 
 export interface TelemetryAssembleParams {
   startTime: TimeStamp;
+  source: EventSource;
+}
+
+export interface LogsAssembleParams {
+  startTime: TimeStamp;
+  source: EventSource;
+}
+
+export interface SpanAssembleParams {
+  startTime: TimeStamp;
+  source: EventSource;
 }
 
 type AssembleCallback<Params, Result> = (params: Params) => Result | typeof DISCARDED | typeof SKIPPED;
@@ -58,11 +79,17 @@ export type FormatHooks = ReturnType<typeof createFormatHooks>;
 export function createFormatHooks() {
   const rumHook = createAssembleHook<RumAssembleParams, RecursivePartial<RumEvent>>();
   const telemetryHook = createAssembleHook<TelemetryAssembleParams, RecursivePartial<TelemetryEvent>>();
+  const logsHook = createAssembleHook<LogsAssembleParams, RecursivePartial<LogsEvent>>();
+  const spanHook = createAssembleHook<SpanAssembleParams, RecursivePartial<RawSpanData>>();
 
   return {
     registerRum: rumHook.register,
     registerTelemetry: telemetryHook.register,
+    registerLogs: logsHook.register,
+    registerSpan: spanHook.register,
     triggerRum: rumHook.trigger,
     triggerTelemetry: telemetryHook.trigger,
+    triggerLogs: logsHook.trigger,
+    triggerSpan: spanHook.trigger,
   };
 }

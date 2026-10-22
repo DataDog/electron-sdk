@@ -26,53 +26,6 @@ cmd_dev () {
   concurrently --names "SDK,PLAYGROUND" -c "blue,magenta" "yarn build:watch" "cd playground && yarn dev"
 }
 
-cmd_test_playground () {
-  # Strategy: Validate playground installation, build, and runtime in CI
-  # This ensures the developer experience doesn't break
-
-  echo "Building SDK..."
-  yarn build
-
-  echo "Installing playground dependencies..."
-  yarn dev:init
-
-  echo "Building playground..."
-  cd playground
-  yarn build
-
-  # Validate build outputs exist
-  test -f dist/main.js || { echo "Error: main.js not found"; exit 1; }
-  test -f dist/preload.js || { echo "Error: preload.js not found"; exit 1; }
-  test -f dist/renderer.js || { echo "Error: renderer.js not found"; exit 1; }
-  test -f dist/index.html || { echo "Error: index.html not found"; exit 1; }
-
-  echo "Testing playground runtime..."
-  # Launch Electron in background with 10s timeout, capture output
-  # Use xvfb-run in CI (with --no-sandbox for root user), run directly for local development
-  if [ "${CI:-false}" = "true" ]; then
-    echo "CI environment detected, using xvfb for headless execution"
-    timeout 10 xvfb-run -a electron . --no-sandbox > ../playground.log 2>&1 &
-  else
-    echo "Local environment detected, running without xvfb"
-    timeout 10 yarn start > ../playground.log 2>&1 &
-  fi
-  APP_PID=$!
-
-  # Wait for initialization
-  sleep 5
-
-  # Verify still running (not crashed)
-  if ps -p $APP_PID > /dev/null; then
-    echo "Playground launched successfully"
-    kill $APP_PID || true
-    wait $APP_PID || true
-  else
-    echo "Error: Playground crashed during startup"
-    cat ../playground.log
-    exit 1
-  fi
-}
-
 cmd_init_submodule () {
   if [ ! -d "rum-events-format/.git" ]; then
     echo "Initializing rum-events-format submodule..."

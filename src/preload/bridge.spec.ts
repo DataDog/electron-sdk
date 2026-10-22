@@ -1,157 +1,134 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+/// <reference types="vitest/globals" />
+/// <reference lib="dom" />
 
-const { mockIpcRendererSend, mockIpcRendererSendSync, mockExposeInMainWorld } = vi.hoisted(() => {
-  const mockIpcRendererSend = vi.fn();
-  const mockIpcRendererSendSync = vi.fn();
-  const mockExposeInMainWorld = vi.fn();
-  return { mockIpcRendererSend, mockIpcRendererSendSync, mockExposeInMainWorld };
-});
+/**
+ * @vitest-environment jsdom
+ */
+
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const mockSend = vi.fn();
+const mockExposeInMainWorld = vi.fn();
+const mockSendSync = vi.fn();
 
 vi.mock('electron', () => ({
+  contextBridge: { exposeInMainWorld: mockExposeInMainWorld },
   ipcRenderer: {
-    send: mockIpcRendererSend,
-    sendSync: mockIpcRendererSendSync,
-  },
-  contextBridge: {
-    exposeInMainWorld: mockExposeInMainWorld,
+    sendSync: mockSendSync,
+    send: mockSend,
   },
 }));
 
-// Provide globals expected by the bridge module
-const mockWindow: Record<string, unknown> = {};
-vi.stubGlobal('window', mockWindow);
-vi.stubGlobal('location', { hostname: 'localhost' });
-
-describe('setupRendererBridge', () => {
+describe('bridge', () => {
   beforeEach(() => {
+    vi.resetModules();
     vi.clearAllMocks();
-    mockIpcRendererSendSync.mockReturnValue(undefined);
-    delete mockWindow.DatadogEventBridge;
+    mockSendSync.mockReturnValue(null);
+    const win = window as unknown as Record<string, unknown>;
+    delete win.DatadogEventBridge;
+    delete win.__dd_bridge_initialized;
   });
 
-  async function loadBridge() {
-    // Re-import to run setupRendererBridge fresh
-    const { setupRendererBridge } = await import('./bridge');
-    setupRendererBridge();
+  async function load(config: unknown = null): Promise<void> {
+    mockSendSync.mockReturnValue(config);
+    await import('./bridge');
   }
 
-  it('should assign DatadogEventBridge to window', async () => {
-    await loadBridge();
-
-    expect(mockWindow.DatadogEventBridge).toBeDefined();
+  it('sets window.DatadogEventBridge', async () => {
+    await load();
+    expect((window as unknown as Record<string, unknown>).DatadogEventBridge).toBeDefined();
   });
 
-  it('should expose the bridge via contextBridge', async () => {
-    await loadBridge();
-
-    expect(mockExposeInMainWorld).toHaveBeenCalledWith('DatadogEventBridge', expect.any(Object));
+  it('getCapabilities returns empty array string', async () => {
+    await load();
+    const bridge = (window as unknown as Record<string, { getCapabilities(): string }>).DatadogEventBridge;
+    expect(bridge.getCapabilities()).toBe('[]');
   });
 
-  it('should not throw when contextBridge.exposeInMainWorld fails', async () => {
+  it('getPrivacyLevel defaults to mask when config is null', async () => {
+    await load(null);
+    const bridge = (window as unknown as Record<string, { getPrivacyLevel(): string }>).DatadogEventBridge;
+    expect(bridge.getPrivacyLevel()).toBe('mask');
+  });
+
+  it('getPrivacyLevel returns configured privacy level', async () => {
+    await load({ defaultPrivacyLevel: 'allow' });
+    const bridge = (window as unknown as Record<string, { getPrivacyLevel(): string }>).DatadogEventBridge;
+    expect(bridge.getPrivacyLevel()).toBe('allow');
+  });
+
+  it('getAllowedWebViewHosts does NOT include location.hostname by default', async () => {
+    await load({ allowedRendererHosts: ['*', ''] });
+    const bridge = (window as unknown as Record<string, { getAllowedWebViewHosts(): string }>).DatadogEventBridge;
+    const hosts = JSON.parse(bridge.getAllowedWebViewHosts()) as string[];
+    // The preload must NOT inject location.hostname — it returns the stored list as-is
+    expect(hosts).not.toContain('localhost');
+    expect(hosts).toEqual(['*', '']);
+  });
+
+  it('getAllowedWebViewHosts returns only configured hosts', async () => {
+    await load({ allowedRendererHosts: ['example.com'] });
+    const bridge = (window as unknown as Record<string, { getAllowedWebViewHosts(): string }>).DatadogEventBridge;
+    const hosts = JSON.parse(bridge.getAllowedWebViewHosts()) as string[];
+    expect(hosts).toEqual(['example.com']);
+    expect(hosts).not.toContain('localhost');
+  });
+
+  it('getAllowedWebViewHosts returns empty array when allowedRendererHosts is []', async () => {
+    await load({ allowedRendererHosts: [] });
+    const bridge = (window as unknown as Record<string, { getAllowedWebViewHosts(): string }>).DatadogEventBridge;
+    const hosts = JSON.parse(bridge.getAllowedWebViewHosts()) as string[];
+    expect(hosts).toEqual([]);
+  });
+
+  it("getAllowedWebViewHosts returns [''] when allowedRendererHosts is [''] (normalized from 'file://')", async () => {
+    await load({ allowedRendererHosts: [''] });
+    const bridge = (window as unknown as Record<string, { getAllowedWebViewHosts(): string }>).DatadogEventBridge;
+    const hosts = JSON.parse(bridge.getAllowedWebViewHosts()) as string[];
+    expect(hosts).toEqual(['']);
+  });
+
+  it('send calls ipcRenderer.send with the bridge channel', async () => {
+    await load();
+    const bridge = (window as unknown as Record<string, { send(msg: string): void }>).DatadogEventBridge;
+    bridge.send('{"type":"rum"}');
+    expect(mockSend).toHaveBeenCalledWith('datadog:bridge-send', '{"type":"rum"}');
+  });
+
+  it('calls contextBridge.exposeInMainWorld with the bridge object', async () => {
+    await load();
+    expect(mockExposeInMainWorld).toHaveBeenCalledWith(
+      'DatadogEventBridge',
+      expect.objectContaining({
+        getCapabilities: expect.any(Function) as unknown,
+        getPrivacyLevel: expect.any(Function) as unknown,
+        getAllowedWebViewHosts: expect.any(Function) as unknown,
+        send: expect.any(Function) as unknown,
+      })
+    );
+  });
+
+  it('swallows errors from contextBridge.exposeInMainWorld when contextIsolation is disabled', async () => {
     mockExposeInMainWorld.mockImplementation(() => {
-      throw new Error('contextIsolation is not enabled');
+      throw new Error('contextIsolation is disabled');
     });
-
-    await expect(loadBridge()).resolves.not.toThrow();
-    expect(mockWindow.DatadogEventBridge).toBeDefined();
+    await expect(import('./bridge')).resolves.not.toThrow();
   });
 
-  describe('bridge API', () => {
-    function getBridge() {
-      return mockWindow.DatadogEventBridge as {
-        getCapabilities: () => string;
-        getPrivacyLevel: () => string;
-        getAllowedWebViewHosts: () => string;
-        send: (msg: string) => void;
-      };
-    }
+  it('does not re-initialize when loaded a second time in the same frame', async () => {
+    await load({ defaultPrivacyLevel: 'allow' });
 
-    it('should return capabilities as empty JSON array', async () => {
-      await loadBridge();
+    // Simulate a second preload execution: new module instance (vi.resetModules) but the same
+    // window state, as would happen when Electron runs the same preload script twice per frame.
+    vi.resetModules();
+    vi.clearAllMocks();
+    mockSendSync.mockReturnValue({ defaultPrivacyLevel: 'mask' });
 
-      expect(getBridge().getCapabilities()).toBe('[]');
-    });
+    await import('./bridge');
 
-    it('should return privacy level as mask by default', async () => {
-      await loadBridge();
-
-      expect(getBridge().getPrivacyLevel()).toBe('mask');
-    });
-
-    it('should return allowed hosts including the current hostname', async () => {
-      await loadBridge();
-
-      expect(JSON.parse(getBridge().getAllowedWebViewHosts())).toEqual(['localhost']);
-    });
-
-    it('should forward messages to ipcRenderer on the datadog:bridge-send channel', async () => {
-      await loadBridge();
-
-      const msg = JSON.stringify({ eventType: 'rum', event: { type: 'view' } });
-      getBridge().send(msg);
-
-      const { BRIDGE_CHANNEL } = await import('../common');
-      expect(mockIpcRendererSend).toHaveBeenCalledWith(BRIDGE_CHANNEL, msg);
-    });
-  });
-
-  describe('bridge config via IPC', () => {
-    function getBridge() {
-      return mockWindow.DatadogEventBridge as {
-        getPrivacyLevel: () => string;
-        getAllowedWebViewHosts: () => string;
-      };
-    }
-
-    it('should fetch config via sendSync on datadog:bridge-config', async () => {
-      await loadBridge();
-
-      expect(mockIpcRendererSendSync).toHaveBeenCalledWith('datadog:bridge-config');
-    });
-
-    it('should use privacy level from config', async () => {
-      mockIpcRendererSendSync.mockReturnValue({ defaultPrivacyLevel: 'allow', allowedWebViewHosts: [] });
-      await loadBridge();
-
-      expect(getBridge().getPrivacyLevel()).toBe('allow');
-    });
-
-    it('should use allowed hosts from config and include current hostname', async () => {
-      mockIpcRendererSendSync.mockReturnValue({ defaultPrivacyLevel: 'mask', allowedWebViewHosts: ['example.com'] });
-      await loadBridge();
-
-      expect(JSON.parse(getBridge().getAllowedWebViewHosts())).toEqual(['localhost', 'example.com']);
-    });
-
-    it('should fall back to defaults when sendSync returns undefined', async () => {
-      mockIpcRendererSendSync.mockReturnValue(undefined);
-      await loadBridge();
-
-      expect(getBridge().getPrivacyLevel()).toBe('mask');
-      expect(JSON.parse(getBridge().getAllowedWebViewHosts())).toEqual(['localhost']);
-    });
-
-    it('should deduplicate hostname when it appears in config hosts', async () => {
-      mockIpcRendererSendSync.mockReturnValue({
-        defaultPrivacyLevel: 'mask',
-        allowedWebViewHosts: ['localhost', 'other.com'],
-      });
-      await loadBridge();
-
-      expect(JSON.parse(getBridge().getAllowedWebViewHosts())).toEqual(['localhost', 'other.com']);
-    });
-  });
-
-  describe('double registration guard', () => {
-    it('should skip setup when DatadogEventBridge already exists on window', async () => {
-      mockWindow.DatadogEventBridge = { existing: true };
-
-      await loadBridge();
-
-      expect(mockIpcRendererSendSync).not.toHaveBeenCalled();
-      expect(mockExposeInMainWorld).not.toHaveBeenCalled();
-      // Original bridge should be preserved
-      expect(mockWindow.DatadogEventBridge).toEqual({ existing: true });
-    });
+    expect(mockSendSync).not.toHaveBeenCalled();
+    expect(mockExposeInMainWorld).not.toHaveBeenCalled();
+    const bridge = (window as unknown as Record<string, { getPrivacyLevel(): string }>).DatadogEventBridge;
+    expect(bridge.getPrivacyLevel()).toBe('allow');
   });
 });

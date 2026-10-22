@@ -1,19 +1,50 @@
 import { test as base, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import { join } from 'node:path';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { Intake } from './intake';
+import { TestServer } from './testServer';
 import { MainPage } from './mainPage';
+import { assertExpectedElectronVersion, getCompatibilityRun } from './compatibility';
 import type { InitConfiguration } from '@datadog/electron-sdk';
+
+const compatibilityRoot = getCompatibilityRun()?.root;
+export const e2eAppDirectory = compatibilityRoot ? join(compatibilityRoot, 'e2e-app') : join(__dirname, '../app');
 
 // Get electron executable path from the app's node_modules
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const electronPath = require(join(__dirname, '../app/node_modules/electron')) as string;
+const electronPath = require(join(e2eAppDirectory, 'node_modules/electron')) as string;
+
+// Variables forwarded to the Electron child process. Keep this list minimal:
+// system essentials for the binary to launch, plus the few flags the test app
+// and Playwright themselves read. Anything else is intentionally dropped to avoid
+// leaking variables that change behavior (e.g. OTEL_TRACES_EXPORTER=otlp would
+// make dd-trace switch off the experimental electron exporter the SDK relies on).
+const HOST_ENV_ALLOWLIST = [
+  'PATH',
+  'HOME',
+  'USER',
+  'LOGNAME',
+  'SHELL',
+  'TMPDIR',
+  'LANG',
+  'LC_ALL',
+  'DISPLAY',
+  'XAUTHORITY',
+  'CI',
+  'PWDEBUG',
+];
 
 export interface TestFixtures {
   electronApp: ElectronApplication;
   window: Page;
   mainPage: MainPage;
   intake: Intake;
+  testServer: TestServer;
   rumBrowserSdk: Record<string, unknown> | null;
+  initialIntakeQuotaDecision: 'quota_ok' | 'quota_ko';
+  sdkConfigOverrides: Partial<InitConfiguration> | null;
+  beforeSendRumEnabled: boolean;
 }
 
 /**
@@ -21,21 +52,38 @@ export interface TestFixtures {
  * Automatically launches the app before each test and closes it after.
  */
 export const test = base.extend<TestFixtures>({
+  initialIntakeQuotaDecision: ['quota_ok', { option: true }],
+
   intake: [
-    // eslint-disable-next-line no-empty-pattern
-    async ({}, use) => {
+    async ({ initialIntakeQuotaDecision }, use) => {
       const intake = new Intake();
       await intake.start();
+      intake.setQuotaResponse(initialIntakeQuotaDecision);
       await use(intake);
       await intake.stop();
     },
     { option: true },
   ],
 
-  electronApp: async ({ intake, rumBrowserSdk }, use) => {
-    const electronApp = await launchApp(intake, rumBrowserSdk);
+  testServer: [
+    // eslint-disable-next-line no-empty-pattern
+    async ({}, use) => {
+      const testServer = new TestServer();
+      await testServer.start();
+      await use(testServer);
+      await testServer.stop();
+    },
+    { option: true },
+  ],
+
+  electronApp: async ({ intake, rumBrowserSdk, sdkConfigOverrides, beforeSendRumEnabled }, use) => {
+    const userDataDir = await createUserDataDir();
+    const electronApp = await launchApp(intake, userDataDir, rumBrowserSdk, sdkConfigOverrides, {
+      ...(beforeSendRumEnabled && { DD_E2E_BEFORE_SEND_RUM: '1' }),
+    });
     await use(electronApp);
     await electronApp.close();
+    await cleanupUserDataDir(userDataDir);
   },
 
   window: [
@@ -51,27 +99,44 @@ export const test = base.extend<TestFixtures>({
   },
 
   rumBrowserSdk: [null, { option: true }],
+
+  sdkConfigOverrides: [null, { option: true }],
+
+  beforeSendRumEnabled: [false, { option: true }],
 });
 
 async function launchApp(
   intake: Intake,
-  rumBrowserSdk: Record<string, unknown> | null = null
+  userDataDir: string,
+  rumBrowserSdk: Record<string, unknown> | null = null,
+  sdkConfigOverrides: Partial<InitConfiguration> | null = null,
+  extraEnv: Record<string, string> = {}
 ): Promise<ElectronApplication> {
-  const env: Record<string, string> = {
-    ...process.env,
-  } as Record<string, string>;
+  const env: Record<string, string> = {};
+  for (const key of HOST_ENV_ALLOWLIST) {
+    const value = process.env[key];
+    if (value !== undefined) {
+      env[key] = value;
+    }
+  }
 
   const electronSdkConfig: InitConfiguration = {
     site: 'datadoghq.com',
-    proxy: `http://localhost:${intake.getPort()}/api/v2/rum`,
+    proxy: `http://localhost:${intake.getPort()}`,
     clientToken: 'test-client-token',
     service: 'e2e-test-app',
     applicationId: 'e2e-test-app-id',
     env: 'test',
     version: '1.0.0',
+    sessionSampleRate: 100,
+    sessionReplaySampleRate: 100,
+    profilingSampleRate: 100,
     telemetrySampleRate: 100,
+    telemetryConfigurationSampleRate: 100,
+    telemetryUsageSampleRate: 100,
     defaultPrivacyLevel: 'mask',
-    allowedWebViewHosts: [],
+    allowedRendererHosts: ['*'],
+    ...(sdkConfigOverrides ?? {}),
   };
   env.DD_ELECTRON_SDK_CONFIG = JSON.stringify(electronSdkConfig);
 
@@ -82,32 +147,86 @@ async function launchApp(
       site: 'datadoghq.com',
       service: 'e2e-main-window',
       sessionSampleRate: 100,
+      sessionReplaySampleRate: 100,
       trackUserInteractions: true,
       ...rumBrowserSdk,
     });
   }
 
-  return electron.launch({
+  Object.assign(env, extraEnv);
+
+  const electronApp = await electron.launch({
+    // Surface launch failures before the 30-second test timeout.
+    timeout: process.platform === 'win32' ? 20_000 : undefined,
     executablePath: electronPath,
-    args: [join(__dirname, '../app/dist/main.js')],
+    args: [join(e2eAppDirectory, 'dist/main.js'), `--user-data-dir=${userDataDir}`],
     env,
   });
+  try {
+    await assertExpectedElectronVersion(electronApp);
+    return electronApp;
+  } catch (error) {
+    await electronApp.close();
+    throw error;
+  }
 }
 
 async function waitForWindowLoaded(electronApp: ElectronApplication): Promise<{ window: Page }> {
   const window = await electronApp.firstWindow();
-  window.on('console', (msg) => console.log('Browser console:', msg.text()));
+  window.on('console', (msg) => {
+    const text = msg.text();
+    // The main window is served over file://, which cannot carry the `Document-Policy: js-profiling` header,
+    // so the Browser SDK profiler always fails to start there. That failure is expected in this setup;
+    // drop its noise (the bridge windows that actually profile are served over app:// / http with the header).
+    if (text.includes('js-profiling') || text.includes('Profiler startup failed')) {
+      return;
+    }
+    console.log('Browser console:', text);
+  });
   await window.waitForLoadState('load');
   await window.waitForTimeout(500);
   return { window };
 }
 
 export async function launchAppManually(
-  intake: Intake
+  intake: Intake,
+  userDataDir: string,
+  sdkConfigOverrides: Partial<InitConfiguration> | null = null
 ): Promise<{ electronApp: ElectronApplication; window: Page; mainPage: MainPage }> {
-  const electronApp = await launchApp(intake);
-  const { window } = await waitForWindowLoaded(electronApp);
-  return { electronApp, window, mainPage: new MainPage(window) };
+  const electronApp = await launchApp(intake, userDataDir, null, sdkConfigOverrides);
+  try {
+    const { window } = await waitForWindowLoaded(electronApp);
+    return { electronApp, window, mainPage: new MainPage(window) };
+  } catch (error) {
+    await electronApp.close();
+    throw error;
+  }
+}
+
+export async function launchDeferredInitApp(
+  intake: Intake,
+  userDataDir: string,
+  sdkConfigOverrides: Partial<InitConfiguration> = {}
+): Promise<ElectronApplication> {
+  return launchApp(
+    intake,
+    userDataDir,
+    null,
+    {
+      allowedRendererHosts: ['deferred-init.example.com'],
+      defaultPrivacyLevel: 'allow',
+      ...sdkConfigOverrides,
+    },
+    { DD_E2E_DEFER_INIT: '1' }
+  );
+}
+
+export async function createUserDataDir(): Promise<string> {
+  return mkdtemp(join(tmpdir(), 'electron-sdk-e2e-'));
+}
+
+export async function cleanupUserDataDir(userDataDir: string): Promise<void> {
+  await rm(userDataDir, { recursive: true, force: true });
 }
 
 export { expect } from '@playwright/test';

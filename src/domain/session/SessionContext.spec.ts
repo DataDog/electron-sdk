@@ -5,12 +5,14 @@ vi.mock('electron', () => ({
 }));
 
 vi.mock('../../tools/display', () => ({
-  displayError: vi.fn(),
+  display: { error: vi.fn() },
 }));
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { DISCARDED, type TimeStamp } from '@datadog/browser-core';
+import type { TimeStamp } from '@datadog/js-core/time';
+import { DISCARDED } from '@datadog/js-core/assembly';
 import { createFormatHooks } from '../../assembly';
+import { EventSource } from '../../event';
 import { SessionContext } from './SessionContext';
 
 vi.mock('node:fs/promises');
@@ -39,14 +41,21 @@ describe('SessionContext', () => {
       const hooks = createFormatHooks();
       await SessionContext.init(hooks, EXPIRE_DELAY);
 
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toBe(DISCARDED);
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toBe(DISCARDED);
+    });
+
+    it('span hook returns DISCARDED', async () => {
+      const hooks = createFormatHooks();
+      await SessionContext.init(hooks, EXPIRE_DELAY);
+
+      expect(hooks.triggerSpan({ startTime: T0, source: EventSource.MAIN })).toBe(DISCARDED);
     });
 
     it('telemetry hook returns SKIPPED (undefined)', async () => {
       const hooks = createFormatHooks();
       await SessionContext.init(hooks, EXPIRE_DELAY);
 
-      expect(hooks.triggerTelemetry({ startTime: T0 })).toBeUndefined();
+      expect(hooks.triggerTelemetry({ startTime: T0, source: EventSource.MAIN })).toBeUndefined();
     });
   });
 
@@ -57,8 +66,32 @@ describe('SessionContext', () => {
 
       context.add('session-abc');
 
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toMatchObject({
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toMatchObject({
         session: { id: 'session-abc' },
+      });
+    });
+
+    it('RUM hook returns the session id for renderer source', async () => {
+      const hooks = createFormatHooks();
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
+
+      context.add('session-abc');
+
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.RENDERER })).toMatchObject({
+        session: { id: 'session-abc' },
+      });
+    });
+
+    it('span hook returns the session id', async () => {
+      const hooks = createFormatHooks();
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
+
+      context.add('session-abc');
+
+      expect(hooks.triggerSpan({ startTime: T0, source: EventSource.MAIN })).toMatchObject({
+        meta: {
+          '_dd.session.id': 'session-abc',
+        },
       });
     });
 
@@ -68,7 +101,7 @@ describe('SessionContext', () => {
 
       context.add('session-abc');
 
-      expect(hooks.triggerTelemetry({ startTime: T0 })).toMatchObject({
+      expect(hooks.triggerTelemetry({ startTime: T0, source: EventSource.MAIN })).toMatchObject({
         session: { id: 'session-abc' },
       });
     });
@@ -81,7 +114,9 @@ describe('SessionContext', () => {
       vi.advanceTimersByTime(10); // advance to T10
       context.add('session-second'); // at T10
 
-      expect(hooks.triggerRum({ eventType: 'view', startTime: 10 as TimeStamp })).toMatchObject({
+      expect(
+        hooks.triggerRum({ eventType: 'view', startTime: 10 as TimeStamp, source: EventSource.MAIN })
+      ).toMatchObject({
         session: { id: 'session-second' },
       });
     });
@@ -97,7 +132,7 @@ describe('SessionContext', () => {
       context.close(); // closed at T10
 
       // event at T0 (during active period) is still attributed
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toMatchObject({
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toMatchObject({
         session: { id: 'session-abc' },
       });
     });
@@ -111,7 +146,35 @@ describe('SessionContext', () => {
       context.close();
 
       // event at T0 (before session started at T10) → DISCARDED
-      expect(hooks.triggerRum({ eventType: 'view', startTime: T0 })).toBe(DISCARDED);
+      expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).toBe(DISCARDED);
+    });
+
+    it('span hook still attributes events during the session period (crash attribution)', async () => {
+      const hooks = createFormatHooks();
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
+
+      context.add('session-abc'); // at T0 = 0
+      vi.advanceTimersByTime(10); // time is now 10
+      context.close(); // closed at T10
+
+      // event at T0 (during active period) is still attributed
+      expect(hooks.triggerSpan({ startTime: T0, source: EventSource.MAIN })).toMatchObject({
+        meta: {
+          '_dd.session.id': 'session-abc',
+        },
+      });
+    });
+
+    it('span hook returns DISCARDED for events before the session started', async () => {
+      const hooks = createFormatHooks();
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
+
+      vi.advanceTimersByTime(10); // advance to T10
+      context.add('session-abc'); // session started at T10
+      context.close();
+
+      // event at T0 (before session started at T10) → DISCARDED
+      expect(hooks.triggerSpan({ startTime: T0, source: EventSource.MAIN })).toBe(DISCARDED);
     });
 
     it('telemetry hook still attributes events during the session period', async () => {
@@ -122,8 +185,33 @@ describe('SessionContext', () => {
       vi.advanceTimersByTime(10);
       context.close();
 
-      expect(hooks.triggerTelemetry({ startTime: T0 })).toMatchObject({
+      expect(hooks.triggerTelemetry({ startTime: T0, source: EventSource.MAIN })).toMatchObject({
         session: { id: 'session-abc' },
+      });
+    });
+
+    it('logs hook still attributes logs during the session period', async () => {
+      const hooks = createFormatHooks();
+      const context = await SessionContext.init(hooks, EXPIRE_DELAY);
+
+      context.add('session-abc'); // at T0 = 0
+      vi.advanceTimersByTime(10);
+      context.close();
+
+      expect(hooks.triggerLogs({ startTime: T0, source: EventSource.RENDERER })).toEqual({
+        session_id: 'session-abc',
+        session: { id: 'session-abc' },
+      });
+    });
+
+    it('logs hook nulls the ids rather than discarding when no session covers the log', async () => {
+      const hooks = createFormatHooks();
+      await SessionContext.init(hooks, EXPIRE_DELAY);
+
+      // No session was ever added, so the renderer's stub id must not survive.
+      expect(hooks.triggerLogs({ startTime: T0, source: EventSource.RENDERER })).toEqual({
+        session_id: null,
+        session: { id: null },
       });
     });
 
@@ -136,7 +224,9 @@ describe('SessionContext', () => {
       context.close(); // closed at T10
 
       // Event at T20 (after session ended at T10) → DISCARDED
-      expect(hooks.triggerRum({ eventType: 'view', startTime: 20 as TimeStamp })).toBe(DISCARDED);
+      expect(hooks.triggerRum({ eventType: 'view', startTime: 20 as TimeStamp, source: EventSource.MAIN })).toBe(
+        DISCARDED
+      );
     });
   });
 });

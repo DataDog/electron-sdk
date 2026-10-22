@@ -1,4 +1,17 @@
+import { datadogLogs } from '@datadog/browser-logs';
 import { datadogRum } from '@datadog/browser-rum';
+import { generateError } from './renderer/generateError';
+
+interface DurationVitalOptions {
+  vitalKey?: string;
+  context?: Record<string, unknown>;
+  description?: string;
+}
+
+interface AddDurationVitalOptions extends DurationVitalOptions {
+  startTime: number;
+  duration: number;
+}
 
 // Initialize the browser RUM SDK in the renderer process.
 // It auto-detects the DatadogEventBridge exposed by the electron-sdk preload
@@ -8,23 +21,70 @@ datadogRum.init({
   applicationId: '6efd3722-af0a-4070-994c-0e87076d4814',
   clientToken: 'pub2a7307cdec74934cacb411a193f632f8',
   site: 'datad0g.com',
-  service: 'electron-playground',
+  service: 'playground-renderer',
+  version: __PLAYGROUND_VERSION__,
   env: 'dev',
   sessionSampleRate: 100,
+  sessionReplaySampleRate: 100,
   trackResources: true,
   trackLongTasks: true,
   trackUserInteractions: true,
+  telemetrySampleRate: 100,
+  telemetryConfigurationSampleRate: 100,
+  telemetryUsageSampleRate: 100,
+});
+
+// The Logs SDK detects the same bridge and routes every log through the main process. In bridge mode
+// it never talks to the intake itself, so a log that the main process does not relay is lost.
+datadogLogs.init({
+  clientToken: 'pub2a7307cdec74934cacb411a193f632f8',
+  site: 'datad0g.com',
+  service: 'playground-renderer',
+  env: 'dev',
+  version: __PLAYGROUND_VERSION__,
+  sessionSampleRate: 100,
+  forwardErrorsToLogs: true,
 });
 
 // Type definition for the exposed API
 interface ElectronAPI {
-  getSessionFile: () => Promise<string | null>;
+  getInternalContext: () => Promise<{ session_id: string } | undefined>;
   stopSession: () => Promise<void>;
   generateTelemetryError: () => Promise<void>;
   generateUncaughtException: () => Promise<void>;
   generateUnhandledRejection: () => Promise<void>;
+  generateBeforeSendError: (behavior: 'scrub' | 'filter') => Promise<void>;
   crash: () => Promise<void>;
   mainFetchApi: () => Promise<unknown>;
+  addDurationVital: (name: string, options: AddDurationVitalOptions) => Promise<void>;
+  startDurationVital: (name: string, options?: DurationVitalOptions) => Promise<void>;
+  stopDurationVital: (name: string, options?: DurationVitalOptions) => Promise<void>;
+  startOperation: (name: string, options?: { operationKey?: string }) => Promise<void>;
+  succeedOperation: (name: string, options?: { operationKey?: string }) => Promise<void>;
+  failOperation: (
+    name: string,
+    failureReason: 'error' | 'abandoned' | 'other',
+    options?: { operationKey?: string }
+  ) => Promise<void>;
+  mainFetchApiFetch: () => Promise<unknown>;
+  mainFetchApiNet: () => Promise<unknown>;
+  mainFetchApiNetDrop: () => Promise<unknown>;
+  openRumExplorer: () => Promise<void>;
+  openSecondaryWindow: () => Promise<void>;
+  flushTransport: () => Promise<void>;
+  setGlobalContext: () => Promise<void>;
+  setGlobalContextProperty: () => Promise<void>;
+  removeGlobalContextProperty: () => Promise<void>;
+  clearGlobalContext: () => Promise<void>;
+  setUserInfo: () => Promise<void>;
+  addUserExtraInfo: () => Promise<void>;
+  clearUserInfo: () => Promise<void>;
+  setAccountInfo: () => Promise<void>;
+  addAccountExtraInfo: () => Promise<void>;
+  clearAccountInfo: () => Promise<void>;
+  getUserInfo: () => Promise<unknown>;
+  getAccountInfo: () => Promise<unknown>;
+  addError: () => Promise<void>;
 }
 
 declare global {
@@ -36,32 +96,21 @@ declare global {
 // This export makes this file a module, which is needed for global augmentation
 export {};
 
-const sessionContent = document.getElementById('session-content') as HTMLPreElement;
+const sessionContent = document.getElementById('session-content') as HTMLElement;
 const stopBtn = document.getElementById('stop-btn') as HTMLButtonElement;
 
-const DISK_SETTLE_DELAY = 100;
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 async function refreshSessionDisplay() {
-  await delay(DISK_SETTLE_DELAY);
   try {
-    const content = await window.electronAPI.getSessionFile();
-    if (content) {
-      // Try to pretty-print JSON
-      try {
-        const parsed = JSON.parse(content);
-        sessionContent.textContent = JSON.stringify(parsed, null, 2);
-      } catch {
-        // Not valid JSON, display as-is
-        sessionContent.textContent = content;
-      }
+    const context = await window.electronAPI.getInternalContext();
+    if (context) {
+      sessionContent.textContent = context.session_id;
       sessionContent.style.opacity = '1';
     } else {
-      sessionContent.textContent = 'No session file found';
+      sessionContent.textContent = 'No active session';
       sessionContent.style.opacity = '0.6';
     }
   } catch (error) {
-    console.error('Error fetching session file:', error);
+    console.error('Error fetching session context:', error);
     sessionContent.textContent = `Error: ${String(error)}`;
     sessionContent.style.opacity = '0.6';
   }
@@ -102,10 +151,22 @@ telemetryErrorButton.addEventListener('click', () => {
   void window.electronAPI.generateTelemetryError();
 });
 
+// Handle renderer log button click
+const rendererLogButton = document.getElementById('generate-renderer-log') as HTMLButtonElement;
+rendererLogButton.addEventListener('click', () => {
+  datadogLogs.logger.info('renderer log from the playground', { clicked_at: new Date().toISOString() });
+});
+
 // Handle uncaught exception button click
 const uncaughtExceptionButton = document.getElementById('generate-uncaught-exception') as HTMLButtonElement;
 uncaughtExceptionButton.addEventListener('click', () => {
   void window.electronAPI.generateUncaughtException();
+});
+
+// Throws in the renderer itself, so the stack carries renderer URLs (app://, file:// or http://).
+const rendererErrorButton = document.getElementById('generate-renderer-error') as HTMLButtonElement;
+rendererErrorButton.addEventListener('click', () => {
+  generateError();
 });
 
 // Handle unhandled rejection button click
@@ -119,6 +180,13 @@ const crashBtn = document.getElementById('crash-btn') as HTMLButtonElement;
 crashBtn.addEventListener('click', () => {
   void window.electronAPI.crash();
 });
+
+// Handle open in RUM Explorer button click
+const openRumExplorerBtn = document.getElementById('open-rum-explorer') as HTMLButtonElement;
+openRumExplorerBtn.addEventListener('click', () => {
+  void window.electronAPI.openRumExplorer();
+});
+
 // --- IPC Activity Log ---
 
 const ipcLog = document.getElementById('ipc-log') as HTMLDivElement;
@@ -192,4 +260,156 @@ if (rendererFetchBtn) {
   });
 }
 
+// Block the main thread to generate a long task so the profiler emits a profile
+// (profiles < 5s are only sent when they contain a long task). The work runs through named
+// functions so the JS Self-Profiling samples attribute to renderer.js rather than to the
+// native `Date.now` builtin of a bare spin loop.
+function churn(seed: number): number {
+  let value = seed;
+  for (let i = 0; i < 500_000; i++) {
+    value = (value + Math.sqrt(i) * Math.sin(i)) % 1e9;
+  }
+  return value;
+}
+
+function runLongTask(): number {
+  let acc = 0;
+  const start = Date.now();
+  while (Date.now() - start < 500) {
+    acc = churn(acc);
+  }
+  return acc;
+}
+
+const longTaskBtn = document.getElementById('generate-long-task') as HTMLButtonElement | null;
+if (longTaskBtn) {
+  longTaskBtn.addEventListener('click', () => {
+    runLongTask();
+  });
+}
+// --- Global context buttons ---
+setupDemoButton('set-global-context', 'main:set-global-context', () => window.electronAPI.setGlobalContext());
+setupDemoButton('set-global-context-property', 'main:set-global-context-property', () =>
+  window.electronAPI.setGlobalContextProperty()
+);
+setupDemoButton('remove-global-context-property', 'main:remove-global-context-property', () =>
+  window.electronAPI.removeGlobalContextProperty()
+);
+setupDemoButton('clear-global-context', 'main:clear-global-context', () => window.electronAPI.clearGlobalContext());
+// --- User & Account context buttons ---
+setupDemoButton('set-user-info', 'main:set-user-info', () => window.electronAPI.setUserInfo());
+setupDemoButton('add-user-extra-info', 'main:add-user-extra-info', () => window.electronAPI.addUserExtraInfo());
+setupDemoButton('clear-user-info', 'main:clear-user-info', () => window.electronAPI.clearUserInfo());
+setupDemoButton('set-account-info', 'main:set-account-info', () => window.electronAPI.setAccountInfo());
+setupDemoButton('add-account-extra-info', 'main:add-account-extra-info', () =>
+  window.electronAPI.addAccountExtraInfo()
+);
+setupDemoButton('clear-account-info', 'main:clear-account-info', () => window.electronAPI.clearAccountInfo());
+
+setupDemoButton('get-user-info', 'main:get-user-info', () => window.electronAPI.getUserInfo());
+setupDemoButton('get-account-info', 'main:get-account-info', () => window.electronAPI.getAccountInfo());
+setupDemoButton('add-error', 'main:add-error', () => window.electronAPI.addError());
+
+// --- Process Lifecycle demo button ---
+
+setupDemoButton('open-secondary-window', 'main:open-secondary-window', () => window.electronAPI.openSecondaryWindow());
+
 setupDemoButton('main-fetch', 'main:fetch-api', () => window.electronAPI.mainFetchApi());
+setupDemoButton('main-fetch-fetch', 'main:fetch-api-fetch', () => window.electronAPI.mainFetchApiFetch());
+setupDemoButton('main-fetch-net', 'main:fetch-api-net', () => window.electronAPI.mainFetchApiNet());
+setupDemoButton('main-fetch-net-drop', 'main:fetch-api-net-drop', () => window.electronAPI.mainFetchApiNetDrop());
+
+// --- Custom duration vital demo buttons ---
+
+setupDemoButton('vital-add', 'main:add-duration-vital(database.migration)', () =>
+  window.electronAPI.addDurationVital('database.migration', {
+    startTime: Date.now() - 1_500,
+    duration: 1_500,
+    context: { database: 'documents' },
+    description: 'Playground direct duration',
+  })
+);
+setupDemoButton('vital-start', 'main:start-duration-vital(document.open)', () =>
+  window.electronAPI.startDurationVital('document.open', {
+    vitalKey: 'playground-document',
+    context: { source: 'playground' },
+  })
+);
+setupDemoButton('vital-stop', 'main:stop-duration-vital(document.open)', () =>
+  window.electronAPI.stopDurationVital('document.open', {
+    vitalKey: 'playground-document',
+    context: { result: 'success' },
+  })
+);
+
+// --- beforeSendRum demo buttons ---
+
+setupDemoButton('before-send-scrub', 'beforeSendRum(scrub)', () => window.electronAPI.generateBeforeSendError('scrub'));
+setupDemoButton('before-send-filter', 'beforeSendRum(filter)', () =>
+  window.electronAPI.generateBeforeSendError('filter')
+);
+
+// --- Operation Monitoring demo buttons ---
+
+setupDemoButton('op-start', 'main:start-operation(checkout)', () => window.electronAPI.startOperation('checkout'));
+setupDemoButton('op-succeed', 'main:succeed-operation(checkout)', () =>
+  window.electronAPI.succeedOperation('checkout')
+);
+setupDemoButton('op-fail', 'main:fail-operation(checkout, error)', () =>
+  window.electronAPI.failOperation('checkout', 'error')
+);
+setupDemoButton('op-keyed-start', 'main:start-operation(upload/photo_1)', () =>
+  window.electronAPI.startOperation('upload', { operationKey: 'photo_1' })
+);
+setupDemoButton('op-keyed-succeed', 'main:succeed-operation(upload/photo_1)', () =>
+  window.electronAPI.succeedOperation('upload', { operationKey: 'photo_1' })
+);
+
+// Simulate 5 parallel file uploads with different operation_keys, then complete
+// each in a random order — mirrors a real upload-batch flow where individual
+// uploads finish at unpredictable times.
+async function runParallelUploads(): Promise<void> {
+  const FAILURE_REASONS = ['error', 'abandoned', 'other'] as const;
+  const keys = Array.from({ length: 5 }, (_, i) => `photo_${i + 1}`);
+
+  // Fire all start IPC calls in parallel so the SDK observes them as concurrent.
+  await Promise.all(
+    keys.map(async (key) => {
+      await window.electronAPI.startOperation('upload', { operationKey: key });
+      logIpcCall(`main:start-operation(upload/${key})`, 'done');
+    })
+  );
+
+  // Shuffle to complete in a random order.
+  const completionOrder = [...keys].sort(() => Math.random() - 0.5);
+
+  // Each completion fires after its own random delay, in parallel.
+  await Promise.all(
+    completionOrder.map(async (key) => {
+      // Random delay 50–500ms to simulate variable upload duration.
+      await new Promise<void>((resolve) => setTimeout(resolve, 50 + Math.floor(Math.random() * 450)));
+
+      // ~70% succeed, ~30% fail with a random failure_reason.
+      if (Math.random() < 0.7) {
+        await window.electronAPI.succeedOperation('upload', { operationKey: key });
+        logIpcCall(`main:succeed-operation(upload/${key})`, 'done');
+      } else {
+        const reason = FAILURE_REASONS[Math.floor(Math.random() * FAILURE_REASONS.length)];
+        await window.electronAPI.failOperation('upload', reason, { operationKey: key });
+        logIpcCall(`main:fail-operation(upload/${key}, ${reason})`, 'done');
+      }
+    })
+  );
+}
+
+const parallelBtn = document.getElementById('op-parallel-uploads') as HTMLButtonElement | null;
+if (parallelBtn) {
+  parallelBtn.addEventListener('click', () => {
+    parallelBtn.disabled = true;
+    void runParallelUploads()
+      .catch((err) => logIpcCall('parallel-uploads', 'error', 0, String(err)))
+      .finally(() => {
+        parallelBtn.disabled = false;
+      });
+  });
+}

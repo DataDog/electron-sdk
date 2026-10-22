@@ -13,10 +13,7 @@
  * Schema of all properties of a telemetry event
  */
 export type TelemetryEvent =
-  | TelemetryErrorEvent
-  | TelemetryDebugEvent
-  | TelemetryConfigurationEvent
-  | TelemetryUsageEvent;
+  TelemetryErrorEvent | TelemetryDebugEvent | TelemetryConfigurationEvent | TelemetryUsageEvent;
 /**
  * Schema of all properties of a telemetry error event
  */
@@ -396,6 +393,10 @@ export type TelemetryConfigurationEvent = CommonTelemetryProperties & {
        */
       unity_version?: string;
       /**
+       * The version of MAUI used in a .NET MAUI application
+       */
+      maui_version?: string;
+      /**
        * The threshold used for iOS App Hangs monitoring (in milliseconds)
        */
       app_hang_threshold?: number;
@@ -454,7 +455,7 @@ export type TelemetryConfigurationEvent = CommonTelemetryProperties & {
        */
       sdk_version?: string;
       /**
-       * The source of the SDK, e.g., 'browser', 'ios', 'android', 'flutter', 'react-native', 'unity', 'kotlin-multiplatform'.
+       * The source of the SDK, e.g., 'browser', 'ios', 'android', 'flutter', 'react-native', 'unity', 'kotlin-multiplatform', 'maui'.
        */
       source?: string;
       /**
@@ -470,6 +471,36 @@ export type TelemetryConfigurationEvent = CommonTelemetryProperties & {
        */
       use_remote_configuration_proxy?: boolean;
       /**
+       * Metadata of the remote configuration currently applied for this session
+       */
+      remote_configuration?: {
+        /**
+         * Identifier of the remote configuration bundle this metadata belongs to
+         */
+        config_id?: string;
+        /**
+         * CDN version identifier of the applied configuration
+         */
+        version_id?: string;
+        /**
+         * CDN publish timestamp of the applied configuration, in ms from epoch
+         */
+        last_modified?: number;
+        /**
+         * Timestamp at which the device fetched and cached this configuration version, in ms from epoch
+         */
+        last_synced?: number;
+        /**
+         * Timestamp at which this configuration version was first observed as applied by the device, in ms from epoch. Stamped once and reused on every subsequent session that runs on the same version
+         */
+        first_applied?: number;
+        /**
+         * Identifier of the sync that produced this configuration version, used to deduplicate repeat sessions from the same device without a persistent identifier
+         */
+        sync_id?: string;
+        [k: string]: unknown;
+      };
+      /**
        * The percentage of sessions with Profiling enabled
        */
       profiling_sample_rate?: number;
@@ -478,9 +509,29 @@ export type TelemetryConfigurationEvent = CommonTelemetryProperties & {
        */
       propagate_trace_baggage?: boolean;
       /**
+       * How the SDK tracks resource request/response headers
+       */
+      track_resource_headers?: 'default_headers' | 'custom';
+      /**
        * Whether the beta encode cookie options is enabled
        */
       beta_encode_cookie_options?: boolean;
+      /**
+       * Whether the beta partial view updates feature is enabled
+       */
+      beta_enable_view_updates?: boolean;
+      /**
+       * Whether the beta track WebSockets feature is enabled
+       */
+      beta_track_web_sockets?: boolean;
+      /**
+       * Whether tracing feature's client-side-stats generation is enabled
+       */
+      use_client_side_stats?: boolean;
+      /**
+       * Whether trace sampling rules are configured
+       */
+      use_trace_sampling_rules?: boolean;
       [k: string]: unknown;
     };
     [k: string]: unknown;
@@ -547,11 +598,12 @@ export type TelemetryBrowserFeaturesUsage =
   | StartAction
   | StopAction
   | StartResource
-  | StopResource;
+  | StopResource
+  | SourceCodeContext;
 /**
  * Schema of mobile specific features usage
  */
-export type TelemetryMobileFeaturesUsage = TrackWebView | AndroidNetworkInstrumentation;
+export type TelemetryMobileFeaturesUsage = TrackWebView | Timeseries | AndroidNetworkInstrumentation;
 
 /**
  * Schema of common properties of Telemetry events
@@ -591,7 +643,8 @@ export interface CommonTelemetryProperties {
     | 'unity'
     | 'kotlin-multiplatform'
     | 'electron'
-    | 'rum-cpp';
+    | 'cpp'
+    | 'maui';
   /**
    * The version of the SDK generating the telemetry event
    */
@@ -633,7 +686,7 @@ export interface CommonTelemetryProperties {
     /**
      * UUID of the action
      */
-    id: string;
+    readonly id: string | string[];
     [k: string]: unknown;
   };
   /**
@@ -973,11 +1026,25 @@ export interface StopResource {
   feature: 'stop-resource';
   [k: string]: unknown;
 }
+export interface SourceCodeContext {
+  /**
+   * DD_SOURCE_CODE_CONTEXT global for microfrontends
+   */
+  feature: 'source-code-context';
+  [k: string]: unknown;
+}
 export interface TrackWebView {
   /**
    * trackWebView API
    */
   feature: 'trackWebView';
+  [k: string]: unknown;
+}
+export interface Timeseries {
+  /**
+   * Timeseries tracking enabled
+   */
+  feature: 'timeseries';
   [k: string]: unknown;
 }
 export interface AndroidNetworkInstrumentation {
@@ -988,6 +1055,6 @@ export interface AndroidNetworkInstrumentation {
   /**
    * The network instrumentation API used
    */
-  type: 'CRONET' | 'OKHTTP';
+  type: 'CRONET' | 'OKHTTP' | 'LEGACY_OKHTTP';
   [k: string]: unknown;
 }

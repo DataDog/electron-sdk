@@ -1,3 +1,1 @@
-import { setupRendererBridge } from '../preload';
-
-setupRendererBridge();
+import '../preload/bridge';

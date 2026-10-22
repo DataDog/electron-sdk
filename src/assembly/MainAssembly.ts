@@ -1,0 +1,99 @@
+import { timeStampNow } from '@datadog/js-core/time';
+import { combine, deepClone, isIndexableObject, type RecursivePartial } from '@datadog/js-core/util';
+import { DISCARDED } from '@datadog/js-core/assembly';
+import {
+  EventFormat,
+  EventKind,
+  EventManager,
+  EventSource,
+  EventTrack,
+  type RawEvent,
+  type RawProfileEvent,
+  type RawReplayEvent,
+  type ServerEvent,
+} from '../event';
+import type { FormatHooks } from './hooks';
+import { MainRumEvent } from '../domain/rum';
+import { TelemetryEvent } from '../domain/telemetry';
+import { BeforeSend } from './BeforeSend';
+
+// Raw events assembled through the standard main-process hook pipeline.
+type StandardRawEvent = Exclude<RawEvent, RawProfileEvent | RawReplayEvent>;
+
+/**
+ * Transforms main-process RawEvents into ServerEvents by enriching them with
+ * contextual attributes (session, application, view, etc.) via format hooks,
+ * then applies beforeSendRum to fully assembled RUM events.
+ */
+export class MainAssembly {
+  constructor(
+    private eventManager: EventManager,
+    private hooks: FormatHooks,
+    private beforeSend: BeforeSend
+  ) {
+    this.eventManager.registerHandler<StandardRawEvent>({
+      canHandle: (event): event is StandardRawEvent =>
+        event.kind === EventKind.RAW && event.format !== EventFormat.PROFILE && event.format !== EventFormat.REPLAY,
+      handle: (event, notify) => {
+        const result = this.assembleMainProcessEvent(event);
+        if (result !== DISCARDED) {
+          notify(result);
+        }
+      },
+    });
+  }
+
+  private assembleMainProcessEvent(event: StandardRawEvent): ServerEvent | DISCARDED {
+    const startTime = event.startTime ?? timeStampNow();
+    const source = EventSource.MAIN;
+
+    if (event.format === EventFormat.RUM) {
+      const hookResult = this.hooks.triggerRum({
+        eventType: event.data.type,
+        startTime,
+        source,
+      });
+      if (hookResult !== DISCARDED) {
+        const data = this.beforeSend.apply(
+          assembleData<MainRumEvent>(event.data, hookResult as RecursivePartial<MainRumEvent> | undefined),
+          'main'
+        );
+        if (!data) {
+          return DISCARDED;
+        }
+        return {
+          kind: EventKind.SERVER,
+          track: EventTrack.RUM,
+          source: EventSource.MAIN,
+          data,
+        };
+      }
+    }
+
+    if (event.format === EventFormat.TELEMETRY) {
+      const hookResult = this.hooks.triggerTelemetry({ startTime, source });
+      if (hookResult !== DISCARDED) {
+        return {
+          kind: EventKind.SERVER,
+          track: EventTrack.RUM,
+          source: EventSource.MAIN,
+          data: assembleData<TelemetryEvent>(event.data, hookResult),
+        };
+      }
+    }
+
+    return DISCARDED;
+  }
+}
+
+function assembleData<T>(rawData: Record<string, unknown>, hookResult: RecursivePartial<T> | undefined): T {
+  const hookData = (hookResult ?? {}) as Record<string, unknown>;
+  const assembled = combine(hookData, rawData);
+  if (isIndexableObject(hookData.context) && isIndexableObject(rawData.context)) {
+    assembled.context = {
+      ...deepClone(hookData.context),
+      ...deepClone(rawData.context),
+    };
+  }
+  return assembled as T;
+}

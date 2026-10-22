@@ -1,3 +1,4 @@
+import '@datadog/electron-sdk/instrument';
 import path from 'node:path';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { _flushTransport, init, type InitConfiguration } from '@datadog/electron-sdk';
@@ -7,6 +8,7 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 
 const isDebugMode = process.env.PWDEBUG === '1';
 let mainWindow: BrowserWindow | null = null;
+let customSessionWindow: BrowserWindow | null = null;
 
 void init(getConfiguration());
 
@@ -18,8 +20,23 @@ ipcMain.handle('crash', () => {
   process.crash();
 });
 
-void app.whenReady().then(async () => {
-  mainWindow = new BrowserWindow({
+ipcMain.handle('mainFetch', async (_event, url: string) => {
+  const res = await fetch(url);
+  await res.text();
+  return res.status;
+});
+
+// Opens a window on a non-default session to exercise custom-session preload injection.
+ipcMain.handle('openCustomSessionWindow', () => {
+  customSessionWindow = createWindow('persist:dd-custom-session');
+});
+
+void app.whenReady().then(() => {
+  mainWindow = createWindow();
+});
+
+function createWindow(partition?: string): BrowserWindow {
+  const window = new BrowserWindow({
     width: 800,
     height: 600,
     show: isDebugMode,
@@ -27,15 +44,17 @@ void app.whenReady().then(async () => {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      partition,
     },
   });
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    void mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+    void window.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
-    void mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
+    void window.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
   }
-});
+  return window;
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

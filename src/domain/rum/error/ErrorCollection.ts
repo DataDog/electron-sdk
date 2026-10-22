@@ -1,6 +1,8 @@
-import { Context, generateUUID, jsonStringify, type TimeStamp, timeStampNow } from '@datadog/browser-core';
-import { EventFormat, EventKind, EventManager, EventSource } from '../../../event';
-import type { RawRumError } from '../rawRumData.types';
+import type { TimeStamp } from '@datadog/js-core/time';
+import { timeStampNow } from '@datadog/js-core/time';
+import { Context, generateUUID, jsonStringify } from '@datadog/browser-core';
+import { EventFormat, EventKind, EventManager } from '../../../event';
+import type { RawRumError } from '../types';
 import { monitor } from '../../telemetry';
 
 export interface ErrorOptions {
@@ -75,12 +77,12 @@ export class ErrorCollection {
         handling: options.handling,
         stack,
         type: kind,
+        source_type: 'nodejs',
       },
     };
 
     this.eventManager.notify({
       kind: EventKind.RAW,
-      source: EventSource.MAIN,
       format: EventFormat.RUM,
       data: errorEvent,
       startTime,

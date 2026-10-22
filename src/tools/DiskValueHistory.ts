@@ -1,12 +1,12 @@
 import * as fs from 'node:fs/promises';
-import type { TimeStamp } from '@datadog/browser-core';
+import type { TimeStamp } from '@datadog/js-core/time';
 import { TimeStampValueHistory, type TimeStampHistoryEntry } from './TimeStampValueHistory';
-import { displayError } from './display';
+import { display } from './display';
 
 /**
  * Disk-backed extension of TimeStampValueHistory. All in-memory operations delegate to an
- * underlying TimeStampValueHistory; add() and closeActive() additionally persist the full
- * entry list to disk as a JSON array (newest-first).
+ * underlying TimeStampValueHistory; every write additionally persists the full entry list to
+ * disk as a JSON array (newest-first).
  *
  * Lifecycle:
  * - Create instances via `DiskValueHistory.init()` which loads and restores entries from a
@@ -16,7 +16,7 @@ import { displayError } from './display';
  * disk, because JSON.stringify converts Infinity to null. On load, entries with `endTime: null`
  * are restored as active (endTime = Infinity).
  *
- * Error handling: write failures are logged via displayError and do not throw.
+ * Error handling: write failures are logged via display.error and do not throw.
  * Read/parse failures leave the history empty (silent fallback).
  */
 export class DiskValueHistory<T> {
@@ -49,7 +49,7 @@ export class DiskValueHistory<T> {
     for (let i = rawEntries.length - 1; i >= 0; i--) {
       const entry = rawEntries[i];
       // Skip entries that would be immediately pruned
-      if (entry.endTime !== null && (entry.endTime as number) < expireThreshold) continue;
+      if (entry.endTime !== null && entry.endTime < expireThreshold) continue;
       history.add(entry.value, entry.startTime);
       if (entry.endTime !== null) {
         history.closeActive(entry.endTime);
@@ -73,6 +73,24 @@ export class DiskValueHistory<T> {
     this.persistToDisk();
   }
 
+  updateActive(value: T): void {
+    this.history.updateActive(value);
+    this.persistToDisk();
+  }
+
+  closeAndAdd(value: T, atTime: TimeStamp): void {
+    this.history.closeActive(atTime);
+    this.history.add(value, atTime);
+    this.persistToDisk();
+  }
+
+  pruneAndPersist(): void {
+    const pruned = this.history.pruneExpired();
+    if (pruned) {
+      this.persistToDisk();
+    }
+  }
+
   getEntries(): readonly TimeStampHistoryEntry<T>[] {
     return this.history.getEntries();
   }
@@ -82,7 +100,7 @@ export class DiskValueHistory<T> {
     this.pendingWrite = this.pendingWrite
       .then(() => fs.writeFile(this.filePath, snapshot, 'utf-8'))
       .catch((error) => {
-        displayError('Failed to persist value history:', error);
+        display.error('Failed to persist value history:', error);
       });
   }
 }

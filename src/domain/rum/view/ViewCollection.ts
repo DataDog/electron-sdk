@@ -1,13 +1,5 @@
-import {
-  elapsed,
-  generateUUID,
-  ONE_MINUTE,
-  ONE_SECOND,
-  Subscription,
-  TimeStamp,
-  timeStampNow,
-  toServerDuration,
-} from '@datadog/browser-core';
+import { elapsed, ONE_MINUTE, ONE_SECOND, timeStampNow, toServerDuration, TimeStamp } from '@datadog/js-core/time';
+import { generateUUID, Subscription } from '@datadog/browser-core';
 import {
   EventFormat,
   EventKind,
@@ -20,7 +12,7 @@ import {
 } from '../../../event';
 import type { FormatHooks } from '../../../assembly';
 import { setInterval, throttle } from '../../telemetry';
-import type { RawRumView } from '../rawRumData.types';
+import type { RawRumView } from '../types';
 import { ViewContext } from './ViewContext';
 
 export const SESSION_KEEP_ALIVE_INTERVAL = 5 * ONE_MINUTE;
@@ -41,7 +33,7 @@ interface ViewState {
  * - keep session alive by regularly send view updates
  * - on SESSION_EXPIRED, emit a final inactive view update
  * - on SESSION_RENEW, create a new view
- * - on RUM server event (action, error, resource), increment view counters (throttled)
+ * - on main-process RUM server event (error, resource), increment view counters (throttled)
  */
 export class ViewCollection {
   private currentView!: ViewState;
@@ -105,8 +97,10 @@ export class ViewCollection {
       counters: { action: { count: 0 }, error: { count: 0 }, resource: { count: 0 } },
     };
 
-    this.viewContext.close(); // close previous view if any (ensures non-overlapping history entries)
-    this.viewContext.add(viewId);
+    // Use the event timestamp for both history boundaries. A later clock reading
+    // could make this view event predate its own history entry and get discarded.
+    this.viewContext.close(this.currentView.startTime);
+    this.viewContext.add(viewId, this.currentView.startTime);
     this.emitViewUpdate();
     this.keepSessionAlive();
   }
@@ -126,7 +120,6 @@ export class ViewCollection {
 
     this.eventManager.notify({
       kind: EventKind.RAW,
-      source: EventSource.MAIN,
       format: EventFormat.RUM,
       data: viewEvent,
       startTime: this.currentView.startTime,
@@ -134,6 +127,10 @@ export class ViewCollection {
   }
 
   private onSessionExpired(): void {
+    if (!this.currentView.isActive) {
+      return;
+    }
+
     this.cancelScheduledViewUpdate();
     this.stopSessionKeepAlive();
     this.currentView.isActive = false;
@@ -153,7 +150,7 @@ export class ViewCollection {
     }
 
     const type = event.data.type;
-    if (type === 'action' || type === 'error' || type === 'resource') {
+    if (type === 'error' || type === 'resource') {
       this.currentView.counters[type].count++;
       this.currentView.documentVersion++;
       this.scheduleViewUpdate();

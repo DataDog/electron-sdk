@@ -1,12 +1,12 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
-import { generateUUID, type TimeStamp } from '@datadog/browser-core';
+import type { TimeStamp } from '@datadog/js-core/time';
+import { generateUUID } from '@datadog/browser-core';
 import { app, crashReporter } from 'electron';
-import { EventFormat, EventKind, EventManager, EventSource } from '../../../event';
+import { EventFormat, EventKind, EventManager } from '../../../event';
 import type { CrashReport } from '../../../wasm';
-import type { RawRumError } from '../rawRumData.types';
-import type { RumErrorEvent } from '../rumEvent.types';
-import { displayError, displayInfo } from '../../../tools/display';
+import type { RawRumError, RumErrorEvent } from '../types';
+import { display } from '../../../tools/display';
 import { addError, monitor } from '../../telemetry';
 
 /**
@@ -38,7 +38,7 @@ export class CrashCollection {
 
     // Dynamic import to avoid loading the ~1.6MB WASM binary into memory when there are no dumps
     const { processMinidump } = await import('../../../wasm');
-    displayInfo(`${dmpFiles.length} crash dumps to process`);
+    display.info(`${dmpFiles.length} crash dumps to process`);
 
     for (const filePath of dmpFiles) {
       try {
@@ -50,7 +50,6 @@ export class CrashCollection {
 
         this.eventManager.notify({
           kind: EventKind.RAW,
-          source: EventSource.MAIN,
           format: EventFormat.RUM,
           data: buildCrashErrorEvent(crashReport, crashTime),
           startTime: crashTime,
@@ -59,10 +58,10 @@ export class CrashCollection {
         await fs.unlink(filePath);
       } catch (error) {
         addError(error);
-        displayError('Failed to process crash dump:', filePath, error);
+        display.error('Failed to process crash dump:', filePath, error);
       }
     }
-    displayInfo(`Crash dump processing done.`);
+    display.info(`Crash dump processing done.`);
   }
 }
 
@@ -111,12 +110,27 @@ function buildCrashErrorEvent(crashReport: CrashReport, crashTime: TimeStamp): R
         process: app.getName(),
         exception_type: crashReport.crash_info.type,
       },
-      source_type: crashReport.system_info.os as RumErrorEvent['error']['source_type'],
+      source_type: mapOsToSourceType(crashReport.system_info.os),
       stack: crashedThread?.stack,
       threads,
       binary_images: formatBinaryImages(crashReport),
     },
   };
+}
+
+const OS_TO_SOURCE_TYPE: Record<string, RumErrorEvent['error']['source_type']> = {
+  mac: 'macos',
+  linux: 'linux',
+  windows: 'windows',
+};
+
+function mapOsToSourceType(os: string): RumErrorEvent['error']['source_type'] {
+  const sourceType = OS_TO_SOURCE_TYPE[os];
+  if (!sourceType) {
+    addError(new Error(`Unknown OS reported by minidump processor: ${os}`));
+    return os as RumErrorEvent['error']['source_type'];
+  }
+  return sourceType;
 }
 
 /**

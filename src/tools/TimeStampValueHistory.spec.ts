@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { TimeStamp } from '@datadog/browser-core';
+import type { TimeStamp } from '@datadog/js-core/time';
 import { TimeStampValueHistory } from './TimeStampValueHistory';
 
 // Fake timers align Date.now() with test timestamps so pruning works predictably
@@ -74,13 +74,26 @@ describe('TimeStampValueHistory', () => {
       expect(history.find(T20)).toBe('a');
     });
 
-    it('returns the closed entry for a query after endTime', () => {
+    it('returns undefined for a query at or after endTime (exclusive end boundary)', () => {
       const history = new TimeStampValueHistory<string>({ expireDelay: EXPIRE_DELAY });
 
       history.add('a', T10);
       history.closeActive(T30);
 
+      // exclusive end: a query exactly at endTime is outside the closed entry
+      expect(history.find(T30)).toBeUndefined();
       expect(history.find(T40)).toBeUndefined();
+    });
+
+    it('returns undefined at the clear timestamp when no successor is added (same-millisecond clear)', () => {
+      const history = new TimeStampValueHistory<string>({ expireDelay: EXPIRE_DELAY });
+
+      history.add('a', T10);
+      // Simulate clearContext: close the active entry without adding a successor
+      history.closeActive(T30);
+
+      // An event captured at exactly T30 must NOT receive the cleared context
+      expect(history.find(T30)).toBeUndefined();
     });
 
     it('closes only the latest active entry (index 0)', () => {
@@ -106,6 +119,28 @@ describe('TimeStampValueHistory', () => {
 
       // endTime stays at T20 (first close), not T30
       expect(history.getEntries()[0].endTime).toBe(T20);
+    });
+  });
+
+  describe('updateActive', () => {
+    it('replaces the value of the active entry from its start time', () => {
+      const history = new TimeStampValueHistory<string>({ expireDelay: EXPIRE_DELAY });
+
+      history.add('a', T10);
+      history.updateActive('b');
+
+      expect(history.getEntries()).toEqual([{ startTime: T10, endTime: Infinity, value: 'b' }]);
+      expect(history.find(T10)).toBe('b');
+    });
+
+    it('is a no-op when there is no active entry', () => {
+      const history = new TimeStampValueHistory<string>({ expireDelay: EXPIRE_DELAY });
+
+      history.add('a', T10);
+      history.closeActive(T20);
+      history.updateActive('b');
+
+      expect(history.find(T10)).toBe('a');
     });
   });
 

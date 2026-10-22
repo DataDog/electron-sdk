@@ -19,8 +19,15 @@ vi.mock('electron', () => ({
 }));
 
 vi.mock('../../../tools/display', () => ({
-  displayError: vi.fn(),
-  displayInfo: vi.fn(),
+  display: {
+    error: vi.fn(),
+    info: vi.fn(),
+  },
+}));
+
+vi.mock('../../telemetry', () => ({
+  addError: vi.fn(),
+  monitor: vi.fn((fn: () => unknown) => fn),
 }));
 
 vi.mock('../../../wasm', () => ({
@@ -29,13 +36,14 @@ vi.mock('../../../wasm', () => ({
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { crashReporter } from 'electron';
-import { type TimeStamp } from '@datadog/browser-core';
+import type { TimeStamp } from '@datadog/js-core/time';
 import { CrashCollection } from './CrashCollection';
 import { EventManager, EventKind, EventFormat, type RawRumEvent } from '../../../event';
 import { processMinidump } from '../../../wasm';
 import type { CrashReport } from '../../../wasm';
-import type { RawRumError } from '../rawRumData.types';
-import { displayError } from '../../../tools/display';
+import type { RawRumError } from '../types';
+import { display } from '../../../tools/display';
+import { addError } from '../../telemetry';
 
 vi.mock('node:fs/promises');
 const mfs = mockFs();
@@ -157,7 +165,7 @@ describe('CrashCollection', () => {
     expect(data.error.message).toBe('Application crashed');
   });
 
-  it('sets source_type from system_info.os', async () => {
+  it('maps mac os to macos source_type', async () => {
     mockDmpFile();
     vi.mocked(processMinidump).mockResolvedValue(
       createMinidumpResult({ system_info: { os: 'mac', cpu: 'arm64', cpu_info: '' } })
@@ -166,7 +174,44 @@ describe('CrashCollection', () => {
     await startAndFlush(eventManager);
 
     const data = rawRumEvents[0].data as RawRumError;
-    expect(data.error.source_type).toBe('mac');
+    expect(data.error.source_type).toBe('macos');
+  });
+
+  it('maps linux os to linux source_type', async () => {
+    mockDmpFile();
+    vi.mocked(processMinidump).mockResolvedValue(
+      createMinidumpResult({ system_info: { os: 'linux', cpu: 'amd64', cpu_info: '' } })
+    );
+
+    await startAndFlush(eventManager);
+
+    const data = rawRumEvents[0].data as RawRumError;
+    expect(data.error.source_type).toBe('linux');
+  });
+
+  it('maps windows os to windows source_type', async () => {
+    mockDmpFile();
+    vi.mocked(processMinidump).mockResolvedValue(
+      createMinidumpResult({ system_info: { os: 'windows', cpu: 'amd64', cpu_info: '' } })
+    );
+
+    await startAndFlush(eventManager);
+
+    const data = rawRumEvents[0].data as RawRumError;
+    expect(data.error.source_type).toBe('windows');
+  });
+
+  it('passes through unknown os value and reports a telemetry error', async () => {
+    mockDmpFile();
+    vi.mocked(processMinidump).mockResolvedValue(
+      createMinidumpResult({ system_info: { os: 'solaris', cpu: 'sparc', cpu_info: '' } })
+    );
+
+    await startAndFlush(eventManager);
+
+    const data = rawRumEvents[0].data as RawRumError;
+    expect(data.error.source_type).toBe('solaris' as RawRumError['error']['source_type']);
+    expect(vi.mocked(addError)).toHaveBeenCalledWith(expect.any(Error));
   });
 
   it('formats thread stack with addresses and decimal offset', async () => {
@@ -406,7 +451,7 @@ describe('CrashCollection', () => {
     await startAndFlush(eventManager);
 
     expect(rawRumEvents).toHaveLength(1);
-    expect(displayError).toHaveBeenCalledWith(
+    expect(display.error).toHaveBeenCalledWith(
       'Failed to process crash dump:',
       '/mock/crash/dumps/bad.dmp',
       expect.any(Error)

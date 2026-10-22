@@ -8,11 +8,16 @@ When making changes that impact development workflows or architecture, update th
 
 ## Reference
 
-| Document                    | Purpose                                          |
-| --------------------------- | ------------------------------------------------ |
-| `docs/DEVELOPMENT.md`       | Workflow, build system, dependencies             |
-| `docs/CONVENTIONS.md`       | Coding conventions and style guidelines          |
-| `docs/ARCHITECTURE.md`      | SDK design patterns and event pipeline           |
-| `docs/TESTING.md`           | Unit and E2E testing strategy and infrastructure |
-| `scripts/README.md`         | Script placement and CLI conventions             |
-| `e2e/integration/README.md` | Integration tests strategy and structure         |
+| Document                                                      | Purpose                                                     |
+| ------------------------------------------------------------- | ----------------------------------------------------------- |
+| `docs/DEVELOPMENT.md`                                         | Workflow, build system, dependencies                        |
+| `docs/CONVENTIONS.md`                                         | Coding conventions and style guidelines                     |
+| `docs/ARCHITECTURE.md`                                        | SDK design patterns and event pipeline                      |
+| `docs/RUNTIME_DEPENDENCIES.md`                                | Runtime dependency setup for Forge and other packagers      |
+| `docs/TESTING.md`                                             | Unit and E2E testing strategy and infrastructure            |
+| `docs/REVIEW.md`                                              | Code review guide                                           |
+| `scripts/README.md`                                           | Script placement and CLI conventions                        |
+| `e2e/integration/README.md`                                   | Integration tests strategy and structure                    |
+| [e2e/compatibility/README.md](../e2e/compatibility/README.md) | Linux/macOS/Windows Electron version matrix                 |
+| `playground/README.md`                                        | Playground app, Playwright test infra for agent prototyping |
+| [ci/windows/README.md](../ci/windows/README.md)               | Windows shared-runner containers and local execution        |

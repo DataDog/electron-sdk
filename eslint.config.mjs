@@ -11,14 +11,18 @@ export default tseslint.config(
       '**/node_modules/**',
       'coverage/**',
       '.claude/**',
+      '.worktrees/**',
       '**/*.mjs',
       'rum-events-format/**',
-      '**/rumEvent.types.ts',
+      '**/rendererRumEvent.types.ts',
+      '**/mainRumEvent.types.ts',
       '**/telemetryEvent.types.ts',
+      '**/profilingEvent.types.ts',
       'minidump-processor/**',
       // Integration apps are standalone projects with their own tsconfigs and toolchains.
       // They are not part of the root project service and are not linted here.
       'e2e/integration/apps/**',
+      'e2e/compatibility/generated/**',
     ],
   },
   js.configs.recommended,
@@ -38,6 +42,7 @@ export default tseslint.config(
     rules: {
       'unicorn/prefer-node-protocol': 'error',
       'local/no-internal-modules': 'error',
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
   // Release some rules outside of source code

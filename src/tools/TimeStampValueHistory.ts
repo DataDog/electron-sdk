@@ -1,4 +1,4 @@
-import type { TimeStamp } from '@datadog/browser-core';
+import type { TimeStamp } from '@datadog/js-core/time';
 
 const END_OF_TIMES = Infinity as TimeStamp;
 
@@ -16,7 +16,9 @@ export interface TimeStampHistoryEntry<T> {
  * Closed entries have a finite `endTime` set via `closeActive()`.
  *
  * Find semantics (newest-first):
- * Return the first entry where entry.startTime <= startTime AND startTime <= entry.endTime.
+ * Return the first entry where entry.startTime <= startTime AND startTime < entry.endTime.
+ * The end boundary is exclusive so that closeActive(T) followed immediately by add(_, T) never
+ * matches the closed entry at time T — standard half-open [start, end) interval semantics.
  * If no entry satisfies both bounds, returns undefined (event is discarded).
  *
  * Pruning: expired closed entries (endTime < Date.now() - expireDelay) are pruned on add().
@@ -38,7 +40,7 @@ export class TimeStampValueHistory<T> {
   find(startTime: TimeStamp): T | undefined {
     for (const entry of this.entries) {
       if (entry.startTime <= startTime) {
-        if (startTime <= entry.endTime) {
+        if (startTime < entry.endTime) {
           return entry.value;
         }
         break;
@@ -48,15 +50,35 @@ export class TimeStampValueHistory<T> {
   }
 
   closeActive(endTime: TimeStamp): void {
-    // Active entry is always the most recently added (index 0)
-    const latestEntry = this.entries[0];
-    if (latestEntry && latestEntry.endTime === END_OF_TIMES) {
-      latestEntry.endTime = endTime;
+    const activeEntry = this.getActiveEntry();
+    if (activeEntry) {
+      activeEntry.endTime = endTime;
     }
   }
 
+  /** Replaces the value of the active entry, keeping its start time. */
+  updateActive(value: T): void {
+    const activeEntry = this.getActiveEntry();
+    if (activeEntry) {
+      activeEntry.value = value;
+    }
+  }
+
+  private getActiveEntry(): TimeStampHistoryEntry<T> | undefined {
+    // Active entry is always the most recently added (index 0)
+    const latestEntry = this.entries[0];
+    return latestEntry && isActive(latestEntry) ? latestEntry : undefined;
+  }
+
+  /** Entries ordered newest-first — index 0 is the active one, if isActive(entries[0]) is true. */
   getEntries(): readonly TimeStampHistoryEntry<T>[] {
     return this.entries;
+  }
+
+  pruneExpired(): boolean {
+    const before = this.entries.length;
+    this.pruneExpiredValues();
+    return this.entries.length < before;
   }
 
   private pruneExpiredValues(): void {
@@ -70,4 +92,9 @@ export class TimeStampValueHistory<T> {
       }
     }
   }
+}
+
+/** Whether an entry (e.g. from getEntries()) is still open, i.e. hasn't gone through closeActive(). */
+export function isActive<T>(entry: TimeStampHistoryEntry<T>): boolean {
+  return entry.endTime === END_OF_TIMES;
 }

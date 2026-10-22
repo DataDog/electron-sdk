@@ -1,0 +1,31 @@
+{
+  "name": "forge-esbuild-cjs",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "yarn@4.17.1",
+  "main": "dist/main.js",
+  "integration": {
+    "devMain": "dist/main.js",
+    "packagedBinary": {
+      "darwin": "out/forge-esbuild-cjs-darwin-{arch}/forge-esbuild-cjs.app/Contents/MacOS/forge-esbuild-cjs",
+      "linux": "out/forge-esbuild-cjs-linux-{arch}/forge-esbuild-cjs",
+      "win32": "out/forge-esbuild-cjs-win32-{arch}/forge-esbuild-cjs.exe"
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "start": "yarn build && electron .",
+    "package": "yarn build && electron-forge package"
+  },
+  "dependencies": {
+    "@datadog/browser-rum": "7.5.0",
+    "@datadog/electron-sdk": "file:../../integration-sdk.tgz"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "7.11.2",
+    "@types/node": "24.13.3",
+    "electron": "41.1.0",
+    "esbuild": "0.28.1",
+    "typescript": "5.9.3"
+  }
+}

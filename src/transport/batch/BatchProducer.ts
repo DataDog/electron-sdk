@@ -1,56 +1,71 @@
-import { dateNow } from '@datadog/browser-core';
+import { dateNow } from '@datadog/js-core/time';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { display } from '../../tools/display';
+import { evictBatchFiles } from './batchFileEviction';
 
-export interface ProducerConfig {
+/** Configuration for a {@link BatchProducer} instance. */
+export interface BatchProducerConfig {
+  /** Absolute path to the directory where batch files are written. */
   trackPath: string;
-  batchSize: number;
 }
 
 /**
  * Writes serialized event data to `.tmp` batch files on disk.
- * When the current file exceeds {@link ProducerConfig.batchSize}, it is rotated
- * (renamed from `.tmp` to `.log`) so the {@link BatchConsumer} can pick it up.
+ * Subclasses implement {@link writeData} to control how each event is serialized and
+ * when files are rotated.
+ * Writes and flushes enforce the shared completed-file limit on a best-effort basis.
  */
-export class BatchProducer {
-  private trackPath: string;
-  private batchSize: number;
-  private currentBatchFile: string | null = null;
-  private currentBatchSize = 0;
-  private writeQueue: Promise<void> = Promise.resolve();
+export abstract class BatchProducer {
+  protected trackPath: string;
+  protected writeQueue: Promise<void> = Promise.resolve();
+  /** Prefix used for generated batch file names. Subclasses may override. */
+  protected fileNamePrefix = 'batch';
+  private fileSequence = 0;
 
-  private constructor(config: ProducerConfig) {
+  protected constructor(config: BatchProducerConfig) {
     this.trackPath = config.trackPath;
-    this.batchSize = config.batchSize;
-  }
-
-  /** Creates and fully initializes a BatchProducer instance. */
-  static async create(config: ProducerConfig) {
-    const producer = new BatchProducer(config);
-    await producer.ensureTrackDirectoryExists();
-    // rotate any leftover data so we start from a clean state
-    await producer.flush();
-
-    return producer;
   }
 
   /** Enqueues data to be appended to the current batch file. Writes are serialized. */
   post(data: unknown) {
-    this.writeQueue = this.writeQueue
-      .then(() => this.writeData(data))
-      .catch(() => {
-        // Silently ignore write errors to ensure the queue continues processing
-      });
+    void this.enqueueOperation(async () => {
+      try {
+        await this.writeData(data);
+      } catch (error) {
+        // Disk write failure is an environment issue the SDK cannot fix (disk full, permissions):
+        // surface it to the customer and keep the queue alive.
+        display.error('Failed to write batch to disk', error);
+      }
+      // Evict even when the write failed: a full disk (ENOSPC) is exactly when trimming the backlog
+      // frees space for subsequent writes to succeed.
+      await evictBatchFiles([this.trackPath]);
+    });
   }
 
-  /** Waits for pending writes to complete and rotates the current batch file. */
-  async flush() {
-    await this.writeQueue;
-    await this.rotateBatch();
+  /** Waits for queued writes, seals any open batch, and trims completed files to the disk limit. */
+  flush(): Promise<void> {
+    return this.enqueueOperation(async () => {
+      await this.flushData();
+      await evictBatchFiles([this.trackPath]);
+    });
+  }
+
+  /** Keeps subsequent operations usable after a failure, while returning the original result. */
+  private enqueueOperation(operation: () => Promise<void>): Promise<void> {
+    const result = this.writeQueue.then(operation);
+    this.writeQueue = result.catch(() => undefined);
+    return result;
+  }
+
+  /** Ensures the track directory exists and rotates any orphaned `.tmp` files from prior sessions. */
+  protected async initialize() {
+    await this.ensureTrackDirectoryExists();
+    await this.rotateOrphanedBatches();
   }
 
   /** Creates the track directory if it does not already exist. */
-  private async ensureTrackDirectoryExists() {
+  protected async ensureTrackDirectoryExists() {
     try {
       await fs.access(this.trackPath);
     } catch {
@@ -58,26 +73,28 @@ export class BatchProducer {
     }
   }
 
-  /** Generates a timestamp-based `.tmp` file name for a new batch. */
-  private generateBatchFileName() {
-    return `batch-${dateNow()}.tmp`;
+  /** Renames any leftover `.tmp` files from prior sessions to `.log` so the consumer can upload them. */
+  protected async rotateOrphanedBatches() {
+    try {
+      const files = await fs.readdir(this.trackPath);
+      for (const file of files) {
+        if (file.endsWith('.tmp')) {
+          await this.renameBatchFile(file);
+        }
+      }
+    } catch {
+      // Directory read failed — nothing to recover
+    }
   }
 
-  /** Returns the full path to the current batch file, creating a new name if needed. */
-  private getCurrentBatchPath() {
-    if (!this.currentBatchFile) {
-      this.currentBatchFile = this.generateBatchFileName();
-    }
-    return path.join(this.trackPath, this.currentBatchFile);
+  /** Generates a unique `.tmp` file name for a new batch. */
+  protected generateBatchFileName() {
+    return `${this.fileNamePrefix}-${dateNow()}-${++this.fileSequence}.tmp`;
   }
 
-  /** Renames the current `.tmp` batch file to `.log` and resets the batch state. */
-  private async rotateBatch() {
-    if (!this.currentBatchFile) {
-      return;
-    }
-
-    const tmpPath = path.join(this.trackPath, this.currentBatchFile);
+  /** Renames a `.tmp` batch file to `.log` so the consumer can pick it up. */
+  protected async renameBatchFile(file: string) {
+    const tmpPath = path.join(this.trackPath, file);
     const logPath = tmpPath.replace(/\.tmp$/, '.log');
 
     try {
@@ -86,24 +103,12 @@ export class BatchProducer {
     } catch {
       // File doesn't exist or rename failed - silently ignore
     }
-
-    this.currentBatchFile = null;
-    this.currentBatchSize = 0;
   }
 
-  /** Serializes data as a JSON line and appends it to the current batch file, rotating first if the size limit would be exceeded. */
-  private async writeData(data: unknown) {
-    await this.ensureTrackDirectoryExists();
-
-    const serialized = `${JSON.stringify(data)}\n`;
-    const dataSize = Buffer.byteLength(serialized, 'utf8');
-
-    if (this.currentBatchSize + dataSize > this.batchSize && this.currentBatchSize > 0) {
-      await this.rotateBatch();
-    }
-
-    const batchPath = this.getCurrentBatchPath();
-    await fs.appendFile(batchPath, serialized, 'utf8');
-    this.currentBatchSize += dataSize;
+  /** Seals producer-specific open data during {@link flush}. */
+  protected flushData(): Promise<void> {
+    return Promise.resolve();
   }
+
+  protected abstract writeData(data: unknown): Promise<void>;
 }

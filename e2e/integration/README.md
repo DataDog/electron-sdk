@@ -8,7 +8,8 @@ Integration tests validate the SDK in **realistic customer Electron app setups**
 
 - **`e2e/integration/apps/`**: Realistic Electron apps, one per supported customer toolchain
 - **`e2e/integration/lib/integrationFixture.ts`**: Playwright fixture for building, launching, and tearing down each app
-- **`e2e/integration/scenarios/integration.scenario.ts`**: Scenarios run against every app × mode combination
+- **`e2e/integration/scenarios/integration.scenario.ts`**: Scenarios run against every app × mode combination,
+  including configured variants
 
 ## Usage
 
@@ -32,16 +33,36 @@ Run a specific combination locally:
 ```bash
 yarn test:integration --project=forge-webpack-dev
 yarn test:integration --project=forge-webpack-packaged
+yarn test:integration --project=electron-builder-vite-packaged
+yarn test:integration --project=electron-builder-vite-plugin-copy-packaged
 ```
 
 ## Supported Toolchains
 
-| App                     | Bundler             | Packager         | SDK preload loading                                   |
-| ----------------------- | ------------------- | ---------------- | ----------------------------------------------------- |
-| `forge-webpack`         | Webpack (via Forge) | Electron Forge   | `import '@datadog/electron-sdk/preload'`              |
-| `forge-vite`            | Vite (via Forge)    | Electron Forge   | `import '@datadog/electron-sdk/preload'`              |
-| `electron-vite`         | electron-vite CLI   | electron-builder | Auto-registered via `session.registerPreloadScript()` |
-| `electron-builder-vite` | Vite (manual)       | electron-builder | `import '@datadog/electron-sdk/preload'`              |
+| App                     | Bundler             | Main format | Packager         |
+| ----------------------- | ------------------- | ----------- | ---------------- |
+| `forge-webpack`         | Webpack (via Forge) | CJS         | Electron Forge   |
+| `forge-vite`            | Vite (via Forge)    | CJS         | Electron Forge   |
+| `forge-esbuild-cjs`     | esbuild             | CJS         | Electron Forge   |
+| `forge-esbuild-esm`     | esbuild             | ESM         | Electron Forge   |
+| `electron-vite`         | electron-vite CLI   | CJS         | electron-builder |
+| `electron-builder-vite` | Vite (manual)       | CJS         | electron-builder |
+
+All apps use `import '@datadog/electron-sdk/instrument'` before importing `electron` in their main process.
+This loads the SDK's instrumentation and injects the SDK's preload script into every renderer process via `patchBrowserWindow`. The regular SDK `init()` initializes dd-trace afterward.
+Vite-based apps use `datadogVitePlugin`, webpack-based apps use `DatadogWebpackPlugin`, and esbuild-based apps use `datadogEsbuildPlugin` to ensure correct module loading order and preload availability in packaged builds.
+The `forge-esbuild-esm` app additionally exercises the plugin's ESM path, where the banner loads `instrument` via `createRequire` because ES modules have no global `require`.
+The Forge Vite and Webpack apps override `packagerConfig.ignore` so Forge packages both the bundler
+output and root `node_modules`; Electron Packager then stages the production dependency tree.
+All fixtures disable `copyRuntimeDependencies` unless `DD_ELECTRON_COPY_RUNTIME_DEPENDENCIES=true`
+selects plugin-owned copying for a compatibility variant.
+The `electron-builder-vite` app packages two isolated variants: the default packager-owned runtime dependency copy
+(`default-copy`) and `copyRuntimeDependencies: true` (`plugin-copy`), where the plugin owns dependency staging.
+The Windows payload extraction scenario covers the regression described in
+[#182](https://github.com/DataDog/electron-sdk/pull/182). It verifies that plugin-copied `dd-trace` paths would exceed `MAX_PATH`
+at a long temporary destination, while the copy-disabled Vite output extracts completely with Windows
+PowerShell 5.1. The separate packaging scenario checks dependency placement in `app.asar`; this does not
+run a full MSIX build or signing pipeline.
 
 ## Key design points
 
@@ -51,6 +72,7 @@ Each app declares several integration properties to ease the instrumentation by 
 
 - `integration.devMain`: compiled main script path for dev-mode launch
 - `integration.packagedBinary`: per-platform packaged binary paths
+- `integration.variants`: optional alternate launch paths for independently built variants
 
 Each app declares a `package` script.
 
