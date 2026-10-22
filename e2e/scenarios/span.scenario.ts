@@ -1,6 +1,7 @@
 import { test, expect } from '../lib/helpers';
 import type { TraceSamplingRule } from '@datadog/electron-sdk';
 import type { MainPage } from '../lib/mainPage';
+import { isMainProcessEvent } from '../lib/intake';
 
 const httpSpanCases: {
   description: string;
@@ -14,8 +15,9 @@ const httpSpanCases: {
 for (const { description, invoke } of httpSpanCases) {
   test(`${description}: emits a root http span with Electron context`, async ({ mainPage, intake, testServer }) => {
     await mainPage.flushTransport();
-    const viewEvents = await intake.getEventsByType('view');
-    const view = viewEvents[0].body;
+    const [{ body: mainContext }] = await intake.getEventsByType('execution_context', {
+      predicate: isMainProcessEvent,
+    });
 
     const url = testServer.urlFor(200);
     const status = await invoke(mainPage, url);
@@ -26,9 +28,9 @@ for (const { description, invoke } of httpSpanCases) {
     const span = await intake.waitForSpan(
       (s) => s.name === 'http.request' && s.meta['http.url'] === url && BigInt(`0x${s.parent_id}`) === 0n
     );
-    expect(span.meta['_dd.application.id']).toBe(view.application.id);
-    expect(span.meta['_dd.session.id']).toBe(view.session.id);
-    expect(span.meta['_dd.view.id']).toBe(view.view.id);
+    expect(span.meta['_dd.application.id']).toBe(mainContext.application.id);
+    expect(span.meta['_dd.session.id']).toBe(mainContext.session.id);
+    expect(span.meta['_dd.execution_context.id']).toBe(mainContext.execution_context.id);
     expect(span.service).toBe('e2e-test-app');
   });
 }

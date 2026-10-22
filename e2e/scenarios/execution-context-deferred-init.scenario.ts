@@ -39,7 +39,7 @@ test.describe('execution context: renderer backfill on deferred init', () => {
 
   test.beforeEach(async ({ intake }) => {
     userDataDir = await createUserDataDir();
-    electronApp = await launchDeferredInitApp(intake, userDataDir, { enableExecutionContext: true });
+    electronApp = await launchDeferredInitApp(intake, userDataDir);
   });
 
   test.afterEach(async () => {

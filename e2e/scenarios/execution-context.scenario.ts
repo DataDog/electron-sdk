@@ -1,8 +1,6 @@
 import { test, expect } from '../lib/helpers';
 import type { MainPage } from '../lib/mainPage';
-import type { Intake } from '../lib/intake';
-
-test.use({ sdkConfigOverrides: { enableExecutionContext: true } });
+import { isMainProcessEvent, type Intake } from '../lib/intake';
 
 interface ExecutionContextEvent {
   type: 'execution_context';
@@ -46,32 +44,48 @@ async function waitForExecutionContextName(
   return namedEvent && asExecutionContextEvent(namedEvent.body).execution_context.name;
 }
 
-test('emits a main execution context start event on SDK init', async ({ mainPage, intake }) => {
+test('emits a single main execution context start event on SDK init', async ({ mainPage, intake }) => {
   await mainPage.flushTransport();
   const events = await intake.getEventsByType('execution_context');
 
-  expect(events.length).toBeGreaterThanOrEqual(1);
-  const mainEvent = events.find((e) => asExecutionContextEvent(e.body).execution_context.type === 'main-process');
-  expect(mainEvent).toBeDefined();
+  // A heartbeat update may land if launch is slow; only the start event (document_version 1) must be unique.
+  const mainEvents = events.filter((event) => isMainProcessEvent(event) && event.body._dd.document_version === 1);
+  expect(mainEvents).toHaveLength(1);
 
-  const body = asExecutionContextEvent(mainEvent!.body);
+  const { body, headers, ddforward } = mainEvents[0];
+  expect(body.ddtags).toMatch(/sdk_version:\d+\.\d+\.\d+/);
+  expect(body.ddtags).toContain('env:test');
+  expect(body.ddtags).toContain('service:e2e-test-app');
+  expect(body.ddtags).toContain('version:1.0.0');
+  expect(body.service).toBe('e2e-test-app');
+  expect(body.version).toBe('1.0.0');
+  expect(ddforward).toContain('/api/v2/rum');
+  expect(ddforward).toContain('ddsource=electron');
+  expect(headers['dd-evp-origin']).toBe('electron');
+  expect(headers['dd-evp-origin-version']).toMatch(/^\d+\.\d+\.\d+$/);
+  expect(headers['dd-request-id']).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  expect(body.execution_context.type).toBe('main-process');
   expect(body.execution_context.instance_id).toMatch(/^\d+$/);
+  expect(body.execution_context.exit_reason).toBeUndefined();
   expect(body._dd.document_version).toBe(1);
   expect(body.execution_context.duration).toBeGreaterThanOrEqual(0);
   expect(body.execution_context.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   expect(body.execution_context.name).toBe('Main Process');
+
+  // Nothing is attributed to the main process until the app calls into it.
+  await Promise.all((['action', 'error', 'resource'] as const).map((type) => intake.assertNoNewEvents(type)));
 });
 
-test('all main-process events carry execution_context.id and execution_context.type', async ({ mainPage, intake }) => {
+// Main-process events still need a view.id to resolve against: the fake view provides it until the
+// backend drops that requirement.
+test('emits a fake view tagged with the main execution context', async ({ mainPage, intake }) => {
   await mainPage.flushTransport();
-  const viewEvents = await intake.getEventsByType('view');
-  expect(viewEvents.length).toBeGreaterThanOrEqual(1);
+  const [{ body: mainContext }] = await intake.getEventsByType('execution_context', { predicate: isMainProcessEvent });
+  const [{ body: fakeView }] = await intake.getEventsByType('view', { predicate: isMainProcessEvent });
 
-  const view = viewEvents[0].body as Record<string, unknown>;
-  const executionContext = view['execution_context'] as { id: string; type: string } | undefined;
-  expect(executionContext).toBeDefined();
-  expect(executionContext!.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
-  expect(executionContext!.type).toBe('main-process');
+  expect(fakeView.view.is_fake).toBe(true);
+  expect(fakeView.view.id).toBe(mainContext.view.id);
+  expect(fakeView.execution_context).toMatchObject({ id: mainContext.execution_context.id, type: 'main-process' });
 });
 
 test('tags main-process spans with _dd.execution_context.id, like _dd.session.id and _dd.view.id', async ({
@@ -203,7 +217,7 @@ test('a renderer that crashes and reloads the same window gets a fresh execution
 test.describe('session renewal', () => {
   test.use({ rumBrowserSdk: {} });
 
-  test('a single OS process across two sessions produces two distinct main execution_context.id, sharing one instance_id', async ({
+  test('a single OS process ends its main execution context on session expiry and starts a new one on renewal, sharing one instance_id', async ({
     mainPage,
     intake,
   }) => {
@@ -214,6 +228,12 @@ test.describe('session renewal', () => {
     const initialBody = asExecutionContextEvent(initial.body);
 
     await mainPage.stopSession();
+    await mainPage.flushTransport();
+
+    const [, ended] = await intake.waitForEventCount('execution_context', 2, { predicate: isMainProcessEvent });
+    expect(ended.body.execution_context.id).toBe(initialBody.execution_context.id);
+    expect(ended.body._dd.document_version).toBe(2);
+
     await mainPage.generateActivity();
     await mainPage.flushTransport();
 

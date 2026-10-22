@@ -131,15 +131,15 @@ export const byTelemetryType =
   (event: ReceivedEvent<TelemetryEvent>): boolean =>
     event.body.telemetry?.type === type;
 
-/** URL of the view the SDK emits for the main process; every other view comes from a bridge window. */
-const MAIN_PROCESS_VIEW_URL = 'electron://main-process';
+/**
+ * Selects RUM events tagged with the main-process execution context: the main process's own
+ * `execution_context` events, and every other RUM event it emits.
+ */
+export const isMainProcessEvent = (event: ReceivedEvent<{ execution_context?: { type: string } }>): boolean =>
+  event.body.execution_context?.type === 'main-process';
 
-/** Selects the view the main process emits. */
-export const isMainProcessView = (event: ReceivedEvent<RumViewEvent>): boolean =>
-  event.body.view.url === MAIN_PROCESS_VIEW_URL;
-
-/** Selects views emitted by a bridge window, i.e. every view but the main process one. */
-export const isBridgeView = (event: ReceivedEvent<RumViewEvent>): boolean => !isMainProcessView(event);
+/** Selects views emitted by a bridge window, i.e. every view the main process did not emit. */
+export const isBridgeView = (event: ReceivedEvent<RumViewEvent>): boolean => !isMainProcessEvent(event);
 
 /**
  * Selects telemetry the main process emitted, i.e. the Electron SDK's own.
