@@ -91,6 +91,26 @@ it('starts the session manager under the init option', async () => {
   expect(consentAtSessionStart).toBe('not-granted');
 });
 
+it('publishes the bridge config without records before its first await', async () => {
+  const { getBridgeConfig } = await import('./common');
+  createBatchManager.mockRejectedValue(new Error('transport failed'));
+
+  const initializing = sdk.init(
+    createTestConfiguration({
+      allowedRendererHosts: ['example.com'],
+      profilingSampleRate: 100,
+      sessionReplaySampleRate: 100,
+    })
+  );
+
+  expect(getBridgeConfig()).toEqual({
+    defaultPrivacyLevel: 'mask',
+    allowedRendererHosts: ['example.com'],
+    capabilities: ['profiles'],
+  });
+  await expect(initializing).rejects.toThrow('transport failed');
+});
+
 it('ignores an init() called after one with a valid configuration, even a failed one', async () => {
   const { TrackingConsentManager } = await import('./domain/tracking-consent');
   const createManager = vi.spyOn(TrackingConsentManager, 'init');

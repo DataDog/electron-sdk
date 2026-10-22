@@ -32,6 +32,31 @@ interface BridgeEvent {
 }
 
 /**
+ * Publishes the bridge config as soon as init() has validated the configuration, so that a window opened while it runs
+ * (an app calling `void init(config)` at startup and creating its windows at `ready`) is not silenced until it reloads.
+ * `records` is left out until RendererPipeline listens to the bridge, since a full snapshot sent before would be
+ * dropped, leaving a replay that cannot be rendered. A page loaded in between records no replay until it reloads.
+ */
+export function publishEarlyBridgeConfig(config: Configuration): void {
+  const options = buildBridgeOptions(config);
+  setBridgeConfig({ ...options, capabilities: options.capabilities.filter((capability) => capability !== 'records') });
+}
+
+function buildBridgeOptions(config: Configuration): BridgeOptions {
+  return {
+    defaultPrivacyLevel: config.defaultPrivacyLevel,
+    allowedRendererHosts: config.allowedRendererHosts,
+    // Capabilities are advertised per launch, not per session. Bridge mode has no channel to notify the
+    // renderer on session renew/expire or capability changes, so the browser SDK cannot adjust its
+    // per-session behavior (e.g. stop profiling a sampled-out session). Out of scope for now.
+    capabilities: [
+      ...(config.profilingSampleRate > 0 ? ['profiles'] : []),
+      ...(config.sessionReplaySampleRate > 0 ? ['records'] : []),
+    ],
+  };
+}
+
+/**
  * Owns the renderer-to-main IPC channel and enriches all renderer-originated events.
  *
  * Receives pre-assembled events from the browser RUM SDK via the DatadogEventBridge,
@@ -43,7 +68,6 @@ interface BridgeEvent {
  * would be discarded (its timestamp falls outside the closed session window).
  */
 export class RendererPipeline {
-  private readonly bridgeOptions: BridgeOptions;
   private readonly beforeSend: BeforeSend;
   private readonly logsSampleRate: number;
 
@@ -54,19 +78,8 @@ export class RendererPipeline {
   ) {
     this.beforeSend = new BeforeSend(config.beforeSendRum);
     this.logsSampleRate = config.logsSampleRate;
-    this.bridgeOptions = {
-      defaultPrivacyLevel: config.defaultPrivacyLevel,
-      allowedRendererHosts: config.allowedRendererHosts,
-      // Capabilities are resolved once here and advertised globally, not per session. Bridge mode has no
-      // channel to notify the renderer on session renew/expire or capability changes, so the browser SDK
-      // cannot adjust its per-session behavior (e.g. stop profiling a sampled-out session). Out of scope for now.
-      capabilities: [
-        ...(config.profilingSampleRate > 0 ? ['profiles'] : []),
-        ...(config.sessionReplaySampleRate > 0 ? ['records'] : []),
-      ],
-    };
 
-    const gate = new RendererIpcGate(this.bridgeOptions.allowedRendererHosts);
+    const gate = new RendererIpcGate(config.allowedRendererHosts);
 
     ipcMain.on(
       BRIDGE_CHANNEL,
@@ -76,9 +89,8 @@ export class RendererPipeline {
       })
     );
 
-    // The CONFIG_CHANNEL responder is registered at instrument time; here we publish the real config
-    // so it replaces the fallback returned for windows loaded before init().
-    setBridgeConfig(this.bridgeOptions);
+    // Completes the config published early by init() (see publishEarlyBridgeConfig), now that the listener exists.
+    setBridgeConfig(buildBridgeOptions(config));
   }
 
   private onBridgeMessage(msg: string, webContentsId: number): void {

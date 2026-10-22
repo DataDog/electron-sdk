@@ -1,5 +1,12 @@
 import { app } from 'electron';
-import { BeforeSend, MainAssembly, RendererPipeline, createFormatHooks, registerCommonContext } from './assembly';
+import {
+  BeforeSend,
+  MainAssembly,
+  RendererPipeline,
+  createFormatHooks,
+  publishEarlyBridgeConfig,
+  registerCommonContext,
+} from './assembly';
 import { setDurationVitalApi, setGlobalContextApi, setTrackingConsentApi } from './api';
 import type { AccountInfo, UserInfo } from './domain/customer-context';
 import { AccountContext, GlobalContext, UserContext } from './domain/customer-context';
@@ -59,6 +66,8 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
     return false;
   }
   initStarted = true;
+  // Before the first await: see publishEarlyBridgeConfig.
+  publishEarlyBridgeConfig(config);
 
   tracing = new Tracing(config);
 
