@@ -153,6 +153,7 @@ async function launchApp(
     telemetryUsageSampleRate: 100,
     defaultPrivacyLevel: 'mask',
     allowedRendererHosts: ['*'],
+    enableExecutionContext: true,
     ...(sdkConfigOverrides ?? {}),
   };
   env.DD_ELECTRON_SDK_CONFIG = JSON.stringify(electronSdkConfig);
