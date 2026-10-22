@@ -115,7 +115,7 @@
   "devDependencies": {
     "@datadog/browser-core": "7.5.0",
     "@datadog/js-core": "0.0.5",
-    "@electron/get": "2.0.3",
+    "@electron/get": "5.1.0",
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.61.1",
     "@rollup/plugin-commonjs": "29.0.3",
