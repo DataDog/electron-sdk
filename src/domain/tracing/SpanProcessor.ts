@@ -3,6 +3,7 @@ import { combine } from '@datadog/js-core/util';
 import { DISCARDED } from '@datadog/js-core/assembly';
 import { generateUUID } from '@datadog/browser-core';
 import * as DiagnosticsChannel from 'node:diagnostics_channel';
+import { buildEndpointHost } from '@datadog/flagging-core';
 import { type FormatHooks } from '../../assembly';
 import { type Configuration } from '../../config';
 import { EventFormat, EventKind, EventManager, EventSource, EventTrack } from '../../event';
@@ -44,6 +45,8 @@ export class SpanProcessor {
   private channel: DiagnosticsChannel.Channel;
   private onMessage: (message: unknown) => void;
   private intakeHostname: string;
+  private flagsHostnames: Set<string>;
+  private flaggingProxyHostname: string | undefined;
   private matchIntakeSubdomains: boolean;
   private env: string;
   private service: string;
@@ -56,6 +59,23 @@ export class SpanProcessor {
     this.env = config.env ?? '';
     this.service = config.service;
     this.intakeHostname = computeIntakeHostname(config.site, config.proxy);
+    // Feature flags rules requests go to ufc-client.ff-cdn.<site> and precomputed
+    // assignment requests to preview.ff-cdn.<site> (or the flaggingProxy): they are
+    // SDK-internal traffic and must not be traced (D9/M3.8, M7 step 10). The endpoint
+    // builder throws for unsupported sites, where flags are disabled anyway.
+    this.flagsHostnames = new Set(
+      ['ufc-client', 'preview'].flatMap((subdomain) => {
+        try {
+          return [buildEndpointHost(config.site, subdomain)];
+        } catch {
+          return [];
+        }
+      })
+    );
+    this.flaggingProxyHostname =
+      config.featureFlags?.flaggingProxy !== undefined
+        ? new URL(config.featureFlags.flaggingProxy).hostname
+        : undefined;
     // The `quota.` subdomain only exists on the real Datadog intake host. When proxying, the intake
     // hostname is the customer's proxy, whose subdomains are their own traffic — match it exactly.
     this.matchIntakeSubdomains = !config.proxy;
@@ -106,7 +126,10 @@ export class SpanProcessor {
     if (!url) return false;
     try {
       const { hostname } = new URL(url);
-      if (hostname === this.intakeHostname) {
+      if (hostname === this.intakeHostname || this.flagsHostnames.has(hostname)) {
+        return true;
+      }
+      if (this.flaggingProxyHostname !== undefined && hostname === this.flaggingProxyHostname) {
         return true;
       }
       // On the real Datadog intake, also match subdomains (e.g. the `quota.` host used by the profiling

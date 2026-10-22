@@ -24,6 +24,19 @@ const VIEW_ID = 'view-1';
 const EXPIRE_DELAY = 1000;
 
 describe('ViewContext', () => {
+  describe('findViewId', () => {
+    it('returns the view covering a time', async () => {
+      const hooks = createFormatHooks();
+      const viewContext = await ViewContext.init(hooks, EXPIRE_DELAY);
+      viewContext.add('view-1', T0);
+      viewContext.add('view-2', (T0 + 100) as TimeStamp);
+      expect(viewContext.findViewId(T0)).toBe('view-1');
+      expect(viewContext.findViewId((T0 + 99) as TimeStamp)).toBe('view-1');
+      expect(viewContext.findViewId((T0 + 100) as TimeStamp)).toBe('view-2');
+      expect(viewContext.findViewId((T0 - 1) as TimeStamp)).toBeUndefined();
+    });
+  });
+
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(0);

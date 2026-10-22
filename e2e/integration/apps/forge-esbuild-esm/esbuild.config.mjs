@@ -31,6 +31,16 @@ await build({
   plugins: [datadogEsbuildPlugin({ copyRuntimeDependencies })],
 });
 
+// Forked feature flags child (ESM, plain Node under ELECTRON_RUN_AS_NODE)
+await build({
+  entryPoints: ['src/flags-child.ts'],
+  bundle: true,
+  platform: 'node',
+  format: 'esm',
+  outfile: 'dist/flags-child.mjs',
+  external: nodeExternals,
+});
+
 // Renderer (ESM — loaded via <script type="module">)
 await build({
   entryPoints: ['src/renderer/index.ts'],

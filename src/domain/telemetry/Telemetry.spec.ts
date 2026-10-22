@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   addConfiguration,
+  addDebug,
   addError,
   addUsage,
   callMonitored,
@@ -19,8 +20,8 @@ describe('telemetry', () => {
   /** Narrow to error events, the only type carrying `message`. */
   function errorEvent(index: number): RawTelemetryError['telemetry'] {
     const event = notifiedEvents[index];
-    if (event.telemetry.type !== 'log') {
-      throw new Error(`Expected a log event at index ${index}, got '${event.telemetry.type}'`);
+    if (event.telemetry.type !== 'log' || event.telemetry.status !== 'error') {
+      throw new Error(`Expected an error log event at index ${index}, got '${event.telemetry.type}'`);
     }
     return event.telemetry;
   }
@@ -63,6 +64,28 @@ describe('telemetry', () => {
 
       expect(notifiedEvents).toHaveLength(1);
       expect(errorEvent(0).message).toBe('callMonitored error');
+    });
+  });
+
+  describe('addDebug', () => {
+    it('notifies a debug log carrying the message and context', () => {
+      startTelemetry(eventManager, createTestConfiguration());
+
+      addDebug('flags: dropped evaluation records', { count: 3 });
+
+      expect(notifiedEvents).toHaveLength(1);
+      expect(notifiedEvents[0].telemetry).toEqual({
+        type: 'log',
+        status: 'debug',
+        message: 'flags: dropped evaluation records',
+        count: 3,
+      });
+    });
+
+    it('is dropped when telemetry is not sampled', () => {
+      startTelemetry(eventManager, createTestConfiguration({ telemetrySampleRate: 0 }));
+      addDebug('flags: dropped evaluation records', { count: 3 });
+      expect(notifiedEvents).toHaveLength(0);
     });
   });
 

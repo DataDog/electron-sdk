@@ -1,5 +1,9 @@
 import '@datadog/electron-sdk/instrument';
-import { app, BrowserWindow, ipcMain, net, protocol } from 'electron';
+import { ElectronMainFlagsProvider, openFlagsChannel } from '@datadog/electron-sdk';
+import { fork, type ChildProcess } from 'node:child_process';
+import { Worker } from 'node:worker_threads';
+import { OpenFeature } from '@openfeature/web-sdk';
+import { app, BrowserWindow, ipcMain, net, protocol, utilityProcess } from 'electron';
 import * as http from 'node:http';
 import * as fs from 'node:fs';
 import { join } from 'node:path';
@@ -73,8 +77,138 @@ const isDebugMode = process.env.PWDEBUG === '1';
 let mainWindow: BrowserWindow | null = null;
 let testRendererWindow: BrowserWindow | null = null;
 let rendererHttpServer: http.Server | null = null;
+// Feature flags e2e: windows with the app preload (probes) on a chosen session, served over
+// file:// or a local http origin so origin gating, navigation and partitions can be exercised.
+const flagsWindows = new Map<number, BrowserWindow>();
+let flagsHttpPort: number | undefined;
 
 const noop = () => undefined;
+
+/**
+ * Feature flags in spawned processes (e2e): forked children with an app-owned correlated
+ * protocol plus `dd-flags` frame routing, a utility process and a worker with private
+ * ports. Driven from tests through `__ddE2E.flagsChildren` (electronApp.evaluate), so it
+ * also works before any window or init().
+ */
+interface ForkedFlagsChild {
+  child: ChildProcess;
+  pending: Map<number, (result: unknown) => void>;
+}
+const forkedChildren = new Map<string, ForkedFlagsChild>();
+let nextRequestId = 1;
+
+function forkFlagsChild(name: string, endpoint: 'frames' | 'none' = 'frames'): number {
+  const child = fork(join(__dirname, 'flags-child.js'), [], {
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', DD_E2E_FLAGS_CHILD_ENDPOINT: endpoint },
+    execArgv: [],
+    silent: true,
+  });
+  const pending = new Map<number, (result: unknown) => void>();
+  const flags = openFlagsChannel({
+    kind: 'frames',
+    name,
+    owner: child,
+    send: (frame) => child.send({ type: 'dd-flags', frame }, noop),
+  });
+  child.on('message', (message: { type?: string; frame?: unknown; id?: number; result?: unknown }) => {
+    if (message.type === 'dd-flags') {
+      flags.receive(message.frame);
+    } else if (typeof message.id === 'number') {
+      pending.get(message.id)?.(message.result);
+      pending.delete(message.id);
+    }
+  });
+  forkedChildren.set(name, { child, pending });
+  return child.pid ?? -1;
+}
+
+function callFlagsChild(name: string, method: string, params: Record<string, unknown> = {}): Promise<unknown> {
+  const entry = forkedChildren.get(name);
+  if (!entry) return Promise.reject(new Error(`no child ${name}`));
+  const id = nextRequestId++;
+  return new Promise((resolve) => {
+    entry.pending.set(id, (result) => resolve({ id, result }));
+    entry.child.send({ id, method, params });
+  });
+}
+
+async function killAndReforkFlagsChild(name: string): Promise<number> {
+  const entry = forkedChildren.get(name);
+  if (entry) {
+    const exited = new Promise((resolve) => entry.child.once('exit', resolve));
+    entry.child.kill();
+    await exited;
+  }
+  await new Promise((resolve) => setTimeout(resolve, 200)); // backoff
+  return forkFlagsChild(name);
+}
+
+function flagsChildrenState() {
+  const holder = (globalThis as Record<symbol, { channels: unknown[] } | undefined>)[
+    Symbol.for('@datadog/electron-sdk:flagsChildren')
+  ];
+  return {
+    openChannels: holder?.channels.length ?? 0,
+    listeners: Object.fromEntries(
+      [...forkedChildren].map(([name, { child }]) => [
+        name,
+        { message: child.listenerCount('message'), exit: child.listenerCount('exit') },
+      ])
+    ),
+  };
+}
+
+function spawnFlagsWorker(mode: 'serve' | 'once'): Promise<{ result: unknown; exited: boolean }> {
+  const channel = openFlagsChannel({ kind: 'worker', name: `worker-${mode}` });
+  const worker = new Worker(join(__dirname, 'flags-worker.js'), {
+    workerData: { flagsPort: channel.port, mode },
+    transferList: [channel.port],
+  });
+  return new Promise((resolve) => {
+    let result: unknown;
+    worker.once('message', (message: { result: unknown }) => {
+      result = message.result;
+      if (mode === 'serve') {
+        void worker.terminate();
+        resolve({ result, exited: false });
+      }
+    });
+    if (mode === 'once') {
+      const timer = setTimeout(() => {
+        void worker.terminate();
+        resolve({ result, exited: false });
+      }, 5000);
+      worker.once('exit', () => {
+        clearTimeout(timer);
+        resolve({ result, exited: true });
+      });
+    } else {
+      worker.postMessage({ id: 1 });
+    }
+  });
+}
+
+function spawnFlagsUtility(): Promise<unknown> {
+  const channel = openFlagsChannel({ kind: 'utility', name: 'indexer' });
+  const child = utilityProcess.fork(join(__dirname, 'flags-utility.js'));
+  child.postMessage({ type: 'init' }, [channel.port]);
+  return new Promise((resolve) => {
+    child.on('message', (message: { result: unknown }) => {
+      child.kill();
+      resolve(message.result);
+    });
+    child.postMessage({ id: 1 });
+  });
+}
+
+const flagsChildrenControls = {
+  fork: forkFlagsChild,
+  call: callFlagsChild,
+  killAndRefork: killAndReforkFlagsChild,
+  state: flagsChildrenState,
+  spawnWorker: spawnFlagsWorker,
+  spawnUtility: spawnFlagsUtility,
+};
 
 type BeforeSendRum = NonNullable<InitConfiguration['beforeSendRum']>;
 
@@ -82,11 +216,60 @@ const e2eControls: {
   beforeSendRum: BeforeSendRum;
   init?: () => Promise<void>;
   openWindow?: () => void;
+  flagsChildren: typeof flagsChildrenControls;
 } = {
   beforeSendRum: () => true,
+  flagsChildren: flagsChildrenControls,
 };
 
 (globalThis as Record<string, unknown>).__ddE2E = e2eControls;
+
+/** Serve the main window (with the renderer flags provider) over http on localhost. */
+function startFlagsHttpServer(): Promise<number> {
+  if (flagsHttpPort !== undefined) {
+    return Promise.resolve(flagsHttpPort);
+  }
+  return new Promise((resolve) => {
+    // The only request paths this server answers, mapped to the fixture files they may
+    // serve: no value derived from the request URL ever reaches the filesystem (CodeQL
+    // "uncontrolled data used in path expression"), and anything else answers 404.
+    const servedFiles: Record<string, string> = {
+      '/': 'main-window.html',
+      '/main-window.js': 'main-window.js',
+    };
+    const server = http.createServer((req, res) => {
+      const served = servedFiles[(req.url ?? '').split('?')[0]];
+      if (served === undefined) {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+      try {
+        const body = fs.readFileSync(join(__dirname, served));
+        res.writeHead(200, { 'Content-Type': served.endsWith('.js') ? 'application/javascript' : 'text/html' });
+        res.end(body);
+      } catch {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+    // Only the test harness (localhost / 127.0.0.1) ever connects.
+    server.listen(0, '127.0.0.1', () => {
+      flagsHttpPort = (server.address() as { port: number }).port;
+      resolve(flagsHttpPort);
+    });
+  });
+}
+
+type FlagsWindowLocation = 'file' | 'http-localhost' | 'http-127';
+
+async function flagsWindowUrl(location: FlagsWindowLocation, marker: string): Promise<string> {
+  if (location === 'file') {
+    return `${pathToFileURL(join(__dirname, 'main-window.html')).href}?${marker}`;
+  }
+  const port = await startFlagsHttpServer();
+  return `http://${location === 'http-localhost' ? 'localhost' : '127.0.0.1'}:${port}/?${marker}`;
+}
 
 function startRendererHttpServer(): Promise<number> {
   return new Promise((resolve) => {
@@ -233,6 +416,85 @@ void app.whenReady().then(async () => {
     const res = await net.fetch(url);
     await res.text();
     return res.status;
+  });
+
+  ipcMain.handle('registerFlagsProvider', async (_event, context?: Record<string, unknown>) => {
+    const provider = new ElectronMainFlagsProvider();
+    // Registration can reject while no configuration is available yet (e.g. a failing
+    // endpoint); the provider still recovers when a later fetch succeeds.
+    await OpenFeature.setProviderAndWait(provider).catch(() => undefined);
+    if (context !== undefined) {
+      await OpenFeature.setContext(context as never).catch(() => undefined);
+    }
+    return OpenFeature.getClient().providerStatus;
+  });
+
+  ipcMain.handle('setFlagsContext', (_event, context: Record<string, unknown>) => {
+    return OpenFeature.setContext(context as never);
+  });
+
+  ipcMain.handle('evaluateFlag', (_event, type: 'boolean' | 'string', flagKey: string, defaultValue: unknown) => {
+    const client = OpenFeature.getClient();
+    if (type === 'boolean') {
+      const details = client.getBooleanDetails(flagKey, defaultValue as boolean);
+      return { value: details.value, variant: details.variant, reason: details.reason, errorCode: details.errorCode };
+    }
+    const details = client.getStringDetails(flagKey, defaultValue as string);
+    return { value: details.value, variant: details.variant, reason: details.reason, errorCode: details.errorCode };
+  });
+
+  ipcMain.handle('getFlagsProviderStatus', () => OpenFeature.getClient().providerStatus);
+
+  ipcMain.handle(
+    'openFlagsWindow',
+    async (_event, options: { partition?: string; location?: FlagsWindowLocation; marker: string }) => {
+      const win = new BrowserWindow({
+        width: 600,
+        height: 400,
+        show: isDebugMode,
+        webPreferences: {
+          preload: join(__dirname, 'preload.js'),
+          contextIsolation: true,
+          nodeIntegration: false,
+          ...(options.partition !== undefined ? { partition: options.partition } : {}),
+        },
+      });
+      flagsWindows.set(win.id, win);
+      win.on('closed', () => flagsWindows.delete(win.id));
+      await win.loadURL(await flagsWindowUrl(options.location ?? 'file', options.marker));
+      return win.id;
+    }
+  );
+
+  // Evaluates in a flags window from main: Playwright cannot drive a page whose renderer crashed,
+  // even after its webContents reloaded.
+  ipcMain.handle('evaluateInFlagsWindow', (_event, id: number, flagKey: string) =>
+    flagsWindows
+      .get(id)
+      ?.webContents.executeJavaScript(`window.__rendererEvaluateFlag('string', ${JSON.stringify(flagKey)}, 'default')`)
+  );
+
+  ipcMain.handle('navigateFlagsWindow', async (_event, id: number, location: FlagsWindowLocation, marker: string) => {
+    await flagsWindows.get(id)?.loadURL(await flagsWindowUrl(location, marker));
+  });
+
+  // Crash the window's renderer for real, then reload the same webContents once
+  // render-process-gone has fired (the recovery pattern Electron documents).
+  ipcMain.handle('crashFlagsWindow', (_event, id: number, marker: string) => {
+    const wc = flagsWindows.get(id)?.webContents;
+    if (!wc) return Promise.resolve(false);
+    return new Promise<boolean>((resolve) => {
+      wc.once('render-process-gone', (_goneEvent, details) => {
+        setTimeout(() => {
+          if (!wc.isDestroyed()) {
+            void wc
+              .loadURL(`${pathToFileURL(join(__dirname, 'main-window.html')).href}?${marker}`)
+              .then(() => resolve(details.reason === 'crashed' || details.reason === 'killed'));
+          }
+        }, 500);
+      });
+      wc.forcefullyCrashRenderer();
+    });
   });
 
   ipcMain.handle('flushTransport', async () => {

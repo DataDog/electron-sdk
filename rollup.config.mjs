@@ -172,6 +172,45 @@ const config = [
     external: ['electron'],
     plugins: sharedPlugins,
   },
+  // Renderer entry: feature flags provider for renderer pages (M4/G2)
+  // @openfeature/web-sdk and @openfeature/core are external optional peers so the
+  // customer's renderer bundler resolves their single copy.
+  {
+    input: 'src/entries/renderer.ts',
+    output: [
+      { file: 'dist/renderer.cjs', format: 'cjs', sourcemap: true },
+      { file: 'dist/renderer.mjs', format: 'es', sourcemap: true },
+    ],
+    external: ['@openfeature/web-sdk', '@openfeature/core'],
+    plugins: sharedPlugins,
+  },
+  {
+    input: 'src/entries/renderer.ts',
+    output: {
+      file: 'dist/renderer.d.ts',
+      format: 'esm',
+    },
+    external: ['@openfeature/web-sdk', '@openfeature/core'],
+    plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
+  },
+  // Child entry: feature flags in spawned processes (M6/G4). Runs in plain Node children,
+  // workers and utility processes: no electron, and OpenFeature values are inlined like main.
+  {
+    input: 'src/entries/child.ts',
+    output: [
+      { file: 'dist/child.cjs', format: 'cjs', sourcemap: true },
+      { file: 'dist/child.mjs', format: 'es', sourcemap: true },
+    ],
+    plugins: sharedPlugins,
+  },
+  {
+    input: 'src/entries/child.ts',
+    output: {
+      file: 'dist/child.d.ts',
+      format: 'esm',
+    },
+    plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
+  },
 ];
 
 export default config;

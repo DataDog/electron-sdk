@@ -204,6 +204,45 @@ describe('SpanProcessor', () => {
       expect(collected).toHaveLength(0);
     });
 
+    it('filters flag configuration requests to the rules and precomputed-assignments hosts and to the flaggingProxy host', () => {
+      processor.stop();
+      processor = new SpanProcessor(eventManager, hooks, {
+        env: 'test',
+        service: 'test-service',
+        site: 'datadoghq.com',
+        featureFlags: {
+          env: 'test',
+          refreshInterval: 300000,
+          fetchTimeout: 5000,
+          persistConfiguration: true,
+          enableExposureLogging: true,
+          enableRumFeatureFlagTracking: true,
+          flaggingProxy: 'http://flags-proxy.example.com',
+        },
+      } as Configuration);
+      publish([
+        [
+          createSpan({
+            meta: {
+              'http.url': 'https://ufc-client.ff-cdn.datadoghq.com/api/v2/feature-flagging/config/rules-based/client',
+              'http.method': 'GET',
+            },
+          }),
+        ],
+        [
+          createSpan({
+            meta: {
+              'http.url': 'https://preview.ff-cdn.datadoghq.com/precompute-assignments?dd_env=test',
+              'http.method': 'POST',
+            },
+          }),
+        ],
+        [createSpan({ meta: { 'http.url': 'http://flags-proxy.example.com/?dd_env=test', 'http.method': 'GET' } })],
+      ]);
+
+      expect(collected).toHaveLength(0);
+    });
+
     it('should filter out requests to the configured proxy hostname', () => {
       processor.stop();
       processor = new SpanProcessor(eventManager, hooks, {

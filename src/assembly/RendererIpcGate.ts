@@ -173,6 +173,18 @@ function matchesRendererHostEntry(host: string, entry: string): boolean {
   return host.length > prefix.length + suffix.length && host.startsWith(prefix) && host.endsWith(suffix);
 }
 
+/**
+ * Check whether a renderer frame passes the given allowedRendererHosts.
+ * Exported for the feature flags snapshot publisher (D12/M4.3).
+ */
+export function isAllowedRendererFrame(
+  frame: { origin: string | undefined; url: string | undefined } | undefined,
+  allowedRendererHosts: string[]
+): boolean {
+  if (frame === undefined) return false;
+  return isAllowedOrigin(frame.origin, frame.url, allowedRendererHosts);
+}
+
 function isAllowedOrigin(origin: string | undefined, url: string | undefined, allowedRendererHosts: string[]): boolean {
   // Require at least one piece of frame context so we can identify the sender; reject when both are
   // absent (e.g. a senderFrame with no properties, which should never happen in real Electron).

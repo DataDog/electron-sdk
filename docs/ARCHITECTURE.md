@@ -483,3 +483,69 @@ The `copyPackageTree` function in all three bundler plugins walks only the `depe
 - **Optional fields** (e.g. `env`): invalid values silently fall back to `undefined`.
 
 See `src/config.ts`.
+
+## Feature Flags
+
+### Ownership
+
+Main owns three things: the flag configuration (rules or precomputed assignments), the evaluation context, and readiness. Each process evaluates flags locally and synchronously — rules with `DatadogCoreProvider` from `@datadog/openfeature-browser/rules-based`, precomputed assignments with `evaluatePrecomputedConfiguration` from `@datadog/flagging-core` — inlined by Rollup into `dist/index.*` (main) and `dist/renderer.*` (renderers; OpenFeature is an external optional peer there). The decoded configuration capability selects the evaluator; both evaluators ship in every bundle because the mode is chosen at runtime.
+
+### Evaluation modes (M7)
+
+`featureFlags.evaluationMode` selects the strategy behind one `FlagsState` abstraction, fixed at init:
+
+- **`precomputed` (default).** `PrecomputedFetcher` POSTs the normalized context to `preview.ff-cdn.<site>/precompute-assignments` (or the `flaggingProxy`) through the upstream `fetchPrecomputedConfiguration`, sequenced so a newer context aborts the in-flight fetch. `PrecomputedOwner` serves the per-context disk cache (`PrecomputedCache`: `userData/_dd_flags/precomputed/<sha256 of environment identity and canonical context>.json`, at most 5 contexts LRU, 7-day max age, targeting attributes at rest) as `STALE` while a fetch is in flight. A context change publishes **defaults for the new context** while its assignments are fetched when the _targeting key_ changed (one identity never sees another's assignments), and keeps serving the previous snapshot for an attribute-only change, as upstream does; the first successful fetch then publishes configuration and context **atomically** (`FlagsState.applyPrecomputedUpdate` bumps `contextRevision` only then). A transient failure keeps the same context's assignments (`STALE` from cache or `ERROR` with defaults when none); an authoritative failure (HTTP 4xx, `precomputedError`) drops the configuration with an actionable `display.error`. `refreshInterval` also applies and re-fetches the current context. `await OpenFeature.setContext()` in main settles with that fetch so the web-sdk reports `Reconciling`; on ERROR the provider rejects, but the web-sdk catches it, emits the `Error` event and `setContext()` still resolves (status `ERROR`). Child context responses are delayed until the assignments are applied.
+- **`rules`.** The M1–M6 behavior, unchanged: `RulesFetcher` + `ConfigurationCache` + `FlagsOwner`, environment-scoped cache, no context on the wire.
+
+The exposure dedupe key uses the configuration identity captured **at resolution time** (D29): the rules `configurationId` from the evaluation's flag metadata, or the precomputed `createdAt` of the applied assignments, which `FlagsEvaluator` stamps into every precomputed resolution's flag metadata (`__dd_configuration_identity`) so `buildEvaluationRecord` carries it in the record's `configurationId` in every process. A new `createdAt` re-logs, matching the upstream exposure cache clear, and a late record always dedupes against the identity it was evaluated with, never a later refresh's.
+
+### Snapshot lifecycle
+
+`FlagsState` is the single source of truth. Every mutation (configuration update, context update, tracking toggle) publishes a new immutable snapshot to subscribers synchronously. Snapshots are monotonically revisioned; the evaluator ignores non-newer revisions.
+
+`startFeatureFlags` links every consumer (evaluator, snapshot publisher, renderer record receiver, any provider constructed before `init()`) before `FlagsOwner` starts, so the cached configuration reaches all of them; the first network fetch is never awaited by `init()`. `FlagsOwner` serves the disk cache as `STALE` before the first network fetch, applies fetch outcomes (`READY` on success, `STALE` on warm failure with a held configuration, `ERROR` on authoritative failure with the configuration dropped), refreshes on `refreshInterval`, and persists valid configurations through a serialized pending-write chain.
+
+### Origin gating
+
+Snapshots carry the targeting context, so they follow the same origin policy as the RUM bridge. The `SnapshotPublisher` addresses the subscribing **frame** (not the whole `webContents`), re-checks the frame current origin and liveness before every push, and drops the subscription on navigation or destruction. The preload bridge is exposed per-session (covering partitions) through the existing preload registration.
+
+Before init, the instrument-time handler answers a minimal `NOT_READY` snapshot (no context, no configuration) and records the frame; at init the publisher re-checks those frames and pushes them the current snapshot, or `DISABLED` when `featureFlags` is not configured.
+
+### Excluded sessions
+
+The shared preload runs on every session and a preload cannot be unregistered, so `featureFlags.excludedPartitions` is enforced on both sides: the preload asks main synchronously (`datadog:flags-bridge-enabled`) and does not expose `DatadogFlagsBridge` in an excluded session, and main gives no answer to snapshot requests, never pushes, and drops evaluation records from excluded senders. Partitions are compared by session identity (`session.fromPartition`) when a renderer talks to main, so sessions created after `init()` are covered. `DatadogEventBridge` is untouched.
+
+### Channels
+
+- `datadog:flags-snapshot` (invoke): renderer requests the current snapshot
+- `datadog:flags-update` (main to frame push): snapshot updates
+- `datadog:flags-evaluations` (renderer to main send): batched evaluation records
+- `datadog:flags-bridge-enabled` (preload to main sync): whether this session may expose the bridge
+
+The `datadog:` prefix keeps them out of tracing spans.
+
+### Exposure deduplication
+
+Main is the single dedupe authority. Every evaluation record carries its originating `contextRevision`; main resolves each record to the exact context it used (retained for the last 10 revisions). The dedupe key hashes (subject id, subject attributes, flag key, allocation key, variant key, configuration id), bounded LRU of 1000 entries, never cleared on context change.
+
+### Tracking fan-out
+
+Main and renderer records go through one fan-out: exposures (the collector applies the upstream skip rules), evaluation metrics (every evaluation counts, defaults and errors included, bucketed per view url, emitted in the upstream `FlagEvaluationEvent` shape) and, for main records only, the main RUM flag context. Renderers report to their own `DD_RUM`. Each record carries the `contextRevision` captured when the flag was resolved.
+
+### Cache and limits
+
+The rules disk cache is scoped by `sha256(site, env, clientToken, flaggingProxy)` in `userData/_dd_flags/`, with a 7-day max age; the precomputed cache is per context (see [Evaluation modes](#evaluation-modes-m7)). Batches from renderers are capped at 100 records and 64 KiB; oversize or malformed payloads are rejected whole, individual invalid records are dropped and counted.
+
+### Error routing
+
+SDK bugs go to telemetry (`monitor` everywhere). Actionable environment issues (org setting off, HTTP 4xx) go to `display.error` with the actionable message. Expected defaults return `errorCode` on details without logging. Flag keys, variants, values, context, and URLs never go to SDK telemetry; dropped renderer records are reported as a rate-limited (one per 10 s) debug log with the count only.
+
+### Spawned processes
+
+Forked children, utility processes and workers connect over a channel opened in main (`openFlagsChannel`) and evaluate locally with the same `FlagsEvaluator` (`@datadog/electron-sdk/child`, which inlines the evaluator and imports nothing from `electron` or `src/domain`). The protocol is a JSON-safe envelope namespaced by `__ddElectronSdkFlags: 1` (`hello`, `snapshot`, `evaluations`, `context-request`, `context-response`), carried on a private SDK-owned port (`worker_threads` `MessagePort`, Electron `MessagePortMain`, both started and unref'd) or as string frames the app routes through its own `child_process` protocol. The SDK never listens on an app-owned object, except `owner.once('exit')` when the app passes `owner`.
+
+`ChildFlagsHub` keeps the open channels in a `Symbol.for('@datadog/electron-sdk:flagsChildren')` holder, so channels opened before `init()` answer `NOT_READY` and receive the real snapshot when `startFeatureFlags` links them (`DISABLED` after an `init()` without flags). Snapshots are pushed on open, on `hello` and on every newer revision. Child batches go through the shared `EvaluationBatchIntake` (the renderer's limits and rate-limited drop telemetry) into the tracking fan-out as `'child'` records, attributed to the main process (view fields dropped, main view `feature_flags`). Context requests are normalized, optionally filtered by `onContextRequest`, and applied to `FlagsState`, so every renderer and child gets the new snapshot.
+
+### Not supported yet
+
+A child-side OpenFeature provider (children use the `connectFlags` client).

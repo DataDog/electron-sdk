@@ -72,6 +72,14 @@ class Telemetry {
     });
   }
 
+  /** Report a debug log with a small, non-sensitive context (sampled with errors). */
+  addDebug(message: string, context: Record<string, string | number | boolean>): void {
+    this.add({
+      type: 'telemetry',
+      telemetry: { ...context, type: 'log', status: 'debug', message },
+    });
+  }
+
   /** Report the resolved SDK configuration. Sent at most once per process. */
   addConfiguration(configuration: RawTelemetryConfigurationData): void {
     this.add({
@@ -118,6 +126,14 @@ export function startTelemetry(eventManager: EventManager, configuration: Config
 
 export function addError(error: unknown): void {
   telemetryInstance?.addError(error);
+}
+
+/**
+ * Report an SDK debug log. Callers rate-limit and keep `context` free of customer data
+ * (counts and fixed identifiers only).
+ */
+export function addDebug(message: string, context: Record<string, string | number | boolean> = {}): void {
+  telemetryInstance?.addDebug(message, context);
 }
 
 /** Report the resolved SDK configuration. Consumed by configuration telemetry. */

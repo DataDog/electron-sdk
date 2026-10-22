@@ -1,4 +1,6 @@
 Component,Origin,License,Copyright
+npm-prod,@openfeature/core,Apache-2.0,Copyright OpenFeature Project Contributors
+npm-prod,@openfeature/web-sdk,Apache-2.0,Copyright OpenFeature Project Contributors
 rust-prod,breakpad-symbols,MIT,Copyright (c) 2015-2023 rust-minidump contributors
 rust-prod,console_error_panic_hook,MIT OR Apache-2.0,Copyright (c) 2018 Nick Fitzgerald
 rust-prod,js-sys,MIT OR Apache-2.0,Copyright (c) 2014 Alex Crichton
@@ -18,6 +20,8 @@ npm-dev,@electron-forge/cli,MIT,Copyright (c) 2019 The Electron Forge Contributo
 npm-dev,@electron-forge/plugin-vite,MIT,Copyright (c) 2019 The Electron Forge Contributors
 npm-dev,@electron-forge/plugin-webpack,MIT,Copyright (c) 2019 The Electron Forge Contributors
 npm-dev,@eslint/js,MIT,Copyright OpenJS Foundation and other contributors
+npm-dev,@openfeature/core,Apache-2.0,Copyright OpenFeature Project Contributors
+npm-dev,@openfeature/web-sdk,Apache-2.0,Copyright OpenFeature Project Contributors
 npm-dev,@playwright/test,Apache-2.0,Copyright Microsoft Corporation
 npm-dev,@rollup/plugin-commonjs,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)
 npm-dev,@rollup/plugin-json,MIT,Copyright (c) 2019 RollupJS Plugin Contributors (https://github.com/rollup/plugins/graphs/contributors)

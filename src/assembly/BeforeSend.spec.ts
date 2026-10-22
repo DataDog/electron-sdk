@@ -42,6 +42,23 @@ describe('beforeSendRum', () => {
     });
   });
 
+  it('receives events with feature_flags, does not apply changes to feature_flags, and can still dismiss an error carrying them', () => {
+    const viewEvent = { ...createServerRumError(), type: 'view' as const, feature_flags: { 'flag-a': 'on' } };
+    const beforeSend = new BeforeSend((modifiableEvent) => {
+      // An attempted change to feature_flags is not applied: the field is outside the
+      // modifiable set. An error carrying feature_flags can still be dismissed.
+      (modifiableEvent as { feature_flags?: unknown }).feature_flags = { tampered: 'true' };
+      return modifiableEvent.type !== 'error';
+    });
+
+    expect(beforeSend.apply(viewEvent as never, 'main')).toMatchObject({
+      type: 'view',
+      feature_flags: { 'flag-a': 'on' },
+    });
+    const errorEvent = { ...createServerRumError(), feature_flags: { 'flag-a': 'on' } };
+    expect(beforeSend.apply(errorEvent, 'main')).toBeUndefined();
+  });
+
   it('lets beforeSendRum modify supported fields on a fully assembled event', () => {
     const event = createServerRumError({
       service: 'original-service',

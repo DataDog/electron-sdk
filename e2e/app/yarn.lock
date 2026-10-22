@@ -61,7 +61,14 @@ __metadata:
   dependencies:
     dd-trace: "npm:6.10.0"
   peerDependencies:
+    "@openfeature/core": ^1.9.2
+    "@openfeature/web-sdk": ^1.5.0
     electron: ">=39"
+  peerDependenciesMeta:
+    "@openfeature/core":
+      optional: true
+    "@openfeature/web-sdk":
+      optional: true
   languageName: node
   linkType: soft
 
@@ -401,6 +408,22 @@ __metadata:
     "@emnapi/core": ^1.7.1
     "@emnapi/runtime": ^1.7.1
   checksum: 10c0/2e88e1955258949ccf2d18c79975821ad38071b465ef126a5e14110977b97868867b016c1ad046e963cccc42c0bd9db6c8ff5fd1ebb61b87bb3487f339041658
+  languageName: node
+  linkType: hard
+
+"@openfeature/core@npm:1.12.0":
+  version: 1.12.0
+  resolution: "@openfeature/core@npm:1.12.0"
+  checksum: 10c0/561aa31810b6bad7c787a61dfeef11615b3151773f751548b0d3bc894cf50d863ef45832f9b92f390bc7da7ba1c41be12ce6226a78c36a504dfd5e7fb97120bd
+  languageName: node
+  linkType: hard
+
+"@openfeature/web-sdk@npm:1.10.0":
+  version: 1.10.0
+  resolution: "@openfeature/web-sdk@npm:1.10.0"
+  peerDependencies:
+    "@openfeature/core": ^1.12.0
+  checksum: 10c0/70b2e470296a628d9e9ba4cff6d558487fff322e95bd68629606c7ba5be138194018865ccf33997488b39020e1466836072a22bd71e6a19f606bd4b07a867bfe
   languageName: node
   linkType: hard
 
@@ -846,6 +869,8 @@ __metadata:
     "@datadog/browser-logs": "npm:7.5.0"
     "@datadog/browser-rum": "npm:7.5.0"
     "@datadog/electron-sdk": "portal:../.."
+    "@openfeature/core": "npm:1.12.0"
+    "@openfeature/web-sdk": "npm:1.10.0"
     electron: "npm:41.1.0"
     esbuild: "npm:0.28.1"
     typescript: "npm:5.9.3"
