@@ -112,6 +112,9 @@
     "test:compatibility": "node scripts/run-compatibility-tests.ts",
     "test:compatibility:ci:generate": "node scripts/generate-compatibility-ci.ts"
   },
+  "resolutions": {
+    "node-gyp": "12.4.0"
+  },
   "devDependencies": {
     "@datadog/browser-core": "7.5.0",
     "@datadog/js-core": "0.0.5",

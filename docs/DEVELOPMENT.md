@@ -137,6 +137,8 @@ git ls-remote --tags https://github.com/actions/checkout | grep 'v4\.'
 
 ### Updating Dependencies
 
+Git dependencies must be listed in `.yarnrc.yml` under `approvedGitRepositories` so lockfile maintenance can fetch them.
+
 Always use latest stable versions for new dependencies. Check with:
 
 ```bash
