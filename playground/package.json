@@ -25,7 +25,7 @@
     "chokidar": "5.0.0",
     "concurrently": "10.0.3",
     "electron": "41.1.0",
-    "electron-reloader": "1.2.3",
+    "electron-reloader": "2.0.0",
     "esbuild": "0.28.1",
     "typescript": "5.9.3"
   }
