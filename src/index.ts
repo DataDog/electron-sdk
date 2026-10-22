@@ -42,6 +42,11 @@ export interface InternalContext {
 /**
  * Initialize the Electron SDK, once per launch: after a call with a valid configuration, later calls resolve to
  * `false`.
+ *
+ * @example
+ * ```ts
+ * await init({ ...configuration, trackingConsent: 'pending' }); // false if invalid or already initialized
+ * ```
  */
 export async function init(configuration: InitConfiguration): Promise<boolean> {
   if (initStarted) {
