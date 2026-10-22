@@ -23,8 +23,8 @@ IPC messages, file I/O, session events, and span callbacks all interleave. Look 
 ### Session and time attribution
 
 Resolve the session and contexts from the event's timestamp, not from the current state: an event recorded before a
-session renewal belongs to the previous session. The one exception is renderer view events with execution context
-enabled, see `RendererViewStartTime` (`src/assembly/RendererViewStartTime.ts`).
+session renewal belongs to the previous session. The one exception is renderer view events, see
+`RendererViewStartTime` (`src/assembly/RendererViewStartTime.ts`).
 
 ### Data at boundaries
 
@@ -46,7 +46,7 @@ All callbacks driven by Node.js or Electron (IPC handlers, `diagnostics_channel`
 wrapped with `monitor()` so errors are captured by telemetry rather than silently lost. This applies to Promise
 `.then`/`.catch` callbacks into SDK code too.
 
-Use the SDK's `setTimeout`, `setInterval`, and `throttle` from `src/domain/telemetry/timer.ts` instead of raw
+Use the SDK's `setTimeout` and `setInterval` from `src/domain/telemetry/timer.ts` instead of raw
 `global.setTimeout`/`global.setInterval`.
 
 See `monitor` and `callMonitored` in `src/domain/telemetry/Telemetry.ts`.

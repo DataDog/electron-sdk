@@ -300,7 +300,6 @@ void app
       telemetryUsageSampleRate: 100,
       allowedRendererHosts: ['*'],
       defaultPrivacyLevel: 'allow',
-      enableExecutionContext: true,
       ...(process.env.DD_SDK_PROXY ? { proxy: process.env.DD_SDK_PROXY } : {}),
     });
     console.log('SDK init result:', result);

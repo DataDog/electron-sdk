@@ -13,7 +13,7 @@ export const VIEW_HISTORY_FILE_NAME = '_dd_view_history';
 export class ViewContext {
   private readonly history: DiskValueHistory<string>;
 
-  private constructor(history: DiskValueHistory<string>, hooks: FormatHooks, isExecutionContextEnabled: boolean) {
+  private constructor(history: DiskValueHistory<string>, hooks: FormatHooks) {
     this.history = history;
 
     hooks.registerRum(({ source, startTime }) => {
@@ -26,9 +26,7 @@ export class ViewContext {
           // A fake view, not a real navigable page: it exists only so main-process events have a
           // view.id to resolve against, matching the same one MainProcessContext maintains as an
           // actual view RUM document. See "Fake views" in docs/ARCHITECTURE.md.
-          return isExecutionContextEnabled
-            ? { view: { id, url: 'electron://fake', is_fake: true } }
-            : { view: { id, name: 'main process', url: 'electron://main-process' } };
+          return { view: { id, url: 'electron://fake', is_fake: true } };
       }
     });
 
@@ -59,14 +57,10 @@ export class ViewContext {
     });
   }
 
-  static async init(
-    hooks: FormatHooks,
-    expireDelay = SESSION_TIME_OUT_DELAY,
-    options?: { isExecutionContextEnabled?: boolean }
-  ): Promise<ViewContext> {
+  static async init(hooks: FormatHooks, expireDelay = SESSION_TIME_OUT_DELAY): Promise<ViewContext> {
     const filePath = path.join(app.getPath('userData'), VIEW_HISTORY_FILE_NAME);
     const history = await DiskValueHistory.init<string>({ filePath, expireDelay });
-    return new ViewContext(history, hooks, options?.isExecutionContextEnabled ?? false);
+    return new ViewContext(history, hooks);
   }
 
   /** Registers the view at its event timestamp, even if registration happens later. */
