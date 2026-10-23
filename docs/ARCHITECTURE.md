@@ -204,14 +204,14 @@ does not multiply the allowance. Open files and filesystem failures can temporar
 
 ### Consent at assembly
 
-Batch storage applies the consent current when an event is written. Telemetry and replay records are written within
-seconds of their capture, but other data can be written later, possibly after a consent change: a renderer event can
-still be in transit over IPC when consent is granted; a crash is written at the next launch, and its saved session,
-view and customer context is not proof that it was captured with consent; a span is written when its whole trace
-ends, and a profile when its recording ends.
+Batch storage applies the consent current when an event is written. Replay records are written within seconds of
+their capture, but other data can be written later, possibly after a consent change: a renderer event can still be in
+transit over IPC when consent is granted; a crash is written at the next launch, and its saved session, view and
+customer context is not proof that it was captured with consent; a span is written when its whole trace ends, and a
+profile when its recording ends.
 
-Format hooks therefore discard RUM events, logs and spans whose start time falls in a refused period, or in no known
-period. Profiles bypass format hooks, so `ProfilingCollection` applies the same check to their start time.
+Format hooks therefore discard RUM events, logs, telemetry and spans whose start time falls in a refused period, or in
+no known period. Profiles bypass format hooks, so `ProfilingCollection` applies the same check to their start time.
 A `pending` period takes the decision that ended it, like its pending batches: a grant keeps its events, and a
 refusal discards them even if consent is granted again later. Events of a still undecided `pending` period are left
 to the batch storage. A new process cannot grant the previous one's undecided period, so startup records it as
