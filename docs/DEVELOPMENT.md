@@ -53,7 +53,8 @@ For unit tests, these constants are defined via Vitest's `define` option in `vit
 ## Commit messages and Pull Request titles
 
 Messages should be concise but explanatory. We are using a convention inspired by [gitmoji][1], to
-label our Commit messages and Pull Request titles:
+label our Commit messages and Pull Request titles. The changelog is generated from them: user-facing emojis get their
+own release notes section, internal ones are listed under Internal.
 
 ### User-facing changes
 
@@ -62,10 +63,11 @@ label our Commit messages and Pull Request titles:
 - 🐛 **Bug fix** - Fix bugs, regressions, crashes
 - ⚡️ **Performance** - Improve performance, reduce bundle size
 - 📝 **Documentation** - User-facing documentation
-- ⚗️ **Experimental** - New public feature behind a feature flag
+- 🔒 **Security** - Fix security issues
 
 ### Internal changes
 
+- ⚗️ **Experimental** - New feature behind a feature flag, not announced yet
 - 👷 **Build/CI** - Dependencies, tooling, deployment, CI config
 - ♻️ **Refactor** - Code restructuring, architectural changes
 - 🎨 **Code structure** - Improve code structure, formatting

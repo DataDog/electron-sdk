@@ -8,7 +8,7 @@
 
 ## Test instructions
 
-<!-- How can the reviewer test this change? Include relevant steps to reproduce the issue, if any. -->
+<!-- How can the reviewer check this change by hand? Write a short real-life scenario (3 to 6 numbered steps, e.g. in the playground): what to do, and what to observe. For a bug fix, start with the steps that reproduce the issue. Don't list the unit or e2e test commands: CI runs them. If the change has no behavior to observe by hand, say so. -->
 
 ## Checklist
 
