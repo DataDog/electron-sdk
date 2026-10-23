@@ -29,7 +29,7 @@ vi.mock('./transport/batch', async (importOriginal) => ({
 let sdk: typeof import('./index');
 
 beforeEach(async () => {
-  // init() runs once per launch: each test loads the SDK fresh.
+  // Each test loads the SDK fresh, as a new launch would.
   vi.resetModules();
   sdk = await import('./index');
 });
@@ -89,29 +89,6 @@ it('starts the session manager under the init option', async () => {
     sdk.init(createTestConfiguration({ allowedRendererHosts: ['*'], trackingConsent: 'not-granted' }))
   ).rejects.toThrow('stop before collection');
   expect(consentAtSessionStart).toBe('not-granted');
-});
-
-it('ignores an init() called after one with a valid configuration, even a failed one', async () => {
-  const { TrackingConsentManager } = await import('./domain/tracking-consent');
-  const createManager = vi.spyOn(TrackingConsentManager, 'init');
-  createBatchManager.mockRejectedValue(new Error('transport failed'));
-  await expect(sdk.init(createTestConfiguration({ allowedRendererHosts: ['*'] }))).rejects.toThrow('transport failed');
-  const error = vi.spyOn((await import('./tools/display')).display, 'error').mockImplementation(() => undefined);
-
-  await expect(sdk.init(createTestConfiguration({ allowedRendererHosts: ['*'] }))).resolves.toBe(false);
-
-  expect(createManager).toHaveBeenCalledOnce();
-  expect(error).toHaveBeenCalledExactlyOnceWith('init() was already called: this call is ignored.');
-});
-
-it('accepts an init() called after one with an invalid configuration', async () => {
-  vi.spyOn((await import('./tools/display')).display, 'error').mockImplementation(() => undefined);
-  createBatchManager.mockRejectedValue(new Error('transport failed'));
-  await expect(sdk.init(createTestConfiguration({ allowedRendererHosts: ['*'], clientToken: '' }))).resolves.toBe(
-    false
-  );
-
-  await expect(sdk.init(createTestConfiguration({ allowedRendererHosts: ['*'] }))).rejects.toThrow('transport failed');
 });
 
 describe('after a complete init()', () => {

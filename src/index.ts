@@ -16,7 +16,6 @@ import { ProfilingCollection } from './domain/profiling';
 import { TrackingConsentManager } from './domain/tracking-consent';
 import { EventManager } from './event';
 import { BeforeQuitHandler } from './tools/BeforeQuitHandler';
-import { display } from './tools/display';
 import { Transport } from './transport';
 
 let sessionManager: SessionManager | undefined;
@@ -27,9 +26,7 @@ let tracing: Tracing | undefined;
 let userContext: UserContext | undefined;
 let accountContext: AccountContext | undefined;
 let replayCollection: ReplayCollection | undefined;
-// Set once init() has a valid configuration, even if it then fails: a later init() would register a new consent
-// manager, leaving what the first one started under a consent that setTrackingConsent() no longer reaches.
-let initStarted = false;
+let beforeQuitHandler: BeforeQuitHandler | undefined;
 
 /**
  * Internal SDK context
@@ -40,25 +37,19 @@ export interface InternalContext {
 }
 
 /**
- * Initialize the Electron SDK, once per launch: after a call with a valid configuration, later calls resolve to
- * `false`.
+ * Initialize the Electron SDK. Call it once per launch and await it before calling any other API.
  *
  * @example
  * ```ts
- * await init({ ...configuration, trackingConsent: 'pending' }); // false if invalid or already initialized
+ * await init({ ...configuration, trackingConsent: 'pending' }); // false if the configuration is invalid
  * ```
  */
 export async function init(configuration: InitConfiguration): Promise<boolean> {
-  if (initStarted) {
-    display.error('init() was already called: this call is ignored.');
-    return false;
-  }
   const config = buildConfiguration(configuration);
 
   if (!config) {
     return false;
   }
-  initStarted = true;
 
   tracing = new Tracing(config);
 
@@ -91,7 +82,8 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   rumApi = rum.getApi();
   setDurationVitalApi(rumApi);
 
-  new BeforeQuitHandler(app, _flushTransport);
+  beforeQuitHandler?.stop();
+  beforeQuitHandler = new BeforeQuitHandler(app, _flushTransport);
 
   // Reported last: the transport must be registered for the event to reach a batch, and every
   // component whose state it describes must be constructed. Monitored so a failure anywhere in the
