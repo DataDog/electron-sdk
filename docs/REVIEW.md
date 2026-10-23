@@ -20,6 +20,30 @@ IPC messages, file I/O, session events, and span callbacks all interleave. Look 
 - **Renderer lifecycle**: events or queued IPC arriving after a renderer is closed, crash revival, a renderer process
   shared by several windows, destroyed `WebContents` retained in memory.
 
+### Scope and consistency
+
+See "Minimal First" and "Scope and Consistency" in `docs/CONVENTIONS.md`. Compare each new behavior with its existing
+siblings, not only with the PR's own goal:
+
+- **Public APIs** exported from `src/index.ts`: argument validation, calls before or during `init()`, error reporting.
+- **Tracks**: RUM, logs, telemetry, spans, profiles and replay are expected to go through the same gates (consent,
+  sampling, session), unless `docs/ARCHITECTURE.md` documents why a track differs.
+- **Existing patterns**: shared components are built and wired in `init`, time-based state goes through the context
+  histories, event-level rules go through assembly hooks, customer-observable behavior is covered by e2e tests.
+
+A mechanism without a concrete case in the PR, or a divergence from a sibling, is worth a finding: ask the author which
+case needs it now and whether it belongs in this PR, and let them decide how to update the PR.
+
+### PR shape
+
+The PR follows "Pull Requests" in `docs/CONVENTIONS.md`: one purpose, enablement last, docs and e2e with the behavior
+they cover.
+
+The title's emoji matches the change, per "Commit messages and Pull Request titles" in `docs/DEVELOPMENT.md`: the
+changelog is generated from it (`scripts/lib/changelog.ts`), so a wrong emoji files the change under the wrong release
+notes section, or hides a customer-facing change in Internal. The description follows the sections of
+`.github/PULL_REQUEST_TEMPLATE.md`; its test instructions describe a manual scenario, not the commands CI already runs.
+
 ### Session and time attribution
 
 Resolve the session and contexts from the event's timestamp, not from the current state: an event recorded before a

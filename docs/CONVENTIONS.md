@@ -7,6 +7,12 @@
 Implement the minimal design that handles the cases at hand. Don't add a defensive mechanism (queue, buffer, retry,
 flush, retention) without a concrete case it handles: list it as a follow-up with what would trigger adding it.
 
+### Scope and Consistency
+
+A PR changes behavior only within its stated goal. When a change would make one API, track or component behave
+differently from its siblings, apply it to all of them in the same PR (if the goal covers them) or to none. Defer the
+general change to a follow-up ticket, and document the current limitation (README or JSDoc) with a link to it.
+
 ### Single Responsibility
 
 A component owns one concern, and logic sits next to the data it operates on. A function reads at a single level of
@@ -186,4 +192,11 @@ A helper shared by several functions goes after its first user.
 
 ## Pull Requests
 
-Keep a PR to one purpose: unrelated changes go in a separate PR.
+Keep a PR to one purpose: unrelated changes go in a separate PR. When a feature spans several PRs:
+
+- The PR that exposes the public entry point or flips the default lands last: anything the feature needs to behave
+  correctly once enabled lands before it. An entry point that ships disabled may land earlier, and the PR that enables it
+  is then the last one.
+- Each PR that enables a behavior carries its docs and e2e tests, in any of its commits. No schema-only, e2e-only or
+  docs-only PRs: a schema lands with the first change that uses it at runtime.
+- A behavior-preserving extraction is a valid first PR when it de-risks the ones after it.
