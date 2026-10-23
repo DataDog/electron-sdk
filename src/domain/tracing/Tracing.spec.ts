@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { setCurrentSessionSampled } from '../../common';
+import { setSampledSessionActive } from '../../common';
 import { createTestConfiguration } from '../../mocks.specUtil';
 import { Tracing } from './Tracing';
 
@@ -24,7 +24,7 @@ function createTracerRequire() {
 }
 
 describe('Tracing', () => {
-  afterEach(() => setCurrentSessionSampled(false));
+  afterEach(() => setSampledSessionActive(false));
 
   it('initializes dd-trace with normalized matching rules and a fallback sample rate', () => {
     const { init, requireFn } = createTracerRequire();
@@ -111,9 +111,9 @@ describe('Tracing', () => {
     });
 
     const propagationBlocklist = (use.mock.calls[0][1] as { propagationBlocklist: () => boolean }).propagationBlocklist;
-    setCurrentSessionSampled(true);
+    setSampledSessionActive(true);
     expect(propagationBlocklist()).toBe(false);
-    setCurrentSessionSampled(false);
+    setSampledSessionActive(false);
     expect(propagationBlocklist()).toBe(true);
   });
 

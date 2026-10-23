@@ -15,7 +15,7 @@ import { EventKind, EventManager, EventSource, LifecycleKind, type LifecycleEven
 import * as Sampler from '../../tools/Sampler';
 import { SESSION_EXPIRATION_DELAY, SessionManager } from './SessionManager';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
-import { isCurrentSessionSampled, setCurrentSessionSampled } from '../../common';
+import { isSampledSessionActive, setSampledSessionActive } from '../../common';
 import { TrackingConsentManager } from '../tracking-consent';
 
 const T0 = 0 as TimeStamp;
@@ -40,9 +40,8 @@ describe('sessionManager', () => {
   beforeEach(async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
-    // The sampling decision is process-wide: start from true, so a test expecting false proves the
-    // manager wrote it.
-    setCurrentSessionSampled(true);
+    // The flag is process-wide: start from true, so a test expecting false proves the manager wrote it.
+    setSampledSessionActive(true);
     mfs.writeFile.mockResolvedValue(undefined);
     trackingConsentManager = await TrackingConsentManager.init(createFormatHooks(), 'granted');
     eventManager = new EventManager();
@@ -107,7 +106,7 @@ describe('sessionManager', () => {
       await vi.advanceTimersByTimeAsync(SESSION_EXPIRATION_DELAY);
 
       expect(sessionManager.getSession().status).toBe('expired');
-      expect(isCurrentSessionSampled()).toBe(false);
+      expect(isSampledSessionActive()).toBe(false);
       expect(lifecycleEvents).toContain(LifecycleKind.SESSION_EXPIRED);
     });
 
@@ -250,19 +249,19 @@ describe('sessionManager', () => {
       expect(sessionManager.getSession()).toEqual({ status: 'not-granted' });
       expect(sessionManager.getTrackedSessionId()).toBeUndefined();
       expect(sessionManager.getTrackedSessionId(T0)).toBe('previous-session-id');
-      expect(isCurrentSessionSampled()).toBe(false);
+      expect(isSampledSessionActive()).toBe(false);
       expect(vi.getTimerCount()).toBe(0);
       expect(lifecycleEvents).toEqual([LifecycleKind.END_USER_ACTIVITY]);
     });
 
     it('tracks a session while pending', async () => {
-      setCurrentSessionSampled(false);
+      setSampledSessionActive(false);
       trackingConsentManager.update('pending');
       sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), trackingConsentManager);
 
       expect(sessionManager.getSession().status).toBe('active');
       expect(sessionManager.getTrackedSessionId()).toBe(currentSessionId());
-      expect(isCurrentSessionSampled()).toBe(true);
+      expect(isSampledSessionActive()).toBe(true);
     });
 
     it('keeps the session lifecycle unchanged between granted and pending', async () => {
@@ -300,7 +299,7 @@ describe('sessionManager', () => {
 
         expect(sessionManager.getSession()).toEqual({ status: 'not-granted' });
         expect(sessionManager.getTrackedSessionId(T0)).toBe(firstId);
-        expect(isCurrentSessionSampled()).toBe(false);
+        expect(isSampledSessionActive()).toBe(false);
         expect(vi.getTimerCount()).toBe(0);
 
         vi.advanceTimersByTime(10);
@@ -310,7 +309,7 @@ describe('sessionManager', () => {
         expect(currentSessionId()).not.toBe(firstId);
         expect(sessionManager.getTrackedSessionId()).toBe(currentSessionId());
         expect(sessionManager.getTrackedSessionId(15 as TimeStamp)).toBeUndefined();
-        expect(isCurrentSessionSampled()).toBe(true);
+        expect(isSampledSessionActive()).toBe(true);
         expect(lifecycleEvents).toEqual([LifecycleKind.SESSION_EXPIRED, LifecycleKind.SESSION_RENEW]);
       }
     );
@@ -339,10 +338,10 @@ describe('sessionManager', () => {
 
   describe('sessionSampleRate', () => {
     it('session is sampled when sampleRate is 100', async () => {
-      setCurrentSessionSampled(false);
+      setSampledSessionActive(false);
       sessionManager = await SessionManager.start(eventManager, hooks, makeConfig(), trackingConsentManager);
 
-      expect(isCurrentSessionSampled()).toBe(true);
+      expect(isSampledSessionActive()).toBe(true);
       // A sampled session is tracked, so getInternalContext()/correlation can resolve its id.
       expect(sessionManager.getTrackedSessionId()).toBe(currentSessionId());
       expect(hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN })).not.toBe(DISCARDED);
@@ -356,7 +355,7 @@ describe('sessionManager', () => {
         trackingConsentManager
       );
 
-      expect(isCurrentSessionSampled()).toBe(false);
+      expect(isSampledSessionActive()).toBe(false);
       // A non-sampled session is not tracked, so getInternalContext() resolves to undefined —
       // no session id leaks for a session that produces no RUM.
       expect(sessionManager.getTrackedSessionId()).toBeUndefined();

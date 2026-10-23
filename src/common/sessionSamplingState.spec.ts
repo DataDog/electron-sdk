@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { isCurrentSessionSampled, setCurrentSessionSampled } from './sessionSamplingState';
+import { isSampledSessionActive, setSampledSessionActive } from './sessionSamplingState';
 
 describe('sessionSamplingState', () => {
   beforeEach(() => {
@@ -7,21 +7,21 @@ describe('sessionSamplingState', () => {
   });
 
   it('blocks propagation until the session decision is available', () => {
-    expect(isCurrentSessionSampled()).toBe(false);
+    expect(isSampledSessionActive()).toBe(false);
   });
 
-  it('stores the current session decision', () => {
-    setCurrentSessionSampled(true);
+  it('stores whether a sampled session is active', () => {
+    setSampledSessionActive(true);
 
-    expect(isCurrentSessionSampled()).toBe(true);
+    expect(isSampledSessionActive()).toBe(true);
   });
 
   it('shares state across separate module evaluations', async () => {
-    setCurrentSessionSampled(true);
+    setSampledSessionActive(true);
     vi.resetModules();
 
     const fresh = await import('./sessionSamplingState');
 
-    expect(fresh.isCurrentSessionSampled()).toBe(true);
+    expect(fresh.isSampledSessionActive()).toBe(true);
   });
 });

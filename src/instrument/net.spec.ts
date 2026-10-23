@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { EventEmitter } from 'node:events';
-import { setCurrentSessionSampled } from '../common';
+import { setSampledSessionActive } from '../common';
 
 const mockSpan = { setTag: vi.fn(), finish: vi.fn() };
 const mockActiveSpan = { id: 'active-span' };
@@ -59,7 +59,7 @@ describe('patchNet', () => {
     mockDdTrace.inject.mockImplementation((_, __, carrier: Record<string, string>) => {
       carrier['x-datadog-trace-id'] = '123';
     });
-    setCurrentSessionSampled(true);
+    setSampledSessionActive(true);
   });
 
   async function setupNet(req = makeRequest()) {
@@ -201,8 +201,8 @@ describe('patchNet', () => {
     expect(opts.headers).toEqual({ authorization: 'token' });
   });
 
-  it('does not propagate trace headers when the current RUM session is not sampled', async () => {
-    setCurrentSessionSampled(false);
+  it('does not propagate trace headers while no sampled RUM session is active', async () => {
+    setSampledSessionActive(false);
     const { patchedNet, originalRequest } = await setupNet();
 
     patchedNet.request({ url: 'https://example.com', headers: { authorization: 'token' } });
@@ -462,8 +462,8 @@ describe('patchNet', () => {
       expect(patchedInit.headers).toEqual({ authorization: 'token' });
     });
 
-    it('does not propagate trace headers when the current RUM session is not sampled', async () => {
-      setCurrentSessionSampled(false);
+    it('does not propagate trace headers while no sampled RUM session is active', async () => {
+      setSampledSessionActive(false);
       const { patchedNet, originalFetch } = await setupNetWithFetch();
 
       await patchedNet.fetch('https://example.com', { headers: { authorization: 'token' } });
