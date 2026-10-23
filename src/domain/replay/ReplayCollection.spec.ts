@@ -5,7 +5,7 @@ import { createFormatHooks } from '../../assembly';
 import { addError } from '../telemetry';
 import { ReplayCollection } from './ReplayCollection';
 import type { Configuration } from '../../config';
-import { createTestConfiguration } from '../../mocks.specUtil';
+import { createTestConfiguration, identityPathScrubber } from '../../mocks.specUtil';
 import type { SessionManager } from '../session';
 import { CreationReason } from './Segment';
 import type { ReplaySegmentPayload } from './Segment';
@@ -89,7 +89,7 @@ describe('ReplayCollection', () => {
   describe('idle behaviour', () => {
     it('emits nothing when no records are received', () => {
       const captured = captureReplayEvents(eventManager);
-      new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks());
+      new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks(), identityPathScrubber);
 
       vi.advanceTimersByTime(10_000);
       expect(captured).toHaveLength(0);
@@ -97,7 +97,13 @@ describe('ReplayCollection', () => {
 
     it('does not collect records when session is expired', () => {
       const captured = captureReplayEvents(eventManager);
-      new ReplayCollection(eventManager, makeConfig(), makeSessionManager('sess-1', 'expired'), makeHooks());
+      new ReplayCollection(
+        eventManager,
+        makeConfig(),
+        makeSessionManager('sess-1', 'expired'),
+        makeHooks(),
+        identityPathScrubber
+      );
 
       sendRecord(eventManager, { type: 3, timestamp: 100 });
       vi.advanceTimersByTime(10_000);
@@ -110,7 +116,13 @@ describe('ReplayCollection', () => {
       const captured = captureReplayEvents(eventManager);
       const highHashSessionId = '5321b54a-d6ec-4b24-996d-dd70c617e09a';
       const config = makeConfig({ sessionSampleRate: 50, sessionReplaySampleRate: 100 });
-      new ReplayCollection(eventManager, config, makeSessionManager(highHashSessionId), makeHooks());
+      new ReplayCollection(
+        eventManager,
+        config,
+        makeSessionManager(highHashSessionId),
+        makeHooks(),
+        identityPathScrubber
+      );
 
       sendRecord(eventManager, { type: 3, timestamp: 100 });
       vi.advanceTimersByTime(5_000);
@@ -122,7 +134,7 @@ describe('ReplayCollection', () => {
   describe('duration-based flush (5 s timer)', () => {
     it('flushes segment after 5 s and emits a ServerReplayEvent', async () => {
       const captured = captureReplayEvents(eventManager);
-      new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks());
+      new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks(), identityPathScrubber);
 
       sendRecord(eventManager, { type: 2, timestamp: 1000 });
       vi.advanceTimersByTime(5_000);
@@ -137,7 +149,7 @@ describe('ReplayCollection', () => {
 
     it('accumulates multiple records into a single segment', async () => {
       const captured = captureReplayEvents(eventManager);
-      new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks());
+      new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks(), identityPathScrubber);
 
       sendRecord(eventManager, { type: 4, timestamp: 100 });
       sendRecord(eventManager, { type: 2, timestamp: 200 });
@@ -156,7 +168,7 @@ describe('ReplayCollection', () => {
   describe('view-change flush', () => {
     it('flushes when the view ID changes', async () => {
       const captured = captureReplayEvents(eventManager);
-      new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks());
+      new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks(), identityPathScrubber);
 
       sendRecord(eventManager, { type: 3, timestamp: 100 }, 'view-1');
       sendRecord(eventManager, { type: 3, timestamp: 200 }, 'view-2');
@@ -168,7 +180,7 @@ describe('ReplayCollection', () => {
 
     it('sets creation_reason to view_change on the next segment', async () => {
       const captured = captureReplayEvents(eventManager);
-      new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks());
+      new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks(), identityPathScrubber);
 
       sendRecord(eventManager, { type: 3, timestamp: 100 }, 'view-1');
       sendRecord(eventManager, { type: 3, timestamp: 200 }, 'view-2');
@@ -183,7 +195,7 @@ describe('ReplayCollection', () => {
   describe('session lifecycle flush', () => {
     it('flushes on SESSION_EXPIRED', async () => {
       const captured = captureReplayEvents(eventManager);
-      new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks());
+      new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks(), identityPathScrubber);
 
       sendRecord(eventManager, { type: 3, timestamp: 100 });
       eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
@@ -199,7 +211,13 @@ describe('ReplayCollection', () => {
         getSession: () => ({ ...session }),
         getTrackedSessionId: () => (session.status === 'active' ? session.id : undefined),
       } as unknown as SessionManager;
-      const collection = new ReplayCollection(eventManager, makeConfig(), sessionManager, makeHooks());
+      const collection = new ReplayCollection(
+        eventManager,
+        makeConfig(),
+        sessionManager,
+        makeHooks(),
+        identityPathScrubber
+      );
 
       sendRecord(eventManager, { type: 3, timestamp: 100 }, 'view-1');
       session = { ...session, status: 'expired' };
@@ -227,7 +245,7 @@ describe('ReplayCollection', () => {
   describe('segment indexing', () => {
     it('increments index_in_view for successive segments in the same view', async () => {
       const captured = captureReplayEvents(eventManager);
-      new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks());
+      new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks(), identityPathScrubber);
 
       sendRecord(eventManager, { type: 3, timestamp: 100 }, 'view-1');
       vi.advanceTimersByTime(5_000);
@@ -243,7 +261,7 @@ describe('ReplayCollection', () => {
 
     it('resets index_in_view for a new view', async () => {
       const captured = captureReplayEvents(eventManager);
-      new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks());
+      new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks(), identityPathScrubber);
 
       sendRecord(eventManager, { type: 3, timestamp: 100 }, 'view-1');
       vi.advanceTimersByTime(5_000);
@@ -260,7 +278,13 @@ describe('ReplayCollection', () => {
 
   describe('getViewReplayStats()', () => {
     it('returns stats accumulated for a view after flushing', async () => {
-      const collection = new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks());
+      const collection = new ReplayCollection(
+        eventManager,
+        makeConfig(),
+        makeSessionManager(),
+        makeHooks(),
+        identityPathScrubber
+      );
       captureReplayEvents(eventManager);
 
       sendRecord(eventManager, { type: 3, timestamp: 100 }, 'view-abc');
@@ -274,7 +298,13 @@ describe('ReplayCollection', () => {
     });
 
     it('returns undefined for a view with no segments', () => {
-      const collection = new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks());
+      const collection = new ReplayCollection(
+        eventManager,
+        makeConfig(),
+        makeSessionManager(),
+        makeHooks(),
+        identityPathScrubber
+      );
       expect(collection.getViewReplayStats('unknown-view')).toBeUndefined();
     });
   });
@@ -282,7 +312,13 @@ describe('ReplayCollection', () => {
   describe('stop()', () => {
     it('flushes pending segment before resolving', async () => {
       const captured = captureReplayEvents(eventManager);
-      const collection = new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks());
+      const collection = new ReplayCollection(
+        eventManager,
+        makeConfig(),
+        makeSessionManager(),
+        makeHooks(),
+        identityPathScrubber
+      );
 
       sendRecord(eventManager, { type: 3, timestamp: 100 });
       await collection.stop();
@@ -291,7 +327,13 @@ describe('ReplayCollection', () => {
     });
 
     it('resolves immediately if no records are pending', async () => {
-      const collection = new ReplayCollection(eventManager, makeConfig(), makeSessionManager(), makeHooks());
+      const collection = new ReplayCollection(
+        eventManager,
+        makeConfig(),
+        makeSessionManager(),
+        makeHooks(),
+        identityPathScrubber
+      );
       await expect(collection.stop()).resolves.toBeUndefined();
     });
   });
@@ -306,7 +348,13 @@ describe('ReplayCollection', () => {
         getSession: () => ({ id: 'sess-B', status: 'active' as const }),
         getTrackedSessionId: (at = 1000) => (at < 1000 ? 'sess-A' : 'sess-B'),
       } as unknown as SessionManager;
-      const collection = new ReplayCollection(eventManager, makeConfig(), sessionManager, makeHooks());
+      const collection = new ReplayCollection(
+        eventManager,
+        makeConfig(),
+        sessionManager,
+        makeHooks(),
+        identityPathScrubber
+      );
 
       sendRecord(eventManager, { type: 2, timestamp: 100 });
       await collection.stop();
@@ -327,7 +375,8 @@ describe('ReplayCollection', () => {
         eventManager,
         makeConfig({ sessionReplaySampleRate: 0 }),
         sessionManager,
-        makeHooks()
+        makeHooks(),
+        identityPathScrubber
       );
 
       sendRecord(eventManager, { type: 2, timestamp: 100 });

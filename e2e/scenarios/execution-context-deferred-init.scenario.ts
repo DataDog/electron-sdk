@@ -1,8 +1,7 @@
-import { test, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import { Intake } from '../lib/intake';
 import { MainPage } from '../lib/mainPage';
-import { createUserDataDir, cleanupUserDataDir, launchDeferredInitApp } from '../lib/helpers';
+import { createUserDataDir, cleanupUserDataDir, intakeTest as test, launchDeferredInitApp } from '../lib/helpers';
 
 interface ExecutionContextEvent {
   execution_context: { id: string; type: 'main-process' | 'renderer-process' };
@@ -35,13 +34,10 @@ async function flushTransport(window: Page): Promise<void> {
 }
 
 test.describe('execution context: renderer backfill on deferred init', () => {
-  let intake: Intake;
   let userDataDir: string;
   let electronApp: ElectronApplication;
 
-  test.beforeEach(async () => {
-    intake = new Intake();
-    await intake.start();
+  test.beforeEach(async ({ intake }) => {
     userDataDir = await createUserDataDir();
     electronApp = await launchDeferredInitApp(intake, userDataDir, { enableExecutionContext: true });
   });
@@ -49,10 +45,9 @@ test.describe('execution context: renderer backfill on deferred init', () => {
   test.afterEach(async () => {
     await electronApp.close();
     await cleanupUserDataDir(userDataDir);
-    await intake.stop();
   });
 
-  test('a window opened before init() gets backfilled with its own renderer execution context', async () => {
+  test('a window opened before init() gets backfilled with its own renderer execution context', async ({ intake }) => {
     // This window's webContents exists before ExecutionContextCollection is even created — only the
     // startup backfill (webContents.getAllWebContents()), not the 'web-contents-created' listener
     // (which only fires for windows created after it's attached), can pick it up.
