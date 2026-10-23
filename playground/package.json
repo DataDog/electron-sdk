@@ -1,0 +1,31 @@
+{
+  "name": "electron-sdk-playground",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "yarn@4.17.1",
+  "description": "Playground for testing @datadog/electron-sdk",
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc && yarn build:renderer && cp src/index.html dist/index.html",
+    "build:renderer": "esbuild src/renderer.ts --bundle --format=esm --outfile=dist/renderer.js --sourcemap",
+    "build:watch": "concurrently \"tsc --watch\" \"yarn build:renderer --watch\"",
+    "start": "yarn build && electron .",
+    "dev": "yarn build && concurrently \"yarn build:watch\" \"electron .\"",
+    "test": "yarn build && playwright test -c test/playwright.config.ts"
+  },
+  "dependencies": {
+    "@datadog/browser-logs": "7.5.0",
+    "@datadog/browser-rum": "7.5.0",
+    "@datadog/electron-sdk": "portal:.."
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@types/node": "25.9.5",
+    "chokidar": "5.0.0",
+    "concurrently": "10.0.3",
+    "electron": "41.1.0",
+    "electron-reloader": "1.2.3",
+    "esbuild": "0.28.1",
+    "typescript": "5.9.3"
+  }
+}

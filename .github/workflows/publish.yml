@@ -1,0 +1,138 @@
+name: Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Skip publish and GitHub release creation (dry run)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write # create GitHub release
+  id-token: write # npm Trusted Publishers OIDC
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Read version from package.json
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Validate release tag
+        env:
+          GH_REF: ${{ github.ref }}
+          GH_REF_NAME: ${{ github.ref_name }}
+          EXPECTED_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if [[ "$GH_REF" != refs/tags/* ]]; then
+            echo "❌ Workflow must be triggered from a tag ref, not '$GH_REF'."
+            echo "Open the workflow and select the release tag (e.g. v0.1.0) in the ref dropdown."
+            exit 1
+          fi
+          TAG="$GH_REF_NAME"
+          EXPECTED="v$EXPECTED_VERSION"
+          if [ "$TAG" != "$EXPECTED" ]; then
+            echo "❌ Tag mismatch: expected $EXPECTED, got $TAG"
+            echo "Make sure package.json version matches the tag you are publishing from."
+            exit 1
+          fi
+          echo "✅ Release tag validated: $TAG"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '25'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Verify npm OIDC auth — dry run
+        if: ${{ inputs.dry_run }}
+        run: |
+          FAILED=0
+          ESCAPED_PACKAGE="@datadog%2felectron-sdk"
+
+          # Check 1: ACTIONS_ID_TOKEN_REQUEST_URL is set (pre-condition for GitHub OIDC)
+          if [ -z "$ACTIONS_ID_TOKEN_REQUEST_URL" ] || [ -z "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ]; then
+            echo "❌ ACTIONS_ID_TOKEN_REQUEST_URL or TOKEN not set — id-token: write permission may be missing"
+            FAILED=1
+          else
+            echo "✅ GitHub OIDC pre-conditions met (ACTIONS_ID_TOKEN_REQUEST_URL is set)"
+          fi
+
+          # Check 2: OIDC token exchange with npm registry (proves Trusted Publishers is configured)
+          OIDC_TOKEN=$(curl -sf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm:registry.npmjs.org" | jq -r '.value')
+          if [ -z "$OIDC_TOKEN" ] || [ "$OIDC_TOKEN" = "null" ]; then
+            echo "❌ Failed to obtain GitHub OIDC token"
+            FAILED=1
+          else
+            # Decode JWT claims to help diagnose Trusted Publishers mismatches
+            echo "--- OIDC token claims ---"
+            echo "$OIDC_TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | jq '{sub, iss, repository, repository_owner, workflow, job_workflow_ref, ref}'
+            EXCHANGE_URL="https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/${ESCAPED_PACKAGE}"
+            echo "Exchanging with: $EXCHANGE_URL"
+            RESPONSE=$(curl -s -X POST "$EXCHANGE_URL" \
+              -H "Authorization: Bearer $OIDC_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{}')
+            NPM_TOKEN=$(echo "$RESPONSE" | jq -r '.token // empty')
+            if [ -z "$NPM_TOKEN" ]; then
+              echo "❌ npm OIDC exchange failed — check Trusted Publishers config on npmjs.com"
+              echo "Response: $RESPONSE"
+              FAILED=1
+            else
+              echo "✅ npm OIDC token obtained — Trusted Publishers auth is working"
+            fi
+          fi
+
+          # Check 3: dry-run pack to verify build artifacts
+          # --tag dry-run avoids "latest" tag conflict when testing with a lower version
+          if npm publish --dry-run --access public --tag dry-run; then
+            echo "✅ dry-run pack succeeded"
+          else
+            echo "❌ dry-run pack failed"
+            FAILED=1
+          fi
+
+          exit $FAILED
+
+      - name: Verify GitHub token — dry run
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "--- gh auth status ---"
+          gh auth status
+          echo "--- repo permissions ---"
+          gh api "repos/$GITHUB_REPOSITORY" --jq '.permissions'
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Publish to npm (OIDC Trusted Publishers)
+        if: ${{ !inputs.dry_run }}
+        run: npm publish --access public --provenance
+
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          awk "/^## \[${VERSION}\]/{found=1} found && /^## / && !/^## \[${VERSION}\]/{exit} found{print}" CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "⚠️ No changelog section found for v${VERSION}"
+            echo "## [${VERSION}]" > release-notes.md
+          fi
+
+      - name: Create GitHub Release
+        if: ${{ !inputs.dry_run }}
+        run: |
+          gh release create "v${{ steps.version.outputs.version }}" \
+            --title "v${{ steps.version.outputs.version }}" \
+            --notes-file release-notes.md
+        env:
+          GH_TOKEN: ${{ github.token }}

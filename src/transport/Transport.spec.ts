@@ -1,0 +1,186 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { BatchSizes, BatchUploadFrequencies } from '../config';
+import type { RawEvent, ServerEvent, ServerProfileEvent } from '../event';
+import { EventKind, EventTrack, EventManager } from '../event';
+import { createTestConfiguration } from '../mocks.specUtil';
+import { Transport } from './Transport';
+
+vi.mock('electron', () => ({
+  app: {
+    getPath: vi.fn(() => '/mock/user/data'),
+  },
+}));
+
+const { mockBatchPost, mockBatchFlush, mockBatchCreate } = vi.hoisted(() => {
+  const mockBatchPost = vi.fn();
+  const mockBatchFlush = vi.fn().mockResolvedValue(undefined);
+  const mockBatchCreate = vi.fn().mockResolvedValue({
+    post: mockBatchPost,
+    flush: mockBatchFlush,
+    stop: vi.fn(),
+  });
+
+  return { mockBatchPost, mockBatchFlush, mockBatchCreate };
+});
+
+vi.mock('./batch', () => ({
+  BatchManager: {
+    create: mockBatchCreate,
+  },
+}));
+
+describe('Transport', () => {
+  let eventManager: EventManager;
+  let config: ReturnType<typeof createTestConfiguration>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    eventManager = new EventManager();
+    config = createTestConfiguration();
+  });
+
+  describe('create', () => {
+    it('should register event handlers for known tracks', async () => {
+      const spy = vi.spyOn(eventManager, 'registerHandler');
+      await Transport.create(config, eventManager);
+
+      expect(spy).toHaveBeenCalled();
+    });
+
+    it('should setup batch manager for known tracks', async () => {
+      await Transport.create(config, eventManager);
+
+      expect(mockBatchCreate).toHaveBeenCalled();
+    });
+
+    it('should setup the PROFILE track when profiling is enabled', async () => {
+      await Transport.create(config, eventManager);
+
+      const tracks = mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType);
+      expect(tracks).toContain(EventTrack.PROFILE);
+    });
+
+    it('should skip the PROFILE track when profiling is disabled', async () => {
+      const configWithoutProfiling = createTestConfiguration({ profilingSampleRate: 0 });
+      await Transport.create(configWithoutProfiling, eventManager);
+
+      const tracks = mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType);
+      expect(tracks).not.toContain(EventTrack.PROFILE);
+      expect(tracks).toEqual([EventTrack.RUM, EventTrack.SPANS, EventTrack.LOGS, EventTrack.REPLAY]);
+    });
+
+    it('should always setup the LOGS track', async () => {
+      const minimalConfig = createTestConfiguration({ profilingSampleRate: 0, sessionReplaySampleRate: 0 });
+      await Transport.create(minimalConfig, eventManager);
+
+      const tracks = mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType);
+      expect(tracks).toContain(EventTrack.LOGS);
+    });
+
+    it('should skip the REPLAY track when replay is disabled', async () => {
+      const configWithoutReplay = createTestConfiguration({ sessionReplaySampleRate: 0 });
+      await Transport.create(configWithoutReplay, eventManager);
+
+      const tracks = mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType);
+      expect(tracks).not.toContain(EventTrack.REPLAY);
+    });
+  });
+
+  describe('event handling', () => {
+    it('should handle SERVER events matching domain track type', async () => {
+      await Transport.create(config, eventManager);
+
+      eventManager.notify({
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        data: { test: 'data' },
+      } as unknown as ServerEvent);
+
+      expect(mockBatchPost).toHaveBeenCalledWith({
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        data: { test: 'data' },
+      });
+    });
+
+    it('should not handle events that do not match', async () => {
+      await Transport.create(config, eventManager);
+
+      eventManager.notify({
+        kind: EventKind.RAW,
+        source: 'main-process',
+        data: { test: 'data' },
+      } as unknown as RawEvent);
+
+      expect(mockBatchPost).not.toHaveBeenCalled();
+    });
+
+    it('should not handle SERVER events with different track type', async () => {
+      // A track this configuration does not set up, so no handler claims the event.
+      const configWithoutReplay = createTestConfiguration({ sessionReplaySampleRate: 0 });
+      await Transport.create(configWithoutReplay, eventManager);
+
+      eventManager.notify({
+        kind: EventKind.SERVER,
+        track: EventTrack.REPLAY,
+        data: { test: 'data' },
+      } as unknown as ServerEvent);
+
+      expect(mockBatchPost).not.toHaveBeenCalled();
+    });
+
+    it('should forward SERVER PROFILE events to a batch manager', async () => {
+      await Transport.create(config, eventManager);
+
+      eventManager.notify({
+        kind: EventKind.SERVER,
+        track: EventTrack.PROFILE,
+        data: { start: 0 },
+        trace: { spans: [] },
+      } as unknown as ServerProfileEvent);
+
+      expect(mockBatchPost).toHaveBeenCalledWith({
+        kind: EventKind.SERVER,
+        track: EventTrack.PROFILE,
+        data: { start: 0 },
+        trace: { spans: [] },
+      });
+    });
+  });
+
+  describe('flush', () => {
+    it('should flush all batch managers including profiling', async () => {
+      const transport = await Transport.create(config, eventManager);
+      await transport.flush();
+
+      // RUM + SPANS + LOGS + PROFILE + REPLAY
+      expect(mockBatchFlush).toHaveBeenCalledTimes(5);
+    });
+  });
+
+  describe('batch configuration', () => {
+    it('should translate the resolved batch size to a byte threshold', async () => {
+      const configWithBatchSize = createTestConfiguration({ batchSize: 'SMALL' });
+      await Transport.create(configWithBatchSize, eventManager);
+
+      expect(mockBatchCreate).toHaveBeenCalledWith(
+        configWithBatchSize,
+        expect.objectContaining({
+          batchSize: BatchSizes.SMALL,
+        })
+      );
+    });
+
+    it('should translate the resolved upload frequency to an interval', async () => {
+      const configWithFrequency = createTestConfiguration({ uploadFrequency: 'FREQUENT' });
+      await Transport.create(configWithFrequency, eventManager);
+
+      expect(mockBatchCreate).toHaveBeenCalledWith(
+        configWithFrequency,
+        expect.objectContaining({
+          uploadFrequency: BatchUploadFrequencies.FREQUENT,
+        })
+      );
+    });
+  });
+});

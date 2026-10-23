@@ -1,0 +1,270 @@
+import type { ElectronApplication, Page } from '@playwright/test';
+import type {
+  AccountInfo,
+  AddDurationVitalOptions,
+  DurationVitalOptions,
+  FailureReason,
+  FeatureOperationOptions,
+  UserInfo,
+} from '@datadog/electron-sdk';
+import { BridgeWindowPage } from './bridgeWindowPage';
+
+// declare exposed IPC methods called directly in tests
+interface ElectronAppWindow {
+  electronAPI: {
+    generateTelemetryErrors: (count: number) => Promise<void>;
+    generateManualError: (startTime?: number, context?: Record<string, string>) => Promise<void>;
+    addDurationVital: (name: string, options: AddDurationVitalOptions) => Promise<void>;
+    startDurationVital: (name: string, options?: DurationVitalOptions) => Promise<void>;
+    stopDurationVital: (name: string, options?: DurationVitalOptions) => Promise<void>;
+    startOperation: (name: string, options?: FeatureOperationOptions) => Promise<void>;
+    succeedOperation: (name: string, options?: FeatureOperationOptions) => Promise<void>;
+    failOperation: (name: string, failureReason: FailureReason, options?: FeatureOperationOptions) => Promise<void>;
+    mainFetch: (url: string) => Promise<number>;
+    mainHttpRequest: (url: string) => Promise<number>;
+    mainNetRequest: (url: string) => Promise<number>;
+    mainNetFetch: (url: string) => Promise<number>;
+    mainFireAndForget: () => Promise<void>;
+    triggerMainSend: () => Promise<void>;
+    flushTransport: () => Promise<void>;
+    setUserInfo: (user: UserInfo) => Promise<void>;
+    clearUserInfo: () => Promise<void>;
+    addUserExtraInfo: (extraInfo: Record<string, unknown>) => Promise<void>;
+    setAccountInfo: (accountInfo: AccountInfo) => Promise<void>;
+    clearAccountInfo: () => Promise<void>;
+    addAccountExtraInfo: (extraInfo: Record<string, unknown>) => Promise<void>;
+    ping: () => Promise<string>;
+    stopSession: () => Promise<void>;
+    openBridgeFileWindow: () => Promise<void>;
+    openBridgeFileWindowNoIsolation: () => Promise<void>;
+    openBridgeHttpWindow: () => Promise<void>;
+    openBridgeAppProtocolWindow: () => Promise<void>;
+  };
+}
+
+/**
+ * Page Object to interact with the main app window
+ */
+export class MainPage {
+  constructor(private readonly page: Page) {}
+
+  async renewSession() {
+    await this.stopSession();
+    await this.generateActivity();
+  }
+
+  async stopSession() {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.stopSession());
+  }
+
+  async generateActivity() {
+    await this.page.locator('#generate-activity').click();
+    await this.waitForIpcPropagation();
+  }
+
+  private async waitForIpcPropagation() {
+    // Wait for event propagation: renderer → bridge IPC -> main → transport
+    await this.page.waitForTimeout(1000);
+  }
+
+  async generateTelemetryError() {
+    await this.page.locator('#generate-telemetry-error').click();
+  }
+
+  async generateTelemetryErrors(count: number) {
+    await this.page.evaluate(
+      (n) => (globalThis as unknown as ElectronAppWindow).electronAPI.generateTelemetryErrors(n),
+      count
+    );
+  }
+
+  async generateUncaughtException() {
+    await this.page.locator('#generate-uncaught-exception').click();
+  }
+
+  async generateUnhandledRejection() {
+    await this.page.locator('#generate-unhandled-rejection').click();
+  }
+
+  async generateManualError(startTime?: number, context?: Record<string, string>) {
+    await this.page.evaluate(
+      ({ startTime, context }) =>
+        (globalThis as unknown as ElectronAppWindow).electronAPI.generateManualError(startTime, context),
+      { startTime, context }
+    );
+  }
+
+  async addDurationVital(name: string, options: AddDurationVitalOptions) {
+    await this.page.evaluate(
+      ({ name, options }) => (globalThis as unknown as ElectronAppWindow).electronAPI.addDurationVital(name, options),
+      { name, options }
+    );
+  }
+
+  async startDurationVital(name: string, options?: DurationVitalOptions) {
+    await this.page.evaluate(
+      ({ name, options }) => (globalThis as unknown as ElectronAppWindow).electronAPI.startDurationVital(name, options),
+      { name, options }
+    );
+  }
+
+  async stopDurationVital(name: string, options?: DurationVitalOptions) {
+    await this.page.evaluate(
+      ({ name, options }) => (globalThis as unknown as ElectronAppWindow).electronAPI.stopDurationVital(name, options),
+      { name, options }
+    );
+  }
+
+  async startOperation(name: string, options?: FeatureOperationOptions) {
+    await this.page.evaluate(
+      ({ name, options }) => (globalThis as unknown as ElectronAppWindow).electronAPI.startOperation(name, options),
+      { name, options }
+    );
+  }
+
+  async succeedOperation(name: string, options?: FeatureOperationOptions) {
+    await this.page.evaluate(
+      ({ name, options }) => (globalThis as unknown as ElectronAppWindow).electronAPI.succeedOperation(name, options),
+      { name, options }
+    );
+  }
+
+  async failOperation(name: string, failureReason: FailureReason, options?: FeatureOperationOptions) {
+    await this.page.evaluate(
+      ({ name, failureReason, options }) =>
+        (globalThis as unknown as ElectronAppWindow).electronAPI.failOperation(name, failureReason, options),
+      { name, failureReason, options }
+    );
+  }
+
+  async mainFetch(url: string): Promise<number> {
+    return await this.page.evaluate((u) => (globalThis as unknown as ElectronAppWindow).electronAPI.mainFetch(u), url);
+  }
+
+  async mainHttpRequest(url: string): Promise<number> {
+    return await this.page.evaluate(
+      (u) => (globalThis as unknown as ElectronAppWindow).electronAPI.mainHttpRequest(u),
+      url
+    );
+  }
+
+  async mainNetRequest(url: string): Promise<number> {
+    return await this.page.evaluate(
+      (u) => (globalThis as unknown as ElectronAppWindow).electronAPI.mainNetRequest(u),
+      url
+    );
+  }
+
+  async mainNetFetch(url: string): Promise<number> {
+    return await this.page.evaluate(
+      (u) => (globalThis as unknown as ElectronAppWindow).electronAPI.mainNetFetch(u),
+      url
+    );
+  }
+
+  async mainPing(): Promise<string> {
+    return await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.ping());
+  }
+
+  async mainFireAndForget(): Promise<void> {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.mainFireAndForget());
+  }
+
+  async triggerMainSend(): Promise<void> {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.triggerMainSend());
+  }
+
+  async flushTransport() {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.flushTransport());
+  }
+
+  /**
+   * Runs `read` while flushing the transport repeatedly.
+   *
+   * Renderer events reach the main process asynchronously over IPC, so a single flush can run before
+   * the event has arrived and leave it batched until the next natural upload cycle — which the read's
+   * own timeout then races. Flushing throughout removes that race.
+   */
+  async whileFlushing<T>(read: () => Promise<T>, intervalMs = 200): Promise<T> {
+    let reading = true;
+    const flushing = (async () => {
+      while (reading) {
+        await this.flushTransport();
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      }
+    })();
+
+    try {
+      return await read();
+    } finally {
+      reading = false;
+      await flushing;
+    }
+  }
+
+  async setUserInfo(user: UserInfo) {
+    await this.page.evaluate((u) => (globalThis as unknown as ElectronAppWindow).electronAPI.setUserInfo(u), user);
+  }
+
+  async clearUserInfo() {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.clearUserInfo());
+  }
+
+  async addUserExtraInfo(extraInfo: Record<string, unknown>) {
+    await this.page.evaluate(
+      (info) => (globalThis as unknown as ElectronAppWindow).electronAPI.addUserExtraInfo(info),
+      extraInfo
+    );
+  }
+
+  async setAccountInfo(accountInfo: AccountInfo) {
+    await this.page.evaluate(
+      (a) => (globalThis as unknown as ElectronAppWindow).electronAPI.setAccountInfo(a),
+      accountInfo
+    );
+  }
+
+  async clearAccountInfo() {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.clearAccountInfo());
+  }
+
+  async addAccountExtraInfo(extraInfo: Record<string, unknown>) {
+    await this.page.evaluate(
+      (info) => (globalThis as unknown as ElectronAppWindow).electronAPI.addAccountExtraInfo(info),
+      extraInfo
+    );
+  }
+
+  crash() {
+    void this.page
+      .locator('#crash')
+      .click()
+      .catch(() => {
+        // app will crash
+      });
+  }
+
+  async openBridgeFileWindow(electronApp: ElectronApplication) {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.openBridgeFileWindow());
+    return await BridgeWindowPage.waitForReady(electronApp);
+  }
+
+  async openBridgeFileWindowNoIsolation(electronApp: ElectronApplication) {
+    await this.page.evaluate(() =>
+      (globalThis as unknown as ElectronAppWindow).electronAPI.openBridgeFileWindowNoIsolation()
+    );
+    return await BridgeWindowPage.waitForReady(electronApp);
+  }
+
+  async openBridgeHttpWindow(electronApp: ElectronApplication) {
+    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.openBridgeHttpWindow());
+    return await BridgeWindowPage.waitForReady(electronApp);
+  }
+
+  async openBridgeAppProtocolWindow(electronApp: ElectronApplication) {
+    await this.page.evaluate(() =>
+      (globalThis as unknown as ElectronAppWindow).electronAPI.openBridgeAppProtocolWindow()
+    );
+    return await BridgeWindowPage.waitForReady(electronApp);
+  }
+}

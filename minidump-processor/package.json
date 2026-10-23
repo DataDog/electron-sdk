@@ -1,0 +1,11 @@
+{
+  "name": "@datadog/minidump-processor",
+  "version": "0.1.0",
+  "description": "WASM-based minidump processor for the Datadog Electron SDK",
+  "main": "./src-ts/index.ts",
+  "types": "./src-ts/index.ts",
+  "private": true,
+  "scripts": {
+    "build:wasm": "bash build.sh"
+  }
+}

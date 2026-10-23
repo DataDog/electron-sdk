@@ -1,0 +1,148 @@
+variables:
+  CI_IMAGE_REPO: 'ci/${CI_PROJECT_NAME}'
+  CI_IMAGE: 'registry.ddbuild.io/ci/electron-sdk:v120778963-d70c392e@sha256:fbd772ca8047e7992bc030306e287e8c35d8cf5a5daba327c4024b5a4d009c4f' # https://gitlab.ddbuild.io/DataDog/electron-sdk/-/jobs/1800425126
+
+stages:
+  - docker
+  - test
+  - notify
+
+default:
+  tags: ['arch:amd64']
+  image: $CI_IMAGE
+  interruptible: true
+
+workflow:
+  rules:
+    - if: "$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != 'main'"
+      auto_cancel:
+        on_new_commit: interruptible # short-lived branches cancel on new commits
+    - when: always # main, tags: never auto-canceled
+      auto_cancel:
+        on_new_commit: none
+
+build-container-image:
+  stage: docker
+  image: 'registry.ddbuild.io/images/docker:27.3.1'
+  interruptible: false
+  when: manual
+  id_tokens:
+    DDSIGN_ID_TOKEN:
+      aud: image-integrity
+  script:
+    - METADATA_FILE=$(mktemp)
+    - CI_IMAGE_TAG="v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}"
+    - docker buildx build --platform=linux/amd64 --label target=build --tag registry.ddbuild.io/${CI_IMAGE_REPO}:${CI_IMAGE_TAG} --push --metadata-file ${METADATA_FILE} .
+    - ddsign sign registry.ddbuild.io/${CI_IMAGE_REPO}:${CI_IMAGE_TAG} --docker-metadata-file ${METADATA_FILE}
+
+format:
+  stage: test
+  script:
+    - yarn
+    - yarn format:check
+
+lint:
+  stage: test
+  script:
+    - yarn
+    - yarn lint
+
+build:
+  stage: test
+  script:
+    - yarn
+    - yarn build
+
+unit:
+  stage: test
+  script:
+    - yarn
+    - yarn test:unit
+
+check-node-version:
+  stage: test
+  script:
+    - yarn
+    - node scripts/check-node-version.ts
+
+check-licenses:
+  stage: test
+  script:
+    - yarn
+    - node scripts/check-licenses.ts
+
+check-package-content:
+  stage: test
+  script:
+    - yarn
+    - yarn build
+    - node scripts/check-package-content.ts
+
+e2e:
+  stage: test
+  script:
+    - yarn
+    - yarn test:e2e:init
+    - xvfb-run -a yarn test:e2e
+  artifacts:
+    when: on_failure
+    paths:
+      - e2e/test-results/
+      - e2e/playwright-report/
+
+integration:
+  stage: test
+  script:
+    - yarn
+    - yarn test:integration:init
+    - xvfb-run -a yarn test:integration
+  artifacts:
+    when: on_failure
+    paths:
+      - e2e/test-results/
+      - e2e/playwright-report/
+
+playground:
+  stage: test
+  script:
+    - yarn
+    - yarn build
+    - yarn dev:init
+    - cd playground && xvfb-run -a yarn test
+
+########################################################################################################################
+# Notify
+########################################################################################################################
+
+include: 'https://gitlab-templates.ddbuild.io/slack-notifier/v3-sdm/template.yml'
+
+# override slack-notifier-base to use a different image
+# fixes SDM query failures
+# use same image as dd-go
+.slack-notifier-base:
+  stage: notify
+  tags: ['arch:amd64']
+  image: registry.ddbuild.io/slack-notifier:v90381551-4a2e790-sdm-gbi-jammy@sha256:472488831d14f70401316c79cd1485ad387c05dcb0536767fe73a9ec0fed3315
+  script:
+    # If the pipeline was launched by a user, send pings to them (eg, creating a pipe on master
+    # without committing)
+    - if [[ $GITLAB_USER_LOGIN = "gitsync" || $GITLAB_USER_LOGIN = "codesync" || $GITLAB_USER_LOGIN = "ddci-service-account" ]]; then EMAIL=$(git show -s --format="%ae" HEAD); else EMAIL=$GITLAB_USER_EMAIL; fi
+    - SLACK_AUTHOR=$(echo $EMAIL | email2slackid || echo "")
+    - if [ -z "$SLACK_AUTHOR" ]; then echo "author not found or unsubscribed"; exit 0; fi
+
+    - BUILD_URL="$CI_PROJECT_URL/pipelines/$CI_PIPELINE_ID"
+
+notify-failure:
+  extends:
+    - .slack-notifier.on-failure
+
+notify-release-ready:
+  extends:
+    - .slack-notifier-base
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/'
+  script:
+    - !reference [.slack-notifier-base, script]
+    - WORKFLOW_URL="https://github.com/DataDog/electron-sdk/actions/workflows/publish.yml"
+    - 'MESSAGE=":memo: Release PR for ${CI_COMMIT_TAG} is open for review. Once merged, trigger the <${WORKFLOW_URL}|publish workflow> from \`${CI_COMMIT_TAG}\`"'
+    - postmessage "#rum-electron-sdk-ops" "$MESSAGE"

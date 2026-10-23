@@ -1,0 +1,221 @@
+import { describe, it, expect, vi } from 'vitest';
+import type { TimeStamp } from '@datadog/js-core/time';
+import { registerCommonContext } from './commonContext';
+import { createFormatHooks } from './hooks';
+import { EventSource } from '../event';
+import type { Configuration } from '../config';
+import { createTestConfiguration } from '../mocks.specUtil';
+import { display } from '../tools/display';
+
+const T0 = 0 as TimeStamp;
+
+function triggerMainRum(config: Configuration) {
+  const hooks = createFormatHooks();
+  registerCommonContext(config, hooks);
+  return hooks.triggerRum({ eventType: 'view', startTime: T0, source: EventSource.MAIN }) as Record<string, unknown>;
+}
+
+function triggerRendererRum(config: Configuration) {
+  const hooks = createFormatHooks();
+  registerCommonContext(config, hooks);
+  return hooks.triggerRum({
+    eventType: 'view',
+    startTime: T0,
+    source: EventSource.RENDERER,
+  }) as Record<string, unknown>;
+}
+
+function parseDdtags(result: Record<string, unknown>): string[] {
+  return ((result.ddtags as string) ?? '').split(',').filter(Boolean);
+}
+
+function triggerTelemetry(config: Configuration, source: EventSource) {
+  const hooks = createFormatHooks();
+  registerCommonContext(config, hooks);
+  return hooks.triggerTelemetry({ startTime: T0, source }) as Record<string, unknown>;
+}
+
+function triggerLogs(config: Configuration, source: EventSource, startTime: TimeStamp = T0) {
+  const hooks = createFormatHooks();
+  registerCommonContext(config, hooks);
+  return hooks.triggerLogs({ startTime, source });
+}
+
+describe('registerCommonContext', () => {
+  describe('MAIN RUM events — top-level fields', () => {
+    it.each([
+      { field: 'service' as const, value: 'my-service' },
+      { field: 'version' as const, value: '2.0.0' },
+    ])('includes $field as a top-level field', ({ field, value }) => {
+      const result = triggerMainRum(createTestConfiguration({ [field]: value }));
+
+      expect(result[field]).toBe(value);
+    });
+  });
+
+  describe('MAIN RUM events — ddtags', () => {
+    it('always includes sdk_version tag', () => {
+      const tags = parseDdtags(triggerMainRum(createTestConfiguration()));
+
+      expect(tags.some((t) => t.startsWith('sdk_version:'))).toBe(true);
+    });
+
+    it.each([
+      { configKey: 'service' as const, tagKey: 'service', value: 'my-service' },
+      { configKey: 'env' as const, tagKey: 'env', value: 'production' },
+      { configKey: 'version' as const, tagKey: 'version', value: '2.0.0' },
+    ])('includes $tagKey tag when $configKey is configured', ({ configKey, tagKey, value }) => {
+      const tags = parseDdtags(triggerMainRum(createTestConfiguration({ [configKey]: value })));
+
+      expect(tags).toContain(`${tagKey}:${value}`);
+    });
+
+    it.each([
+      { configKey: 'service' as const, tagKey: 'service', raw: 'my,service', sanitized: 'my_service' },
+      { configKey: 'env' as const, tagKey: 'env', raw: 'prod,us', sanitized: 'prod_us' },
+      { configKey: 'version' as const, tagKey: 'version', raw: '1.0,0', sanitized: '1.0_0' },
+    ])('replaces commas in $tagKey value to avoid corrupting ddtags', ({ configKey, tagKey, raw, sanitized }) => {
+      const tags = parseDdtags(triggerMainRum(createTestConfiguration({ [configKey]: raw })));
+
+      expect(tags).toContain(`${tagKey}:${sanitized}`);
+      expect(tags.some((t) => t.includes(','))).toBe(false);
+    });
+
+    it.each([
+      { configKey: 'service' as const, tagKey: 'service', raw: 'my service' },
+      { configKey: 'env' as const, tagKey: 'env', raw: 'prod!eu' },
+      { configKey: 'version' as const, tagKey: 'version', raw: '1.0 0' },
+    ])('warns when $tagKey value contains forbidden characters', ({ configKey, tagKey, raw }) => {
+      const warnSpy = vi.spyOn(display, 'warn').mockReturnValue(undefined);
+
+      triggerMainRum(createTestConfiguration({ [configKey]: raw }));
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(`${tagKey}:${raw}`));
+      warnSpy.mockRestore();
+    });
+
+    it('warns when a tag exceeds the 200-character size limit', () => {
+      const warnSpy = vi.spyOn(display, 'warn').mockReturnValue(undefined);
+
+      // 'env:' = 4 chars, so value of 197 chars = 201-char tag (first value > 200)
+      triggerMainRum(createTestConfiguration({ env: 'a'.repeat(197) }));
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('env:'));
+      warnSpy.mockRestore();
+    });
+
+    it('does not warn when a tag is exactly at the size limit', () => {
+      const warnSpy = vi.spyOn(display, 'warn').mockReturnValue(undefined);
+
+      // 'env:' = 4 chars, so value of 196 chars = exactly 200
+      triggerMainRum(createTestConfiguration({ env: 'a'.repeat(196) }));
+
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+
+    it.each([
+      { configKey: 'service' as const, tagKey: 'service', raw: 'my-service:prod' },
+      { configKey: 'env' as const, tagKey: 'env', raw: 'prod.eu/west' },
+      { configKey: 'service' as const, tagKey: 'service', raw: 'my,service' },
+    ])('does not warn when $tagKey value contains only allowed special characters', ({ configKey, raw }) => {
+      const warnSpy = vi.spyOn(display, 'warn').mockReturnValue(undefined);
+
+      triggerMainRum(createTestConfiguration({ [configKey]: raw }));
+
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+
+    it.each([
+      { configKey: 'env' as const, tagKey: 'env' },
+      { configKey: 'version' as const, tagKey: 'version' },
+    ])('omits $tagKey tag when $configKey is not configured', ({ configKey, tagKey }) => {
+      const tags = parseDdtags(triggerMainRum(createTestConfiguration({ [configKey]: undefined })));
+
+      expect(tags.some((t) => t.startsWith(`${tagKey}:`))).toBe(false);
+    });
+  });
+
+  describe('sampling rates in _dd.configuration', () => {
+    it.each([EventSource.MAIN, EventSource.RENDERER])(
+      'injects the Electron SDK session, replay, and profiling sample rates for %s events',
+      (source) => {
+        const config = createTestConfiguration({
+          sessionSampleRate: 42,
+          traceSampleRate: 75,
+          sessionReplaySampleRate: 25,
+          profilingSampleRate: 100,
+        });
+        const result = source === EventSource.MAIN ? triggerMainRum(config) : triggerRendererRum(config);
+
+        expect((result._dd as { configuration: unknown }).configuration).toEqual({
+          session_sample_rate: 42,
+          session_replay_sample_rate: 25,
+          profiling_sample_rate: 100,
+          ...(source === EventSource.MAIN ? { trace_sample_rate: 75 } : {}),
+        });
+      }
+    );
+
+    it('preserves format_version on MAIN events alongside the configuration', () => {
+      const result = triggerMainRum(createTestConfiguration());
+
+      expect(result._dd).toMatchObject({ format_version: 2 });
+    });
+
+    it('reports the default trace sample rate on MAIN events', () => {
+      const result = triggerMainRum(createTestConfiguration());
+
+      expect((result._dd as { configuration: Record<string, unknown> }).configuration.trace_sample_rate).toBe(100);
+    });
+  });
+
+  describe('RENDERER RUM events', () => {
+    it('adds the electron container source', () => {
+      const result = triggerRendererRum(createTestConfiguration());
+
+      expect(result.container).toEqual({ source: 'electron' });
+    });
+  });
+
+  describe('log events', () => {
+    it('contributes only the application on RENDERER logs, so the renderer keeps its own identity', () => {
+      const result = triggerLogs(createTestConfiguration({ applicationId: 'app-id' }), EventSource.RENDERER);
+
+      expect(result).toEqual({ application_id: 'app-id' });
+    });
+
+    it('contributes nothing on MAIN logs, which the SDK does not produce yet', () => {
+      const result = triggerLogs(createTestConfiguration(), EventSource.MAIN);
+
+      // Every callback skipped, so there is nothing to combine and the hook yields undefined.
+      expect(result).toBeUndefined();
+    });
+  });
+
+  describe('telemetry events', () => {
+    it('describes the Electron SDK on MAIN events', () => {
+      const result = triggerTelemetry(
+        createTestConfiguration({ applicationId: 'app-id', service: 'my-service', env: 'staging' }),
+        EventSource.MAIN
+      );
+
+      expect(result).toEqual({
+        date: expect.any(Number) as unknown,
+        source: 'electron',
+        service: 'electron-sdk',
+        version: __SDK_VERSION__,
+        application: { id: 'app-id' },
+        ddtags: `sdk_version:${__SDK_VERSION__},service:my-service,env:staging`,
+        _dd: { format_version: 2 },
+      });
+    });
+
+    it('contributes only the application on RENDERER events, leaving the browser SDK to describe itself', () => {
+      const result = triggerTelemetry(createTestConfiguration({ applicationId: 'app-id' }), EventSource.RENDERER);
+
+      expect(result).toEqual({ application: { id: 'app-id' } });
+    });
+  });
+});

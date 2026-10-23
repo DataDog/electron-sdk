@@ -1,0 +1,177 @@
+import typescript from '@rollup/plugin-typescript';
+import { nodeResolve } from '@rollup/plugin-node-resolve';
+import commonjs from '@rollup/plugin-commonjs';
+import json from '@rollup/plugin-json';
+import replace from '@rollup/plugin-replace';
+import dts from 'rollup-plugin-dts';
+import pkg from './package.json' with { type: 'json' };
+
+const sharedPlugins = [
+  replace({ preventAssignment: true, __SDK_VERSION__: JSON.stringify(pkg.version) }),
+  nodeResolve(),
+  commonjs(),
+  json(),
+  typescript({
+    tsconfig: './tsconfig.build.json',
+    declaration: false,
+    declarationMap: false,
+  }),
+];
+
+const config = [
+  // Main process: ESM and CJS builds
+  {
+    input: 'src/index.ts',
+    output: [
+      {
+        dir: 'dist',
+        format: 'cjs',
+        sourcemap: true,
+        entryFileNames: 'index.cjs',
+        // Explicit chunk names so each dynamic import gets a meaningful, stable filename
+        chunkFileNames: '[name].chunk.cjs',
+        manualChunks: (id) => (id.includes('/wasm/') ? 'wasm' : undefined),
+      },
+      {
+        dir: 'dist',
+        format: 'esm',
+        sourcemap: true,
+        entryFileNames: 'index.mjs',
+        chunkFileNames: '[name].chunk.mjs',
+        manualChunks: (id) => (id.includes('/wasm/') ? 'wasm' : undefined),
+      },
+    ],
+    external: ['electron'],
+    plugins: sharedPlugins,
+  },
+  // Instrumentation: imported before electron to patch BrowserWindow, IPC, and net APIs
+  {
+    input: 'src/entries/instrument.ts',
+    output: [
+      {
+        file: 'dist/instrument.cjs',
+        format: 'cjs',
+        sourcemap: true,
+      },
+      {
+        file: 'dist/instrument.mjs',
+        format: 'esm',
+        sourcemap: true,
+      },
+    ],
+    external: ['electron', 'dd-trace'],
+    plugins: sharedPlugins,
+  },
+  // Vite plugin: ensures Electron instrumentation runs before hoisted requires
+  {
+    input: 'src/entries/vite-plugin.ts',
+    output: [
+      {
+        file: 'dist/vite-plugin.cjs',
+        format: 'cjs',
+        sourcemap: true,
+      },
+      {
+        file: 'dist/vite-plugin.mjs',
+        format: 'esm',
+        sourcemap: true,
+      },
+    ],
+    external: ['electron'],
+    plugins: sharedPlugins,
+  },
+  // TypeScript declarations: main
+  {
+    input: 'src/index.ts',
+    external: ['electron'],
+    output: {
+      file: 'dist/index.d.ts',
+      format: 'esm',
+    },
+    plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
+  },
+  // TypeScript declarations: instrument
+  {
+    input: 'src/entries/instrument.ts',
+    output: {
+      file: 'dist/instrument.d.ts',
+      format: 'esm',
+    },
+    plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
+  },
+  // TypeScript declarations: vite-plugin
+  {
+    input: 'src/entries/vite-plugin.ts',
+    output: {
+      file: 'dist/vite-plugin.d.ts',
+      format: 'esm',
+    },
+    plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
+  },
+  // Webpack plugin: copies dd-trace preload into webpack output
+  {
+    input: 'src/entries/webpack-plugin.ts',
+    output: [
+      {
+        file: 'dist/webpack-plugin.cjs',
+        format: 'cjs',
+        sourcemap: true,
+      },
+      {
+        file: 'dist/webpack-plugin.mjs',
+        format: 'esm',
+        sourcemap: true,
+      },
+    ],
+    external: ['electron'],
+    plugins: sharedPlugins,
+  },
+  // TypeScript declarations: webpack-plugin
+  {
+    input: 'src/entries/webpack-plugin.ts',
+    output: {
+      file: 'dist/webpack-plugin.d.ts',
+      format: 'esm',
+    },
+    plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
+  },
+  // esbuild plugin: injects the Electron instrumentation banner and externalizes dependencies
+  {
+    input: 'src/entries/esbuild-plugin.ts',
+    output: [
+      {
+        file: 'dist/esbuild-plugin.cjs',
+        format: 'cjs',
+        sourcemap: true,
+      },
+      {
+        file: 'dist/esbuild-plugin.mjs',
+        format: 'esm',
+        sourcemap: true,
+      },
+    ],
+    external: ['electron'],
+    plugins: sharedPlugins,
+  },
+  // TypeScript declarations: esbuild-plugin
+  {
+    input: 'src/entries/esbuild-plugin.ts',
+    output: {
+      file: 'dist/esbuild-plugin.d.ts',
+      format: 'esm',
+    },
+    plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
+  },
+  // Preload script: renderer bridge, output as plain CJS for BrowserWindow injection
+  {
+    input: 'src/entries/preload.ts',
+    output: {
+      file: 'dist/preload.js',
+      format: 'cjs',
+    },
+    external: ['electron'],
+    plugins: sharedPlugins,
+  },
+];
+
+export default config;
