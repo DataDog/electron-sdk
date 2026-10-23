@@ -10,6 +10,7 @@ vi.mock('node:fs/promises');
 vi.mock('electron', () => ({
   app: {
     getPath: () => '/mock/user/data',
+    getAppPath: () => '/mock/app',
     isReady: () => false,
     whenReady: () => new Promise<void>(() => undefined),
     on: vi.fn(),

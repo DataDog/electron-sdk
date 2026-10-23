@@ -11,8 +11,9 @@
  * 2. Prepends SDK instrumentation (via @datadog/electron-sdk/instrument)
  *    to the very top of the main process entry chunk, before any hoisted
  *    requires. No manual import needed.
- * 3. Copies dd-trace and @datadog/electron-sdk into the build output's
- *    node_modules so they are available at runtime in packaged apps.
+ * 3. Copies dd-trace, @datadog/electron-sdk, and their runtime dependencies
+ *    into the build output's node_modules only when `copyRuntimeDependencies: true`.
+ *    Copying is disabled by default; the application packager must stage them.
  *
  * Usage:
  *   import { datadogVitePlugin } from '@datadog/electron-sdk/vite-plugin';
@@ -42,7 +43,7 @@ const CJS_BANNER =
   'try { require("node:module").createRequire(__filename)("@datadog/electron-sdk/instrument"); } catch {}';
 
 // ESM modules don't have a global require, so we use createRequire to load instrument.ts,
-// which handles defaultSession preload registration and IPC patching via patchBrowserWindow.
+// which handles defaultSession preload registration via patchBrowserWindow.
 const ESM_BANNER = `
 import { createRequire as __ddCR } from "module";
 try { __ddCR(import.meta.url)("@datadog/electron-sdk/instrument"); } catch {}
@@ -52,7 +53,7 @@ try { __ddCR(import.meta.url)("@datadog/electron-sdk/instrument"); } catch {}
  * Creates the Datadog Vite plugin.
  *
  * @example
- * plugins: [datadogVitePlugin({ copyRuntimeDependencies: false })]
+ * plugins: [datadogVitePlugin()]
  */
 export function datadogVitePlugin(pluginOptions: DatadogBundlerPluginOptions = {}): VitePlugin {
   // Support both CJS (__filename) and ESM (import.meta.url) contexts at build time
@@ -77,7 +78,7 @@ export function datadogVitePlugin(pluginOptions: DatadogBundlerPluginOptions = {
     },
   };
 
-  if (pluginOptions.copyRuntimeDependencies === false) return plugin;
+  if (pluginOptions.copyRuntimeDependencies !== true) return plugin;
 
   plugin.writeBundle = (outputOptions) => {
     // Copy externalized packages and their transitive dependencies into

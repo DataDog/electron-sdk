@@ -16,7 +16,7 @@ This initializes the git submodule, installs playground and e2e app dependencies
 
 ### Manual Checks
 
-Run appropriate tests based on your changes:
+Run tools with `yarn <command>` or from `node_modules/.bin`, never `npx`. Run appropriate tests based on your changes:
 
 - **Format & tint**: `yarn lint-staged` - Format and lint only staged files
 - **Type check**: `yarn typecheck` - Verify TypeScript types
@@ -136,6 +136,8 @@ git ls-remote --tags https://github.com/actions/checkout | grep 'v4\.'
 ```
 
 ### Updating Dependencies
+
+Git dependencies must be listed in `.yarnrc.yml` under `approvedGitRepositories` so lockfile maintenance can fetch them.
 
 Always use latest stable versions for new dependencies. Check with:
 

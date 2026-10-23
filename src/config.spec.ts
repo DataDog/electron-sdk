@@ -564,7 +564,7 @@ describe('buildConfiguration', () => {
 
     it('preserves valid ordered rules', () => {
       const traceSamplingRules = [
-        { name: 'electron.main.*', resource: 'health-*', sampleRate: 0 },
+        { name: 'http.*', resource: 'health-*', sampleRate: 0 },
         { tags: { 'http.url': '*/api/*' }, sampleRate: 25 },
       ];
 

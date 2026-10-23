@@ -4,7 +4,7 @@ import { builtinModules } from 'node:module';
 import { datadogEsbuildPlugin } from '@datadog/electron-sdk/esbuild-plugin';
 
 const nodeExternals = ['electron', ...builtinModules, ...builtinModules.map((m) => `node:${m}`)];
-const copyRuntimeDependencies = process.env.DD_ELECTRON_COPY_RUNTIME_DEPENDENCIES !== 'false';
+const copyRuntimeDependencies = process.env.DD_ELECTRON_COPY_RUNTIME_DEPENDENCIES === 'true';
 
 await rm('dist', { recursive: true, force: true });
 await mkdir('dist/renderer', { recursive: true });

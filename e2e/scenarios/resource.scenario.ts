@@ -1,6 +1,7 @@
 import { test, expect } from '../lib/helpers';
 import type { RumResourceEvent } from '@datadog/electron-sdk';
 import { Span } from '../lib/intake';
+import { SLOW_RESPONSE_DELAY_MS } from '../lib/testServer';
 
 function matchResourceTraceId(resource: RumResourceEvent) {
   return (span: Span) => BigInt(`0x${span.trace_id}`) === BigInt(resource._dd.trace_id!);
@@ -91,6 +92,24 @@ test('emits a resource event for a main-process net.request', async ({ mainPage,
   expect(span.meta['_dd.session.id']).toBe(view.session.id);
   expect(span.meta['_dd.view.id']).toBe(view.view.id);
   expect(span.service).toBe('e2e-test-app');
+});
+
+test('times a main-process net.request until its response headers', async ({ mainPage, intake, testServer }) => {
+  await mainPage.flushTransport();
+  await intake.getEventsByType('view');
+
+  await mainPage.mainNetRequest(testServer.slowUrlFor(201));
+  await mainPage.flushTransport();
+
+  const resourceEvents = await intake.getEventsByType('resource');
+  expect(resourceEvents).toHaveLength(1);
+
+  const resource = resourceEvents[0].body;
+  expect(resource.resource.status_code).toBe(201);
+  expect(resource.resource.duration).toBeGreaterThanOrEqual(SLOW_RESPONSE_DELAY_MS * 1e6);
+
+  const span = await intake.waitForSpan((span) => BigInt(`0x${span.span_id}`) === BigInt(resource._dd.span_id!));
+  expect(span.meta['http.status_code']).toBe('201');
 });
 
 test('does not emit a resource event for SDK intake traffic', async ({ mainPage, intake }) => {

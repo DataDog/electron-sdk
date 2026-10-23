@@ -133,12 +133,63 @@ mode, so the Electron setting is authoritative.
 
 #### Bundler plugins
 
-The SDK instruments Electron as it is loaded, which requires correct module loading order. The SDK provides bundler plugins to ensure this works in all environments:
+The SDK instruments Electron as it is loaded, which requires correct module loading order. The SDK provides bundler plugins to ensure this works in all environments.
 
-**Vite** (including Electron Forge with Vite and electron-vite):
+Each plugin accepts `copyRuntimeDependencies`, which controls whether it copies the SDK, `dd-trace`,
+and their runtime dependencies into the build output. It defaults to `false`: the application
+packager must include those dependencies in the packaged app. Set `copyRuntimeDependencies: true`
+only as a best-effort compatibility fallback when the packager cannot stage them.
+
+Keep `@datadog/electron-sdk` in the application's production `dependencies`; it brings `dd-trace`
+as a runtime dependency. Applications already using `copyRuntimeDependencies: false` with working
+packager staging need no configuration change.
+
+##### Electron Forge
+
+When using Forge's Vite or Webpack plugin, keep `copyRuntimeDependencies` disabled and configure
+Forge to package root `node_modules` alongside its bundler output so Electron Packager can stage
+production dependencies normally.
+
+**Forge Vite:** add an `ignore` function to `packagerConfig` in `forge.config.ts`:
+
+```ts
+packagerConfig: {
+  ignore: (file) => {
+    if (!file) return false;
+    return !/^[/\\](?:\.vite|node_modules)(?:[/\\]|$)/.test(file);
+  },
+},
+```
+
+**Forge Webpack:** use the same configuration with `.webpack` instead of `.vite`:
+
+```ts
+packagerConfig: {
+  ignore: (file) => {
+    if (!file) return false;
+    return !/^[/\\](?:\.webpack|node_modules)(?:[/\\]|$)/.test(file);
+  },
+},
+```
+
+Use `datadogVitePlugin()` or `new DatadogWebpackPlugin()` without the copy option. See the
+[complete Electron Forge setup guide](docs/RUNTIME_DEPENDENCIES.md) for full examples and package
+manager requirements.
+
+##### Other packagers
+
+`copyRuntimeDependencies` defaults to `false` for every Datadog bundler plugin. Keep the default and
+configure the application packager to stage production dependencies. electron-builder and plain
+Forge already do this by default when packaging the application source; preserve that behavior in
+custom packaging configurations.
+
+Add the corresponding Datadog plugin to the main-process bundler configuration.
+
+**Vite** (including electron-vite and standalone Vite):
 
 ```ts
 // vite config
+import { defineConfig } from 'vite';
 import { datadogVitePlugin } from '@datadog/electron-sdk/vite-plugin';
 
 export default defineConfig({
@@ -146,7 +197,7 @@ export default defineConfig({
 });
 ```
 
-**Webpack** (including Electron Forge with Webpack):
+**Webpack:**
 
 ```ts
 // webpack config
@@ -157,7 +208,7 @@ module.exports = {
 };
 ```
 
-**ESBuild**
+**esbuild:**
 
 ```ts
 // esbuild config
@@ -168,18 +219,13 @@ await esbuild.build({
 });
 ```
 
-Bundler plugins copy the SDK, dd-trace, and their runtime dependencies into the build output by
-default. If your application packager stages external dependencies, pass
-`{ copyRuntimeDependencies: false }` to any plugin and ensure the packager includes both packages
-and their runtime dependencies.
-
 ## Available Features
 
 - **Sessions** — Session-based event grouping
 - **RUM Views** — One view per main process instance
 - **RUM Errors** — Capture Node errors and crashes in main process
 - **RUM Resources** — Capture RUM resources from main process network calls
-- **Traces** — Capture traces for network calls, command execution, IPC messages on main process
+- **Traces** — Capture traces for network calls, command execution on main process
 - **Renderer Events** — Capture RUM events from renderer processes via the browser SDK
 - **Custom Duration Vitals** — Measure user-defined durations in the main process
 - **Renderer Profiling** — Collect JS Self-Profiling data from renderer pages and correlate it with RUM
@@ -189,6 +235,7 @@ and their runtime dependencies.
 - **Operation Monitoring** _(experimental)_ — Track start / succeed / fail steps of critical user-facing workflows
 - **Event Filtering and Scrubbing** — Modify or discard RUM events with `beforeSendRum`
 - **Tracking Consent** — Collect and send data according to the end user's consent
+- **Source Maps** — Resolve main process and renderer stack traces to your original source code
 
 ### Event Filtering and Scrubbing
 
@@ -450,6 +497,54 @@ datadogRum.init({
 
 The Electron SDK advertises a `records` capability over the bridge, so the Browser SDK streams replay records to the main process instead of uploading them itself — no `startSessionReplayRecording()` call is required. See [Renderer process setup](#renderer-process-setup) for general Browser SDK configuration.
 
+### Source Maps
+
+Stack traces and URLs collected in an Electron app contain the app's install path, for example `/Users/alice/Applications/MyApp.app/Contents/Resources/app.asar/dist/main/index.js` in the main process, or `file:///Users/alice/…/app.asar/dist/renderer/index.js` in a renderer. These paths change with each installation, so they never match source maps uploaded at build time, and they expose the user's install directory.
+
+The SDK rewrites the app path (as returned by `app.getAppPath()`) to `/` in every event before it leaves the machine: the frames above become `/dist/main/index.js` and `/dist/renderer/index.js`. Only the app path is rewritten: other local paths, such as files in the user data folder or outside the app, are sent as is. URLs of renderers loaded from a custom protocol or `http(s)://` contain no install path and are left unchanged.
+
+**1. Generate source maps with their sources.** Configure your bundler to emit source maps that embed the original code (`sourcesContent`), as described in the [Browser source maps guide](https://docs.datadoghq.com/real_user_monitoring/guide/upload-javascript-source-maps/). If the main process is compiled by `tsc` without a bundler, set both `sourceMap: true` and `inlineSources: true`, otherwise stack traces resolve but show no code snippets.
+
+**2. Use a different service for the main process and the renderers.** Once the app path is rewritten, the main process and a renderer can both report the same path, for example `/dist/index.js` when both are built to `dist/`. Datadog looks up source maps by service, version, and path, so separate services keep them apart: the main process reports under the `service` passed to the Electron SDK `init()`, and renderers under the `service` passed to the Browser SDK `init()`. Set a `version` in both the Electron SDK and the Browser SDK `init()`: it is not set by default, and the upload's `--release-version` must match it.
+
+**3. Upload the source maps with [`datadog-ci`](https://github.com/DataDog/datadog-ci)**, installed as described in its [installation guide](https://github.com/DataDog/datadog-ci/blob/master/packages/datadog-ci/README.md#how-to-install-the-cli) (dev dependency, global install or standalone binary). The `--service` and `--release-version` must match the SDK configuration, and `--minified-path-prefix` must be the path at which the uploaded files appear in stack traces. Run `datadog-ci` from your git working tree: it sends the repository URL and the commit of the uploaded sources, so Error Tracking links stack frames to your code. The examples below assume an app packaged with its `dist/` folder.
+
+Main process, built to `dist/main/`:
+
+```sh
+datadog-ci sourcemaps upload ./dist/main \
+  --service my-electron-app-main \
+  --release-version "$VERSION" \
+  --minified-path-prefix /dist/main/
+```
+
+Renderer loaded from `file://`, built to `dist/renderer/`:
+
+```sh
+datadog-ci sourcemaps upload ./dist/renderer \
+  --service my-electron-app-renderer \
+  --release-version "$VERSION" \
+  --minified-path-prefix /dist/renderer/
+```
+
+Renderer loaded from a custom protocol (requires Browser SDK >= 7.9.0), for example `app://app/` serving the files of `dist/renderer/`:
+
+```sh
+datadog-ci sourcemaps upload ./dist/renderer \
+  --service my-electron-app-renderer \
+  --release-version "$VERSION" \
+  --minified-path-prefix app://app/
+```
+
+Renderer loaded from `http(s)://`, for example a local server serving the files of `dist/renderer/` at its root:
+
+```sh
+datadog-ci sourcemaps upload ./dist/renderer \
+  --service my-electron-app-renderer \
+  --release-version "$VERSION" \
+  --minified-path-prefix /
+```
+
 ## API
 
 ### `init(config: InitConfiguration): Promise<boolean>`
@@ -637,8 +732,8 @@ decision so downstream spans inherit it. A rejected HTTP trace still produces an
 | Key          | Required | Purpose                                                                   |
 | ------------ | -------- | ------------------------------------------------------------------------- |
 | `sampleRate` | Yes      | Percentage of matching traces to keep, from `0` to `100`                  |
-| `name`       | No       | Matches the root span operation name, such as `electron.main.handle`      |
-| `resource`   | No       | Matches the root span resource, such as an IPC channel                    |
+| `name`       | No       | Matches the root span operation name, such as `http.request`              |
+| `resource`   | No       | Matches the root span resource, such as an HTTP method                    |
 | `tags`       | No       | Matches root span tags by name and value; every configured tag must match |
 
 ```ts

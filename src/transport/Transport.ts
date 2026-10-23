@@ -4,6 +4,7 @@ import { resolveBatchSize, resolveUploadFrequency, type Configuration } from '..
 import type { TrackingConsentManager } from '../domain/tracking-consent';
 import { EventKind, EventTrack, type EventManager, type ServerEvent } from '../event';
 import { BatchManager, BatchMigration, getTrackPath } from './batch';
+import type { PathScrubber } from '../tools/pathScrubber';
 
 /**
  * Orchestrates event transport by routing server events from registered domains
@@ -16,7 +17,8 @@ export class Transport {
   private constructor(
     private readonly config: Configuration,
     private readonly eventManager: EventManager,
-    private readonly trackingConsentManager: TrackingConsentManager
+    private readonly trackingConsentManager: TrackingConsentManager,
+    private readonly pathScrubber: Pick<PathScrubber, 'scrub'>
   ) {
     this.basePath = app.getPath('userData');
   }
@@ -25,9 +27,10 @@ export class Transport {
   static async create(
     config: Configuration,
     eventManager: EventManager,
-    trackingConsentManager: TrackingConsentManager
+    trackingConsentManager: TrackingConsentManager,
+    pathScrubber: Pick<PathScrubber, 'scrub'>
   ) {
-    const transport = new Transport(config, eventManager, trackingConsentManager);
+    const transport = new Transport(config, eventManager, trackingConsentManager, pathScrubber);
     // A new process cannot authorize a previous process's undecided data, even for disabled tracks.
     for (const track of Object.values(EventTrack)) {
       await BatchMigration.clearPendingData(getTrackPath(transport.basePath, track));
@@ -78,7 +81,8 @@ export class Transport {
         batchSize,
         uploadFrequency,
       },
-      this.trackingConsentManager
+      this.trackingConsentManager,
+      this.pathScrubber
     );
     this.batchManagers.push(manager);
 

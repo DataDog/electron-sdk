@@ -15,6 +15,9 @@
     "@datadog/browser-rum": "7.5.0",
     "@datadog/electron-sdk": "portal:../.."
   },
+  "resolutions": {
+    "node-gyp": "12.4.0"
+  },
   "devDependencies": {
     "electron": "41.1.0",
     "esbuild": "0.28.1",

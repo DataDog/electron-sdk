@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import path from 'node:path';
 import { ProfileBatchProducer } from './ProfileBatchProducer';
-import { mockFs } from '../../../mocks.specUtil';
+import { identityPathScrubber, mockFs } from '../../../mocks.specUtil';
 
 vi.mock('node:fs/promises');
 vi.mock('@datadog/js-core/time', () => ({ dateNow: vi.fn(() => 1000) }));
@@ -23,13 +23,13 @@ describe('ProfileBatchProducer', () => {
     it('creates the track directory when missing', async () => {
       fsMocks.access.mockRejectedValueOnce(new Error('ENOENT'));
 
-      await ProfileBatchProducer.create({ trackPath: TRACK_PATH });
+      await ProfileBatchProducer.create({ trackPath: TRACK_PATH }, identityPathScrubber);
 
       expect(fsMocks.mkdir).toHaveBeenCalledWith(TRACK_PATH, { recursive: true });
     });
 
     it('does not create directory when it already exists', async () => {
-      await ProfileBatchProducer.create({ trackPath: TRACK_PATH });
+      await ProfileBatchProducer.create({ trackPath: TRACK_PATH }, identityPathScrubber);
 
       expect(fsMocks.mkdir).not.toHaveBeenCalled();
     });
@@ -37,7 +37,7 @@ describe('ProfileBatchProducer', () => {
     it('rotates orphaned .tmp files from previous sessions', async () => {
       fsMocks.readdir.mockResolvedValueOnce(['profile-111.tmp', 'profile-222.tmp']);
 
-      await ProfileBatchProducer.create({ trackPath: TRACK_PATH });
+      await ProfileBatchProducer.create({ trackPath: TRACK_PATH }, identityPathScrubber);
 
       expect(fsMocks.rename).toHaveBeenCalledWith(
         path.join(TRACK_PATH, 'profile-111.tmp'),
@@ -52,7 +52,7 @@ describe('ProfileBatchProducer', () => {
 
   describe('post()', () => {
     it('writes event JSON on line 1 and trace JSON on line 2', async () => {
-      const producer = await ProfileBatchProducer.create({ trackPath: TRACK_PATH });
+      const producer = await ProfileBatchProducer.create({ trackPath: TRACK_PATH }, identityPathScrubber);
       const event = { application: { id: 'app-1' }, session: { id: 'sess-1' } };
       const trace = { resources: [], frames: [], stacks: [], samples: [] };
 
@@ -66,8 +66,23 @@ describe('ProfileBatchProducer', () => {
       expect(JSON.parse(lines[1])).toEqual(trace);
     });
 
+    it('scrubs both the event and the trace lines', async () => {
+      const markingScrubber = { scrub: (serialized: string) => serialized.replace(/\/secret\/app/g, '') };
+      const producer = await ProfileBatchProducer.create({ trackPath: TRACK_PATH }, markingScrubber);
+
+      producer.post({
+        data: { view: { url: 'file:///secret/app/index.html' } },
+        trace: { resources: ['/secret/app/a.js'] },
+      });
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      const [eventLine, traceLine] = (fsMocks.writeFile.mock.calls[0][1] as string).split('\n');
+      expect(JSON.parse(eventLine)).toEqual({ view: { url: 'file:///index.html' } });
+      expect(JSON.parse(traceLine)).toEqual({ resources: ['/a.js'] });
+    });
+
     it('writes to a .tmp file then renames to .log atomically', async () => {
-      const producer = await ProfileBatchProducer.create({ trackPath: TRACK_PATH });
+      const producer = await ProfileBatchProducer.create({ trackPath: TRACK_PATH }, identityPathScrubber);
 
       producer.post({ data: {}, trace: {} });
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -79,7 +94,7 @@ describe('ProfileBatchProducer', () => {
     });
 
     it('gives concurrent same-millisecond posts distinct file names', async () => {
-      const producer = await ProfileBatchProducer.create({ trackPath: TRACK_PATH });
+      const producer = await ProfileBatchProducer.create({ trackPath: TRACK_PATH }, identityPathScrubber);
 
       producer.post({ data: { seq: 1 }, trace: {} });
       producer.post({ data: { seq: 2 }, trace: {} });

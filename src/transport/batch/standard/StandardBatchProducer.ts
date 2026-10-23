@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { StandardServerEvent } from '../../../event';
+import type { PathScrubber } from '../../../tools/pathScrubber';
 import { BatchProducer } from '../BatchProducer';
 import type { BatchProducerConfig } from '../BatchProducer';
 
@@ -23,7 +24,10 @@ export class StandardBatchProducer extends BatchProducer {
   private currentBatchSize = 0;
   private currentBatchEventCount = 0;
 
-  private constructor(config: StandardBatchProducerConfig) {
+  private constructor(
+    config: StandardBatchProducerConfig,
+    private readonly pathScrubber: Pick<PathScrubber, 'scrub'>
+  ) {
     super(config);
     this.batchSize = config.batchSize;
     this.maxEventsPerBatch = config.maxEventsPerBatch;
@@ -34,8 +38,11 @@ export class StandardBatchProducer extends BatchProducer {
    * Ensures the track directory exists and rotates any orphaned `.tmp` files
    * left from previous sessions.
    */
-  static async create(config: StandardBatchProducerConfig): Promise<BatchProducer> {
-    const producer = new StandardBatchProducer(config);
+  static async create(
+    config: StandardBatchProducerConfig,
+    pathScrubber: Pick<PathScrubber, 'scrub'>
+  ): Promise<BatchProducer> {
+    const producer = new StandardBatchProducer(config, pathScrubber);
     await producer.initialize();
     return producer;
   }
@@ -45,11 +52,14 @@ export class StandardBatchProducer extends BatchProducer {
     await this.rotateBatch();
   }
 
-  /** Serializes the event's `data` as a JSON line and appends it to the current batch file, rotating first if the size limit would be exceeded. */
+  /**
+   * Serializes the event's `data` as a path-scrubbed JSON line and appends it to the current batch file, rotating first
+   * if the size limit would be exceeded. Scrubbing comes first because the scrubbed size drives rotation.
+   */
   protected async writeData(event: StandardServerEvent) {
     await this.ensureTrackDirectoryExists();
 
-    const serialized = `${JSON.stringify(event.data)}\n`;
+    const serialized = `${this.pathScrubber.scrub(JSON.stringify(event.data))}\n`;
     const dataSize = Buffer.byteLength(serialized, 'utf8');
 
     const exceedsByteLimit = this.currentBatchSize + dataSize > this.batchSize;

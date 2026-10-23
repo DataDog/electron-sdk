@@ -35,7 +35,7 @@ describe('Tracing', () => {
         traceSampleRate: 25,
         traceSamplingRules: [
           { tags: { 'http.url': '*/health' }, sampleRate: 5 },
-          { name: 'electron.main.*', sampleRate: 100 },
+          { name: 'http.*', sampleRate: 100 },
         ],
       }),
       requireFn
@@ -48,7 +48,7 @@ describe('Tracing', () => {
       sampleRate: 0.25,
       samplingRules: [
         { tags: { 'http.url': '*/health' }, sampleRate: 0.05 },
-        { name: 'electron.main.*', sampleRate: 1 },
+        { name: 'http.*', sampleRate: 1 },
       ],
     });
     expect(tracing.enabled).toBe(true);
@@ -73,7 +73,7 @@ describe('Tracing', () => {
 
     new Tracing(
       createTestConfiguration({
-        traceSamplingRules: [{ name: 'electron.main.*', sampleRate: 50 }],
+        traceSamplingRules: [{ name: 'http.*', sampleRate: 50 }],
       }),
       requireFn
     );
@@ -82,7 +82,7 @@ describe('Tracing', () => {
       experimental: { exporter: 'electron' },
       rateLimit: -1,
       sampleRate: 1,
-      samplingRules: [{ name: 'electron.main.*', sampleRate: 0.5 }],
+      samplingRules: [{ name: 'http.*', sampleRate: 0.5 }],
     });
   });
 

@@ -2,12 +2,29 @@
 
 Unit and E2E testing strategy and infrastructure.
 
+## Test Layers
+
+- Unit tests cover every branch and gate the PR adds or changes. E2E tests assert the behavior a customer can observe,
+  end to end.
+- Don't duplicate e2e coverage with an intermediate integration spec, and don't move unit-level edge cases to e2e.
+- Cover third-party behavior that the PR starts relying on (e.g. dd-trace span semantics) with a test, so a dependency
+  upgrade can't silently break it.
+- Cover every public entry point that the PR's feature touches (e.g. custom context provided through `addError`, not
+  only through the context API).
+
+## Writing Tests
+
+- Assert the value the code produces or forwards, not only that a call happened.
+- One focused case per behavior: tests of the same behavior that only differ by their inputs are redundant. Keep one
+  representative case, or parametrize when each input exercises a distinct branch.
+- Keep test doubles simple: mock only what is needed.
+
 ## Unit Testing
 
 ### Strategy
 
 - Mock network and disk access (fetch API, `node:fs`) to avoid real I/O in tests.
-- Transitive dependency mocks are acceptable to only test orchestration. Consider integration / e2e test to exercise real code path.
+- Mocking direct collaborators to test a component's orchestration is fine.
 - Co-locate specs with source files (`src/**/*.spec.ts`).
 
 ## E2E Testing
@@ -15,6 +32,10 @@ Unit and E2E testing strategy and infrastructure.
 ### Strategy
 
 Testing a new feature end-to-end means updating the `e2e/app/` to exercise it, then adding a scenario that asserts on the captured intake events.
+
+- Each test defines the setup it exercises (e.g. its own `beforeSend`) rather than relying on cases hardcoded in the
+  e2e app, so its intent reads from the test itself.
+- Add scenarios to the existing scenario file of the feature area rather than creating a new file per PR.
 
 ### Directory Structure
 
@@ -33,12 +54,16 @@ Tests import custom `test` and `expect` from `lib/helpers.ts` (not directly from
 
 ### Intake Server
 
-The intake server (`e2e/lib/intake.ts`) runs on a dynamic port (OS-assigned) to avoid conflicts. It is managed as a Playwright fixture for automatic startup/teardown.
+The intake server (`e2e/lib/intake.ts`) runs on a dynamic port (OS-assigned) to avoid conflicts. It is managed as a Playwright fixture for automatic startup/teardown. Tests that launch their app themselves still get the intake from the fixture: `intakeTest` in E2E (the intake without the auto-launched app), or `intake` without `electronApp` in integration.
 
 Integration scenarios inherit a 60-second test timeout from `e2e/playwright.config.ts`. Their
 `flushUntilEventArrives` helper defaults to 30 seconds for event delivery, leaving room for app startup and other steps.
 The minimal E2E project keeps its 30-second timeout; the session-renewal scenario allows 60 seconds overall
 and 30 seconds for renewed-session telemetry. Other intake waits retain their existing limits.
+
+At teardown, the intake fails the test if any captured payload (every endpoint, with replay and profile parts decoded)
+contains the app path of an app launched during the test (and its realpath, read at launch), in raw, `/`-separated or
+decoded URL form.
 
 #### `rumBrowserSdk` option
 

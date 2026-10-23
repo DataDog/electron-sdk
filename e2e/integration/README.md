@@ -34,7 +34,7 @@ Run a specific combination locally:
 yarn test:integration --project=forge-webpack-dev
 yarn test:integration --project=forge-webpack-packaged
 yarn test:integration --project=electron-builder-vite-packaged
-yarn test:integration --project=electron-builder-vite-packager-copy-packaged
+yarn test:integration --project=electron-builder-vite-plugin-copy-packaged
 ```
 
 ## Supported Toolchains
@@ -52,10 +52,12 @@ All apps use `import '@datadog/electron-sdk/instrument'` before importing `elect
 This loads the SDK's instrumentation and injects the SDK's preload script into every renderer process via `patchBrowserWindow`. The regular SDK `init()` initializes dd-trace afterward.
 Vite-based apps use `datadogVitePlugin`, webpack-based apps use `DatadogWebpackPlugin`, and esbuild-based apps use `datadogEsbuildPlugin` to ensure correct module loading order and preload availability in packaged builds.
 The `forge-esbuild-esm` app additionally exercises the plugin's ESM path, where the banner loads `instrument` via `createRequire` because ES modules have no global `require`.
-The `electron-builder-vite` app packages two isolated variants: `copyRuntimeDependencies: true` (`default-copy`)
-and `copyRuntimeDependencies: false` (`packager-copy`), where electron-builder owns dependency staging.
-Both variants set the option explicitly so coverage is independent of the plugin default change in
-[#216](https://github.com/DataDog/electron-sdk/pull/216).
+The Forge Vite and Webpack apps override `packagerConfig.ignore` so Forge packages both the bundler
+output and root `node_modules`; Electron Packager then stages the production dependency tree.
+All fixtures disable `copyRuntimeDependencies` unless `DD_ELECTRON_COPY_RUNTIME_DEPENDENCIES=true`
+selects plugin-owned copying for a compatibility variant.
+The `electron-builder-vite` app packages two isolated variants: the default packager-owned runtime dependency copy
+(`default-copy`) and `copyRuntimeDependencies: true` (`plugin-copy`), where the plugin owns dependency staging.
 The Windows payload extraction scenario covers the regression described in
 [#182](https://github.com/DataDog/electron-sdk/pull/182). It verifies that plugin-copied `dd-trace` paths would exceed `MAX_PATH`
 at a long temporary destination, while the copy-disabled Vite output extracts completely with Windows
