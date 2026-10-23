@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { EventEmitter } from 'node:events';
 import { setCurrentSessionSampled } from '../common';
 
 const mockSpan = { setTag: vi.fn(), finish: vi.fn() };
@@ -20,18 +19,8 @@ vi.mock('../entries/instrument-prelude', () => ({ default: mockDdTrace }));
 
 type RequestListener = (...args: unknown[]) => void;
 
-function makeResponse(statusCode = 200): EventEmitter & { statusCode: number } {
-  const listeners: Record<string, ((...a: unknown[]) => void)[]> = {};
-  return {
-    statusCode,
-    on(event: string, fn: (...a: unknown[]) => void) {
-      (listeners[event] ??= []).push(fn);
-      return this;
-    },
-    emit(event: string, ...args: unknown[]) {
-      listeners[event]?.forEach((fn) => fn(...args));
-    },
-  } as unknown as EventEmitter & { statusCode: number };
+function makeResponse(statusCode: number) {
+  return { statusCode };
 }
 
 function makeRequest() {
@@ -250,29 +239,51 @@ describe('patchNet', () => {
     expect(opts.headers?.['x-datadog-trace-id']).toBeUndefined();
   });
 
-  it('sets http.status_code tag and finishes span on response end', async () => {
+  it('sets http.status_code tag and finishes span on response, without waiting for the body', async () => {
     const { patchedNet, req } = await setupNet();
 
     patchedNet.request({ url: 'https://example.com' });
-
-    const response = makeResponse(201);
-    req.emit('response', response);
-    response.emit('end');
+    req.emit('response', makeResponse(201));
 
     expect(mockSpan.setTag).toHaveBeenCalledWith('http.status_code', '201');
+    // dd-trace exports a root span on finish(), so a status tagged afterwards would be lost.
+    expect(mockSpan.setTag).toHaveBeenCalledBefore(mockSpan.finish);
     expect(mockSpan.finish).toHaveBeenCalledTimes(1);
   });
 
-  it('finishes span with error tag on response error', async () => {
+  it('ignores failures after the response, which already finished the span', async () => {
     const { patchedNet, req } = await setupNet();
 
     patchedNet.request({ url: 'https://example.com' });
+    req.emit('response', makeResponse(200));
+    req.emit('error', new Error('body download failed'));
+    req.emit('abort');
 
-    const response = makeResponse();
-    req.emit('response', response);
-    response.emit('error', new Error('connection reset'));
+    expect(mockSpan.setTag).not.toHaveBeenCalledWith('error', expect.anything());
+    expect(mockSpan.finish).toHaveBeenCalledTimes(1);
+  });
 
-    expect(mockSpan.setTag).toHaveBeenCalledWith('error', expect.any(Error));
+  it('does not tag the status of a response received after the span finished', async () => {
+    const { patchedNet, req } = await setupNet();
+
+    patchedNet.request({ url: 'https://example.com' });
+    req.emit('error', new Error('fail'));
+    req.emit('response', makeResponse(200));
+
+    expect(mockSpan.setTag).not.toHaveBeenCalledWith('http.status_code', expect.anything());
+  });
+
+  it('does not finish span on request close emitted before response', async () => {
+    // Electron's ClientRequest is a Writable with autoDestroy: it emits 'close' right after end().
+    const { patchedNet, req } = await setupNet();
+
+    patchedNet.request({ url: 'https://example.com' });
+    req.emit('close');
+
+    expect(mockSpan.finish).not.toHaveBeenCalled();
+
+    req.emit('response', makeResponse(200));
+
     expect(mockSpan.finish).toHaveBeenCalledTimes(1);
   });
 
@@ -311,42 +322,13 @@ describe('patchNet', () => {
     expect(forwardedCallback).toBe(callback);
   });
 
-  it('finishes span on request close when the body is never consumed (status-only caller)', async () => {
-    // A status-only caller inspects the response but never reads the body, so response 'end' never
-    // fires. Electron's request 'close' is the guaranteed final transaction event and must finish
-    // the span, otherwise it leaks and no span/RUM resource is exported.
-    const { patchedNet, req } = await setupNet();
-
-    patchedNet.request({ url: 'https://example.com' });
-
-    const response = makeResponse(204);
-    req.emit('response', response);
-    // No response 'end' — caller ignored the body.
-    req.emit('close');
-
-    expect(mockSpan.setTag).toHaveBeenCalledWith('http.status_code', '204');
-    expect(mockSpan.finish).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not finish twice when close follows response end', async () => {
-    const { patchedNet, req } = await setupNet();
-
-    patchedNet.request({ url: 'https://example.com' });
-
-    const response = makeResponse();
-    req.emit('response', response);
-    response.emit('end');
-    req.emit('close');
-
-    expect(mockSpan.finish).toHaveBeenCalledTimes(1);
-  });
-
   it('finishes span at most once (finish-once guard)', async () => {
     const { patchedNet, req } = await setupNet();
 
     patchedNet.request({ url: 'https://example.com' });
     req.emit('error', new Error('fail'));
     req.emit('abort');
+    req.emit('response', makeResponse(200));
     req.emit('error', new Error('fail again'));
 
     expect(mockSpan.finish).toHaveBeenCalledTimes(1);
@@ -362,11 +344,7 @@ describe('patchNet', () => {
     const returned = patchedNet.request({ url: 'https://example.com' });
     expect(returned).toBe(req);
 
-    const response = makeResponse(200);
-    expect(() => {
-      req.emit('response', response);
-      response.emit('end');
-    }).not.toThrow();
+    expect(() => req.emit('response', makeResponse(200))).not.toThrow();
   });
 
   it('sets error tag and finishes span when originalRequest throws synchronously', async () => {

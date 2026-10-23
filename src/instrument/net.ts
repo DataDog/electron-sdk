@@ -82,9 +82,8 @@ export function patchNet(net: Electron.Net): void {
       // rejects still surfaces via process 'unhandledRejection' (we re-reject instead of swallowing),
       // and a caller that does handle the rejection gets no spurious unhandledRejection.
       //
-      // The span finishes on promise resolution (response headers), not after the body is consumed —
-      // matching dd-trace's FetchPlugin; the stream-based net.request path below finishes on the
-      // response 'end'/'error'/'close' events like dd-trace's http client.
+      // The span finishes on promise resolution (response headers), not after the body is consumed,
+      // matching dd-trace's FetchPlugin. The net.request path below does the same.
       return response.then(
         (result) => {
           callMonitored(() => {
@@ -157,19 +156,21 @@ export function patchNet(net: Electron.Net): void {
         onError((err) => finish(err));
 
         // The req event listeners are side-channel (fire-and-forget) so each is wrapped in monitor().
+        // The span finishes at 'response', so its duration covers the time to headers like net.fetch,
+        // and status-only callers that never read the body are covered. As with net.fetch, failures during
+        // the body download are not reported. 'close' can't be used: the ClientRequest is a Writable with
+        // autoDestroy, so it emits 'close' right after end(), before 'response'.
+        // Known limit: a request that is never sent (end() never called) and never aborted leaves its span
+        // unfinished, since destroy() without an error only emits that same 'close'. dd-trace's http client
+        // also leaves the span of a request that is never ended open (unless destroyed). No network call
+        // happens, so there is nothing to report.
         onResult((req) => {
           req.on(
             'response',
             monitor((response) => {
+              if (finished) return;
               span?.setTag('http.status_code', String(response.statusCode));
-              response.on(
-                'end',
-                monitor(() => finish())
-              );
-              response.on(
-                'error',
-                monitor((err: unknown) => finish(err))
-              );
+              finish();
             })
           );
           req.on(
@@ -178,14 +179,6 @@ export function patchNet(net: Electron.Net): void {
           );
           req.on(
             'abort',
-            monitor(() => finish())
-          );
-          // Status-only callers never read the response body, so the response 'end' event may never
-          // fire and the span would leak. Electron guarantees the request 'close' event as the final
-          // transaction event; finish() is idempotent so this is a no-op when 'end'/'error'/'abort'
-          // already finished (and never fires early, since 'close' follows 'end').
-          req.on(
-            'close',
             monitor(() => finish())
           );
         });
