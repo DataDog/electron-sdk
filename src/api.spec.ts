@@ -281,3 +281,54 @@ describe.sequential('global context public API', () => {
     });
   });
 });
+
+describe.sequential('tracking consent public API', () => {
+  let api: typeof import('./api');
+  const manager = { update: vi.fn() };
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    // The registered manager is module state: each test starts from a fresh module.
+    vi.resetModules();
+    api = await import('./api');
+  });
+
+  it('updates the registered manager', () => {
+    api.setTrackingConsentApi(manager);
+
+    api.setTrackingConsent('pending');
+
+    expect(manager.update).toHaveBeenCalledExactlyOnceWith('pending');
+  });
+
+  it('reports usage after applying the consent', () => {
+    api.setTrackingConsentApi(manager);
+
+    api.setTrackingConsent('granted');
+
+    expect(addUsage).toHaveBeenCalledExactlyOnceWith({ feature: 'set-tracking-consent', tracking_consent: 'granted' });
+    expect(manager.update.mock.invocationCallOrder[0]).toBeLessThan(addUsage.mock.invocationCallOrder[0]);
+  });
+
+  it('handles an invalid consent as a refusal', () => {
+    api.setTrackingConsentApi(manager);
+
+    api.setTrackingConsent('denied' as never);
+
+    expect(display.error).toHaveBeenCalledExactlyOnceWith(
+      'setTrackingConsent: consent must be one of: granted, pending, not-granted. It is handled as not-granted.'
+    );
+    expect(manager.update).toHaveBeenCalledExactlyOnceWith('not-granted');
+    expect(addUsage).toHaveBeenCalledExactlyOnceWith({
+      feature: 'set-tracking-consent',
+      tracking_consent: 'not-granted',
+    });
+  });
+
+  it('ignores a consent set before init()', () => {
+    api.setTrackingConsent('not-granted');
+    api.setTrackingConsentApi(manager);
+
+    expect(manager.update).not.toHaveBeenCalled();
+  });
+});

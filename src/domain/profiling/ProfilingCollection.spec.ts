@@ -47,7 +47,7 @@ describe('ProfilingCollection', () => {
     // Consent is granted from time 0, before every capture time used below.
     vi.useFakeTimers();
     vi.setSystemTime(0);
-    consentManager = await TrackingConsentManager.init(createFormatHooks());
+    consentManager = await TrackingConsentManager.init(createFormatHooks(), 'granted');
     eventManager = new EventManager();
     serverEvents = [];
     hooks = {

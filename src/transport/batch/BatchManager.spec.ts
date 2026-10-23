@@ -74,7 +74,7 @@ describe('BatchManager', () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     config = createTestConfiguration();
-    consentManager = await TrackingConsentManager.init(createFormatHooks());
+    consentManager = await TrackingConsentManager.init(createFormatHooks(), 'granted');
     batchConfig = createBatchConfig();
   });
 

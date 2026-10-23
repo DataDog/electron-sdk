@@ -126,7 +126,7 @@ export class ProfilingCollection {
 
   private processProfile(rawEvent: RawProfileEvent): ServerProfileEvent | null {
     const captureTime = new Date(rawEvent.data.start).getTime() as TimeStamp;
-    // Profiles bypass format hooks, so consent is checked here, at their start time like RUM events and spans.
+    // Profiles bypass format hooks, so consent is checked here, at their start time like other data.
     if (!this.trackingConsentManager.allowsDataCapturedAt(captureTime)) {
       return null;
     }

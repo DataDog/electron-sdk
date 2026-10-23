@@ -622,6 +622,25 @@ describe('buildConfiguration', () => {
     });
   });
 
+  describe('trackingConsent validation', () => {
+    it('defaults to granted when not provided', () => {
+      expect(buildConfiguration(DEFAULT_CONFIG)?.trackingConsent).toBe('granted');
+    });
+
+    it.each(['granted', 'pending', 'not-granted'] as const)('accepts valid value: %s', (value) => {
+      expect(buildConfiguration({ ...DEFAULT_CONFIG, trackingConsent: value })?.trackingConsent).toBe(value);
+    });
+
+    it.each(['denied', '', 'GRANTED', true, null])('aborts init on invalid value: %s', (value) => {
+      const result = buildConfiguration({ ...DEFAULT_CONFIG, trackingConsent: value } as unknown as InitConfiguration);
+
+      expect(result).toBeUndefined();
+      expect(display.error).toHaveBeenCalledWith(
+        "Configuration error: 'trackingConsent' must be one of: granted, pending, not-granted"
+      );
+    });
+  });
+
   describe('sessionReplaySampleRate validation', () => {
     it('defaults to 0 when not provided', () => {
       expect(buildConfiguration({ ...DEFAULT_CONFIG })?.sessionReplaySampleRate).toBe(0);

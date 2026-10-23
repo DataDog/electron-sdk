@@ -41,7 +41,7 @@ describe('Transport', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     eventManager = new EventManager();
-    trackingConsentManager = await TrackingConsentManager.init(createFormatHooks());
+    trackingConsentManager = await TrackingConsentManager.init(createFormatHooks(), 'granted');
     config = createTestConfiguration();
   });
 

@@ -2,9 +2,11 @@ import { objectEntries, sanitize } from '@datadog/browser-core';
 import { isIndexableObject } from '@datadog/js-core/util';
 import type { Context, GlobalContext } from './domain/customer-context';
 import type { AddDurationVitalOptions, DurationVitalOptions, RumCollection } from './domain/rum';
+import { VALID_TRACKING_CONSENTS } from './config';
+import type { TrackingConsent, TrackingConsentManager } from './domain/tracking-consent';
 import { addUsage, callMonitored } from './domain/telemetry';
 import { display } from './tools/display';
-import { isFiniteNumber, isValidString, VALID_VITAL_NAME_REGEX } from './tools/validation';
+import { isFiniteNumber, isOneOf, isValidString, VALID_VITAL_NAME_REGEX } from './tools/validation';
 
 type DurationVitalMethod = 'addDurationVital' | 'startDurationVital' | 'stopDurationVital';
 type DurationVitalApi = Pick<
@@ -19,8 +21,11 @@ type GlobalContextApi = Pick<
   'getContext' | 'setContext' | 'setProperty' | 'removeProperty' | 'clearContext'
 >;
 
+type TrackingConsentApi = Pick<TrackingConsentManager, 'update'>;
+
 let durationVitalApi: DurationVitalApi | undefined;
 let globalContextApi: GlobalContextApi | undefined;
+let trackingConsentApi: TrackingConsentApi | undefined;
 
 export function setDurationVitalApi(api: DurationVitalApi | undefined): void {
   durationVitalApi = api;
@@ -28,6 +33,48 @@ export function setDurationVitalApi(api: DurationVitalApi | undefined): void {
 
 export function setGlobalContextApi(api: GlobalContextApi | undefined): void {
   globalContextApi = api;
+}
+
+export function setTrackingConsentApi(api: TrackingConsentApi): void {
+  trackingConsentApi = api;
+}
+
+/**
+ * Set the tracking consent of the end user. It applies to data collected from now on and to the
+ * data kept while consent was pending:
+ * - `'granted'`: data is collected and sent, including the data kept while consent was pending.
+ * - `'pending'`: data is collected and kept on disk until the next decision, and deleted at the
+ *   next launch if none was made.
+ * - `'not-granted'`: no new data is kept or sent, and the data kept while consent was pending is
+ *   deleted. Data stored earlier with consent is still sent. The session ends, and the next
+ *   `'pending'` or `'granted'` starts a new one.
+ *
+ * The SDK does not restore the consent at the next launch: set `trackingConsent` in `init()` at
+ * each launch, and call this method once `init()` has resolved: an earlier call can be ignored. An
+ * invalid value is handled as `'not-granted'`.
+ *
+ * @example
+ * ```ts
+ * await init({ ...configuration, trackingConsent: 'pending' });
+ * // Once the end user has answered the consent prompt:
+ * setTrackingConsent(accepted ? 'granted' : 'not-granted');
+ * ```
+ */
+export function setTrackingConsent(consent: TrackingConsent): void {
+  callMonitored(() => {
+    let trackingConsent = consent;
+    if (!isOneOf(consent, VALID_TRACKING_CONSENTS)) {
+      // Ignoring the call would keep collecting under a decision the app tried to change.
+      display.error(
+        `setTrackingConsent: consent must be one of: ${VALID_TRACKING_CONSENTS.join(', ')}. It is handled as not-granted.`
+      );
+      trackingConsent = 'not-granted';
+    }
+    trackingConsentApi?.update(trackingConsent);
+    // Reported after the update, so the event is stored under the consent it reports: a refusal is
+    // not sent.
+    addUsage({ feature: 'set-tracking-consent', tracking_consent: trackingConsent });
+  });
 }
 
 /**
