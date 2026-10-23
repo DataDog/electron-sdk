@@ -63,8 +63,8 @@ export class Tracing {
       });
 
       // dd-trace owns global fetch and node:http instrumentation. Prevent those integrations from
-      // propagating trace context for rejected RUM sessions while keeping their local HTTP spans,
-      // which SpanProcessor uses to produce RUM resources.
+      // propagating trace context unless a sampled RUM session is active, while keeping their local
+      // HTTP spans, which SpanProcessor uses to produce RUM resources.
       const blockPropagationForUnsampledSession = () => !isCurrentSessionSampled();
       tracer.use('fetch', { propagationBlocklist: blockPropagationForUnsampledSession });
       tracer.use('http', {

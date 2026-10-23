@@ -6,13 +6,8 @@ describe('bridgeConfig', () => {
     delete (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:bridgeConfig')];
   });
 
-  it('returns the fallback config before init sets a value', () => {
-    expect(getBridgeConfig()).toEqual({
-      defaultPrivacyLevel: 'mask',
-      allowedRendererHosts: ['*', ''],
-      // 'records' is intentionally omitted from the pre-init fallback (replay must wait for the real config).
-      capabilities: ['profiles'],
-    });
+  it('returns no config until init publishes one', () => {
+    expect(getBridgeConfig()).toBeNull();
   });
 
   it('returns the value written by setBridgeConfig', () => {
@@ -30,7 +25,7 @@ describe('bridgeConfig', () => {
       allowedRendererHosts: ['app.example.com'],
       capabilities: ['profiles'],
     });
-    const config = getBridgeConfig();
+    const config = getBridgeConfig()!;
     config.allowedRendererHosts.push('evil.example.com');
     config.capabilities.push('evil');
     config.defaultPrivacyLevel = 'mask';
@@ -47,6 +42,6 @@ describe('bridgeConfig', () => {
     // not its own module-level state.
     vi.resetModules();
     const fresh = await import('./bridgeConfig');
-    expect(fresh.getBridgeConfig().allowedRendererHosts).toEqual(['a.com']);
+    expect(fresh.getBridgeConfig()?.allowedRendererHosts).toEqual(['a.com']);
   });
 });

@@ -9,10 +9,12 @@ interface SessionSamplingState {
 
 function getState(): SessionSamplingState {
   const store = globalThis as unknown as Record<symbol, SessionSamplingState | undefined>;
-  return (store[SESSION_SAMPLING_STATE] ??= { sampled: true });
+  // Nothing propagates before the session manager decides, as the decision depends on sampling and
+  // tracking consent.
+  return (store[SESSION_SAMPLING_STATE] ??= { sampled: false });
 }
 
-/** Whether the current RUM session is sampled. */
+/** Whether a sampled RUM session is active. */
 export function isCurrentSessionSampled(): boolean {
   return getState().sampled;
 }

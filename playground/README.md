@@ -12,6 +12,9 @@ yarn dev
 cd playground && yarn dev
 ```
 
+`PLAYGROUND_TRACKING_CONSENT=pending|not-granted` starts the SDK under that tracking consent (`granted` by default);
+the Tracking Consent buttons change it afterwards.
+
 ## Testing
 
 The playground includes a Playwright test infrastructure for prototyping and self-validation. Scenarios launch the app in headless mode with a mock intake, so agents and developers can iterate and verify that events flow end-to-end.

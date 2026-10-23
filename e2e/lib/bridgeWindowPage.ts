@@ -9,9 +9,18 @@ export class BridgeWindowPage {
 
   static async waitForReady(electronApp: ElectronApplication): Promise<BridgeWindowPage> {
     const page = await electronApp.waitForEvent('window');
+    await BridgeWindowPage.waitForBridgeReady(page);
+    return new BridgeWindowPage(page);
+  }
+
+  private static async waitForBridgeReady(page: Page) {
     await page.waitForSelector('#status');
     await page.waitForFunction('document.getElementById("status")?.textContent === "bridge-ready"');
-    return new BridgeWindowPage(page);
+  }
+
+  async reload() {
+    await this.page.reload();
+    await BridgeWindowPage.waitForBridgeReady(this.page);
   }
 
   async setRendererGlobalContext(context: Record<string, unknown>) {
@@ -22,6 +31,23 @@ export class BridgeWindowPage {
         ).setRendererGlobalContext(c),
       context
     );
+  }
+
+  /** Appends a paragraph to the page, which the Browser SDK records as a replay mutation. */
+  async appendText(text: string) {
+    await this.page.evaluate((content) => {
+      // Runs in the renderer; the e2e tsconfig has no DOM lib, so reach `document` via globalThis.
+      const { document } = globalThis as unknown as {
+        document: {
+          createElement(tag: string): { textContent: string };
+          body: { appendChild(node: unknown): void };
+        };
+      };
+      const paragraph = document.createElement('p');
+      paragraph.textContent = content;
+      document.body.appendChild(paragraph);
+    }, text);
+    await this.waitForIpcPropagation();
   }
 
   async generateError(message: string) {

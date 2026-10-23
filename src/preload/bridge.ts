@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
+import { BRIDGE_CHANNEL, CONFIG_CHANNEL, type BridgeOptions } from '../common';
 
 declare const window: Record<string, unknown>;
 
@@ -10,22 +10,21 @@ const DD_BRIDGE_INIT = '__dd_bridge_initialized';
 if (!window[DD_BRIDGE_INIT]) {
   window[DD_BRIDGE_INIT] = true;
 
-  interface BridgeConfig {
-    defaultPrivacyLevel?: string;
-    allowedRendererHosts?: string[];
-    capabilities?: string[];
-  }
+  const config = ipcRenderer.sendSync(CONFIG_CHANNEL) as BridgeOptions | null;
 
-  const config = ipcRenderer.sendSync(CONFIG_CHANNEL) as BridgeConfig | null;
-
-  // config should always be non-null (the CONFIG_CHANNEL responder is registered at instrument time);
-  // null indicates a misconfigured setup. Fall back to safe defaults.
-  const defaultPrivacyLevel = config?.defaultPrivacyLevel ?? 'mask';
-  const allowedRendererHosts = config?.allowedRendererHosts ?? [];
+  // A page loaded before init() gets no config: its view started before init(), so it would be judged by the consent
+  // and session the previous launch ended with, and its later events would refer to that view. It sends nothing until
+  // it reloads, but still gets the bridge for every host ('' covers file://), so that its Browser SDK does not run
+  // standalone, uploading with its own client token outside the tracking consent.
+  const { defaultPrivacyLevel, allowedRendererHosts, capabilities } = config ?? {
+    defaultPrivacyLevel: 'mask',
+    allowedRendererHosts: ['*', ''],
+    capabilities: [],
+  };
 
   const bridge = {
     getCapabilities(): string {
-      return JSON.stringify(config?.capabilities ?? []);
+      return JSON.stringify(capabilities);
     },
     getPrivacyLevel(): string {
       return defaultPrivacyLevel;
@@ -34,7 +33,9 @@ if (!window[DD_BRIDGE_INIT]) {
       return JSON.stringify(allowedRendererHosts);
     },
     send(msg: string): void {
-      ipcRenderer.send(BRIDGE_CHANNEL, msg);
+      if (config) {
+        ipcRenderer.send(BRIDGE_CHANNEL, msg);
+      }
     },
   };
 

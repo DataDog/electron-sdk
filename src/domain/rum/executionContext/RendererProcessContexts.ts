@@ -66,10 +66,10 @@ export class RendererProcessContexts {
   }
 
   private initRendererTracking(): void {
-    // Backfill webContents that already exist at this point — e.g. init() called after a window
-    // opened, a supported deferred-init flow (see README's "Deferred init caveat"). Only future ones
-    // would otherwise be seen: 'web-contents-created' fires once, at creation, so anything created
-    // before this listener is attached would never get an execution context.
+    // Backfill the webContents that exist before this listener is attached: windows opened before
+    // init(), or while a non-awaited init() runs. 'web-contents-created' fires once, at creation, so
+    // they would otherwise never get an execution context (a page loaded before init() sends once it
+    // reloads, in the same webContents).
     for (const existing of webContentsModule.getAllWebContents()) {
       this.registerWebContents(existing);
     }
