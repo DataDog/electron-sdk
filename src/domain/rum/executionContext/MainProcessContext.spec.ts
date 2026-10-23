@@ -150,11 +150,10 @@ describe('MainProcessContext', () => {
     vi.advanceTimersByTime(PROCESS_UPDATE_INTERVAL / 2);
     const duringTheGap = timeStampNow();
 
-    // ViewContext's own hook discards any main-sourced RUM event with no active view outright —
-    // pre-existing, unrelated to this fix — so a closed view history surfaces as DISCARDED here.
+    // FakeViewContext discards main-sourced RUM events outside an active view, so a closed view history
+    // surfaces as DISCARDED.
     expect(hooks.triggerRum({ eventType: 'view', startTime: duringTheGap, source: EventSource.MAIN })).toBe(DISCARDED);
-    // Spans only consult mainHistory (not viewContext), so this specifically exercises that
-    // mainHistory.closeActive() was actually called — the fix under test.
+    // Spans only consult mainHistory (not fakeViewContext), so this checks that mainHistory is closed too.
     expect(hooks.triggerSpan({ startTime: duringTheGap, source: EventSource.MAIN })).toBe(DISCARDED);
   });
 

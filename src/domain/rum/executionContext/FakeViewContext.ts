@@ -1,6 +1,6 @@
 import { app } from 'electron';
 import * as path from 'node:path';
-import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
+import type { TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED, SKIPPED } from '@datadog/js-core/assembly';
 import type { FormatHooks } from '../../../assembly';
 import { EventSource } from '../../../event';
@@ -9,11 +9,18 @@ import { SESSION_TIME_OUT_DELAY } from '../../session';
 
 export const VIEW_HISTORY_FILE_NAME = '_dd_view_history';
 
-/** Associates event timestamps with persisted main-process view history. */
-export class ViewContext {
+/**
+ * Attaches the fake main-process view to every event, resolved by event timestamp from a disk-persisted history:
+ * main-process RUM events as their `view`, renderer RUM events as their `container.view`, and main-process
+ * telemetry, logs and spans as their view id.
+ *
+ * Transitional: it exists only while events still require a `view.id`, and goes away with fake views. See "Fake
+ * views" in docs/ARCHITECTURE.md.
+ */
+export class FakeViewContext {
   private readonly history: DiskValueHistory<string>;
 
-  private constructor(history: DiskValueHistory<string>, hooks: FormatHooks, isExecutionContextEnabled: boolean) {
+  private constructor(history: DiskValueHistory<string>, hooks: FormatHooks) {
     this.history = history;
 
     hooks.registerRum(({ source, startTime }) => {
@@ -23,12 +30,8 @@ export class ViewContext {
         case EventSource.RENDERER:
           return { container: { view: { id } } };
         case EventSource.MAIN:
-          // A fake view, not a real navigable page: it exists only so main-process events have a
-          // view.id to resolve against, matching the same one MainProcessContext maintains as an
-          // actual view RUM document. See "Fake views" in docs/ARCHITECTURE.md.
-          return isExecutionContextEnabled
-            ? { view: { id, url: 'electron://fake', is_fake: true } }
-            : { view: { id, name: 'main process', url: 'electron://main-process' } };
+          // Same id as the view RUM document MainProcessContext emits.
+          return { view: { id, url: 'electron://fake', is_fake: true } };
       }
     });
 
@@ -59,23 +62,19 @@ export class ViewContext {
     });
   }
 
-  static async init(
-    hooks: FormatHooks,
-    expireDelay = SESSION_TIME_OUT_DELAY,
-    options?: { isExecutionContextEnabled?: boolean }
-  ): Promise<ViewContext> {
+  static async init(hooks: FormatHooks, expireDelay = SESSION_TIME_OUT_DELAY): Promise<FakeViewContext> {
     const filePath = path.join(app.getPath('userData'), VIEW_HISTORY_FILE_NAME);
     const history = await DiskValueHistory.init<string>({ filePath, expireDelay });
-    return new ViewContext(history, hooks, options?.isExecutionContextEnabled ?? false);
+    return new FakeViewContext(history, hooks);
   }
 
   /** Registers the view at its event timestamp, even if registration happens later. */
-  add(id: string, atTime: TimeStamp = timeStampNow()): void {
+  add(id: string, atTime: TimeStamp): void {
     this.history.add(id, atTime);
   }
 
-  /** Closes the active view at the supplied transition time, or now on expiry. */
-  close(atTime: TimeStamp = timeStampNow()): void {
+  /** Closes the active view at the supplied transition time. */
+  close(atTime: TimeStamp): void {
     this.history.closeActive(atTime);
   }
 }
