@@ -23,6 +23,7 @@ export class DiskValueHistory<T> {
   private readonly history: TimeStampValueHistory<T>;
   private readonly filePath: string;
   private pendingWrite: Promise<void> = Promise.resolve();
+  private persistenceCheckpoint: TimeStampHistoryEntry<T>[] | undefined;
 
   private constructor(history: TimeStampValueHistory<T>, filePath: string) {
     this.history = history;
@@ -90,7 +91,36 @@ export class DiskValueHistory<T> {
     return this.history.getEntries();
   }
 
+  /** Keep subsequent changes in memory until they are explicitly committed or discarded. */
+  pausePersistence(): void {
+    if (this.persistenceCheckpoint) {
+      return;
+    }
+    this.persistenceCheckpoint = this.history.getEntries().map((entry) => ({ ...entry }));
+  }
+
+  /** Persist all changes made since {@link pausePersistence}. */
+  commitPausedChanges(): void {
+    if (!this.persistenceCheckpoint) {
+      return;
+    }
+    this.persistenceCheckpoint = undefined;
+    this.persistToDisk();
+  }
+
+  /** Restore the last persisted in-memory state and forget all paused changes. */
+  discardPausedChanges(): void {
+    if (!this.persistenceCheckpoint) {
+      return;
+    }
+    this.history.replaceEntries(this.persistenceCheckpoint);
+    this.persistenceCheckpoint = undefined;
+  }
+
   private persistToDisk(): void {
+    if (this.persistenceCheckpoint) {
+      return;
+    }
     const snapshot = JSON.stringify(this.history.getEntries());
     this.pendingWrite = this.pendingWrite
       .then(() => fs.writeFile(this.filePath, snapshot, 'utf-8'))

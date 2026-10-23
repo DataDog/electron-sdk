@@ -56,6 +56,7 @@ export function mockFs() {
     unlink: fs.unlink as unknown as MockInstance,
     mkdir: fs.mkdir as unknown as MockInstance,
     rename: fs.rename as unknown as MockInstance,
+    rm: fs.rm as unknown as MockInstance,
     reset: () => {
       mocks.access.mockReset();
       mocks.readFile.mockReset();
@@ -66,6 +67,7 @@ export function mockFs() {
       mocks.unlink.mockReset();
       mocks.mkdir.mockReset();
       mocks.rename.mockReset();
+      mocks.rm.mockReset();
     },
   };
   return mocks;
@@ -77,6 +79,7 @@ export function createTestConfiguration(overrides: Partial<Configuration> = {}):
     clientToken: 'test-token',
     applicationId: 'test-app-id',
     sessionSampleRate: 100,
+    trackingConsent: 'granted',
     logsSampleRate: 100,
     traceSampleRate: 100,
     traceSamplingRules: [],

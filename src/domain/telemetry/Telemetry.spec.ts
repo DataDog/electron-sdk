@@ -11,6 +11,7 @@ import {
 import { createTestConfiguration } from '../../mocks.specUtil';
 import { EventManager, RawEvent, EventKind, LifecycleKind } from '../../event';
 import { RawTelemetryData, RawTelemetryError } from './rawTelemetryData.types';
+import { createTrackingConsentState } from '../tracking-consent';
 
 describe('telemetry', () => {
   let eventManager: EventManager;
@@ -36,6 +37,33 @@ describe('telemetry', () => {
 
   afterEach(() => {
     stopTelemetry();
+  });
+
+  describe('tracking consent', () => {
+    it('does not collect or deduplicate events until consent is granted', () => {
+      const state = createTrackingConsentState('not-granted');
+      startTelemetry(eventManager, createTestConfiguration(), state);
+
+      addUsage({ feature: 'stop-session' });
+      expect(notifiedEvents).toEqual([]);
+
+      state.update('granted');
+      addUsage({ feature: 'stop-session' });
+
+      expect(notifiedEvents).toHaveLength(1);
+      expect(notifiedEvents[0]).toMatchObject({
+        telemetry: { type: 'usage', usage: { feature: 'stop-session' } },
+      });
+    });
+
+    it('collects telemetry while consent is pending', () => {
+      const state = createTrackingConsentState('pending');
+      startTelemetry(eventManager, createTestConfiguration(), state);
+
+      addUsage({ feature: 'stop-session' });
+
+      expect(notifiedEvents).toHaveLength(1);
+    });
   });
 
   describe('monitor integration', () => {

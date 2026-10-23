@@ -6,6 +6,7 @@ import type {
   FailureReason,
   FeatureOperationOptions,
   UserInfo,
+  TrackingConsent,
 } from '@datadog/electron-sdk';
 import { BridgeWindowPage } from './bridgeWindowPage';
 
@@ -35,6 +36,8 @@ interface ElectronAppWindow {
     addAccountExtraInfo: (extraInfo: Record<string, unknown>) => Promise<void>;
     ping: () => Promise<string>;
     stopSession: () => Promise<void>;
+    setTrackingConsent: (consent: TrackingConsent) => Promise<void>;
+    exportTestSpan: (url: string, startedBeforeMs: number) => Promise<void>;
     openBridgeFileWindow: () => Promise<void>;
     openBridgeFileWindowNoIsolation: () => Promise<void>;
     openBridgeHttpWindow: () => Promise<void>;
@@ -55,6 +58,21 @@ export class MainPage {
 
   async stopSession() {
     await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.stopSession());
+  }
+
+  async setTrackingConsent(consent: TrackingConsent) {
+    await this.page.evaluate(
+      (value) => (globalThis as unknown as ElectronAppWindow).electronAPI.setTrackingConsent(value),
+      consent
+    );
+  }
+
+  async exportTestSpan(url: string, startedBeforeMs: number) {
+    await this.page.evaluate(
+      ({ url, startedBeforeMs }) =>
+        (globalThis as unknown as ElectronAppWindow).electronAPI.exportTestSpan(url, startedBeforeMs),
+      { url, startedBeforeMs }
+    );
   }
 
   async generateActivity() {

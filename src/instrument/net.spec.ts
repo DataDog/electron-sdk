@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { EventEmitter } from 'node:events';
-import { setCurrentSessionSampled } from '../common';
+import { isCurrentSessionSampled, setCurrentSessionSampled, setTracePropagationCheck } from '../common';
 
 const mockSpan = { setTag: vi.fn(), finish: vi.fn() };
 const mockActiveSpan = { id: 'active-span' };
@@ -60,6 +60,7 @@ describe('patchNet', () => {
       carrier['x-datadog-trace-id'] = '123';
     });
     setCurrentSessionSampled(true);
+    setTracePropagationCheck(isCurrentSessionSampled);
   });
 
   async function setupNet(req = makeRequest()) {
@@ -78,6 +79,26 @@ describe('patchNet', () => {
     patchNet(patchedNet);
     return { patchedNet, originalFetch, originalRequest };
   }
+
+  it.each(['request', 'fetch'] as const)(
+    '%s keeps app headers and local spans when propagation is blocked',
+    async (api) => {
+      setTracePropagationCheck(() => false);
+      const { patchedNet, originalFetch, originalRequest } = await setupNetWithFetch();
+      const headers = { authorization: 'token' };
+
+      if (api === 'fetch') {
+        await patchedNet.fetch('https://example.com', { headers });
+        expect(originalFetch).toHaveBeenCalledWith('https://example.com', { headers });
+      } else {
+        patchedNet.request({ url: 'https://example.com', headers });
+        expect(originalRequest).toHaveBeenCalledWith({ url: 'https://example.com', headers });
+      }
+
+      expect(mockDdTrace.inject).not.toHaveBeenCalled();
+      expect(mockDdTrace.startSpan).toHaveBeenCalledTimes(1);
+    }
+  );
 
   it('passes the active span as childOf', async () => {
     mockScope.active.mockReturnValue(mockActiveSpan);

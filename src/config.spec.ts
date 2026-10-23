@@ -286,6 +286,28 @@ describe('buildConfiguration', () => {
     });
   });
 
+  describe('trackingConsent validation', () => {
+    it.each(['granted', 'not-granted', 'pending'] as const)('accepts %s', (trackingConsent) => {
+      expect(buildConfiguration({ ...DEFAULT_CONFIG, trackingConsent })?.trackingConsent).toBe(trackingConsent);
+    });
+
+    it.each([undefined, null])('defaults %s to granted', (trackingConsent) => {
+      const config = { ...DEFAULT_CONFIG, trackingConsent } as unknown as InitConfiguration;
+
+      expect(buildConfiguration(config)?.trackingConsent).toBe('granted');
+      expect(display.error).not.toHaveBeenCalled();
+    });
+
+    it.each(['GRANTED', 42, {}])('aborts init for invalid value %o', (trackingConsent) => {
+      const config = { ...DEFAULT_CONFIG, trackingConsent } as unknown as InitConfiguration;
+
+      expect(buildConfiguration(config)).toBeUndefined();
+      expect(display.error).toHaveBeenCalledWith(
+        "Configuration error: 'trackingConsent' must be one of: granted, not-granted, pending"
+      );
+    });
+  });
+
   describe('allowedRendererHosts validation', () => {
     it('aborts init when not provided', () => {
       const raw: Record<string, unknown> = { ...DEFAULT_CONFIG };

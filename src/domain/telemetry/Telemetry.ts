@@ -12,6 +12,7 @@ import {
   RawTelemetryUsageData,
 } from './rawTelemetryData.types';
 import { SessionBudget } from './sessionBudget';
+import type { TrackingConsentState } from '../tracking-consent';
 
 export { monitor, callMonitored };
 
@@ -32,7 +33,8 @@ class Telemetry {
 
   constructor(
     private readonly eventManager: EventManager,
-    configuration: Configuration
+    configuration: Configuration,
+    private readonly trackingConsentState?: TrackingConsentState
   ) {
     const telemetryEnabled = performDraw(configuration.telemetrySampleRate);
     this.isEnabled = {
@@ -92,6 +94,12 @@ class Telemetry {
    * Sample, apply the per-session budget (deduplication and rate limit), then emit for assembly.
    */
   private add(data: RawTelemetryData): void {
+    // Reject before sampling budget/deduplication so pre-consent calls cannot suppress the first
+    // equivalent event made after consent is granted.
+    if (this.trackingConsentState && !this.trackingConsentState.isCollectionEnabled()) {
+      return;
+    }
+
     const type = data.telemetry.type;
     if (!this.isEnabled[type] || !this.budget.accept(data)) {
       return;
@@ -112,8 +120,12 @@ class Telemetry {
   }
 }
 
-export function startTelemetry(eventManager: EventManager, configuration: Configuration): void {
-  telemetryInstance = new Telemetry(eventManager, configuration);
+export function startTelemetry(
+  eventManager: EventManager,
+  configuration: Configuration,
+  trackingConsentState?: TrackingConsentState
+): void {
+  telemetryInstance = new Telemetry(eventManager, configuration, trackingConsentState);
 }
 
 export function addError(error: unknown): void {

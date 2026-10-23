@@ -67,4 +67,24 @@ export class SessionContext {
   close(): void {
     this.history.closeActive(timeStampNow());
   }
+
+  /** Split the active session at the pending boundary and keep the new part in memory only. */
+  startPending(sessionId?: string): void {
+    const now = timeStampNow();
+    if (sessionId !== undefined && this.history.find(now) === sessionId) {
+      this.history.closeActive(now);
+    }
+    this.history.pausePersistence();
+    if (sessionId !== undefined) {
+      this.history.add(sessionId, now);
+    }
+  }
+
+  grantPending(): void {
+    this.history.commitPausedChanges();
+  }
+
+  rejectPending(): void {
+    this.history.discardPausedChanges();
+  }
 }

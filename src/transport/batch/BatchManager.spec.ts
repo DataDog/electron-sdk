@@ -5,23 +5,75 @@ import type { ServerEvent } from '../../event';
 import { BatchSizes, BatchUploadFrequencies } from '../../config';
 import { createTestConfiguration } from '../../mocks.specUtil';
 import type { BatchConfig } from './batchConfig.types';
+import { createTrackingConsentState } from '../../domain/tracking-consent';
 
-const { mockProducerPost, mockProducerFlush, mockConsumerUpload, mockProducerCreate, mockProfileProducerCreate } =
-  vi.hoisted(() => {
-    const mockProducerPost = vi.fn();
-    const mockProducerFlush = vi.fn().mockResolvedValue(undefined);
-    const mockConsumerUpload = vi.fn().mockResolvedValue(undefined);
-    const mockProducerCreate = vi.fn().mockResolvedValue({
-      post: mockProducerPost,
-      flush: mockProducerFlush,
-    });
-    const mockProfileProducerCreate = vi.fn().mockResolvedValue({
-      post: vi.fn(),
-      flush: vi.fn().mockResolvedValue(undefined),
-    });
+const {
+  mockAuthorizedProducerPost,
+  mockPendingProducerPost,
+  mockAuthorizedProducerFlush,
+  mockPendingProducerFlush,
+  mockPendingProducerClear,
+  mockPendingProducerClearAfterFlush,
+  mockPendingProducerRunAfterFlush,
+  mockConsumerUpload,
+  mockProducerCreate,
+  mockProfileProducerCreate,
+} = vi.hoisted(() => {
+  const mockAuthorizedProducerPost = vi.fn();
+  const mockPendingProducerPost = vi.fn();
+  const mockAuthorizedProducerFlush = vi.fn().mockResolvedValue(undefined);
+  const mockPendingProducerFlush = vi.fn().mockResolvedValue(undefined);
+  const mockPendingProducerClear = vi.fn().mockResolvedValue(undefined);
+  const mockAuthorizedProducerRunAfterFlush = vi.fn((operation: () => Promise<void>) => operation());
+  let pendingQueue = Promise.resolve();
+  const enqueuePending = (operation: () => Promise<void>) => {
+    const result = pendingQueue.then(operation);
+    pendingQueue = result.catch(() => undefined);
+    return result;
+  };
+  const mockPendingProducerRunAfterFlush = vi.fn((operation: () => Promise<void>) =>
+    enqueuePending(async () => {
+      await mockPendingProducerFlush();
+      await operation();
+    })
+  );
+  const mockPendingProducerClearAfterFlush = vi.fn((operation: () => Promise<void>) =>
+    enqueuePending(async () => {
+      await mockPendingProducerFlush();
+      await operation();
+      await mockPendingProducerClear();
+    })
+  );
+  const mockConsumerUpload = vi.fn().mockResolvedValue(undefined);
+  const authorizedProducer = {
+    post: mockAuthorizedProducerPost,
+    flush: mockAuthorizedProducerFlush,
+    runAfterFlush: mockAuthorizedProducerRunAfterFlush,
+  };
+  const pendingProducer = {
+    post: mockPendingProducerPost,
+    flush: mockPendingProducerFlush,
+    clearAfterFlush: mockPendingProducerClearAfterFlush,
+    runAfterFlush: mockPendingProducerRunAfterFlush,
+  };
+  const createProducer = (config: { trackPath: string }) =>
+    Promise.resolve(config.trackPath.endsWith('/pending') ? pendingProducer : authorizedProducer);
+  const mockProducerCreate = vi.fn(createProducer);
+  const mockProfileProducerCreate = vi.fn(createProducer);
 
-    return { mockProducerPost, mockProducerFlush, mockConsumerUpload, mockProducerCreate, mockProfileProducerCreate };
-  });
+  return {
+    mockAuthorizedProducerPost,
+    mockPendingProducerPost,
+    mockAuthorizedProducerFlush,
+    mockPendingProducerFlush,
+    mockPendingProducerClear,
+    mockPendingProducerClearAfterFlush,
+    mockPendingProducerRunAfterFlush,
+    mockConsumerUpload,
+    mockProducerCreate,
+    mockProfileProducerCreate,
+  };
+});
 
 vi.mock('./standard/StandardBatchProducer', () => ({
   StandardBatchProducer: { create: mockProducerCreate },
@@ -47,6 +99,12 @@ vi.mock('../utils', () => ({
   computeIntakeUrlForTrack: vi.fn(() => 'https://mock-intake.com/api/v2/rum'),
 }));
 
+vi.mock('./trackingConsentStorage', () => ({
+  clearBatchDirectory: vi.fn().mockResolvedValue(undefined),
+  authorizePendingBatches: vi.fn().mockResolvedValue(undefined),
+  recoverAuthorizedPendingBatches: vi.fn().mockResolvedValue(undefined),
+}));
+
 function createBatchConfig(overrides?: Partial<BatchConfig>): BatchConfig {
   return {
     path: '/mock/path',
@@ -64,6 +122,7 @@ describe('BatchManager', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    mockPendingProducerClear.mockReset().mockResolvedValue(undefined);
     config = createTestConfiguration();
     batchConfig = createBatchConfig();
   });
@@ -80,6 +139,10 @@ describe('BatchManager', () => {
         trackPath: '/mock/path/rum',
         batchSize: BatchSizes.MEDIUM,
       });
+      expect(mockProducerCreate).toHaveBeenCalledWith({
+        trackPath: '/mock/path/rum/pending',
+        batchSize: BatchSizes.MEDIUM,
+      });
     });
 
     it('limits LOGS batches to the intake maximum of 1,000 entries', async () => {
@@ -87,6 +150,11 @@ describe('BatchManager', () => {
 
       expect(mockProducerCreate).toHaveBeenCalledWith({
         trackPath: '/mock/path/dd_logs',
+        batchSize: BatchSizes.MEDIUM,
+        maxEventsPerBatch: 1_000,
+      });
+      expect(mockProducerCreate).toHaveBeenCalledWith({
+        trackPath: '/mock/path/dd_logs/pending',
         batchSize: BatchSizes.MEDIUM,
         maxEventsPerBatch: 1_000,
       });
@@ -108,6 +176,7 @@ describe('BatchManager', () => {
       await BatchManager.create(config, createBatchConfig({ trackType: EventTrack.PROFILE }));
 
       expect(mockProfileProducerCreate).toHaveBeenCalledWith({ trackPath: '/mock/path/profile' });
+      expect(mockProfileProducerCreate).toHaveBeenCalledWith({ trackPath: '/mock/path/profile/pending' });
       expect(ProfileBatchConsumer).toHaveBeenCalledWith({
         trackPath: '/mock/path/profile',
         intakeUrl: 'https://mock-intake.com/api/v2/rum',
@@ -121,7 +190,8 @@ describe('BatchManager', () => {
 
       await vi.advanceTimersByTimeAsync(batchConfig.uploadFrequency + 100);
 
-      expect(mockProducerFlush).toHaveBeenCalled();
+      expect(mockAuthorizedProducerFlush).toHaveBeenCalled();
+      expect(mockPendingProducerFlush).toHaveBeenCalled();
       expect(mockConsumerUpload).toHaveBeenCalled();
     });
   });
@@ -137,7 +207,145 @@ describe('BatchManager', () => {
 
       manager.post(event);
 
-      expect(mockProducerPost).toHaveBeenCalledWith(event);
+      expect(mockAuthorizedProducerPost).toHaveBeenCalledWith(event);
+    });
+
+    it('writes pending events only to isolated pending storage', async () => {
+      const state = createTrackingConsentState('pending');
+      const manager = await BatchManager.create(config, batchConfig, state);
+      const event = {
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        data: { test: 'pending' },
+      } as unknown as ServerEvent;
+
+      manager.post(event);
+
+      expect(mockPendingProducerPost).toHaveBeenCalledWith(event, expect.any(Promise));
+      expect(mockAuthorizedProducerPost).not.toHaveBeenCalled();
+    });
+
+    it('does not persist events when consent is not granted', async () => {
+      const state = createTrackingConsentState('not-granted');
+      const manager = await BatchManager.create(config, batchConfig, state);
+
+      manager.post({ kind: EventKind.SERVER, track: EventTrack.RUM, data: {} } as unknown as ServerEvent);
+
+      expect(mockAuthorizedProducerPost).not.toHaveBeenCalled();
+      expect(mockPendingProducerPost).not.toHaveBeenCalled();
+    });
+
+    it('routes delayed events using the consent in effect when they were captured', async () => {
+      vi.setSystemTime(0);
+      const state = createTrackingConsentState('granted');
+      const manager = await BatchManager.create(config, batchConfig, state);
+      const event = {
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        data: { date: 0 },
+      } as unknown as ServerEvent;
+
+      vi.setSystemTime(1);
+      state.update('pending');
+      manager.post(event);
+
+      expect(mockAuthorizedProducerPost).toHaveBeenCalledWith(event);
+      expect(mockPendingProducerPost).not.toHaveBeenCalled();
+    });
+
+    it('routes view updates using their update-time consent instead of the view start date', async () => {
+      vi.setSystemTime(0);
+      const state = createTrackingConsentState('granted');
+      const manager = await BatchManager.create(config, batchConfig, state);
+      vi.setSystemTime(1);
+      state.update('pending');
+      const event = {
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        data: { type: 'view', date: 0 },
+        consentTime: 1,
+      } as unknown as ServerEvent;
+
+      manager.post(event);
+
+      expect(mockAuthorizedProducerPost).not.toHaveBeenCalled();
+      expect(mockPendingProducerPost).toHaveBeenCalledWith(event, expect.any(Promise));
+    });
+
+    it('authorizes a delayed pending event only when that pending interval was granted', async () => {
+      vi.setSystemTime(0);
+      const state = createTrackingConsentState('pending');
+      const manager = await BatchManager.create(config, batchConfig, state);
+      const event = {
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        data: { date: 0 },
+      } as unknown as ServerEvent;
+
+      vi.setSystemTime(1);
+      state.update('granted');
+      manager.post(event);
+
+      expect(mockAuthorizedProducerPost).toHaveBeenCalledWith(event);
+    });
+
+    it('never revives a delayed event from a rejected pending interval', async () => {
+      vi.setSystemTime(0);
+      const state = createTrackingConsentState('pending');
+      const manager = await BatchManager.create(config, batchConfig, state);
+      const event = {
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        data: { date: 0 },
+      } as unknown as ServerEvent;
+
+      vi.setSystemTime(1);
+      state.update('not-granted');
+      vi.setSystemTime(2);
+      state.update('granted');
+      manager.post(event);
+
+      expect(mockAuthorizedProducerPost).not.toHaveBeenCalled();
+      expect(mockPendingProducerPost).not.toHaveBeenCalled();
+    });
+
+    it('drops a completed interval that crossed rejected consent', async () => {
+      vi.setSystemTime(0);
+      const state = createTrackingConsentState('granted');
+      const manager = await BatchManager.create(config, batchConfig, state);
+      vi.setSystemTime(10);
+      state.update('pending');
+      vi.setSystemTime(20);
+      state.update('not-granted');
+      vi.setSystemTime(30);
+      state.update('granted');
+      const event = {
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        data: { type: 'vital', date: 5 },
+        consentTime: 35,
+      } as unknown as ServerEvent;
+
+      manager.post(event);
+
+      expect(mockAuthorizedProducerPost).not.toHaveBeenCalled();
+      expect(mockPendingProducerPost).not.toHaveBeenCalled();
+    });
+
+    it('honors an explicit storage decision for grouped interval events', async () => {
+      const state = createTrackingConsentState('granted');
+      const manager = await BatchManager.create(config, batchConfig, state);
+      const event = {
+        kind: EventKind.SERVER,
+        track: EventTrack.SPANS,
+        data: { spans: [] },
+        storageConsent: 'pending',
+      } as unknown as ServerEvent;
+
+      manager.post(event);
+
+      expect(mockPendingProducerPost).toHaveBeenCalledWith(event, expect.any(Promise));
+      expect(mockAuthorizedProducerPost).not.toHaveBeenCalled();
     });
   });
 
@@ -146,13 +354,14 @@ describe('BatchManager', () => {
       const manager = await BatchManager.create(config, batchConfig);
       await manager.flush();
 
-      expect(mockProducerFlush).toHaveBeenCalled();
+      expect(mockAuthorizedProducerFlush).toHaveBeenCalled();
+      expect(mockPendingProducerFlush).toHaveBeenCalled();
       expect(mockConsumerUpload).toHaveBeenCalled();
     });
 
     it('should skip concurrent flush when one is already in progress', async () => {
       let resolveFlush!: () => void;
-      mockProducerFlush.mockReturnValueOnce(new Promise<void>((resolve) => (resolveFlush = resolve)));
+      mockAuthorizedProducerFlush.mockReturnValueOnce(new Promise<void>((resolve) => (resolveFlush = resolve)));
 
       const manager = await BatchManager.create(config, batchConfig);
       const firstFlush = manager.flush();
@@ -162,19 +371,21 @@ describe('BatchManager', () => {
       await firstFlush;
       await secondFlush;
 
-      expect(mockProducerFlush).toHaveBeenCalledTimes(1);
+      expect(mockAuthorizedProducerFlush).toHaveBeenCalledTimes(1);
+      expect(mockPendingProducerFlush).toHaveBeenCalledTimes(1);
       expect(mockConsumerUpload).toHaveBeenCalledTimes(1);
     });
 
     it('runs a fresh cycle after an in-flight scheduled cycle instead of dropping the flush', async () => {
       let resolveScheduled!: () => void;
-      mockProducerFlush.mockReturnValueOnce(new Promise<void>((resolve) => (resolveScheduled = resolve)));
+      mockAuthorizedProducerFlush.mockReturnValueOnce(new Promise<void>((resolve) => (resolveScheduled = resolve)));
 
       const manager = await BatchManager.create(config, batchConfig);
 
       // Fire the periodic cycle; its producer.flush() stays pending, simulating an in-flight upload.
       await vi.advanceTimersByTimeAsync(batchConfig.uploadFrequency);
-      expect(mockProducerFlush).toHaveBeenCalledTimes(1);
+      expect(mockAuthorizedProducerFlush).toHaveBeenCalledTimes(1);
+      expect(mockPendingProducerFlush).not.toHaveBeenCalled();
       expect(mockConsumerUpload).not.toHaveBeenCalled();
 
       // A flush() arriving now (e.g. on quit, after a final segment was rotated) must not be dropped:
@@ -183,10 +394,181 @@ describe('BatchManager', () => {
       resolveScheduled();
       await flushPromise;
 
-      expect(mockProducerFlush).toHaveBeenCalledTimes(2);
+      expect(mockAuthorizedProducerFlush).toHaveBeenCalledTimes(2);
+      expect(mockPendingProducerFlush).toHaveBeenCalledTimes(2);
       expect(mockConsumerUpload).toHaveBeenCalledTimes(2);
 
       manager.stop();
+    });
+
+    it('continues uploading previously authorized batches when consent is not granted', async () => {
+      const state = createTrackingConsentState('not-granted');
+      const manager = await BatchManager.create(config, batchConfig, state);
+
+      await manager.flush();
+
+      expect(mockConsumerUpload).toHaveBeenCalledOnce();
+    });
+
+    it('flushes pending storage before authorizing it on grant', async () => {
+      const state = createTrackingConsentState('pending');
+      const manager = await BatchManager.create(config, batchConfig, state);
+
+      state.update('granted');
+      await manager.flush();
+
+      expect(mockPendingProducerRunAfterFlush).toHaveBeenCalled();
+      expect(mockConsumerUpload).toHaveBeenCalledOnce();
+    });
+
+    it('clears pending storage when consent is rejected', async () => {
+      const state = createTrackingConsentState('pending');
+      const manager = await BatchManager.create(config, batchConfig, state);
+
+      state.update('not-granted');
+      await manager.flush();
+
+      expect(mockPendingProducerClear).toHaveBeenCalledOnce();
+    });
+
+    it('clears the pending destination before entering pending', async () => {
+      const state = createTrackingConsentState('granted');
+      const manager = await BatchManager.create(config, batchConfig, state);
+
+      state.update('pending');
+      await manager.flush();
+
+      expect(mockPendingProducerClear).toHaveBeenCalledOnce();
+    });
+
+    it('reserves the pending clear before lifecycle observers can post new events', async () => {
+      const state = createTrackingConsentState('not-granted');
+      const manager = await BatchManager.create(config, batchConfig, state);
+      state.observable.subscribe(() => {
+        manager.post({ kind: EventKind.SERVER, track: EventTrack.RUM, data: {} } as unknown as ServerEvent);
+      });
+
+      state.update('pending');
+
+      expect(mockPendingProducerClearAfterFlush.mock.invocationCallOrder[0]).toBeLessThan(
+        mockPendingProducerPost.mock.invocationCallOrder[0]
+      );
+    });
+
+    it('does not authorize rejected files after a failed clear and a later grant', async () => {
+      const { authorizePendingBatches } = await import('./trackingConsentStorage');
+      const state = createTrackingConsentState('pending');
+      const manager = await BatchManager.create(config, batchConfig, state);
+      mockPendingProducerClear.mockRejectedValueOnce(new Error('clear failed'));
+
+      state.update('not-granted');
+      await manager.flush();
+      state.update('granted');
+      await manager.flush();
+
+      expect(authorizePendingBatches).not.toHaveBeenCalled();
+    });
+
+    it('does not authorize a pending interval whose quarantine clear failed', async () => {
+      const { authorizePendingBatches } = await import('./trackingConsentStorage');
+      const state = createTrackingConsentState('pending');
+      const manager = await BatchManager.create(config, batchConfig, state);
+      const error = new Error('clear failed');
+      mockPendingProducerClear.mockRejectedValue(error);
+
+      state.update('not-granted');
+      await expect(manager.flush()).rejects.toBe(error);
+
+      state.update('pending');
+      state.update('granted');
+      await expect(manager.flush()).rejects.toBe(error);
+
+      mockPendingProducerClear.mockResolvedValue(undefined);
+      await manager.flush();
+      expect(authorizePendingBatches).not.toHaveBeenCalled();
+    });
+
+    it.each(['pending', 'not-granted'] as const)(
+      'retries a rejected store clear on entering %s',
+      async (nextConsent) => {
+        const { authorizePendingBatches } = await import('./trackingConsentStorage');
+        const state = createTrackingConsentState('pending');
+        const manager = await BatchManager.create(config, batchConfig, state);
+        const error = new Error('directory busy');
+        mockPendingProducerClear.mockRejectedValue(error);
+
+        state.update('not-granted');
+        await expect(manager.flush()).rejects.toBe(error);
+        mockPendingProducerClear.mockResolvedValue(undefined);
+        state.update('granted');
+        state.update(nextConsent);
+        await manager.flush();
+
+        expect(mockPendingProducerClear).toHaveBeenCalledTimes(3);
+        expect(authorizePendingBatches).not.toHaveBeenCalled();
+
+        if (nextConsent === 'not-granted') {
+          state.update('pending');
+          await manager.flush();
+        }
+        const event = { kind: EventKind.SERVER, track: EventTrack.RUM, data: {} } as unknown as ServerEvent;
+        manager.post(event);
+        await expect(mockPendingProducerPost.mock.lastCall![1]).resolves.toBe(true);
+        state.update('granted');
+        await manager.flush();
+        expect(authorizePendingBatches).toHaveBeenCalledOnce();
+      }
+    );
+
+    it('cleans a rejected interval when its failed preparation is followed by grant and denial', async () => {
+      const { authorizePendingBatches } = await import('./trackingConsentStorage');
+      const state = createTrackingConsentState('granted');
+      const manager = await BatchManager.create(config, batchConfig, state);
+      mockPendingProducerClear.mockRejectedValueOnce(new Error('directory busy'));
+
+      state.update('pending');
+      state.update('granted');
+      state.update('not-granted');
+      await manager.flush();
+
+      expect(mockPendingProducerClear).toHaveBeenCalledTimes(2);
+      expect(authorizePendingBatches).not.toHaveBeenCalled();
+    });
+
+    it('does not clear granted pending batches until their detachment succeeds', async () => {
+      const { authorizePendingBatches } = await import('./trackingConsentStorage');
+      const error = new Error('directory busy');
+      vi.mocked(authorizePendingBatches).mockRejectedValue(error);
+      const state = createTrackingConsentState('pending');
+      const manager = await BatchManager.create(config, batchConfig, state);
+
+      state.update('granted');
+      state.update('pending');
+      const pendingEvent = {
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        data: { test: 'quarantined' },
+      } as unknown as ServerEvent;
+      manager.post(pendingEvent);
+      // Repeat the transition before any queued storage operation settles. A quarantined interval
+      // must not bypass the earlier authorization failure and clear its files.
+      state.update('granted');
+      state.update('pending');
+
+      await expect(manager.flush()).rejects.toBe(error);
+      expect(mockPendingProducerClearAfterFlush).toHaveBeenCalled();
+      expect(mockPendingProducerClear).not.toHaveBeenCalled();
+      const failedReadiness = mockPendingProducerPost.mock.calls[0][1] as Promise<boolean>;
+      await expect(failedReadiness).resolves.toBe(false);
+
+      vi.mocked(authorizePendingBatches).mockResolvedValue(undefined);
+      await manager.flush();
+      mockPendingProducerPost.mockClear();
+      manager.post(pendingEvent);
+
+      expect(mockPendingProducerClear).toHaveBeenCalledOnce();
+      const recoveredReadiness = mockPendingProducerPost.mock.calls[0][1] as Promise<boolean>;
+      await expect(recoveredReadiness).resolves.toBe(true);
     });
   });
 
@@ -195,12 +577,14 @@ describe('BatchManager', () => {
       const manager = await BatchManager.create(config, batchConfig);
       manager.stop();
 
-      mockProducerFlush.mockClear();
+      mockAuthorizedProducerFlush.mockClear();
+      mockPendingProducerFlush.mockClear();
       mockConsumerUpload.mockClear();
 
       await vi.advanceTimersByTimeAsync(batchConfig.uploadFrequency * 2);
 
-      expect(mockProducerFlush).not.toHaveBeenCalled();
+      expect(mockAuthorizedProducerFlush).not.toHaveBeenCalled();
+      expect(mockPendingProducerFlush).not.toHaveBeenCalled();
       expect(mockConsumerUpload).not.toHaveBeenCalled();
     });
   });
@@ -210,11 +594,13 @@ describe('BatchManager', () => {
       const manager = await BatchManager.create(config, batchConfig);
 
       await vi.advanceTimersByTimeAsync(batchConfig.uploadFrequency + 100);
-      expect(mockProducerFlush).toHaveBeenCalledTimes(1);
+      expect(mockAuthorizedProducerFlush).toHaveBeenCalledTimes(1);
+      expect(mockPendingProducerFlush).toHaveBeenCalledTimes(1);
       expect(mockConsumerUpload).toHaveBeenCalledTimes(1);
 
       await vi.advanceTimersByTimeAsync(batchConfig.uploadFrequency);
-      expect(mockProducerFlush).toHaveBeenCalledTimes(2);
+      expect(mockAuthorizedProducerFlush).toHaveBeenCalledTimes(2);
+      expect(mockPendingProducerFlush).toHaveBeenCalledTimes(2);
       expect(mockConsumerUpload).toHaveBeenCalledTimes(2);
 
       manager.stop();

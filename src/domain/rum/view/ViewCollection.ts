@@ -14,6 +14,8 @@ import type { FormatHooks } from '../../../assembly';
 import { setInterval, throttle } from '../../telemetry';
 import type { RawRumView } from '../types';
 import { ViewContext } from './ViewContext';
+import { createTrackingConsentState, type TrackingConsentState } from '../../tracking-consent';
+import { SESSION_TIME_OUT_DELAY } from '../../session';
 
 export const SESSION_KEEP_ALIVE_INTERVAL = 5 * ONE_MINUTE;
 // throttle view updates to avoid bursts
@@ -36,21 +38,29 @@ interface ViewState {
  * - on main-process RUM server event (error, resource), increment view counters (throttled)
  */
 export class ViewCollection {
-  private currentView!: ViewState;
+  private currentView: ViewState | undefined;
   private viewContext!: ViewContext;
   private keepAliveIntervalId: ReturnType<typeof setInterval> | undefined;
   private scheduleViewUpdate!: () => void;
   private cancelScheduledViewUpdate!: () => void;
   private lifecycleSubscription!: Subscription;
   private serverEventSubscription!: Subscription;
+  private consentBoundarySubscription!: Subscription;
+  private consentStorageSubscription!: Subscription;
+  private consentSubscription!: Subscription;
 
   constructor(
     private readonly eventManager: EventManager,
-    private readonly hooks: FormatHooks
+    private readonly hooks: FormatHooks,
+    private readonly trackingConsentState: TrackingConsentState = createTrackingConsentState('granted')
   ) {}
 
-  static async start(eventManager: EventManager, hooks: FormatHooks): Promise<ViewCollection> {
-    const collection = new ViewCollection(eventManager, hooks);
+  static async start(
+    eventManager: EventManager,
+    hooks: FormatHooks,
+    trackingConsentState: TrackingConsentState = createTrackingConsentState('granted')
+  ): Promise<ViewCollection> {
+    const collection = new ViewCollection(eventManager, hooks, trackingConsentState);
     await collection.init();
     return collection;
   }
@@ -60,8 +70,26 @@ export class ViewCollection {
     this.scheduleViewUpdate = throttled;
     this.cancelScheduledViewUpdate = cancel;
 
-    this.viewContext = await ViewContext.init(this.hooks);
-    this.createNewView();
+    this.viewContext = await ViewContext.init(this.hooks, SESSION_TIME_OUT_DELAY, this.trackingConsentState);
+    if (this.trackingConsentState.isCollectionEnabled()) {
+      this.createNewView();
+    }
+
+    this.consentBoundarySubscription = this.trackingConsentState.boundaryObservable.subscribe((change) => {
+      if (change.previous !== 'not-granted' && this.currentView?.isActive) {
+        this.closeCurrentView();
+      }
+    });
+    this.consentStorageSubscription = this.trackingConsentState.beforeObservable.subscribe((change) => {
+      this.viewContext.updateTrackingConsent(change, this.currentView?.isActive ? this.currentView.id : undefined);
+    });
+    this.consentSubscription = this.trackingConsentState.observable.subscribe((change) => {
+      // The boundary observer closed the previous view. A session renewal may already have
+      // created its replacement before this observer runs.
+      if (change.previous !== 'not-granted' && change.current !== 'not-granted' && !this.currentView?.isActive) {
+        this.createNewView();
+      }
+    });
 
     this.lifecycleSubscription = this.eventManager.registerHandler<LifecycleEvent>({
       canHandle: (event): event is LifecycleEvent => event.kind === EventKind.LIFECYCLE,
@@ -85,6 +113,9 @@ export class ViewCollection {
     this.stopSessionKeepAlive();
     this.lifecycleSubscription.unsubscribe();
     this.serverEventSubscription.unsubscribe();
+    this.consentBoundarySubscription.unsubscribe();
+    this.consentStorageSubscription.unsubscribe();
+    this.consentSubscription.unsubscribe();
   }
 
   private createNewView(): void {
@@ -104,6 +135,9 @@ export class ViewCollection {
   }
 
   private emitViewUpdate(): void {
+    if (!this.currentView) {
+      return;
+    }
     const viewEvent: RawRumView = {
       type: 'view',
       date: this.currentView.startTime,
@@ -125,7 +159,16 @@ export class ViewCollection {
   }
 
   private onSessionExpired(): void {
-    if (!this.currentView.isActive) {
+    if (!this.currentView?.isActive) {
+      return;
+    }
+
+    this.closeCurrentView();
+    this.viewContext.close();
+  }
+
+  private closeCurrentView(): void {
+    if (!this.currentView?.isActive) {
       return;
     }
 
@@ -134,7 +177,6 @@ export class ViewCollection {
     this.currentView.isActive = false;
     this.currentView.documentVersion++;
     this.emitViewUpdate();
-    this.viewContext.close();
   }
 
   private onSessionRenew(): void {
@@ -143,12 +185,12 @@ export class ViewCollection {
   }
 
   private onServerRumEvent(event: ServerRumEvent): void {
-    if (event.source === EventSource.RENDERER) {
+    if (event.source === EventSource.RENDERER || !this.currentView?.isActive) {
       return;
     }
 
     const type = event.data.type;
-    if (type === 'error' || type === 'resource') {
+    if ((type === 'error' || type === 'resource') && event.data.view.id === this.currentView.id) {
       this.currentView.counters[type].count++;
       this.currentView.documentVersion++;
       this.scheduleViewUpdate();
@@ -158,6 +200,9 @@ export class ViewCollection {
   private keepSessionAlive(): void {
     this.stopSessionKeepAlive();
     this.keepAliveIntervalId = setInterval(() => {
+      if (!this.currentView) {
+        return;
+      }
       this.currentView.documentVersion++;
       this.emitViewUpdate();
       this.keepSessionAlive();

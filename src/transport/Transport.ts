@@ -3,6 +3,7 @@ import { app } from 'electron';
 import { resolveBatchSize, resolveUploadFrequency, type Configuration } from '../config';
 import { EventKind, EventTrack, type EventManager, type ServerEvent } from '../event';
 import { BatchManager } from './batch';
+import type { TrackingConsentState } from '../domain/tracking-consent';
 
 /**
  * Orchestrates event transport by routing server events from registered domains
@@ -14,14 +15,18 @@ export class Transport {
 
   private constructor(
     private readonly config: Configuration,
-    private readonly eventManager: EventManager
+    private readonly eventManager: EventManager,
+    private readonly trackingConsentState?: TrackingConsentState
   ) {
     this.basePath = app.getPath('userData');
   }
 
   /** Creates and fully initializes a Transport instance. */
-  static async create(config: Configuration, eventManager: EventManager) {
-    const transport = new Transport(config, eventManager);
+  static async create(config: Configuration, eventManager: EventManager, trackingConsentState?: TrackingConsentState) {
+    const transport = new Transport(config, eventManager, trackingConsentState);
+    // Pending consent is process-local. Clear every known track before applying this launch's sampling
+    // configuration so disabled profile or replay tracks cannot retain stale sensitive data.
+    await BatchManager.clearStalePendingData(transport.basePath);
     for (const track of transport.getTracks()) {
       await transport.setupTrackBatching(track);
     }
@@ -60,12 +65,16 @@ export class Transport {
     const batchSize = resolveBatchSize(this.config);
     const uploadFrequency = resolveUploadFrequency(this.config);
 
-    const manager = await BatchManager.create(this.config, {
-      path,
-      trackType,
-      batchSize,
-      uploadFrequency,
-    });
+    const manager = await BatchManager.create(
+      this.config,
+      {
+        path,
+        trackType,
+        batchSize,
+        uploadFrequency,
+      },
+      this.trackingConsentState
+    );
     this.batchManagers.push(manager);
 
     return manager;
@@ -86,7 +95,7 @@ export class Transport {
     });
   }
 
-  /** Flushes all batch managers, rotating pending data and triggering uploads. */
+  /** Flushes all batch managers, rotating pending data and uploading it when consent allows it. */
   async flush() {
     await Promise.all(this.batchManagers.map((m) => m.flush()));
   }

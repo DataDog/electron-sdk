@@ -9,7 +9,7 @@ describe('bridgeConfig', () => {
   it('returns the fallback config before init sets a value', () => {
     expect(getBridgeConfig()).toEqual({
       defaultPrivacyLevel: 'mask',
-      allowedRendererHosts: ['*', ''],
+      allowedRendererHosts: [],
       // 'records' is intentionally omitted from the pre-init fallback (replay must wait for the real config).
       capabilities: ['profiles'],
     });

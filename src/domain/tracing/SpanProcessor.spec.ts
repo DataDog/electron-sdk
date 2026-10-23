@@ -3,9 +3,10 @@ import * as DiagnosticsChannel from 'node:diagnostics_channel';
 import { DISCARDED, SKIPPED } from '@datadog/js-core/assembly';
 import { EventFormat, EventKind, EventManager, EventTrack } from '../../event';
 import type { Event, RawRumEvent, ServerSpansEvent } from '../../event';
-import { createFormatHooks, type FormatHooks } from '../../assembly';
+import { BeforeSend, createFormatHooks, MainAssembly, type FormatHooks } from '../../assembly';
 import type { Configuration } from '../../config';
 import { ExportedSpan, SpanProcessor } from './SpanProcessor';
+import { createTrackingConsentState } from '../tracking-consent';
 
 vi.mock('../telemetry', () => ({
   monitor:
@@ -86,6 +87,7 @@ describe('SpanProcessor', () => {
       expect(rawEvents).toHaveLength(1);
       expect(rawEvents[0].format).toBe(EventFormat.RUM);
       expect((rawEvents[0].data as { type: string }).type).toBe('resource');
+      expect(rawEvents[0].storageConsent).toBe('granted');
 
       expect(serverEvents).toHaveLength(1);
       expect(serverEvents[0].track).toBe(EventTrack.SPANS);
@@ -154,6 +156,67 @@ describe('SpanProcessor', () => {
       expect(resource._dd.trace_id).toBe('123');
       expect(resource._dd.span_id).toBe('456');
       expect(collected.filter((event) => event.kind === EventKind.SERVER)).toHaveLength(1);
+    });
+
+    it('does not persist a span when processing its resource revokes pending consent', () => {
+      processor.stop();
+      const trackingConsentState = createTrackingConsentState('pending');
+      new MainAssembly(
+        eventManager,
+        hooks,
+        new BeforeSend(() => {
+          trackingConsentState.update('not-granted');
+          return true;
+        }),
+        trackingConsentState
+      );
+      processor = new SpanProcessor(
+        eventManager,
+        hooks,
+        {
+          env: 'test',
+          service: 'test-service',
+          site: 'datadoghq.com',
+        } as Configuration,
+        trackingConsentState
+      );
+
+      publish([
+        [
+          createSpan({ type: 'system', meta: {}, metrics: { _sampling_priority_v1: 1 } }),
+          createSpan({ metrics: { _sampling_priority_v1: 1 } }),
+        ],
+      ]);
+
+      expect(collected.filter((event) => event.kind === EventKind.SERVER)).toEqual([]);
+    });
+
+    it('keeps a granted RUM resource when its span is exported after consent is revoked', () => {
+      processor.stop();
+      const trackingConsentState = createTrackingConsentState('granted');
+      new MainAssembly(eventManager, hooks, new BeforeSend(), trackingConsentState);
+      processor = new SpanProcessor(
+        eventManager,
+        hooks,
+        {
+          env: 'test',
+          service: 'test-service',
+          site: 'datadoghq.com',
+        } as Configuration,
+        trackingConsentState
+      );
+
+      trackingConsentState.update('not-granted');
+      publish([[createSpan({ metrics: { _sampling_priority_v1: 1 } })]]);
+
+      const serverEvents = collected.filter((event) => event.kind === EventKind.SERVER);
+      expect(serverEvents).toHaveLength(2);
+      expect(serverEvents).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ track: EventTrack.RUM, storageConsent: 'granted' }),
+          expect.objectContaining({ track: EventTrack.SPANS, storageConsent: 'granted' }),
+        ])
+      );
     });
   });
 
@@ -288,6 +351,29 @@ describe('SpanProcessor', () => {
   });
 
   describe('span envelope', () => {
+    it('routes spans and resources by every consent state crossed before completion', () => {
+      processor.stop();
+      vi.useFakeTimers();
+      vi.setSystemTime(1_025);
+      const state = createTrackingConsentState('granted');
+      vi.setSystemTime(1_030);
+      state.update('pending');
+      processor = new SpanProcessor(
+        eventManager,
+        hooks,
+        { env: 'test', service: 'test-service', site: 'datadoghq.com' } as Configuration,
+        state
+      );
+
+      publish([[createSpan()]]);
+
+      const rawEvent = collected.find((event) => event.kind === EventKind.RAW) as RawRumEvent;
+      const serverEvent = collected.find((event) => event.kind === EventKind.SERVER) as ServerSpansEvent;
+      expect(rawEvent.consentTime).toBe(1_050);
+      expect(serverEvent.storageConsent).toBe('pending');
+      vi.useRealTimers();
+    });
+
     it('should include the env in the envelope', () => {
       publish([[createSpan()]]);
 

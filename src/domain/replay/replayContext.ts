@@ -19,16 +19,11 @@ export function registerReplayContext(
       return SKIPPED;
     }
 
-    // has_replay reflects the main process's replay SAMPLING decision — mirroring the Browser SDK,
-    // where it means "replay is being recorded for this session" — not whether a segment has flushed
-    // yet. It is resolved for the event's *own* session (by startTime), like the session and
-    // profiling hooks, so a view event delivered after an expiry/renewal isn't stamped with the
-    // current session's decision. The main process is authoritative (it samples and uploads), so we
-    // always override the renderer's values. This avoids three failure modes:
-    //  - false positive: the renderer stamped has_replay but Electron sampled that session out;
-    //  - false negative: a segment is buffered but not yet flushed (short views / route changes)
-    //    when the view event is sent, which a flush-state-based flag would wrongly report as no replay;
-    //  - wrong-session: a late view event getting the current session's decision instead of its own.
+    // has_replay reflects the main process's replay sampling decision. RendererPipeline supplies
+    // receipt time, so replay, profiling and session enrichment agree on the native session.
+    // It does not guarantee playable data: after denial the collection waits for a full snapshot.
+    // Main-process segment counts remain authoritative; the Browser SDK cannot know which records
+    // Electron accepted or whether its session was sampled out.
     if (!isReplayActiveAt(startTime)) {
       // No replay for this session. Zero every replay_stats field (rather than omit) because
       // combine() merges key-by-key and skips undefined, so omitting would let stale renderer counts

@@ -14,6 +14,7 @@ import { DISCARDED } from '@datadog/js-core/assembly';
 import { createFormatHooks } from '../../../assembly';
 import { EventSource } from '../../../event';
 import { ViewContext } from './ViewContext';
+import { createTrackingConsentState } from '../../tracking-consent';
 
 vi.mock('node:fs/promises');
 const mfs = mockFs();
@@ -61,6 +62,27 @@ describe('ViewContext', () => {
   });
 
   describe('after add()', () => {
+    it('keeps pending view history off disk until grant and discards it on rejection', async () => {
+      const hooks = createFormatHooks();
+      const grantedState = createTrackingConsentState('pending');
+      const grantedContext = await ViewContext.init(hooks, EXPIRE_DELAY, grantedState);
+      grantedContext.add(VIEW_ID);
+      await Promise.resolve();
+
+      expect(mfs.writeFile).not.toHaveBeenCalled();
+      grantedContext.updateTrackingConsent({ previous: 'pending', current: 'granted' }, VIEW_ID);
+      await Promise.resolve();
+      expect(mfs.writeFile).toHaveBeenCalledOnce();
+
+      mfs.writeFile.mockClear();
+      const rejectedState = createTrackingConsentState('pending');
+      const rejectedContext = await ViewContext.init(createFormatHooks(), EXPIRE_DELAY, rejectedState);
+      rejectedContext.add('rejected-view');
+      rejectedContext.updateTrackingConsent({ previous: 'pending', current: 'not-granted' }, 'rejected-view');
+      await Promise.resolve();
+      expect(mfs.writeFile).not.toHaveBeenCalled();
+    });
+
     it('RUM hook returns id, name, url for main source', async () => {
       const hooks = createFormatHooks();
       const context = await ViewContext.init(hooks, EXPIRE_DELAY);
