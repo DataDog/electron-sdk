@@ -124,7 +124,7 @@ ipcMain.handle('main:before-send-error', (_event, behavior: 'scrub' | 'filter') 
     context: { beforeSend: behavior, email: 'customer@example.com' },
   });
 });
-// --- IPC demo handlers (each one becomes a captured IPC resource) ---
+// --- Network demo handlers (each request becomes a captured resource) ---
 
 ipcMain.handle('main:fetch-api', async () => {
   const data = await new Promise<string>((resolve, reject) => {

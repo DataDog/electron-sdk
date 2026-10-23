@@ -160,7 +160,7 @@ describe('reportConfiguration', () => {
   describe('use_trace_sampling_rules', () => {
     it('is true when trace sampling rules are configured', () => {
       const configuration = createTestConfiguration({
-        traceSamplingRules: [{ name: 'electron.main.handle', sampleRate: 0 }],
+        traceSamplingRules: [{ name: 'http.request', sampleRate: 0 }],
       });
 
       expect(report(configuration).use_trace_sampling_rules).toBe(true);

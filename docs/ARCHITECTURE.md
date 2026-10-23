@@ -344,7 +344,7 @@ Instrumentation is split between the SDK and dd-trace:
 
 **dd-trace** provides the span runtime and export pipeline:
 
-- Span creation API (`ddTrace.startSpan()`, `ddTrace.inject()`, `ddTrace.extract()`): used by the SDK's patches to create and propagate spans.
+- Span creation API (`ddTrace.startSpan()`, `ddTrace.inject()`): used by the SDK's patches to create and propagate spans.
 - The `electron` exporter: collects finished spans and publishes them to a Node.js diagnostics channel (`datadog:apm:electron:export`).
 
 dd-trace's own `electron` instrumentation plugin is explicitly disabled by setting `DD_TRACE_DISABLED_INSTRUMENTATIONS=electron` in `instrument-prelude.ts`, preventing it from double-wrapping `net` alongside the SDK's patches and from emitting IPC spans: the SDK does not trace IPC. This will be removed once the `electron` plugin is dropped from dd-trace.
@@ -373,7 +373,7 @@ Bundlers may reorder module evaluation and break this requirement; use the bundl
 ```
 Instrumented code (net.fetch, net.request)
     ↓
-SDK patches call ddTrace.startSpan() / inject() / extract()
+SDK patches call ddTrace.startSpan() / inject()
     ↓
 dd-trace electron exporter → diagnostics channel 'datadog:apm:electron:export'
     ↓
