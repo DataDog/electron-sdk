@@ -1,0 +1,17 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@datadog/electron-sdk": ["../dist/index.d.ts"]
+    },
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "outDir": "./dist"
+  },
+  "include": ["**/*.ts", "compatibility/config.json"],
+  "exclude": ["node_modules", "dist", "app", "integration/apps", "compatibility/generated"]
+}

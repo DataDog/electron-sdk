@@ -1,0 +1,31 @@
+{
+  "name": "forge-vite",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "yarn@4.17.1",
+  "main": ".vite/build/main.js",
+  "integration": {
+    "devMain": ".vite/build/main.js",
+    "packagedBinary": {
+      "darwin": "out/forge-vite-darwin-{arch}/forge-vite.app/Contents/MacOS/forge-vite",
+      "linux": "out/forge-vite-linux-{arch}/forge-vite",
+      "win32": "out/forge-vite-win32-{arch}/forge-vite.exe"
+    }
+  },
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package"
+  },
+  "dependencies": {
+    "@datadog/browser-rum": "7.5.0",
+    "@datadog/electron-sdk": "file:../../integration-sdk.tgz"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "7.11.2",
+    "@electron-forge/plugin-vite": "7.11.2",
+    "@types/node": "24.13.3",
+    "electron": "41.1.0",
+    "typescript": "5.9.3",
+    "vite": "8.1.5"
+  }
+}

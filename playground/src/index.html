@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; connect-src 'self' https://httpbin.org"
+    />
+    <title>Electron SDK Playground</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        height: 100%;
+        margin: 0;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+      }
+
+      .container {
+        background: rgba(255, 255, 255, 0.1);
+        padding: 40px;
+        border-radius: 12px;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        text-align: center;
+        max-width: 600px;
+        min-width: 400px;
+      }
+
+      h1 {
+        margin-top: 0;
+        font-size: 2.5em;
+        font-weight: 300;
+      }
+
+      h2 {
+        font-size: 1.2em;
+        font-weight: 400;
+        margin-bottom: 15px;
+      }
+
+      button {
+        background: white;
+        color: #667eea;
+        border: none;
+        padding: 15px 40px;
+        font-size: 18px;
+        font-weight: 600;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        margin: 20px 0;
+      }
+
+      button:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      }
+
+      button:active:not(:disabled) {
+        transform: translateY(0);
+      }
+
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .session-section {
+        margin-top: 20px;
+        text-align: left;
+      }
+
+      #session-content {
+        display: block;
+        background: rgba(0, 0, 0, 0.3);
+        padding: 8px 14px;
+        border-radius: 6px;
+        font-family: 'Courier New', monospace;
+        font-size: 13px;
+        margin: 0;
+        text-align: center;
+        letter-spacing: 0.5px;
+      }
+
+      .note {
+        margin-top: 20px;
+        font-size: 14px;
+        opacity: 0.8;
+      }
+
+      .button-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: center;
+        margin: 15px 0;
+      }
+
+      .button-group button {
+        margin: 0;
+        padding: 10px 20px;
+        font-size: 14px;
+      }
+
+      .button-group button.accent {
+        background: #667eea;
+        color: white;
+        border: 2px solid white;
+      }
+
+      .section-label {
+        font-size: 0.9em;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        opacity: 0.7;
+        margin: 20px 0 8px;
+      }
+
+      #ipc-log {
+        background: rgba(0, 0, 0, 0.3);
+        padding: 10px;
+        border-radius: 8px;
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+        text-align: left;
+        max-height: 200px;
+        overflow-y: auto;
+        min-height: 40px;
+      }
+
+      .log-entry {
+        padding: 2px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      .log-time {
+        opacity: 0.5;
+      }
+      .log-channel {
+        color: #a8d8ea;
+        font-weight: bold;
+      }
+      .log-duration {
+        color: #ffd166;
+      }
+      .log-preview {
+        opacity: 0.6;
+        font-size: 11px;
+      }
+      .log-pending .log-channel {
+        color: #ffd166;
+      }
+      .log-error .log-channel {
+        color: #ef476f;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Electron SDK Playground</h1>
+      <p>Testing @datadog/electron-sdk</p>
+
+      <div class="session-section">
+        <h2>Session ID:</h2>
+        <code id="session-content">Loading...</code>
+        <button id="open-rum-explorer" class="accent" style="margin-top: 8px; padding: 8px 16px; font-size: 13px">
+          Open in RUM Explorer
+        </button>
+      </div>
+
+      <div class="section-label">SDK Actions</div>
+      <div class="button-group">
+        <button id="stop-btn">Stop Session</button>
+        <button id="generate-activity">Generate Activity</button>
+        <button id="generate-telemetry-error">Generate Telemetry Error</button>
+        <button id="generate-renderer-log">Generate Renderer Log</button>
+        <button id="generate-uncaught-exception">Generate Uncaught Exception</button>
+        <button id="generate-renderer-error">Generate Renderer Error</button>
+        <button id="generate-unhandled-rejection">Generate Unhandled Rejection</button>
+        <button id="crash-btn">Crash</button>
+      </div>
+
+      <div class="section-label">Profiling</div>
+      <div class="button-group">
+        <button id="generate-long-task">Generate Long Task</button>
+      </div>
+
+      <div class="section-label">Fetch</div>
+      <div class="button-group">
+        <button id="demo-renderer-fetch">Renderer Fetch</button>
+        <button id="main-fetch">Main Fetch (https)</button>
+        <button id="main-fetch-fetch">Main Fetch (fetch)</button>
+        <button id="main-fetch-net">Main Fetch (net)</button>
+        <button id="main-fetch-net-drop">Main Fetch (net, drop trace)</button>
+      </div>
+
+      <div class="section-label">Custom Duration Vitals (main process)</div>
+      <div class="button-group">
+        <button id="vital-add">Add 1.5s "database.migration"</button>
+        <button id="vital-start">Start "document.open"</button>
+        <button id="vital-stop">Stop "document.open"</button>
+      </div>
+
+      <div class="section-label">Global Context (main process)</div>
+      <div class="button-group">
+        <button id="set-global-context">Set Global Context</button>
+        <button id="set-global-context-property">Set Property (feature_flag)</button>
+        <button id="remove-global-context-property">Remove Property (feature_flag)</button>
+        <button id="clear-global-context">Clear Global Context</button>
+      </div>
+
+      <div class="section-label">User &amp; Account Context</div>
+      <div class="button-group">
+        <button id="set-user-info">Set User Info</button>
+        <button id="add-user-extra-info">Add User Extra Info (plan=premium)</button>
+        <button id="clear-user-info">Clear User Info</button>
+      </div>
+      <div class="button-group">
+        <button id="set-account-info">Set Account Info</button>
+        <button id="add-account-extra-info">Add Account Extra Info (tier=enterprise)</button>
+        <button id="clear-account-info">Clear Account Info</button>
+      </div>
+      <div class="button-group">
+        <button id="get-user-info">Get User Info</button>
+        <button id="get-account-info">Get Account Info</button>
+        <button id="add-error">Add Error</button>
+      </div>
+
+      <div class="section-label">Operation Monitoring (main process, experimental)</div>
+      <div class="button-group">
+        <button id="op-start">Start "checkout"</button>
+        <button id="op-succeed">Succeed "checkout"</button>
+        <button id="op-fail">Fail "checkout" (error)</button>
+        <button id="op-keyed-start">Start "upload" (key=photo_1)</button>
+        <button id="op-keyed-succeed">Succeed "upload" (key=photo_1)</button>
+        <button id="op-parallel-uploads">Run 5 parallel uploads</button>
+      </div>
+
+      <div class="section-label">beforeSendRum</div>
+      <div class="button-group">
+        <button id="before-send-scrub">Scrub Error</button>
+        <button id="before-send-filter">Filter Error</button>
+      </div>
+
+      <div class="section-label">Process Lifecycle</div>
+      <div class="button-group">
+        <button id="open-secondary-window">Open Secondary Window</button>
+      </div>
+
+      <div class="session-section">
+        <h2>IPC Activity Log:</h2>
+        <div id="ipc-log" data-dd-privacy="mask"></div>
+      </div>
+    </div>
+
+    <script type="module" src="renderer.js"></script>
+  </body>
+</html>

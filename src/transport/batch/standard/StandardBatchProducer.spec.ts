@@ -1,0 +1,389 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import path from 'node:path';
+import type { StandardBatchProducerConfig as ProducerConfig } from './StandardBatchProducer';
+import { mockFs } from '../../../mocks.specUtil';
+import { StandardBatchProducer } from './StandardBatchProducer';
+import { display } from '../../../tools/display';
+
+vi.mock('node:fs/promises');
+vi.mock('../../../tools/display', () => ({
+  display: { error: vi.fn() },
+}));
+const fsMocks = mockFs();
+
+vi.mock('@datadog/js-core/time', () => ({
+  dateNow: vi.fn(() => 1234567890),
+}));
+
+function makeConfig(overrides: Partial<ProducerConfig> = {}): ProducerConfig {
+  return {
+    trackPath: '/mock/track/path',
+    batchSize: 1024,
+    ...overrides,
+  };
+}
+
+describe('StandardBatchProducer', () => {
+  let config: ProducerConfig;
+
+  beforeEach(() => {
+    fsMocks.reset();
+    config = makeConfig();
+
+    fsMocks.access.mockResolvedValue(undefined);
+    fsMocks.mkdir.mockResolvedValue(undefined);
+    fsMocks.readdir.mockResolvedValue([]);
+    fsMocks.appendFile.mockResolvedValue(undefined);
+    fsMocks.rename.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe('create()', () => {
+    it('creates track directory when missing', async () => {
+      fsMocks.access.mockRejectedValueOnce(new Error('ENOENT'));
+
+      await StandardBatchProducer.create(config);
+
+      expect(fsMocks.mkdir).toHaveBeenCalledWith(config.trackPath, { recursive: true });
+    });
+
+    it('does not create directory when it exists', async () => {
+      fsMocks.access.mockResolvedValueOnce(undefined);
+
+      await StandardBatchProducer.create(config);
+
+      expect(fsMocks.mkdir).not.toHaveBeenCalled();
+    });
+
+    it('rotates orphaned .tmp files from previous sessions to .log', async () => {
+      fsMocks.readdir.mockResolvedValueOnce(['batch-111.tmp', 'batch-222.tmp']);
+
+      await StandardBatchProducer.create(config);
+
+      expect(fsMocks.rename).toHaveBeenCalledWith(
+        path.join(config.trackPath, 'batch-111.tmp'),
+        path.join(config.trackPath, 'batch-111.log')
+      );
+      expect(fsMocks.rename).toHaveBeenCalledWith(
+        path.join(config.trackPath, 'batch-222.tmp'),
+        path.join(config.trackPath, 'batch-222.log')
+      );
+    });
+
+    it('does not rename non-.tmp files when rotating orphaned batches', async () => {
+      fsMocks.readdir.mockResolvedValueOnce(['batch-111.log', 'other.txt', 'batch-222.tmp']);
+
+      await StandardBatchProducer.create(config);
+
+      expect(fsMocks.rename).toHaveBeenCalledTimes(1);
+      expect(fsMocks.rename).toHaveBeenCalledWith(
+        path.join(config.trackPath, 'batch-222.tmp'),
+        path.join(config.trackPath, 'batch-222.log')
+      );
+    });
+
+    it('handles readdir failure gracefully when rotating orphaned batches', async () => {
+      fsMocks.readdir.mockRejectedValueOnce(new Error('ENOENT'));
+
+      await expect(StandardBatchProducer.create(config)).resolves.toBeDefined();
+    });
+
+    it('handles individual rename failure gracefully when rotating orphaned batches', async () => {
+      fsMocks.readdir.mockResolvedValueOnce(['batch-111.tmp', 'batch-222.tmp']);
+      fsMocks.rename.mockRejectedValueOnce(new Error('rename failed'));
+
+      await expect(StandardBatchProducer.create(config)).resolves.toBeDefined();
+      expect(fsMocks.rename).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('post() + write queue', () => {
+    it('serializes each post as JSON + newline and appends to the same .tmp file until rotation', async () => {
+      const producer = await StandardBatchProducer.create(config);
+
+      producer.post({ data: { a: 1 } });
+      producer.post({ data: { b: 2 } });
+      await producer.flush();
+
+      const tmp = path.join(config.trackPath, 'batch-1234567890-1.tmp');
+
+      expect(fsMocks.appendFile).toHaveBeenCalledTimes(2);
+      expect(fsMocks.appendFile).toHaveBeenNthCalledWith(1, tmp, `{"a":1}\n`, 'utf8');
+      expect(fsMocks.appendFile).toHaveBeenNthCalledWith(2, tmp, `{"b":2}\n`, 'utf8');
+    });
+
+    it('writes posts in call order', async () => {
+      const producer = await StandardBatchProducer.create(config);
+
+      producer.post({ data: { order: 1 } });
+      producer.post({ data: { order: 2 } });
+      producer.post({ data: { order: 3 } });
+
+      await producer.flush();
+
+      expect(fsMocks.appendFile).toHaveBeenCalledTimes(3);
+
+      expect(fsMocks.appendFile.mock.calls[0][1]).toBe(`{"order":1}\n`);
+      expect(fsMocks.appendFile.mock.calls[1][1]).toBe(`{"order":2}\n`);
+      expect(fsMocks.appendFile.mock.calls[2][1]).toBe(`{"order":3}\n`);
+    });
+
+    it('reports write errors to the customer and keeps the queue processing subsequent posts', async () => {
+      vi.mocked(display.error).mockClear();
+      fsMocks.appendFile.mockRejectedValueOnce(new Error('write failed')).mockResolvedValueOnce(undefined);
+
+      const producer = await StandardBatchProducer.create(config);
+
+      producer.post({ data: { bad: true } });
+      producer.post({ data: { good: true } });
+
+      await expect(producer.flush()).resolves.not.toThrow();
+      expect(fsMocks.appendFile).toHaveBeenCalledTimes(2);
+      expect(display.error).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('rotation behavior', () => {
+    it('flush() renames current batch from .tmp to .log', async () => {
+      const producer = await StandardBatchProducer.create(config);
+
+      producer.post({ data: { event: 'test' } });
+      await producer.flush();
+
+      const tmp = path.join(config.trackPath, 'batch-1234567890-1.tmp');
+      const log = path.join(config.trackPath, 'batch-1234567890-1.log');
+
+      expect(fsMocks.rename).toHaveBeenCalledWith(tmp, log);
+    });
+
+    it('flush() does nothing if no data was ever written', async () => {
+      const producer = await StandardBatchProducer.create(config);
+
+      await producer.flush();
+
+      expect(fsMocks.appendFile).not.toHaveBeenCalled();
+      expect(fsMocks.rename).not.toHaveBeenCalled();
+    });
+
+    it('rotates due to size limit BEFORE appending when current batch already has data', async () => {
+      const small = makeConfig({ batchSize: 20 });
+
+      const producer = await StandardBatchProducer.create(small);
+
+      const { dateNow } = await import('@datadog/js-core/time');
+      vi.mocked(dateNow)
+        .mockReturnValueOnce(111) // first tmp
+        .mockReturnValueOnce(222); // second tmp after rotation
+
+      producer.post({ data: { x: '123' } });
+      producer.post({ data: { x: '123' } });
+      await producer.flush();
+
+      const tmp1 = path.join(small.trackPath, 'batch-111-1.tmp');
+      const log1 = path.join(small.trackPath, 'batch-111-1.log');
+      const tmp2 = path.join(small.trackPath, 'batch-222-2.tmp');
+      const log2 = path.join(small.trackPath, 'batch-222-2.log');
+
+      expect(fsMocks.appendFile).toHaveBeenCalledTimes(2);
+      expect(fsMocks.appendFile).toHaveBeenNthCalledWith(1, tmp1, `{"x":"123"}\n`, 'utf8');
+      expect(fsMocks.appendFile).toHaveBeenNthCalledWith(2, tmp2, `{"x":"123"}\n`, 'utf8');
+
+      expect(fsMocks.rename).toHaveBeenCalledWith(tmp1, log1);
+      expect(fsMocks.rename).toHaveBeenCalledWith(tmp2, log2);
+    });
+
+    it('rotates before exceeding the configured event limit', async () => {
+      const capped = makeConfig({ maxEventsPerBatch: 2 });
+      const producer = await StandardBatchProducer.create(capped);
+
+      const { dateNow } = await import('@datadog/js-core/time');
+      vi.mocked(dateNow).mockReturnValueOnce(111).mockReturnValueOnce(222);
+
+      producer.post({ data: { order: 1 } });
+      producer.post({ data: { order: 2 } });
+      producer.post({ data: { order: 3 } });
+      await producer.flush();
+
+      const firstBatch = path.join(capped.trackPath, 'batch-111-1.tmp');
+      const secondBatch = path.join(capped.trackPath, 'batch-222-2.tmp');
+      expect(fsMocks.appendFile).toHaveBeenNthCalledWith(1, firstBatch, `{"order":1}\n`, 'utf8');
+      expect(fsMocks.appendFile).toHaveBeenNthCalledWith(2, firstBatch, `{"order":2}\n`, 'utf8');
+      expect(fsMocks.appendFile).toHaveBeenNthCalledWith(3, secondBatch, `{"order":3}\n`, 'utf8');
+      expect(fsMocks.rename).toHaveBeenCalledWith(firstBatch, firstBatch.replace(/\.tmp$/, '.log'));
+      expect(fsMocks.rename).toHaveBeenCalledWith(secondBatch, secondBatch.replace(/\.tmp$/, '.log'));
+    });
+
+    it('swallows rename/access errors during rotation and still resets state (new batch file is created after)', async () => {
+      const { dateNow } = await import('@datadog/js-core/time');
+      vi.mocked(dateNow).mockReturnValueOnce(1000).mockReturnValueOnce(2000);
+
+      fsMocks.rename.mockRejectedValueOnce(new Error('rename failed'));
+
+      const producer = await StandardBatchProducer.create(config);
+
+      producer.post({ data: { first: true } });
+      await producer.flush();
+
+      producer.post({ data: { second: true } });
+      await producer.flush();
+
+      const tmp1 = path.join(config.trackPath, 'batch-1000-1.tmp');
+      const tmp2 = path.join(config.trackPath, 'batch-2000-2.tmp');
+
+      const appendedFiles = fsMocks.appendFile.mock.calls.map((c) => String(c[0]));
+      expect(appendedFiles).toContain(tmp1);
+      expect(appendedFiles).toContain(tmp2);
+    });
+  });
+
+  describe('flush ordering', () => {
+    it('finishes a flush before writing events posted after it', async () => {
+      const producer = await StandardBatchProducer.create(config);
+      let releaseRotation!: () => void;
+      const rotation = new Promise<void>((resolve) => (releaseRotation = resolve));
+      let notifyRotationStarted!: () => void;
+      const rotationStarted = new Promise<void>((resolve) => (notifyRotationStarted = resolve));
+      fsMocks.rename.mockImplementationOnce(() => {
+        notifyRotationStarted();
+        return rotation;
+      });
+
+      producer.post({ data: { order: 1 } });
+      const flush = producer.flush();
+      producer.post({ data: { order: 2 } });
+      await rotationStarted;
+      expect(fsMocks.appendFile).toHaveBeenCalledTimes(1);
+
+      releaseRotation();
+      await flush;
+      await producer.flush();
+
+      expect(fsMocks.appendFile).toHaveBeenNthCalledWith(
+        2,
+        path.join(config.trackPath, 'batch-1234567890-2.tmp'),
+        '{"order":2}\n',
+        'utf8'
+      );
+    });
+  });
+
+  describe('directory handling', () => {
+    it('calls mkdir recursively when directory is missing during a write', async () => {
+      // create() consumes one ensureTrackDirectory call and we want the failure to happen during writeData().
+      // So we make create succeed and then fail for the subsequent access.
+      fsMocks.access.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('ENOENT'));
+
+      const producer = await StandardBatchProducer.create(config);
+
+      producer.post({ data: { event: 'test' } });
+      await producer.flush();
+
+      expect(fsMocks.mkdir).toHaveBeenCalledWith(config.trackPath, { recursive: true });
+    });
+
+    it('does not mkdir when access succeeds during a write', async () => {
+      const producer = await StandardBatchProducer.create(config);
+
+      producer.post({ data: { event: 'test' } });
+      await producer.flush();
+
+      expect(fsMocks.mkdir).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('overflow eviction', () => {
+    it('evicts the oldest .log files when the pending count exceeds the cap', async () => {
+      // 102 pending .log files, cap is 100 -> the 2 oldest should be evicted.
+      const logFiles = Array.from({ length: 102 }, (_, i) => `batch-${String(i).padStart(4, '0')}.log`);
+      fsMocks.unlink.mockResolvedValue(undefined);
+
+      const producer = await StandardBatchProducer.create(config);
+      fsMocks.readdir.mockResolvedValueOnce(logFiles);
+
+      producer.post({ data: { event: 'test' } });
+      await producer.flush();
+
+      expect(fsMocks.unlink).toHaveBeenCalledTimes(2);
+      expect(fsMocks.unlink).toHaveBeenCalledWith(path.join(config.trackPath, 'batch-0000.log'));
+      expect(fsMocks.unlink).toHaveBeenCalledWith(path.join(config.trackPath, 'batch-0001.log'));
+    });
+
+    it('still evicts when the write fails (e.g. ENOSPC)', async () => {
+      // The full-disk case is exactly what the cap targets: a failed write must not skip eviction,
+      // or the backlog is never trimmed and no space is ever freed.
+      const logFiles = Array.from({ length: 102 }, (_, i) => `batch-${String(i).padStart(4, '0')}.log`);
+      fsMocks.unlink.mockResolvedValue(undefined);
+
+      const producer = await StandardBatchProducer.create(config);
+      fsMocks.readdir.mockResolvedValueOnce(logFiles);
+      fsMocks.appendFile.mockRejectedValue(new Error('ENOSPC'));
+
+      producer.post({ data: { event: 'test' } });
+      await producer.flush();
+
+      expect(fsMocks.unlink).toHaveBeenCalledWith(path.join(config.trackPath, 'batch-0000.log'));
+      expect(fsMocks.unlink).toHaveBeenCalledWith(path.join(config.trackPath, 'batch-0001.log'));
+    });
+
+    it('orders by sequence numerically, not lexically, when timestamps tie', async () => {
+      // Real names carry an unpadded sequence: batch-<ms>-<seq>. With the same ms, a lexical sort would
+      // rank seq 10 before seq 9; the oldest are seq 1 and 2, not seq 1 and 10.
+      const logFiles = Array.from({ length: 102 }, (_, i) => `batch-100-${i + 1}.log`);
+      fsMocks.unlink.mockResolvedValue(undefined);
+
+      const producer = await StandardBatchProducer.create(config);
+      fsMocks.readdir.mockResolvedValueOnce(logFiles);
+
+      producer.post({ data: { event: 'test' } });
+      await producer.flush();
+
+      expect(fsMocks.unlink).toHaveBeenCalledTimes(2);
+      expect(fsMocks.unlink).toHaveBeenCalledWith(path.join(config.trackPath, 'batch-100-1.log'));
+      expect(fsMocks.unlink).toHaveBeenCalledWith(path.join(config.trackPath, 'batch-100-2.log'));
+      expect(fsMocks.unlink).not.toHaveBeenCalledWith(path.join(config.trackPath, 'batch-100-10.log'));
+    });
+
+    it('flushes migrated completed files down to the cap without requiring a new event', async () => {
+      const producer = await StandardBatchProducer.create(config);
+      const logFiles = Array.from({ length: 102 }, (_, i) => `batch-100-${i + 1}.log`);
+      const files = new Set([...logFiles, 'batch-101-1.tmp']);
+      fsMocks.readdir.mockImplementation(() => Promise.resolve([...files]));
+      fsMocks.unlink.mockImplementation((filePath: string) => {
+        files.delete(path.basename(filePath));
+        return Promise.resolve();
+      });
+
+      await producer.flush();
+
+      expect([...files]).toEqual([...logFiles.slice(2), 'batch-101-1.tmp']);
+      expect(fsMocks.appendFile).not.toHaveBeenCalled();
+    });
+
+    it('does not evict when the pending count is within the cap', async () => {
+      fsMocks.readdir.mockResolvedValue(['batch-0000.log', 'batch-0001.log']);
+      fsMocks.unlink.mockResolvedValue(undefined);
+
+      const producer = await StandardBatchProducer.create(config);
+
+      producer.post({ data: { event: 'test' } });
+      await producer.flush();
+
+      expect(fsMocks.unlink).not.toHaveBeenCalled();
+    });
+
+    it('does not throw or evict when the directory cannot be read', async () => {
+      const producer = await StandardBatchProducer.create(config);
+      // Make the eviction's readdir fail; it must be swallowed, leaving the write queue healthy.
+      fsMocks.readdir.mockRejectedValue(new Error('EACCES'));
+      fsMocks.unlink.mockResolvedValue(undefined);
+
+      producer.post({ data: { event: 'test' } });
+      await expect(producer.flush()).resolves.toBeUndefined();
+
+      expect(fsMocks.unlink).not.toHaveBeenCalled();
+    });
+  });
+});

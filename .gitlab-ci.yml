@@ -1,0 +1,191 @@
+variables:
+  CI_IMAGE_REPO: 'ci/${CI_PROJECT_NAME}'
+  CI_IMAGE: 'registry.ddbuild.io/ci/electron-sdk:v120778963-d70c392e@sha256:fbd772ca8047e7992bc030306e287e8c35d8cf5a5daba327c4024b5a4d009c4f' # https://gitlab.ddbuild.io/DataDog/electron-sdk/-/jobs/1800425126
+  COMPATIBILITY_TESTS:
+    value: 'false'
+    options:
+      - 'false'
+      - 'true'
+    description: 'Run compatibility tests instead of regular checks in web or scheduled pipelines. Default-branch pushes run both automatically.'
+  DD_ELECTRON_COMPATIBILITY_ENVIRONMENTS:
+    value: ''
+    description: 'Optional comma-separated compatibility environments, for example linux,macos,windows.'
+  DD_ELECTRON_COMPATIBILITY_TARGETS:
+    value: ''
+    description: 'Optional comma-separated compatibility targets, for example electron-41,electron-44.'
+
+stages:
+  - docker
+  - test
+  - compatibility
+  - notify
+
+default:
+  tags: ['arch:amd64']
+  image: $CI_IMAGE
+  interruptible: true
+
+workflow:
+  rules:
+    - if: "$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != 'main'"
+      auto_cancel:
+        on_new_commit: interruptible # short-lived branches cancel on new commits
+    - when: always # main, tags: never auto-canceled
+      auto_cancel:
+        on_new_commit: none
+
+.regular-pipeline:
+  rules:
+    - if: '$COMPATIBILITY_TESTS != "true"'
+
+.compatibility-pipeline:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_PIPELINE_SOURCE =~ /^(schedule|web)$/ && $COMPATIBILITY_TESTS == "true"'
+
+build-container-image:
+  stage: docker
+  image: 'registry.ddbuild.io/images/docker:27.3.1'
+  interruptible: false
+  rules:
+    - if: '$COMPATIBILITY_TESTS == "true"'
+      when: never
+    - when: manual
+      allow_failure: true
+  id_tokens:
+    DDSIGN_ID_TOKEN:
+      aud: image-integrity
+  script:
+    - METADATA_FILE=$(mktemp)
+    - CI_IMAGE_TAG="v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}"
+    - docker buildx build --platform=linux/amd64 --label target=build --tag registry.ddbuild.io/${CI_IMAGE_REPO}:${CI_IMAGE_TAG} --push --metadata-file ${METADATA_FILE} .
+    - ddsign sign registry.ddbuild.io/${CI_IMAGE_REPO}:${CI_IMAGE_TAG} --docker-metadata-file ${METADATA_FILE}
+
+format:
+  extends: .regular-pipeline
+  stage: test
+  script:
+    - yarn
+    - yarn format:check
+
+lint:
+  extends: .regular-pipeline
+  stage: test
+  script:
+    - yarn
+    - yarn lint
+
+build:
+  extends: .regular-pipeline
+  stage: test
+  script:
+    - yarn
+    - yarn build
+
+unit:
+  extends: .regular-pipeline
+  stage: test
+  script:
+    - yarn
+    - yarn test:unit
+
+check-node-version:
+  extends: .regular-pipeline
+  stage: test
+  script:
+    - yarn
+    - node scripts/check-node-version.ts
+
+check-licenses:
+  extends: .regular-pipeline
+  stage: test
+  script:
+    - yarn
+    - node scripts/check-licenses.ts
+
+check-package-content:
+  extends: .regular-pipeline
+  stage: test
+  script:
+    - yarn
+    - yarn build
+    - node scripts/check-package-content.ts
+
+e2e:
+  extends: .regular-pipeline
+  stage: test
+  script:
+    - yarn
+    - yarn test:e2e:init
+    - xvfb-run -a yarn test:e2e
+  artifacts:
+    when: on_failure
+    paths:
+      - test-results/
+      - playwright-report/
+
+integration:
+  extends: .regular-pipeline
+  stage: test
+  script:
+    - yarn
+    - yarn test:integration:init
+    - xvfb-run -a yarn test:integration
+  artifacts:
+    when: on_failure
+    paths:
+      - test-results/
+      - playwright-report/
+
+playground:
+  extends: .regular-pipeline
+  stage: test
+  script:
+    - yarn
+    - yarn build
+    - yarn dev:init
+    - cd playground && xvfb-run -a yarn test
+
+generate-compatibility-pipeline:
+  stage: compatibility
+  extends: .compatibility-pipeline
+  script:
+    - yarn install --immutable
+    - yarn test:compatibility:ci:generate
+  artifacts:
+    paths:
+      - e2e/compatibility/generated.gitlab-ci.yml
+
+compatibility:
+  stage: compatibility
+  extends: .compatibility-pipeline
+  needs:
+    - generate-compatibility-pipeline
+  trigger:
+    include:
+      - artifact: e2e/compatibility/generated.gitlab-ci.yml
+        job: generate-compatibility-pipeline
+    strategy: depend
+    forward:
+      pipeline_variables: true
+
+########################################################################################################################
+# Notify
+########################################################################################################################
+
+include: 'https://gitlab-templates.ddbuild.io/slack-notifier/v3-sdm/template.yml'
+
+notify-failure:
+  extends:
+    - .slack-notifier.on-failure
+
+notify-release-ready:
+  extends:
+    - .slack-notifier-channel-base
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/'
+  script:
+    - !reference [.slack-notifier-channel-base, script]
+    - WORKFLOW_URL="https://github.com/DataDog/electron-sdk/actions/workflows/publish.yml"
+    - 'MESSAGE=":memo: Release PR for ${CI_COMMIT_TAG} is open for review. Once merged, trigger the <${WORKFLOW_URL}|publish workflow> from \`${CI_COMMIT_TAG}\`"'
+    - postmessage "#rum-electron-sdk-ops" "$MESSAGE"

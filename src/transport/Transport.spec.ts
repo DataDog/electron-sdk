@@ -1,0 +1,215 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createFormatHooks } from '../assembly';
+import { BatchSizes, BatchUploadFrequencies } from '../config';
+import { TrackingConsentManager } from '../domain/tracking-consent';
+import type { RawEvent, ServerEvent, ServerProfileEvent } from '../event';
+import { EventKind, EventTrack, EventManager } from '../event';
+import { createTestConfiguration } from '../mocks.specUtil';
+import { Transport } from './Transport';
+
+vi.mock('electron', () => ({
+  app: {
+    getPath: vi.fn(() => '/mock/user/data'),
+  },
+}));
+vi.mock('node:fs/promises');
+
+const { mockBatchPost, mockBatchFlush, mockBatchCreate, mockClearPendingData } = vi.hoisted(() => {
+  const mockBatchPost = vi.fn();
+  const mockBatchFlush = vi.fn().mockResolvedValue(undefined);
+  const mockBatchCreate = vi.fn().mockResolvedValue({
+    post: mockBatchPost,
+    flush: mockBatchFlush,
+    stop: vi.fn(),
+  });
+
+  const mockClearPendingData = vi.fn<(trackPath: string) => Promise<void>>().mockResolvedValue(undefined);
+  return { mockBatchPost, mockBatchFlush, mockBatchCreate, mockClearPendingData };
+});
+
+vi.mock('./batch', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./batch')>()),
+  BatchManager: { create: mockBatchCreate },
+  BatchMigration: { clearPendingData: mockClearPendingData },
+}));
+
+describe('Transport', () => {
+  let eventManager: EventManager;
+  let trackingConsentManager: TrackingConsentManager;
+  let config: ReturnType<typeof createTestConfiguration>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    eventManager = new EventManager();
+    trackingConsentManager = await TrackingConsentManager.init(createFormatHooks());
+    config = createTestConfiguration();
+  });
+
+  describe('create', () => {
+    it('should register event handlers for known tracks', async () => {
+      const spy = vi.spyOn(eventManager, 'registerHandler');
+      await Transport.create(config, eventManager, trackingConsentManager);
+
+      expect(spy).toHaveBeenCalled();
+    });
+
+    it('should share the same consent manager across all tracks', async () => {
+      await Transport.create(config, eventManager, trackingConsentManager);
+
+      expect(mockBatchCreate).toHaveBeenCalledTimes(5);
+      for (const [, , consentManager] of mockBatchCreate.mock.calls) {
+        expect(consentManager).toBe(trackingConsentManager);
+      }
+    });
+
+    it('should finish clearing stale pending data before setting up tracks, including when some are disabled', async () => {
+      const minimalConfig = createTestConfiguration({ profilingSampleRate: 0, sessionReplaySampleRate: 0 });
+      let finishCleanup!: () => void;
+      mockClearPendingData.mockReturnValueOnce(new Promise<void>((resolve) => (finishCleanup = resolve)));
+
+      const startup = Transport.create(minimalConfig, eventManager, trackingConsentManager);
+
+      expect(mockClearPendingData).toHaveBeenCalled();
+      expect(mockBatchCreate).not.toHaveBeenCalled();
+
+      finishCleanup();
+      await startup;
+      expect(mockClearPendingData.mock.calls.map(([trackPath]) => trackPath).sort()).toEqual(
+        ['rum', 'spans', 'dd_logs', 'profile', 'replay'].map((track) => `/mock/user/data/${track}`).sort()
+      );
+      expect(mockBatchCreate).toHaveBeenCalledTimes(3);
+    });
+
+    it('should setup the PROFILE track when profiling is enabled', async () => {
+      await Transport.create(config, eventManager, trackingConsentManager);
+
+      const tracks = mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType);
+      expect(tracks).toContain(EventTrack.PROFILE);
+    });
+
+    it('should skip the PROFILE track when profiling is disabled', async () => {
+      const configWithoutProfiling = createTestConfiguration({ profilingSampleRate: 0 });
+      await Transport.create(configWithoutProfiling, eventManager, trackingConsentManager);
+
+      const tracks = mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType);
+      expect(tracks).not.toContain(EventTrack.PROFILE);
+      expect(tracks).toEqual([EventTrack.RUM, EventTrack.SPANS, EventTrack.LOGS, EventTrack.REPLAY]);
+    });
+
+    it('should always setup the LOGS track', async () => {
+      const minimalConfig = createTestConfiguration({ profilingSampleRate: 0, sessionReplaySampleRate: 0 });
+      await Transport.create(minimalConfig, eventManager, trackingConsentManager);
+
+      const tracks = mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType);
+      expect(tracks).toContain(EventTrack.LOGS);
+    });
+
+    it('should skip the REPLAY track when replay is disabled', async () => {
+      const configWithoutReplay = createTestConfiguration({ sessionReplaySampleRate: 0 });
+      await Transport.create(configWithoutReplay, eventManager, trackingConsentManager);
+
+      const tracks = mockBatchCreate.mock.calls.map(([, options]) => (options as { trackType: EventTrack }).trackType);
+      expect(tracks).not.toContain(EventTrack.REPLAY);
+    });
+  });
+
+  describe('event handling', () => {
+    it('should handle SERVER events matching domain track type', async () => {
+      await Transport.create(config, eventManager, trackingConsentManager);
+
+      eventManager.notify({
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        data: { test: 'data' },
+      } as unknown as ServerEvent);
+
+      expect(mockBatchPost).toHaveBeenCalledWith({
+        kind: EventKind.SERVER,
+        track: EventTrack.RUM,
+        data: { test: 'data' },
+      });
+    });
+
+    it('should not handle events that do not match', async () => {
+      await Transport.create(config, eventManager, trackingConsentManager);
+
+      eventManager.notify({
+        kind: EventKind.RAW,
+        source: 'main-process',
+        data: { test: 'data' },
+      } as unknown as RawEvent);
+
+      expect(mockBatchPost).not.toHaveBeenCalled();
+    });
+
+    it('should not handle SERVER events with different track type', async () => {
+      // A track this configuration does not set up, so no handler claims the event.
+      const configWithoutReplay = createTestConfiguration({ sessionReplaySampleRate: 0 });
+      await Transport.create(configWithoutReplay, eventManager, trackingConsentManager);
+
+      eventManager.notify({
+        kind: EventKind.SERVER,
+        track: EventTrack.REPLAY,
+        data: { test: 'data' },
+      } as unknown as ServerEvent);
+
+      expect(mockBatchPost).not.toHaveBeenCalled();
+    });
+
+    it('should forward SERVER PROFILE events to a batch manager', async () => {
+      await Transport.create(config, eventManager, trackingConsentManager);
+
+      eventManager.notify({
+        kind: EventKind.SERVER,
+        track: EventTrack.PROFILE,
+        data: { start: 0 },
+        trace: { spans: [] },
+      } as unknown as ServerProfileEvent);
+
+      expect(mockBatchPost).toHaveBeenCalledWith({
+        kind: EventKind.SERVER,
+        track: EventTrack.PROFILE,
+        data: { start: 0 },
+        trace: { spans: [] },
+      });
+    });
+  });
+
+  describe('flush', () => {
+    it('should flush all batch managers including profiling', async () => {
+      const transport = await Transport.create(config, eventManager, trackingConsentManager);
+      await transport.flush();
+
+      // RUM + SPANS + LOGS + PROFILE + REPLAY
+      expect(mockBatchFlush).toHaveBeenCalledTimes(5);
+    });
+  });
+
+  describe('batch configuration', () => {
+    it('should translate the resolved batch size to a byte threshold', async () => {
+      const configWithBatchSize = createTestConfiguration({ batchSize: 'SMALL' });
+      await Transport.create(configWithBatchSize, eventManager, trackingConsentManager);
+
+      expect(mockBatchCreate).toHaveBeenCalledWith(
+        configWithBatchSize,
+        expect.objectContaining({
+          batchSize: BatchSizes.SMALL,
+        }),
+        trackingConsentManager
+      );
+    });
+
+    it('should translate the resolved upload frequency to an interval', async () => {
+      const configWithFrequency = createTestConfiguration({ uploadFrequency: 'FREQUENT' });
+      await Transport.create(configWithFrequency, eventManager, trackingConsentManager);
+
+      expect(mockBatchCreate).toHaveBeenCalledWith(
+        configWithFrequency,
+        expect.objectContaining({
+          uploadFrequency: BatchUploadFrequencies.FREQUENT,
+        }),
+        trackingConsentManager
+      );
+    });
+  });
+});

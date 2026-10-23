@@ -1,0 +1,172 @@
+{
+  "name": "@datadog/electron-sdk",
+  "version": "0.10.0",
+  "description": "DataDog SDK for Electron applications",
+  "packageManager": "yarn@4.17.1",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.cjs",
+      "import": "./dist/index.mjs"
+    },
+    "./instrument": {
+      "types": "./dist/instrument.d.ts",
+      "require": "./dist/instrument.cjs",
+      "import": "./dist/instrument.mjs"
+    },
+    "./vite-plugin": {
+      "types": "./dist/vite-plugin.d.ts",
+      "require": "./dist/vite-plugin.cjs",
+      "import": "./dist/vite-plugin.mjs"
+    },
+    "./webpack-plugin": {
+      "types": "./dist/webpack-plugin.d.ts",
+      "require": "./dist/webpack-plugin.cjs",
+      "import": "./dist/webpack-plugin.mjs"
+    },
+    "./esbuild-plugin": {
+      "types": "./dist/esbuild-plugin.d.ts",
+      "require": "./dist/esbuild-plugin.cjs",
+      "import": "./dist/esbuild-plugin.mjs"
+    },
+    "./preload": "./dist/preload.js"
+  },
+  "typesVersions": {
+    "*": {
+      "instrument": [
+        "./dist/instrument.d.ts"
+      ],
+      "vite-plugin": [
+        "./dist/vite-plugin.d.ts"
+      ],
+      "webpack-plugin": [
+        "./dist/webpack-plugin.d.ts"
+      ],
+      "esbuild-plugin": [
+        "./dist/esbuild-plugin.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "dist/index.cjs",
+    "dist/index.cjs.map",
+    "dist/index.mjs",
+    "dist/index.mjs.map",
+    "dist/index.d.ts",
+    "dist/wasm.chunk.cjs",
+    "dist/wasm.chunk.cjs.map",
+    "dist/wasm.chunk.mjs",
+    "dist/wasm.chunk.mjs.map",
+    "dist/instrument.cjs",
+    "dist/instrument.cjs.map",
+    "dist/instrument.mjs",
+    "dist/instrument.mjs.map",
+    "dist/instrument.d.ts",
+    "dist/vite-plugin.cjs",
+    "dist/vite-plugin.cjs.map",
+    "dist/vite-plugin.mjs",
+    "dist/vite-plugin.mjs.map",
+    "dist/vite-plugin.d.ts",
+    "dist/webpack-plugin.cjs",
+    "dist/webpack-plugin.cjs.map",
+    "dist/webpack-plugin.mjs",
+    "dist/webpack-plugin.mjs.map",
+    "dist/webpack-plugin.d.ts",
+    "dist/esbuild-plugin.cjs",
+    "dist/esbuild-plugin.cjs.map",
+    "dist/esbuild-plugin.mjs",
+    "dist/esbuild-plugin.mjs.map",
+    "dist/esbuild-plugin.d.ts",
+    "dist/preload.js",
+    "README.md",
+    "LICENSE",
+    "LICENSE-3rdparty.csv"
+  ],
+  "scripts": {
+    "repo:init": "yarn install && scripts/cli init_submodule && yarn dev:init && yarn test:e2e:init",
+    "prepack": "node scripts/clean-build-output.ts && yarn build",
+    "prepare": "husky",
+    "json-schemas:sync": "scripts/cli sync_schemas",
+    "json-schemas:generate": "scripts/cli generate_schemas",
+    "build": "rollup -c",
+    "build:watch": "rollup -c --watch",
+    "build:wasm": "node scripts/build-minidump-processor.ts",
+    "typecheck": "tsc -b --noEmit",
+    "dev:init": "cd playground && yarn install",
+    "dev": "scripts/cli dev",
+    "test": "vitest",
+    "test:unit": "vitest run --coverage",
+    "test:e2e:init": "yarn build && cd e2e/app && yarn install && yarn build",
+    "test:e2e": "playwright test -c e2e --project=e2e",
+    "test:e2e:debug": "playwright test -c e2e --project=e2e --debug",
+    "test:integration:init": "yarn build && cd e2e/app && yarn install && cd ../.. && yarn pack --out e2e/integration/integration-sdk.tgz && node scripts/install-integration-apps.ts",
+    "test:integration": "playwright test -c e2e --grep @integration",
+    "lint": "yarn dev:init && yarn test:e2e:init && eslint . --max-warnings 0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "release": "node scripts/prepare-release.ts",
+    "test:compatibility:init": "node scripts/prepare-compatibility-target.ts",
+    "test:compatibility": "node scripts/run-compatibility-tests.ts",
+    "test:compatibility:ci:generate": "node scripts/generate-compatibility-ci.ts"
+  },
+  "devDependencies": {
+    "@datadog/browser-core": "7.5.0",
+    "@datadog/js-core": "0.0.5",
+    "@electron/get": "2.0.3",
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.61.1",
+    "@rollup/plugin-commonjs": "29.0.3",
+    "@rollup/plugin-json": "6.1.0",
+    "@rollup/plugin-node-resolve": "16.0.3",
+    "@rollup/plugin-replace": "6.0.3",
+    "@rollup/plugin-typescript": "12.3.0",
+    "@types/node": "24.13.3",
+    "@vitest/coverage-v8": "4.1.10",
+    "@vitest/ui": "4.1.10",
+    "concurrently": "10.0.3",
+    "electron": "41.1.0",
+    "eslint": "10.7.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-prettier": "5.5.6",
+    "eslint-plugin-unicorn": "76.0.0",
+    "husky": "9.1.7",
+    "jsdom": "30.0.1",
+    "json-schema-to-typescript": "bcaudan/json-schema-to-typescript#bcaudan/add-readonly-support",
+    "lint-staged": "17.1.0",
+    "playwright": "1.61.1",
+    "prettier": "3.9.5",
+    "rollup": "4.62.2",
+    "rollup-plugin-dts": "6.4.1",
+    "tslib": "2.8.1",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.64.0",
+    "vitest": "4.1.10",
+    "yaml": "2.9.0"
+  },
+  "dependencies": {
+    "dd-trace": "6.10.0"
+  },
+  "peerDependencies": {
+    "electron": ">=39"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DataDog/electron-sdk.git"
+  },
+  "volta": {
+    "node": "25.9.0",
+    "yarn": "4.17.1"
+  },
+  "lint-staged": {
+    "*.{ts,mts,cts}": [
+      "prettier --write",
+      "eslint --max-warnings 0 --no-warn-ignored"
+    ],
+    "*.{js,mjs,cjs,json,yml,yaml,md}": [
+      "prettier --write"
+    ]
+  }
+}
