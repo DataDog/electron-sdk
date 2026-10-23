@@ -14,7 +14,7 @@ export interface ConfigurationTelemetryContext {
 }
 
 /**
- * Report the resolved SDK configuration, at most once per process.
+ * Report the resolved SDK configuration, once per `init()`.
  *
  * Reports *effective* values rather than what the customer passed: an unset option still produces
  * behaviour, and telemetry should describe what the SDK does. Sample rates nested under another rate
@@ -69,8 +69,8 @@ function buildConfigurationTelemetry(
  * Display count, omitted when it cannot be read.
  *
  * A snapshot, not a lifetime value: displays are attached and removed while an app runs, and this
- * event is sent at most once per process. Electron's `screen` module throws before the app `ready`
- * event, which the report can precede: the count is then omitted rather than failing the report.
+ * event is sent once per process. Electron's `screen` module throws before the app `ready` event and
+ * `init()` is not required to run after it, so an early `init()` reports nothing rather than failing.
  */
 function resolveNumberOfDisplays(): number | undefined {
   if (!app.isReady()) {

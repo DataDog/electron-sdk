@@ -273,9 +273,9 @@ Each type is gated by its own sampling, deduplication and rate-limiting policy:
   one per process and it must not be starved by a burst of errors.
 
 The configuration event is reported at the end of `init()` — the transport must be registered for it
-to reach a batch, and every component whose state it describes must be constructed. When consent is
-not granted at that point, it is reported at the first grant, as in the Browser SDK: while consent is
-refused nothing would store it, and while it is pending a refusal would delete it. It reports
+to reach a batch, and every component whose state it describes must be constructed. Like other
+telemetry, it follows the consent: when consent is refused at that point, or pending then refused,
+it is not reported, even at a later grant. It reports
 _effective_ values (`src/domain/telemetry/configurationTelemetry.ts`): an unset option still produces
 behaviour, so defaults are resolved rather than reported as absent.
 

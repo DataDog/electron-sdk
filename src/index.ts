@@ -89,19 +89,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   // component whose state it describes must be constructed. Monitored so a failure anywhere in the
   // telemetry pipeline degrades telemetry rather than rejecting `init()`.
   const { telemetryInitialized: useTracing, version: tracerVersion } = tracing;
-  const report = () => callMonitored(() => reportConfiguration(config, { useTracing, tracerVersion }));
-  if (trackingConsentManager.get() === 'granted') {
-    report();
-  } else {
-    // Reported once consent is granted, as in the Browser SDK: while consent is refused nothing would store the
-    // event, and while it is pending a refusal would delete it.
-    const subscription = trackingConsentManager.subscribe(({ current }) => {
-      if (current === 'granted') {
-        subscription.unsubscribe();
-        report();
-      }
-    });
-  }
+  callMonitored(() => reportConfiguration(config, { useTracing, tracerVersion }));
 
   return true;
 }
