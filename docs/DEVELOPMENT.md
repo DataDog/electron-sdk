@@ -24,6 +24,22 @@ Run tools with `yarn <command>` or from `node_modules/.bin`, never `npx`. Run ap
 - **Unit tests**: `yarn test:unit` - For SDK code changes
 - **E2E tests**: `yarn test:e2e:init && yarn test:e2e` - For integration testing
 
+### Public API Checklist
+
+When adding or renaming a customer-facing API, include the following in the same PR:
+
+- [ ] Export it from `src/index.ts` or its package entry point, with [JSDoc](CONVENTIONS.md#jsdoc).
+- [ ] Add the domain implementation and unit coverage, including
+      [runtime validation](CONVENTIONS.md#runtime-validation) and
+      [compatibility aliases](CONVENTIONS.md#deprecated-aliases) when applicable.
+- [ ] Report API usage and any new configuration according to the [telemetry rules](CONVENTIONS.md#telemetry).
+- [ ] Add a usage example to the matching README feature section.
+- [ ] Add a control or integration example in `playground/` so the API can be exercised locally.
+- [ ] Exercise the API through `e2e/app/`, updating page objects in `e2e/lib/` as needed, and assert on captured intake
+      events in the feature's scenario file under `e2e/scenarios/`. See the [test layer rules](TESTING.md#test-layers).
+- [ ] Rebuild the SDK with `yarn build` before typechecking or building the playground and e2e app. Their `portal:`
+      dependencies read SDK declarations from `dist/`; stale declarations can hide new exports or retain removed ones.
+
 ### Git Hooks
 
 The project uses [husky](https://typicode.github.io/husky/) and [lint-staged](https://github.com/lint-staged/lint-staged) for git hooks:
