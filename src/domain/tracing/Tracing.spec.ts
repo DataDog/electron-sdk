@@ -24,7 +24,7 @@ function createTracerRequire() {
 }
 
 describe('Tracing', () => {
-  afterEach(() => setCurrentSessionSampled(true));
+  afterEach(() => setCurrentSessionSampled(false));
 
   it('initializes dd-trace with normalized matching rules and a fallback sample rate', () => {
     const { init, requireFn } = createTracerRequire();
@@ -111,6 +111,7 @@ describe('Tracing', () => {
     });
 
     const propagationBlocklist = (use.mock.calls[0][1] as { propagationBlocklist: () => boolean }).propagationBlocklist;
+    setCurrentSessionSampled(true);
     expect(propagationBlocklist()).toBe(false);
     setCurrentSessionSampled(false);
     expect(propagationBlocklist()).toBe(true);

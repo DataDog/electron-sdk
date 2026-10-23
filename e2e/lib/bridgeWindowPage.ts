@@ -24,6 +24,23 @@ export class BridgeWindowPage {
     );
   }
 
+  /** Appends a paragraph to the page, which the Browser SDK records as a replay mutation. */
+  async appendText(text: string) {
+    await this.page.evaluate((content) => {
+      // Runs in the renderer; the e2e tsconfig has no DOM lib, so reach `document` via globalThis.
+      const { document } = globalThis as unknown as {
+        document: {
+          createElement(tag: string): { textContent: string };
+          body: { appendChild(node: unknown): void };
+        };
+      };
+      const paragraph = document.createElement('p');
+      paragraph.textContent = content;
+      document.body.appendChild(paragraph);
+    }, text);
+    await this.waitForIpcPropagation();
+  }
+
   async generateError(message: string) {
     await this.page.evaluate((msg) => {
       setTimeout(() => {

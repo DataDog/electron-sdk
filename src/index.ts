@@ -1,6 +1,6 @@
 import { app } from 'electron';
 import { BeforeSend, MainAssembly, RendererPipeline, createFormatHooks, registerCommonContext } from './assembly';
-import { setDurationVitalApi, setGlobalContextApi } from './api';
+import { setDurationVitalApi, setGlobalContextApi, setTrackingConsentApi } from './api';
 import type { AccountInfo, UserInfo } from './domain/customer-context';
 import { AccountContext, GlobalContext, UserContext } from './domain/customer-context';
 import type { InitConfiguration } from './config';
@@ -16,6 +16,7 @@ import { ProfilingCollection } from './domain/profiling';
 import { TrackingConsentManager } from './domain/tracking-consent';
 import { EventManager } from './event';
 import { BeforeQuitHandler } from './tools/BeforeQuitHandler';
+import { display } from './tools/display';
 import { Transport } from './transport';
 
 let sessionManager: SessionManager | undefined;
@@ -26,7 +27,9 @@ let tracing: Tracing | undefined;
 let userContext: UserContext | undefined;
 let accountContext: AccountContext | undefined;
 let replayCollection: ReplayCollection | undefined;
-let beforeQuitHandler: BeforeQuitHandler | undefined;
+// Set once init() has a valid configuration, even if it then fails: a later init() would register a new consent
+// manager, leaving what the first one started under a consent that setTrackingConsent() no longer reaches.
+let initStarted = false;
 
 /**
  * Internal SDK context
@@ -37,20 +40,32 @@ export interface InternalContext {
 }
 
 /**
- * Initialize the Electron SDK
+ * Initialize the Electron SDK, once per launch: after a call with a valid configuration, later calls resolve to
+ * `false`.
+ *
+ * @example
+ * ```ts
+ * await init({ ...configuration, trackingConsent: 'pending' }); // false if invalid or already initialized
+ * ```
  */
 export async function init(configuration: InitConfiguration): Promise<boolean> {
+  if (initStarted) {
+    display.error('init() was already called: this call is ignored.');
+    return false;
+  }
   const config = buildConfiguration(configuration);
 
   if (!config) {
     return false;
   }
+  initStarted = true;
 
   tracing = new Tracing(config);
 
   eventManager = new EventManager();
   const hooks = createFormatHooks();
-  const trackingConsentManager = await TrackingConsentManager.init(hooks);
+  const trackingConsentManager = await TrackingConsentManager.init(hooks, config.trackingConsent);
+  setTrackingConsentApi(trackingConsentManager);
 
   registerCommonContext(config, hooks);
   userContext = await UserContext.init(hooks);
@@ -76,14 +91,25 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   rumApi = rum.getApi();
   setDurationVitalApi(rumApi);
 
-  beforeQuitHandler?.stop();
-  beforeQuitHandler = new BeforeQuitHandler(app, _flushTransport);
+  new BeforeQuitHandler(app, _flushTransport);
 
   // Reported last: the transport must be registered for the event to reach a batch, and every
   // component whose state it describes must be constructed. Monitored so a failure anywhere in the
   // telemetry pipeline degrades telemetry rather than rejecting `init()`.
   const { telemetryInitialized: useTracing, version: tracerVersion } = tracing;
-  callMonitored(() => reportConfiguration(config, { useTracing, tracerVersion }));
+  const report = () => callMonitored(() => reportConfiguration(config, { useTracing, tracerVersion }));
+  if (trackingConsentManager.get() === 'granted') {
+    report();
+  } else {
+    // Reported once consent is granted, as in the Browser SDK: while consent is refused nothing would store the
+    // event, and while it is pending a refusal would delete it.
+    const subscription = trackingConsentManager.subscribe(({ current }) => {
+      if (current === 'granted') {
+        subscription.unsubscribe();
+        report();
+      }
+    });
+  }
 
   return true;
 }
@@ -358,6 +384,7 @@ export {
   setGlobalContextProperty,
   removeGlobalContextProperty,
   clearGlobalContext,
+  setTrackingConsent,
 } from './api';
 export type { AccountInfo, UserInfo } from './domain/customer-context';
 export type {
@@ -383,6 +410,7 @@ export type {
   RumVitalOperationStepEvent,
 } from './domain/rum';
 export type { LogsEvent } from './domain/logs';
+export type { TrackingConsent } from './domain/tracking-consent';
 export type {
   TelemetryConfigurationEvent,
   TelemetryDebugEvent,

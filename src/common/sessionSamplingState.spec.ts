@@ -6,22 +6,22 @@ describe('sessionSamplingState', () => {
     delete (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:sessionSamplingState')];
   });
 
-  it('allows propagation until the session decision is available', () => {
-    expect(isCurrentSessionSampled()).toBe(true);
-  });
-
-  it('stores the current session decision', () => {
-    setCurrentSessionSampled(false);
-
+  it('blocks propagation until the session decision is available', () => {
     expect(isCurrentSessionSampled()).toBe(false);
   });
 
+  it('stores the current session decision', () => {
+    setCurrentSessionSampled(true);
+
+    expect(isCurrentSessionSampled()).toBe(true);
+  });
+
   it('shares state across separate module evaluations', async () => {
-    setCurrentSessionSampled(false);
+    setCurrentSessionSampled(true);
     vi.resetModules();
 
     const fresh = await import('./sessionSamplingState');
 
-    expect(fresh.isCurrentSessionSampled()).toBe(false);
+    expect(fresh.isCurrentSessionSampled()).toBe(true);
   });
 });
