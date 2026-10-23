@@ -1,17 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { instrumentElectron } from './instrumentElectron';
 import { patchBrowserWindow } from './browserWindow';
-import { patchIpcMain, patchWebContents } from './ipc';
 import { patchNet } from './net';
 import { registerBridgeConfigResponder } from './registerBridgeConfig';
 
 vi.mock('./browserWindow', () => ({
   resolvePreloadPath: vi.fn(() => '/fake/preload.js'),
   patchBrowserWindow: vi.fn(),
-}));
-vi.mock('./ipc', () => ({
-  patchIpcMain: vi.fn(),
-  patchWebContents: vi.fn(),
 }));
 vi.mock('./net', () => ({
   patchNet: vi.fn(),
@@ -40,8 +35,6 @@ describe('instrumentElectron', () => {
 
     expect(patchBrowserWindow).toHaveBeenCalledTimes(1);
     expect(patchBrowserWindow).toHaveBeenCalledWith(expect.anything(), '/fake/preload.js');
-    expect(patchIpcMain).toHaveBeenCalledTimes(1);
-    expect(patchWebContents).toHaveBeenCalledTimes(1);
     expect(patchNet).toHaveBeenCalledTimes(1);
     expect(registerBridgeConfigResponder).toHaveBeenCalledTimes(1);
     expect(registerBridgeConfigResponder).toHaveBeenCalledWith(expect.anything());
@@ -54,8 +47,6 @@ describe('instrumentElectron', () => {
     instrumentElectron(electron);
 
     expect(patchBrowserWindow).toHaveBeenCalledTimes(1);
-    expect(patchIpcMain).toHaveBeenCalledTimes(1);
-    expect(patchWebContents).toHaveBeenCalledTimes(1);
     expect(patchNet).toHaveBeenCalledTimes(1);
     expect(registerBridgeConfigResponder).toHaveBeenCalledTimes(1);
   });
@@ -72,8 +63,7 @@ describe('instrumentElectron', () => {
   it('skips patching APIs that are absent', () => {
     instrumentElectron({ app: { isReady: () => true } } as unknown as typeof import('electron'));
 
-    expect(patchIpcMain).not.toHaveBeenCalled();
-    expect(patchWebContents).not.toHaveBeenCalled();
+    expect(registerBridgeConfigResponder).not.toHaveBeenCalled();
     expect(patchNet).not.toHaveBeenCalled();
   });
 
@@ -84,7 +74,7 @@ describe('instrumentElectron', () => {
 
     instrumentElectron(fakeElectron());
 
-    expect(patchIpcMain).toHaveBeenCalledTimes(1);
+    expect(registerBridgeConfigResponder).toHaveBeenCalledTimes(1);
     expect(patchNet).toHaveBeenCalledTimes(1);
   });
 });

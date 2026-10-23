@@ -11,7 +11,7 @@ interface PatchableNet {
 export function patchNet(net: Electron.Net): void {
   // dd-trace's OpenTracing startSpan() does NOT inherit the active scope automatically —
   // childOf must be passed explicitly. We capture scope().active() synchronously at call
-  // time so the span is correctly parented to whatever is active (e.g. an IPC handle span).
+  // time so the span is correctly parented to whatever span is active.
   //
   // net.fetch calls net.request internally, but via a native async boundary where
   // AsyncLocalStorage context is lost. We therefore patch net.fetch directly so the

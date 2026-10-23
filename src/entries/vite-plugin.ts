@@ -43,7 +43,7 @@ const CJS_BANNER =
   'try { require("node:module").createRequire(__filename)("@datadog/electron-sdk/instrument"); } catch {}';
 
 // ESM modules don't have a global require, so we use createRequire to load instrument.ts,
-// which handles defaultSession preload registration and IPC patching via patchBrowserWindow.
+// which handles defaultSession preload registration via patchBrowserWindow.
 const ESM_BANNER = `
 import { createRequire as __ddCR } from "module";
 try { __ddCR(import.meta.url)("@datadog/electron-sdk/instrument"); } catch {}

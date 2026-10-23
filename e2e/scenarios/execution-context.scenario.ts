@@ -77,6 +77,7 @@ test('all main-process events carry execution_context.id and execution_context.t
 test('tags main-process spans with _dd.execution_context.id, like _dd.session.id and _dd.view.id', async ({
   mainPage,
   intake,
+  testServer,
 }) => {
   await mainPage.flushTransport();
   const mainEvent = (await intake.getEventsByType('execution_context')).find(
@@ -84,10 +85,11 @@ test('tags main-process spans with _dd.execution_context.id, like _dd.session.id
   )!;
   const executionContextId = asExecutionContextEvent(mainEvent.body).execution_context.id;
 
-  await mainPage.mainPing();
+  const url = testServer.urlFor(200);
+  await mainPage.mainNetFetch(url);
   await mainPage.flushTransport();
 
-  const span = await intake.waitForSpan((s) => s.name === 'electron.main.handle' && s.resource === 'ping');
+  const span = await intake.waitForSpan((s) => s.name === 'http.request' && s.meta['http.url'] === url);
   expect(span.meta['_dd.execution_context.id']).toBe(executionContextId);
 });
 

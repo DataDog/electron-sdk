@@ -23,7 +23,7 @@ graph TB
     BP -->|"Browser SDK events<br/>(IPC bridge)"| SDK
 
     %% dd-trace → Electron SDK via diagnostic channel
-    DDT -->|"HTTP spans<br/>IPC spans<br/>(diagnostics_channel)"| SDK
+    DDT -->|"HTTP spans<br/>(diagnostics_channel)"| SDK
 
     %% Electron SDK internal sources
     SDK -->|"span → resource conversion<br/>RUM data collection<br/>RUM APIs<br/>session + main process view"| SDK
@@ -331,7 +331,7 @@ signal the renderer to stop its profiler on `quota_ko`.
 
 ## Instrumentation & Tracing
 
-The SDK instruments the Electron main process to collect spans for outgoing HTTP requests and IPC calls. It also injects a preload script into every renderer process, enabling the Browser SDK to route RUM events through IPC to the Electron SDK.
+The SDK instruments the Electron main process to collect spans for outgoing HTTP requests. It also injects a preload script into every renderer process, enabling the Browser SDK to route RUM events through IPC to the Electron SDK.
 
 ### Responsibilities
 
@@ -340,19 +340,14 @@ Instrumentation is split between the SDK and dd-trace:
 **Electron SDK** owns the patching layer, patching Electron's native APIs directly:
 
 - `patchBrowserWindow` (`src/instrument/browserWindow.ts`): injects the SDK's preload script into renderer processes.
-- `patchIpcMain` + `patchWebContents` (`src/instrument/ipc.ts`): wraps `ipcMain` handlers and `webContents.send/sendToFrame` to create IPC spans.
 - `patchNet` (`src/instrument/net.ts`): wraps `net.fetch` and `net.request` to create HTTP spans.
 
 **dd-trace** provides the span runtime and export pipeline:
 
-- Span creation API (`ddTrace.startSpan()`, `ddTrace.inject()`, `ddTrace.extract()`): used by the SDK's patches to create and propagate spans.
+- Span creation API (`ddTrace.startSpan()`, `ddTrace.inject()`): used by the SDK's patches to create and propagate spans.
 - The `electron` exporter: collects finished spans and publishes them to a Node.js diagnostics channel (`datadog:apm:electron:export`).
 
-dd-trace's own `electron` instrumentation plugin is explicitly disabled by setting `DD_TRACE_DISABLED_INSTRUMENTATIONS=electron` in `instrument-prelude.ts`, preventing it from double-wrapping `net` and `ipcMain` alongside the SDK's patches. This will be removed once the `electron` plugin is dropped from dd-trace.
-
-### IPC span coverage
-
-IPC tracing covers the **main process**: `ipcMain` consumers and `webContents.send`/`sendToFrame` producers. Renderer-side `ipcRenderer` tracing is out of scope for now and will be added later as dd-trace’s renderer IPC instrumentation was already non-functional in practice.
+dd-trace's own `electron` instrumentation plugin is explicitly disabled by setting `DD_TRACE_DISABLED_INSTRUMENTATIONS=electron` in `instrument-prelude.ts`, preventing it from double-wrapping `net` alongside the SDK's patches and from emitting IPC spans: the SDK does not trace IPC. This will be removed once the `electron` plugin is dropped from dd-trace.
 
 ### Instrumentation entry point (`@datadog/electron-sdk/instrument`)
 
@@ -366,7 +361,7 @@ import { app, BrowserWindow } from 'electron';
 On load it:
 
 1. Loads the tracing runtime before Electron.
-2. Calls `patchBrowserWindow`, `patchIpcMain`, `patchWebContents`, and `patchNet`.
+2. Calls `patchBrowserWindow` and `patchNet`, and registers the bridge-config responder on `ipcMain`.
 
 The regular SDK `init()` then initializes dd-trace with the `electron` exporter and the resolved tracing
 configuration.
@@ -376,9 +371,9 @@ Bundlers may reorder module evaluation and break this requirement; use the bundl
 ### How spans flow
 
 ```
-Instrumented code (net.fetch, net.request, ipcMain.handle, webContents.send)
+Instrumented code (net.fetch, net.request)
     ↓
-SDK patches call ddTrace.startSpan() / inject() / extract()
+SDK patches call ddTrace.startSpan() / inject()
     ↓
 dd-trace electron exporter → diagnostics channel 'datadog:apm:electron:export'
     ↓

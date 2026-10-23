@@ -225,7 +225,7 @@ await esbuild.build({
 - **RUM Views** — One view per main process instance
 - **RUM Errors** — Capture Node errors and crashes in main process
 - **RUM Resources** — Capture RUM resources from main process network calls
-- **Traces** — Capture traces for network calls, command execution, IPC messages on main process
+- **Traces** — Capture traces for network calls, command execution on main process
 - **Renderer Events** — Capture RUM events from renderer processes via the browser SDK
 - **Custom Duration Vitals** — Measure user-defined durations in the main process
 - **Renderer Profiling** — Collect JS Self-Profiling data from renderer pages and correlate it with RUM
@@ -627,8 +627,8 @@ decision so downstream spans inherit it. A rejected HTTP trace still produces an
 | Key          | Required | Purpose                                                                   |
 | ------------ | -------- | ------------------------------------------------------------------------- |
 | `sampleRate` | Yes      | Percentage of matching traces to keep, from `0` to `100`                  |
-| `name`       | No       | Matches the root span operation name, such as `electron.main.handle`      |
-| `resource`   | No       | Matches the root span resource, such as an IPC channel                    |
+| `name`       | No       | Matches the root span operation name, such as `http.request`              |
+| `resource`   | No       | Matches the root span resource, such as an HTTP method                    |
 | `tags`       | No       | Matches root span tags by name and value; every configured tag must match |
 
 ```ts
