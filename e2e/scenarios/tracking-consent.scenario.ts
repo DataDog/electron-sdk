@@ -12,19 +12,24 @@ test.describe('tracking consent', () => {
 
     test('uploads the data kept while pending once consent is granted', async ({ electronApp, mainPage, intake }) => {
       const bridgeWindow = await mainPage.openBridgeFileWindow(electronApp);
+      const profiledWindow = await mainPage.openBridgeAppProtocolWindow(electronApp);
       await mainPage.generateManualError();
       await bridgeWindow.generateError('renderer error');
       await bridgeWindow.generateLog('renderer log');
+      await profiledWindow.generateLongTask(500);
+      await profiledWindow.triggerProfilingFlush();
       await mainPage.flushTransport();
       await intake.assertNoNewEvents('error');
       await intake.assertNoNewEvents('view');
       expect(intake.getLogs()).toEqual([]);
+      expect(intake.getProfilingRequests()).toEqual([]);
 
       await mainPage.setTrackingConsent('granted');
 
       const errors = await mainPage.whileFlushing(async () => {
         await intake.getEventsByType('view', { predicate: isBridgeView });
         await intake.waitForLogCount(1, { predicate: ({ body }) => body.message === 'renderer log' });
+        await intake.waitForProfilingRequest();
         return intake.getSettledEventsByType('error');
       });
       expect(errors.map(({ body }) => body.error.message).sort()).toEqual(['renderer error', 'test manual error']);
@@ -32,9 +37,12 @@ test.describe('tracking consent', () => {
 
     test('deletes the data kept while pending when consent is refused', async ({ electronApp, mainPage, intake }) => {
       const bridgeWindow = await mainPage.openBridgeFileWindow(electronApp);
+      const profiledWindow = await mainPage.openBridgeAppProtocolWindow(electronApp);
       await mainPage.generateManualError(undefined, { kept: 'while pending' });
       await bridgeWindow.generateError('renderer error while pending');
       await bridgeWindow.generateLog('renderer log while pending');
+      await profiledWindow.generateLongTask(500);
+      await profiledWindow.triggerProfilingFlush();
       await mainPage.flushTransport();
       const refusedAt = Date.now();
 
@@ -55,6 +63,7 @@ test.describe('tracking consent', () => {
       ]);
       expect(intake.getLogs().filter(({ body }) => body.message.includes('while pending'))).toEqual([]);
       expect(intake.getReplaySegments().filter(({ metadata }) => Number(metadata.start) < refusedAt)).toEqual([]);
+      expect(intake.getProfilingRequests()).toEqual([]);
     });
 
     test('propagates trace context while consent is pending', async ({ mainPage, testServer }) => {
