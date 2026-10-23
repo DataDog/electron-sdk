@@ -178,8 +178,8 @@ period it ends, so a lookup returns the consent that applies to data captured at
 
 ### Consent and batch storage
 
-SDK initialization creates one `TrackingConsentManager`, shared by the session manager, `ProfilingCollection` and the
-transport's batch managers.
+SDK initialization creates one `TrackingConsentManager`, shared by the session manager, `ProfilingCollection`,
+`ReplayCollection` and the transport's batch managers.
 `Transport` routes events to one `BatchManager` per active track (RUM, logs, spans, replay, profiling).
 The manager coordinates a consent-aware writer and a consumer that reads only authorized batches.
 
@@ -212,23 +212,25 @@ does not multiply the allowance. Open files and filesystem failures can temporar
 
 ### Consent at assembly
 
-Batch storage applies the consent current when an event is written. Replay records are written within seconds of
-their capture, but other data can be written later, possibly after a consent change: a renderer event can still be in
-transit over IPC when consent is granted; a crash is written at the next launch, and its saved session, view and
-customer context is not proof that it was captured with consent; a span is written when its whole trace ends, and a
-profile when its recording ends.
+Batch storage applies the consent current when an event is written, but data can be written after a consent change:
+a renderer event can still be in transit over IPC when consent is granted; a replay segment can still be compressing
+when consent is refused, then granted; a crash is written at the next launch, and its saved session, view and customer
+context is not proof that it was captured with consent; a span is written when its whole trace ends, and a profile
+when its recording ends.
 
 Format hooks therefore discard RUM events, logs, telemetry and spans whose start time falls in a refused period, or in
-no known period. Profiles bypass format hooks, so `ProfilingCollection` applies the same check to their start time.
+no known period. Profiles and replay segments bypass format hooks, so `ProfilingCollection` and `ReplayCollection`
+apply the same check to their start time.
 A `pending` period takes the decision that ended it, like its pending batches: a grant keeps its events, and a
 refusal discards them even if consent is granted again later. Events of a still undecided `pending` period are left
 to the batch storage. A new process cannot grant the previous one's undecided period, so startup records it as
 refused, as it deletes its pending batches. Recovered crashes are then stored according to the current consent,
 like other events.
 
-Only the start time is checked: a view, span or profile that starts while consent is granted and is written after a
-refusal and a new grant is kept whole, including what it captured while refused. Consent changes reach the disk
-asynchronously: a crash that follows a refusal before the refusal is saved is accepted at the next launch.
+Only the start time is checked: a view, span, profile or replay segment that starts while consent is granted and is
+written after a refusal and a new grant is kept whole, including what it captured while refused. Consent changes
+reach the disk asynchronously: a crash that follows a refusal before the refusal is saved is accepted at the next
+launch.
 
 ### Consent and session lifecycle
 

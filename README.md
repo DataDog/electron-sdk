@@ -301,8 +301,8 @@ setTrackingConsent(accepted ? 'granted' : 'not-granted');
 
 - Refusing consent ends the session, and the next `'pending'` or `'granted'` starts a new one. Moving between
   `'pending'` and `'granted'` keeps the session.
-- RUM events, logs, spans and profiles that start while consent is refused, or pending then refused, are not sent,
-  even when they are reported after consent is granted again.
+- RUM events, logs, spans, profiles and session replay recordings that start while consent is refused, or pending then
+  refused, are not sent, even when they are reported after consent is granted again.
 - Main-process requests carry trace headers while consent is pending, as when it is granted, so that their traces
   link to the data sent if consent is granted. They carry none while consent is refused.
 - The SDK does not restore the consent at the next launch: pass it at each launch. Data kept while consent is pending

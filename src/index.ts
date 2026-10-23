@@ -74,7 +74,14 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   sessionManager = await SessionManager.start(eventManager, hooks, config, trackingConsentManager);
 
   new ProfilingCollection(eventManager, sessionManager, config, hooks, trackingConsentManager);
-  replayCollection = new ReplayCollection(eventManager, config, sessionManager, hooks, pathScrubber);
+  replayCollection = new ReplayCollection(
+    eventManager,
+    config,
+    sessionManager,
+    hooks,
+    pathScrubber,
+    trackingConsentManager
+  );
 
   if (tracing.enabled) {
     new SpanProcessor(eventManager, hooks, config);
