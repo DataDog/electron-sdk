@@ -1,4 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
+import { init } from './index';
+import { SessionManager } from './domain/session';
+import { addError, stopTelemetry } from './domain/telemetry';
 import { EventKind, EventTrack, type ServerEvent } from './event';
 import { createTestConfiguration } from './mocks.specUtil';
 import type { TrackingConsent } from './domain/tracking-consent';
@@ -26,22 +29,14 @@ vi.mock('./transport/batch', async (importOriginal) => ({
   BatchMigration: { clearPendingData: vi.fn().mockResolvedValue(undefined) },
 }));
 
-let sdk: typeof import('./index');
-
-beforeEach(async () => {
-  // Each test loads the SDK fresh, as a new launch would.
-  vi.resetModules();
-  sdk = await import('./index');
-});
-
-afterEach(async () => {
-  (await import('./domain/telemetry')).stopTelemetry();
+afterEach(() => {
+  stopTelemetry();
   vi.restoreAllMocks();
+  vi.useRealTimers();
   post.mockClear();
 });
 
 it('routes SDK errors while transport initialization is still in progress', async () => {
-  const { addError } = await import('./domain/telemetry');
   const error = new Error('upload failed during initialization');
   createBatchManager.mockImplementation(async (_configuration, { trackType }: { trackType: EventTrack }) => {
     if (trackType === EventTrack.RUM) return { post };
@@ -51,7 +46,7 @@ it('routes SDK errors while transport initialization is still in progress', asyn
     throw error;
   });
 
-  await expect(sdk.init(createTestConfiguration({ allowedRendererHosts: ['*'] }))).rejects.toBe(error);
+  await expect(init(createTestConfiguration({ allowedRendererHosts: ['*'] }))).rejects.toBe(error);
 
   expect(post.mock.calls.map(([event]) => event)).toMatchObject([
     {
@@ -67,17 +62,16 @@ it('routes SDK errors while transport initialization is still in progress', asyn
 });
 
 it('creates transport before the session manager', async () => {
-  const startSession = vi.spyOn((await import('./domain/session')).SessionManager, 'start');
+  const startSession = vi.spyOn(SessionManager, 'start');
   createBatchManager.mockRejectedValue(new Error('transport failed'));
 
-  await expect(sdk.init(createTestConfiguration({ allowedRendererHosts: ['*'] }))).rejects.toThrow('transport failed');
+  await expect(init(createTestConfiguration({ allowedRendererHosts: ['*'] }))).rejects.toThrow('transport failed');
 
   // Transport subscribes to consent while it is created, and must apply a change before the session manager does.
   expect(startSession).not.toHaveBeenCalled();
 });
 
 it('starts the session manager under the init option', async () => {
-  const { SessionManager } = await import('./domain/session');
   createBatchManager.mockResolvedValue({ post: vi.fn() });
   let consentAtSessionStart: TrackingConsent | undefined;
   vi.spyOn(SessionManager, 'start').mockImplementation((_events, _hooks, _config, trackingConsentManager) => {
@@ -86,33 +80,23 @@ it('starts the session manager under the init option', async () => {
   });
 
   await expect(
-    sdk.init(createTestConfiguration({ allowedRendererHosts: ['*'], trackingConsent: 'not-granted' }))
+    init(createTestConfiguration({ allowedRendererHosts: ['*'], trackingConsent: 'not-granted' }))
   ).rejects.toThrow('stop before collection');
   expect(consentAtSessionStart).toBe('not-granted');
 });
 
-describe('after a complete init()', () => {
-  beforeEach(() => {
-    // A completed init() starts SDK timers: fake timers keep them from running after the test.
-    vi.useFakeTimers();
-    createBatchManager.mockResolvedValue({ post });
-  });
+it('reports the configuration at the end of init(), even while consent is pending', async () => {
+  // A completed init() starts SDK timers: fake timers keep them from running after the test.
+  vi.useFakeTimers();
+  createBatchManager.mockResolvedValue({ post });
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
+  await expect(
+    init(createTestConfiguration({ allowedRendererHosts: ['*'], profilingSampleRate: 0, trackingConsent: 'pending' }))
+  ).resolves.toBe(true);
 
-  it('reports the configuration at the end of init(), even while consent is pending', async () => {
-    await expect(
-      sdk.init(
-        createTestConfiguration({ allowedRendererHosts: ['*'], profilingSampleRate: 0, trackingConsent: 'pending' })
-      )
-    ).resolves.toBe(true);
-
-    const reportedConsents = post.mock.calls
-      .map(([event]) => event.data as { telemetry?: { configuration?: { tracking_consent?: string } } })
-      .filter((data) => data.telemetry?.configuration !== undefined)
-      .map((data) => data.telemetry?.configuration?.tracking_consent);
-    expect(reportedConsents).toEqual(['pending']);
-  });
+  const reportedConsents = post.mock.calls
+    .map(([event]) => event.data as { telemetry?: { configuration?: { tracking_consent?: string } } })
+    .filter((data) => data.telemetry?.configuration !== undefined)
+    .map((data) => data.telemetry?.configuration?.tracking_consent);
+  expect(reportedConsents).toEqual(['pending']);
 });
