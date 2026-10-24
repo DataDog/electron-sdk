@@ -19,7 +19,7 @@
     "@datadog/electron-sdk": "portal:.."
   },
   "resolutions": {
-    "node-gyp": "12.4.0"
+    "node-gyp": "13.1.0"
   },
   "devDependencies": {
     "@datadog/datadog-ci": "5.24.1",
