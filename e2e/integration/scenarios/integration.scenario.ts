@@ -18,7 +18,7 @@ import {
 } from '../lib/integrationFixture';
 import { getElectronBuilderViteArchivePath } from '../lib/electronBuilderVite';
 import { getCompatibilityRun } from '../../lib/compatibility';
-import { Intake, type EventBodyByType, type EventType, type ReceivedEvent, type Span } from '../../lib/intake';
+import type { Intake, EventBodyByType, EventType, ReceivedEvent, Span } from '../../lib/intake';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { ONE_SECOND } from '@datadog/js-core/time';
 
@@ -188,13 +188,8 @@ test.describe('custom-session window instrumentation @integration', () => {
 });
 
 test.describe('crash reporting across restart @integration', () => {
-  test('processes a crash dump and sends an error event on restart', async ({ app, mode, variant }) => {
+  test('processes a crash dump and sends an error event on restart', async ({ app, mode, variant, intake }) => {
     const appDir = getIntegrationAppDirectory(app, variant);
-    // The `intake` fixture is not used here because this test needs a single intake instance
-    // across two separate app launches. The fixture ties teardown to the `electronApp` lifecycle,
-    // so we manage the intake manually to span both launches.
-    const intake = new Intake();
-    await intake.start();
     const userDataDir = await mkdtemp(join(tmpdir(), 'electron-sdk-integration-'));
     let activeApp: ElectronApplication | undefined;
 
@@ -244,7 +239,6 @@ test.describe('crash reporting across restart @integration', () => {
       try {
         await activeApp?.close();
       } finally {
-        await intake.stop();
         await rm(userDataDir, { recursive: true, force: true });
       }
     }

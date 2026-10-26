@@ -1,5 +1,7 @@
 import * as http from 'node:http';
 import zlib from 'node:zlib';
+import type { ElectronApplication } from '@playwright/test';
+import { AppPathCheck, type PayloadText } from './appPathCheck';
 import type {
   LogsEvent,
   RumActionEvent,
@@ -57,6 +59,8 @@ export interface ReplaySegment {
   /** Parsed JSON from the multipart `event` field — segment metadata + size fields. */
   metadata: Record<string, unknown>;
   headers: Record<string, string>;
+  /** The compressed `segment` blob, undefined if the part was absent. */
+  compressed?: Buffer;
   /**
    * The rrweb records decoded from the compressed `segment` blob, when it was a
    * standalone-inflatable ZLIB stream (the common single-segment case). Undefined
@@ -84,6 +88,13 @@ export interface ProfilingRequest {
   timestamp: number;
   contentType: string;
   headers: Record<string, string>;
+  /** Parsed, inflated `wall-time.json` part. */
+  trace?: ProfilingTrace;
+}
+
+export interface ProfilingTrace {
+  resources: string[];
+  [key: string]: unknown;
 }
 
 const byType = (type: string) => (event: ReceivedEvent) => (event.body as { type?: string }).type === type;
@@ -160,6 +171,50 @@ export const byRendererTelemetryType =
   (event: ReceivedEvent<TelemetryEvent>): boolean =>
     isRendererTelemetry(event) && byTelemetryType(type)(event);
 
+/** A segment as the replay player reads it: its records, and the metadata serialized with them. */
+export interface DecodedReplaySegment {
+  records: unknown[];
+  index_in_view: number;
+  has_full_snapshot: boolean;
+}
+
+const ZLIB_HEADER_SIZE = 2;
+// The final empty deflate block (2 bytes), then the Adler-32 checksum (4 bytes).
+const ZLIB_TRAILER_SIZE = 6;
+
+/**
+ * Decodes one session's segments, in the order received, as the backend stitches them (see `StreamingDeflate`). Each
+ * trailer holds the Adler-32 of the session so far, so decoding throws when segments are duplicated, out of order or
+ * missing before the last one received; segments missing after it go undetected.
+ */
+export function decodeSessionReplay(segments: ReplaySegment[]): DecodedReplaySegment[] {
+  if (segments.length === 0) {
+    return [];
+  }
+  const blobs = segments.map(({ compressed }) => {
+    if (!compressed) throw new Error('Replay segment received without its segment blob');
+    return compressed;
+  });
+  const last = blobs[blobs.length - 1];
+  const stitched = Buffer.concat([
+    blobs[0].subarray(0, ZLIB_HEADER_SIZE),
+    ...blobs.map((blob) => blob.subarray(ZLIB_HEADER_SIZE, blob.length - ZLIB_TRAILER_SIZE)),
+    last.subarray(last.length - ZLIB_TRAILER_SIZE),
+  ]);
+  // Every segment ends with a newline: the stitched stream holds one segment per line.
+  return zlib
+    .inflateSync(stitched)
+    .toString('utf8')
+    .split('\n')
+    .filter((line) => line !== '')
+    .map((line) => JSON.parse(line) as DecodedReplaySegment);
+}
+
+/** The records of one session's segments as JSON, to look for the text a page rendered. */
+export function replayRecordsJson(segments: ReplaySegment[]): string {
+  return JSON.stringify(decodeSessionReplay(segments).map(({ records }) => records));
+}
+
 /**
  * Fake Datadog intake used to assert what the SDK sends.
  *
@@ -176,8 +231,11 @@ export class Intake {
   private replaySegments: ReplaySegment[] = [];
   private traces: Trace[] = [];
   private profilingRequests: ProfilingRequest[] = [];
+  private payloadTexts: PayloadText[] = [];
+  private appPathCheck = new AppPathCheck();
   private port = 0;
   private quotaDecision: 'quota_ok' | 'quota_ko' = 'quota_ok';
+  private quotaCheckCount = 0;
 
   private storeRumEvents(parsedBody: unknown, headers: Record<string, string>, ddforward: string) {
     const items = Array.isArray(parsedBody) ? (parsedBody as unknown[]) : [parsedBody];
@@ -191,7 +249,7 @@ export class Intake {
     }
   }
 
-  private storeReplaySegment(rawBody: Buffer, headers: Record<string, string>) {
+  private storeReplaySegment(rawBody: Buffer, headers: Record<string, string>, source: string) {
     const contentType = headers['content-type'] ?? '';
     const boundaryMatch = /boundary=([^\s;]+)/.exec(contentType);
     if (!boundaryMatch) return;
@@ -209,13 +267,10 @@ export class Intake {
       if (headerEnd === -1) continue;
 
       const partHeaders = part.subarray(0, headerEnd).toString('utf8');
-      let body = part.subarray(headerEnd + 4);
-      // Strip the trailing CRLF that precedes the next delimiter.
-      if (body.length >= 2 && body[body.length - 2] === 0x0d && body[body.length - 1] === 0x0a) {
-        body = body.subarray(0, body.length - 2);
-      }
+      const body = stripTrailingCrlf(part.subarray(headerEnd + 4));
 
       if (partHeaders.includes('name="event"')) {
+        this.payloadTexts.push({ source, text: body.toString('utf8') });
         try {
           metadata = JSON.parse(body.toString('utf8')) as Record<string, unknown>;
         } catch {
@@ -228,22 +283,48 @@ export class Intake {
 
     if (!metadata) return;
 
-    const segment: ReplaySegment = { timestamp: Date.now(), metadata, headers };
+    const segment: ReplaySegment = { timestamp: Date.now(), metadata, headers, compressed };
 
     if (compressed) {
-      try {
-        // A single segment is a self-contained ZLIB stream (header + full-flush body +
-        // final block + Adler-32), so it inflates standalone. Continuation segments carry
-        // a cumulative Adler-32 that won't match a lone stream — those stay undecoded.
-        const inflated = zlib.inflateSync(compressed);
-        const parsed = JSON.parse(inflated.toString('utf8')) as { records?: unknown[] };
-        segment.records = parsed.records ?? [];
-      } catch {
-        // segment blob not standalone-inflatable — leave records undefined
+      const inflated = inflateSegment(compressed);
+      if (inflated !== undefined) {
+        this.payloadTexts.push({ source, text: inflated });
+        try {
+          const parsed = JSON.parse(inflated) as { records?: unknown[] };
+          segment.records = parsed.records ?? [];
+        } catch {
+          // segment blob is not JSON: leave records undefined
+        }
       }
     }
 
     this.replaySegments.push(segment);
+  }
+
+  private storeProfilePayloads(rawBody: Buffer, contentType: string, source: string): Pick<ProfilingRequest, 'trace'> {
+    const decoded: Pick<ProfilingRequest, 'trace'> = {};
+    const boundary = /boundary=([^\s;]+)/.exec(contentType)?.[1];
+    if (!boundary) return decoded;
+
+    for (const part of splitBuffer(rawBody, Buffer.from(`--${boundary}`))) {
+      const headerEnd = part.indexOf('\r\n\r\n');
+      if (headerEnd === -1) continue;
+
+      const partHeaders = part.subarray(0, headerEnd).toString('utf8');
+      const body = stripTrailingCrlf(part.subarray(headerEnd + 4));
+      if (partHeaders.includes('name="event"')) {
+        this.payloadTexts.push({ source, text: body.toString('utf8') });
+      } else if (partHeaders.includes('name="wall-time.json"')) {
+        try {
+          const text = zlib.inflateSync(body).toString('utf8');
+          this.payloadTexts.push({ source, text });
+          decoded.trace = parseJson(text) as ProfilingTrace | undefined;
+        } catch {
+          // not a deflated profile: nothing to scan
+        }
+      }
+    }
+    return decoded;
   }
 
   /**
@@ -277,6 +358,7 @@ export class Intake {
         const ddforwardSubdomain = url.searchParams.get('ddforwardSubdomain') ?? '';
 
         if (req.method === 'GET' && ddforwardSubdomain === 'quota') {
+          this.quotaCheckCount++;
           const admitted = this.quotaDecision === 'quota_ok';
           // Mirror the real quota API: `reason` is an admission reason, not the decision itself
           // (a denial reports why, e.g. `quota_exceeded`).
@@ -300,16 +382,21 @@ export class Intake {
         });
 
         if (ddforward.startsWith('/api/v2/profile')) {
-          req.resume();
           req.on('end', () => {
             const headers: Record<string, string> = {};
             for (const [key, value] of Object.entries(req.headers)) {
               if (typeof value === 'string') headers[key.toLowerCase()] = value;
             }
+            const decoded = this.storeProfilePayloads(
+              Buffer.concat(chunks),
+              req.headers['content-type'] ?? '',
+              ddforward
+            );
             this.profilingRequests.push({
               timestamp: Date.now(),
               contentType: req.headers['content-type'] ?? '',
               headers,
+              ...decoded,
             });
             res.writeHead(200);
             res.end();
@@ -332,12 +419,13 @@ export class Intake {
           const isMultipart = (headers['content-type'] ?? '').includes('multipart/form-data');
 
           if (ddforward.startsWith('/api/v2/replay') || isMultipart) {
-            this.storeReplaySegment(rawBody, headers);
+            this.storeReplaySegment(rawBody, headers, ddforward);
             res.writeHead(202, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ status: 'accepted' }));
             return;
           }
 
+          this.payloadTexts.push({ source: ddforward, text: rawBody.toString() });
           try {
             const parsedBody: unknown = JSON.parse(rawBody.toString());
             if (ddforward.startsWith('/api/v2/spans')) {
@@ -509,6 +597,11 @@ export class Intake {
     return this.traces.flatMap((trace) => trace.spans).filter(predicate);
   }
 
+  /** Number of profiling quota checks received. */
+  getQuotaCheckCount(): number {
+    return this.quotaCheckCount;
+  }
+
   getProfilingRequests(): ProfilingRequest[] {
     return [...this.profilingRequests];
   }
@@ -593,9 +686,52 @@ export class Intake {
     this.traces = [];
     this.profilingRequests = [];
     this.quotaDecision = 'quota_ok';
+    this.quotaCheckCount = 0;
+  }
+
+  registerAppPath(appPath: string): void {
+    this.appPathCheck.register(appPath);
+  }
+
+  assertNoAppPath(): void {
+    this.appPathCheck.assert(this.payloadTexts);
   }
 
   getPort(): number {
     return this.port;
+  }
+}
+
+/** Records the app path of a launched app, so the intake can check no payload leaks it. */
+export async function registerAppPath(intake: Intake, electronApp: ElectronApplication): Promise<void> {
+  intake.registerAppPath(await electronApp.evaluate(({ app }) => app.getAppPath()));
+}
+
+// The first segment is a self-contained ZLIB stream. A continuation has a prepended header and a cumulative
+// Adler-32 that a lone stream rejects, but its body is raw deflate once the header and trailer are stripped.
+function inflateSegment(compressed: Buffer): string | undefined {
+  try {
+    return zlib.inflateSync(compressed).toString('utf8');
+  } catch {
+    // not a standalone ZLIB stream: try as a continuation segment
+  }
+  try {
+    return zlib.inflateRawSync(compressed.subarray(2, -4)).toString('utf8');
+  } catch {
+    return undefined;
+  }
+}
+
+function stripTrailingCrlf(body: Buffer): Buffer {
+  return body.length >= 2 && body[body.length - 2] === 0x0d && body[body.length - 1] === 0x0a
+    ? body.subarray(0, body.length - 2)
+    : body;
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
   }
 }

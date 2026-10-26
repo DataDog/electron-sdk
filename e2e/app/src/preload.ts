@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('e2eConfig', { rumBrowserSdk: rumBrowserSdkConfi
 contextBridge.exposeInMainWorld('electronAPI', {
   generateTelemetryErrors: (count: number) => ipcRenderer.invoke('generateTelemetryErrors', count),
   stopSession: () => ipcRenderer.invoke('stopSession'),
+  setTrackingConsent: (consent: string) => ipcRenderer.invoke('setTrackingConsent', consent),
   getSessionId: () => ipcRenderer.invoke('getSessionId'),
   generateUncaughtException: () => ipcRenderer.invoke('generateUncaughtException'),
   generateUnhandledRejection: () => ipcRenderer.invoke('generateUnhandledRejection'),
@@ -29,16 +30,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   mainHttpRequest: (url: string) => ipcRenderer.invoke('mainHttpRequest', url),
   mainNetRequest: (url: string) => ipcRenderer.invoke('mainNetRequest', url),
   mainNetFetch: (url: string) => ipcRenderer.invoke('mainNetFetch', url),
-  mainFireAndForget: () =>
-    new Promise<void>((resolve) => {
-      ipcRenderer.once('mainFireAndForgetAck', () => resolve());
-      ipcRenderer.send('mainFireAndForget');
-    }),
-  triggerMainSend: () =>
-    new Promise<void>((resolve) => {
-      ipcRenderer.once('mainPush', () => resolve());
-      void ipcRenderer.invoke('triggerMainSend');
-    }),
   flushTransport: () => ipcRenderer.invoke('flushTransport'),
   setGlobalContext: (context: Record<string, unknown>) => ipcRenderer.invoke('setGlobalContext', context),
   setGlobalContextProperty: (key: string, value: unknown) => ipcRenderer.invoke('setGlobalContextProperty', key, value),
@@ -51,7 +42,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearAccountInfo: () => ipcRenderer.invoke('clearAccountInfo'),
   addAccountExtraInfo: (extraInfo: Record<string, unknown>) => ipcRenderer.invoke('addAccountExtraInfo', extraInfo),
   crash: () => ipcRenderer.invoke('crash'),
-  ping: () => ipcRenderer.invoke('ping'),
   openBridgeFileWindow: () => ipcRenderer.invoke('openBridgeFileWindow'),
   openBridgeFileWindowNoIsolation: () => ipcRenderer.invoke('openBridgeFileWindowNoIsolation'),
   openBridgeHttpWindow: () => ipcRenderer.invoke('openBridgeHttpWindow'),

@@ -564,7 +564,7 @@ describe('buildConfiguration', () => {
 
     it('preserves valid ordered rules', () => {
       const traceSamplingRules = [
-        { name: 'electron.main.*', resource: 'health-*', sampleRate: 0 },
+        { name: 'http.*', resource: 'health-*', sampleRate: 0 },
         { tags: { 'http.url': '*/api/*' }, sampleRate: 25 },
       ];
 
@@ -618,6 +618,25 @@ describe('buildConfiguration', () => {
       expect(result).toBeUndefined();
       expect(display.error).toHaveBeenCalledWith(
         "Configuration error: 'traceSampleRate' must be a number between 0 and 100"
+      );
+    });
+  });
+
+  describe('trackingConsent validation', () => {
+    it('defaults to granted when not provided', () => {
+      expect(buildConfiguration(DEFAULT_CONFIG)?.trackingConsent).toBe('granted');
+    });
+
+    it.each(['granted', 'pending', 'not-granted'] as const)('accepts valid value: %s', (value) => {
+      expect(buildConfiguration({ ...DEFAULT_CONFIG, trackingConsent: value })?.trackingConsent).toBe(value);
+    });
+
+    it.each(['denied', '', 'GRANTED', true, null])('aborts init on invalid value: %s', (value) => {
+      const result = buildConfiguration({ ...DEFAULT_CONFIG, trackingConsent: value } as unknown as InitConfiguration);
+
+      expect(result).toBeUndefined();
+      expect(display.error).toHaveBeenCalledWith(
+        "Configuration error: 'trackingConsent' must be one of: granted, pending, not-granted"
       );
     });
   });

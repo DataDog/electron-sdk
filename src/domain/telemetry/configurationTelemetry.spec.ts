@@ -66,6 +66,10 @@ describe('reportConfiguration', () => {
     expect(report(createTestConfiguration()).trace_sample_rate).toBe(100);
   });
 
+  it('reports the tracking consent init() starts with', () => {
+    expect(report(createTestConfiguration({ trackingConsent: 'pending' })).tracking_consent).toBe('pending');
+  });
+
   it('reports the privacy level applied to renderers', () => {
     const configuration = createTestConfiguration({ defaultPrivacyLevel: 'mask-user-input' });
 
@@ -160,7 +164,7 @@ describe('reportConfiguration', () => {
   describe('use_trace_sampling_rules', () => {
     it('is true when trace sampling rules are configured', () => {
       const configuration = createTestConfiguration({
-        traceSamplingRules: [{ name: 'electron.main.handle', sampleRate: 0 }],
+        traceSamplingRules: [{ name: 'http.request', sampleRate: 0 }],
       });
 
       expect(report(configuration).use_trace_sampling_rules).toBe(true);

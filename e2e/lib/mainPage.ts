@@ -5,6 +5,7 @@ import type {
   DurationVitalOptions,
   FailureReason,
   FeatureOperationOptions,
+  TrackingConsent,
   UserInfo,
 } from '@datadog/electron-sdk';
 import { BridgeWindowPage } from './bridgeWindowPage';
@@ -24,8 +25,6 @@ interface ElectronAppWindow {
     mainHttpRequest: (url: string) => Promise<number>;
     mainNetRequest: (url: string) => Promise<number>;
     mainNetFetch: (url: string) => Promise<number>;
-    mainFireAndForget: () => Promise<void>;
-    triggerMainSend: () => Promise<void>;
     flushTransport: () => Promise<void>;
     setGlobalContext: (context: Record<string, unknown>) => Promise<void>;
     setGlobalContextProperty: (key: string, value: unknown) => Promise<void>;
@@ -37,8 +36,8 @@ interface ElectronAppWindow {
     setAccountInfo: (accountInfo: AccountInfo) => Promise<void>;
     clearAccountInfo: () => Promise<void>;
     addAccountExtraInfo: (extraInfo: Record<string, unknown>) => Promise<void>;
-    ping: () => Promise<string>;
     stopSession: () => Promise<void>;
+    setTrackingConsent: (consent: TrackingConsent) => Promise<void>;
     getSessionId: () => Promise<string | undefined>;
     openBridgeFileWindow: () => Promise<void>;
     openBridgeFileWindowNoIsolation: () => Promise<void>;
@@ -83,6 +82,13 @@ export class MainPage {
 
   async stopSession() {
     await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.stopSession());
+  }
+
+  async setTrackingConsent(consent: TrackingConsent) {
+    await this.page.evaluate(
+      (value) => (globalThis as unknown as ElectronAppWindow).electronAPI.setTrackingConsent(value),
+      consent
+    );
   }
 
   async generateActivity({ waitForPropagation = true } = {}) {
@@ -188,18 +194,6 @@ export class MainPage {
       (u) => (globalThis as unknown as ElectronAppWindow).electronAPI.mainNetFetch(u),
       url
     );
-  }
-
-  async mainPing(): Promise<string> {
-    return await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.ping());
-  }
-
-  async mainFireAndForget(): Promise<void> {
-    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.mainFireAndForget());
-  }
-
-  async triggerMainSend(): Promise<void> {
-    await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.triggerMainSend());
   }
 
   async flushTransport() {

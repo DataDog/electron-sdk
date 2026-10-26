@@ -1,7 +1,6 @@
-import { test, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import { Intake } from '../lib/intake';
-import { createUserDataDir, cleanupUserDataDir, launchDeferredInitApp } from '../lib/helpers';
+import { createUserDataDir, cleanupUserDataDir, intakeTest as test, launchDeferredInitApp } from '../lib/helpers';
 
 const MARKER_HOST = 'deferred-init.example.com';
 // A window opened before init() must load promptly; without the instrument-time responder the preload's
@@ -43,13 +42,10 @@ async function openWindow(electronApp: ElectronApplication, timeout?: number): P
 }
 
 test.describe('deferred init: bridge config', () => {
-  let intake: Intake;
   let userDataDir: string;
   let electronApp: ElectronApplication;
 
-  test.beforeEach(async () => {
-    intake = new Intake();
-    await intake.start();
+  test.beforeEach(async ({ intake }) => {
     userDataDir = await createUserDataDir();
     electronApp = await launchDeferredInitApp(intake, userDataDir);
   });
@@ -57,7 +53,6 @@ test.describe('deferred init: bridge config', () => {
   test.afterEach(async () => {
     await electronApp.close();
     await cleanupUserDataDir(userDataDir);
-    await intake.stop();
   });
 
   test('window opened before init reads the fallback config', async () => {

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import path from 'node:path';
 import type { StandardBatchProducerConfig as ProducerConfig } from './StandardBatchProducer';
-import { mockFs } from '../../../mocks.specUtil';
+import { identityPathScrubber, mockFs } from '../../../mocks.specUtil';
 import { StandardBatchProducer } from './StandardBatchProducer';
 import { display } from '../../../tools/display';
 
@@ -10,6 +10,7 @@ vi.mock('../../../tools/display', () => ({
   display: { error: vi.fn() },
 }));
 const fsMocks = mockFs();
+const markingScrubber = { scrub: (serialized: string) => serialized.replace(/\/secret\/app/g, '') };
 
 vi.mock('@datadog/js-core/time', () => ({
   dateNow: vi.fn(() => 1234567890),
@@ -45,7 +46,7 @@ describe('StandardBatchProducer', () => {
     it('creates track directory when missing', async () => {
       fsMocks.access.mockRejectedValueOnce(new Error('ENOENT'));
 
-      await StandardBatchProducer.create(config);
+      await StandardBatchProducer.create(config, identityPathScrubber);
 
       expect(fsMocks.mkdir).toHaveBeenCalledWith(config.trackPath, { recursive: true });
     });
@@ -53,7 +54,7 @@ describe('StandardBatchProducer', () => {
     it('does not create directory when it exists', async () => {
       fsMocks.access.mockResolvedValueOnce(undefined);
 
-      await StandardBatchProducer.create(config);
+      await StandardBatchProducer.create(config, identityPathScrubber);
 
       expect(fsMocks.mkdir).not.toHaveBeenCalled();
     });
@@ -61,7 +62,7 @@ describe('StandardBatchProducer', () => {
     it('rotates orphaned .tmp files from previous sessions to .log', async () => {
       fsMocks.readdir.mockResolvedValueOnce(['batch-111.tmp', 'batch-222.tmp']);
 
-      await StandardBatchProducer.create(config);
+      await StandardBatchProducer.create(config, identityPathScrubber);
 
       expect(fsMocks.rename).toHaveBeenCalledWith(
         path.join(config.trackPath, 'batch-111.tmp'),
@@ -76,7 +77,7 @@ describe('StandardBatchProducer', () => {
     it('does not rename non-.tmp files when rotating orphaned batches', async () => {
       fsMocks.readdir.mockResolvedValueOnce(['batch-111.log', 'other.txt', 'batch-222.tmp']);
 
-      await StandardBatchProducer.create(config);
+      await StandardBatchProducer.create(config, identityPathScrubber);
 
       expect(fsMocks.rename).toHaveBeenCalledTimes(1);
       expect(fsMocks.rename).toHaveBeenCalledWith(
@@ -88,21 +89,21 @@ describe('StandardBatchProducer', () => {
     it('handles readdir failure gracefully when rotating orphaned batches', async () => {
       fsMocks.readdir.mockRejectedValueOnce(new Error('ENOENT'));
 
-      await expect(StandardBatchProducer.create(config)).resolves.toBeDefined();
+      await expect(StandardBatchProducer.create(config, identityPathScrubber)).resolves.toBeDefined();
     });
 
     it('handles individual rename failure gracefully when rotating orphaned batches', async () => {
       fsMocks.readdir.mockResolvedValueOnce(['batch-111.tmp', 'batch-222.tmp']);
       fsMocks.rename.mockRejectedValueOnce(new Error('rename failed'));
 
-      await expect(StandardBatchProducer.create(config)).resolves.toBeDefined();
+      await expect(StandardBatchProducer.create(config, identityPathScrubber)).resolves.toBeDefined();
       expect(fsMocks.rename).toHaveBeenCalledTimes(2);
     });
   });
 
   describe('post() + write queue', () => {
     it('serializes each post as JSON + newline and appends to the same .tmp file until rotation', async () => {
-      const producer = await StandardBatchProducer.create(config);
+      const producer = await StandardBatchProducer.create(config, identityPathScrubber);
 
       producer.post({ data: { a: 1 } });
       producer.post({ data: { b: 2 } });
@@ -115,8 +116,17 @@ describe('StandardBatchProducer', () => {
       expect(fsMocks.appendFile).toHaveBeenNthCalledWith(2, tmp, `{"b":2}\n`, 'utf8');
     });
 
+    it('writes scrubbed lines', async () => {
+      const producer = await StandardBatchProducer.create(config, markingScrubber);
+
+      producer.post({ data: { stack: 'at f (/secret/app/main.js:1:1)' } });
+      await producer.flush();
+
+      expect(JSON.parse(fsMocks.appendFile.mock.calls[0][1] as string)).toEqual({ stack: 'at f (/main.js:1:1)' });
+    });
+
     it('writes posts in call order', async () => {
-      const producer = await StandardBatchProducer.create(config);
+      const producer = await StandardBatchProducer.create(config, identityPathScrubber);
 
       producer.post({ data: { order: 1 } });
       producer.post({ data: { order: 2 } });
@@ -135,7 +145,7 @@ describe('StandardBatchProducer', () => {
       vi.mocked(display.error).mockClear();
       fsMocks.appendFile.mockRejectedValueOnce(new Error('write failed')).mockResolvedValueOnce(undefined);
 
-      const producer = await StandardBatchProducer.create(config);
+      const producer = await StandardBatchProducer.create(config, identityPathScrubber);
 
       producer.post({ data: { bad: true } });
       producer.post({ data: { good: true } });
@@ -148,7 +158,7 @@ describe('StandardBatchProducer', () => {
 
   describe('rotation behavior', () => {
     it('flush() renames current batch from .tmp to .log', async () => {
-      const producer = await StandardBatchProducer.create(config);
+      const producer = await StandardBatchProducer.create(config, identityPathScrubber);
 
       producer.post({ data: { event: 'test' } });
       await producer.flush();
@@ -160,7 +170,7 @@ describe('StandardBatchProducer', () => {
     });
 
     it('flush() does nothing if no data was ever written', async () => {
-      const producer = await StandardBatchProducer.create(config);
+      const producer = await StandardBatchProducer.create(config, identityPathScrubber);
 
       await producer.flush();
 
@@ -171,7 +181,7 @@ describe('StandardBatchProducer', () => {
     it('rotates due to size limit BEFORE appending when current batch already has data', async () => {
       const small = makeConfig({ batchSize: 20 });
 
-      const producer = await StandardBatchProducer.create(small);
+      const producer = await StandardBatchProducer.create(small, identityPathScrubber);
 
       const { dateNow } = await import('@datadog/js-core/time');
       vi.mocked(dateNow)
@@ -195,9 +205,22 @@ describe('StandardBatchProducer', () => {
       expect(fsMocks.rename).toHaveBeenCalledWith(tmp2, log2);
     });
 
+    it('rotates on the scrubbed size', async () => {
+      const scrubbedSize = Buffer.byteLength(`${JSON.stringify({ stack: '/x' })}\n`, 'utf8');
+      const sized = makeConfig({ batchSize: scrubbedSize * 2 });
+      const producer = await StandardBatchProducer.create(sized, markingScrubber);
+
+      // Each raw line is bigger than half the limit, each scrubbed line fits twice: no rotation.
+      producer.post({ data: { stack: '/secret/app/x' } });
+      producer.post({ data: { stack: '/secret/app/x' } });
+      await producer.flush();
+
+      expect(new Set(fsMocks.appendFile.mock.calls.map((call) => call[0] as string)).size).toBe(1);
+    });
+
     it('rotates before exceeding the configured event limit', async () => {
       const capped = makeConfig({ maxEventsPerBatch: 2 });
-      const producer = await StandardBatchProducer.create(capped);
+      const producer = await StandardBatchProducer.create(capped, identityPathScrubber);
 
       const { dateNow } = await import('@datadog/js-core/time');
       vi.mocked(dateNow).mockReturnValueOnce(111).mockReturnValueOnce(222);
@@ -222,7 +245,7 @@ describe('StandardBatchProducer', () => {
 
       fsMocks.rename.mockRejectedValueOnce(new Error('rename failed'));
 
-      const producer = await StandardBatchProducer.create(config);
+      const producer = await StandardBatchProducer.create(config, identityPathScrubber);
 
       producer.post({ data: { first: true } });
       await producer.flush();
@@ -241,7 +264,7 @@ describe('StandardBatchProducer', () => {
 
   describe('flush ordering', () => {
     it('finishes a flush before writing events posted after it', async () => {
-      const producer = await StandardBatchProducer.create(config);
+      const producer = await StandardBatchProducer.create(config, identityPathScrubber);
       let releaseRotation!: () => void;
       const rotation = new Promise<void>((resolve) => (releaseRotation = resolve));
       let notifyRotationStarted!: () => void;
@@ -276,7 +299,7 @@ describe('StandardBatchProducer', () => {
       // So we make create succeed and then fail for the subsequent access.
       fsMocks.access.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('ENOENT'));
 
-      const producer = await StandardBatchProducer.create(config);
+      const producer = await StandardBatchProducer.create(config, identityPathScrubber);
 
       producer.post({ data: { event: 'test' } });
       await producer.flush();
@@ -285,7 +308,7 @@ describe('StandardBatchProducer', () => {
     });
 
     it('does not mkdir when access succeeds during a write', async () => {
-      const producer = await StandardBatchProducer.create(config);
+      const producer = await StandardBatchProducer.create(config, identityPathScrubber);
 
       producer.post({ data: { event: 'test' } });
       await producer.flush();
@@ -300,7 +323,7 @@ describe('StandardBatchProducer', () => {
       const logFiles = Array.from({ length: 102 }, (_, i) => `batch-${String(i).padStart(4, '0')}.log`);
       fsMocks.unlink.mockResolvedValue(undefined);
 
-      const producer = await StandardBatchProducer.create(config);
+      const producer = await StandardBatchProducer.create(config, identityPathScrubber);
       fsMocks.readdir.mockResolvedValueOnce(logFiles);
 
       producer.post({ data: { event: 'test' } });
@@ -317,7 +340,7 @@ describe('StandardBatchProducer', () => {
       const logFiles = Array.from({ length: 102 }, (_, i) => `batch-${String(i).padStart(4, '0')}.log`);
       fsMocks.unlink.mockResolvedValue(undefined);
 
-      const producer = await StandardBatchProducer.create(config);
+      const producer = await StandardBatchProducer.create(config, identityPathScrubber);
       fsMocks.readdir.mockResolvedValueOnce(logFiles);
       fsMocks.appendFile.mockRejectedValue(new Error('ENOSPC'));
 
@@ -334,7 +357,7 @@ describe('StandardBatchProducer', () => {
       const logFiles = Array.from({ length: 102 }, (_, i) => `batch-100-${i + 1}.log`);
       fsMocks.unlink.mockResolvedValue(undefined);
 
-      const producer = await StandardBatchProducer.create(config);
+      const producer = await StandardBatchProducer.create(config, identityPathScrubber);
       fsMocks.readdir.mockResolvedValueOnce(logFiles);
 
       producer.post({ data: { event: 'test' } });
@@ -347,7 +370,7 @@ describe('StandardBatchProducer', () => {
     });
 
     it('flushes migrated completed files down to the cap without requiring a new event', async () => {
-      const producer = await StandardBatchProducer.create(config);
+      const producer = await StandardBatchProducer.create(config, identityPathScrubber);
       const logFiles = Array.from({ length: 102 }, (_, i) => `batch-100-${i + 1}.log`);
       const files = new Set([...logFiles, 'batch-101-1.tmp']);
       fsMocks.readdir.mockImplementation(() => Promise.resolve([...files]));
@@ -366,7 +389,7 @@ describe('StandardBatchProducer', () => {
       fsMocks.readdir.mockResolvedValue(['batch-0000.log', 'batch-0001.log']);
       fsMocks.unlink.mockResolvedValue(undefined);
 
-      const producer = await StandardBatchProducer.create(config);
+      const producer = await StandardBatchProducer.create(config, identityPathScrubber);
 
       producer.post({ data: { event: 'test' } });
       await producer.flush();
@@ -375,7 +398,7 @@ describe('StandardBatchProducer', () => {
     });
 
     it('does not throw or evict when the directory cannot be read', async () => {
-      const producer = await StandardBatchProducer.create(config);
+      const producer = await StandardBatchProducer.create(config, identityPathScrubber);
       // Make the eviction's readdir fail; it must be swallowed, leaving the write queue healthy.
       fsMocks.readdir.mockRejectedValue(new Error('EACCES'));
       fsMocks.unlink.mockResolvedValue(undefined);

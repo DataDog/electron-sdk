@@ -9,7 +9,7 @@ import type { TrackingConsentChange, TrackingConsentManager } from '../tracking-
 import { SessionContext } from './SessionContext';
 import { SESSION_TIME_OUT_DELAY } from './session.constants';
 import { isSessionSampled } from '../../tools/Sampler';
-import { setCurrentSessionSampled } from '../../common';
+import { setSampledSessionActive } from '../../common';
 
 export const SESSION_EXPIRATION_DELAY = 15 * ONE_MINUTE;
 
@@ -68,7 +68,7 @@ export class SessionManager {
 
   stop(): void {
     this.clearTimers();
-    setCurrentSessionSampled(false);
+    setSampledSessionActive(false);
     if (this.activitySubscription) {
       this.activitySubscription.unsubscribe();
       this.activitySubscription = undefined;
@@ -110,7 +110,7 @@ export class SessionManager {
   // Updates the session and the sampling flag read by main-process tracing together, so they cannot diverge.
   private setSession(session: Session, isSampled = false): void {
     this.currentSession = session;
-    setCurrentSessionSampled(isSampled);
+    setSampledSessionActive(isSampled);
   }
 
   private createNewSession(): void {

@@ -1,6 +1,7 @@
 import { type MockInstance } from 'vitest';
 import * as fs from 'node:fs/promises';
 import type { Configuration } from './config';
+import type { PathScrubber } from './tools/pathScrubber';
 import { RawRumView, RumActionEvent, RumErrorEvent, RumEvent, RumResourceEvent, RumViewEvent } from './domain/rum';
 import { type ServerDuration } from '@datadog/js-core/time';
 import { combine, mergeInto, type RecursivePartial } from '@datadog/js-core/util';
@@ -77,6 +78,7 @@ export function createTestConfiguration(overrides: Partial<Configuration> = {}):
     clientToken: 'test-token',
     applicationId: 'test-app-id',
     sessionSampleRate: 100,
+    trackingConsent: 'granted',
     logsSampleRate: 100,
     traceSampleRate: 100,
     traceSamplingRules: [],
@@ -204,3 +206,5 @@ export function createServerRumAction(overrides?: RecursivePartial<RumActionEven
     overrides
   ) as RumActionEvent;
 }
+
+export const identityPathScrubber: Pick<PathScrubber, 'scrub'> = { scrub: (serialized) => serialized };

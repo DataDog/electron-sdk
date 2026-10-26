@@ -2,7 +2,7 @@ import { test as base, _electron as electron, type ElectronApplication, type Pag
 import { join } from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { Intake } from './intake';
+import { Intake, registerAppPath } from './intake';
 import { TestServer } from './testServer';
 import { MainPage } from './mainPage';
 import { assertExpectedElectronVersion, getCompatibilityRun } from './compatibility';
@@ -35,23 +35,27 @@ const HOST_ENV_ALLOWLIST = [
   'PWDEBUG',
 ];
 
+export interface IntakeFixtures {
+  intake: Intake;
+  initialIntakeQuotaDecision: 'quota_ok' | 'quota_ko';
+}
+
 export interface TestFixtures {
   electronApp: ElectronApplication;
   window: Page;
   mainPage: MainPage;
-  intake: Intake;
   testServer: TestServer;
   rumBrowserSdk: Record<string, unknown> | null;
-  initialIntakeQuotaDecision: 'quota_ok' | 'quota_ko';
   sdkConfigOverrides: Partial<InitConfiguration> | null;
   beforeSendRumEnabled: boolean;
+  fileProfiling: boolean;
 }
 
 /**
- * Custom Playwright test with Electron app fixtures.
- * Automatically launches the app before each test and closes it after.
+ * Playwright test with only the intake, for tests that launch their app themselves. The intake fails the test if a
+ * payload contains the app path registered at launch.
  */
-export const test = base.extend<TestFixtures>({
+export const intakeTest = base.extend<IntakeFixtures>({
   initialIntakeQuotaDecision: ['quota_ok', { option: true }],
 
   intake: [
@@ -60,11 +64,21 @@ export const test = base.extend<TestFixtures>({
       await intake.start();
       intake.setQuotaResponse(initialIntakeQuotaDecision);
       await use(intake);
-      await intake.stop();
+      try {
+        intake.assertNoAppPath();
+      } finally {
+        await intake.stop();
+      }
     },
     { option: true },
   ],
+});
 
+/**
+ * Custom Playwright test with Electron app fixtures.
+ * Automatically launches the app before each test and closes it after.
+ */
+export const test = intakeTest.extend<TestFixtures>({
   testServer: [
     // eslint-disable-next-line no-empty-pattern
     async ({}, use) => {
@@ -76,10 +90,11 @@ export const test = base.extend<TestFixtures>({
     { option: true },
   ],
 
-  electronApp: async ({ intake, rumBrowserSdk, sdkConfigOverrides, beforeSendRumEnabled }, use) => {
+  electronApp: async ({ intake, rumBrowserSdk, sdkConfigOverrides, beforeSendRumEnabled, fileProfiling }, use) => {
     const userDataDir = await createUserDataDir();
     const electronApp = await launchApp(intake, userDataDir, rumBrowserSdk, sdkConfigOverrides, {
       ...(beforeSendRumEnabled && { DD_E2E_BEFORE_SEND_RUM: '1' }),
+      ...(fileProfiling && { DD_E2E_FILE_PROFILING: '1' }),
     });
     await use(electronApp);
     await electronApp.close();
@@ -103,6 +118,8 @@ export const test = base.extend<TestFixtures>({
   sdkConfigOverrides: [null, { option: true }],
 
   beforeSendRumEnabled: [false, { option: true }],
+
+  fileProfiling: [false, { option: true }],
 });
 
 async function launchApp(
@@ -164,6 +181,7 @@ async function launchApp(
   });
   try {
     await assertExpectedElectronVersion(electronApp);
+    await registerAppPath(intake, electronApp);
     return electronApp;
   } catch (error) {
     await electronApp.close();

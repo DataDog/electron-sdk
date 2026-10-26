@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setGlobalContextProperty: () => ipcRenderer.invoke('main:set-global-context-property'),
   removeGlobalContextProperty: () => ipcRenderer.invoke('main:remove-global-context-property'),
   clearGlobalContext: () => ipcRenderer.invoke('main:clear-global-context'),
+  setTrackingConsent: (consent: string) => ipcRenderer.invoke('main:set-tracking-consent', consent),
   setUserInfo: () => ipcRenderer.invoke('main:set-user-info'),
   addUserExtraInfo: () => ipcRenderer.invoke('main:add-user-extra-info'),
   clearUserInfo: () => ipcRenderer.invoke('main:clear-user-info'),

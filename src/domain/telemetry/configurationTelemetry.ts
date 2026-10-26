@@ -40,6 +40,7 @@ function buildConfigurationTelemetry(
     telemetry_usage_sample_rate: configuration.telemetryUsageSampleRate,
     profiling_sample_rate: configuration.profilingSampleRate,
     default_privacy_level: configuration.defaultPrivacyLevel,
+    tracking_consent: configuration.trackingConsent,
     use_proxy: configuration.proxy !== undefined,
     // Both fields carry the upload frequency, which is correct rather than redundant. The schema's
     // `batch_size` is a batch *window duration* in milliseconds (mobile sends `BatchSize.windowDurationMs`,

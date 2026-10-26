@@ -29,14 +29,19 @@ Run tools with `yarn <command>` or from `node_modules/.bin`, never `npx`. Run ap
 When adding or renaming a customer-facing API, include the following in the same PR:
 
 - [ ] Export it from `src/index.ts` or its package entry point, with [JSDoc](CONVENTIONS.md#jsdoc).
-- [ ] Add the domain implementation and unit coverage, including
+- [ ] Add the implementation and unit coverage, including
       [runtime validation](CONVENTIONS.md#runtime-validation) and
       [compatibility aliases](CONVENTIONS.md#deprecated-aliases) when applicable.
-- [ ] Report API usage and any new configuration according to the [telemetry rules](CONVENTIONS.md#telemetry).
+- [ ] For runtime SDK APIs, report usage and any new configuration according to the
+      [telemetry rules](CONVENTIONS.md#telemetry).
 - [ ] Add a usage example to the matching README feature section.
-- [ ] Add a control or integration example in `playground/` so the API can be exercised locally.
-- [ ] Exercise the API through `e2e/app/`, updating page objects in `e2e/lib/` as needed, and assert on captured intake
-      events in the feature's scenario file under `e2e/scenarios/`. See the [test layer rules](TESTING.md#test-layers).
+- [ ] For runtime SDK APIs, add a control in `playground/` so the API can be exercised locally. Exercise it through
+      `e2e/app/`, updating page objects in `e2e/lib/` as needed, and assert on the observable behavior in the feature's
+      scenario file under `e2e/scenarios/`, including captured intake events when applicable. See the
+      [test layer rules](TESTING.md#test-layers).
+- [ ] For build-time entry points such as bundler plugins, add an integration app/configuration example and coverage
+      under `e2e/integration/scenarios/` instead of runtime telemetry or `e2e/app/` intake requirements. See
+      [bundler and packager coverage](REVIEW.md#bundler-and-packager-coverage).
 - [ ] Rebuild the SDK with `yarn build` before typechecking or building the playground and e2e app. Their `portal:`
       dependencies read SDK declarations from `dist/`; stale declarations can hide new exports or retain removed ones.
 
@@ -152,6 +157,8 @@ git ls-remote --tags https://github.com/actions/checkout | grep 'v4\.'
 ```
 
 ### Updating Dependencies
+
+Git dependencies must be listed in `.yarnrc.yml` under `approvedGitRepositories` so lockfile maintenance can fetch them.
 
 Always use latest stable versions for new dependencies. Check with:
 

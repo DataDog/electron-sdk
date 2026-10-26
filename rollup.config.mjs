@@ -44,7 +44,7 @@ const config = [
     external: ['electron'],
     plugins: sharedPlugins,
   },
-  // Instrumentation: imported before electron to patch BrowserWindow, IPC, and net APIs
+  // Instrumentation: imported before electron to patch BrowserWindow and net APIs
   {
     input: 'src/entries/instrument.ts',
     output: [

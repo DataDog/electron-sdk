@@ -94,8 +94,8 @@ TypeScript signatures don't constrain JavaScript callers. Validators accept `unk
 properties. Reuse `src/tools/validation.ts` helpers and `isIndexableObject` from `@datadog/js-core/util`.
 
 Test the runtime contract with values that bypass the type system (`badValue as unknown as ExpectedType`), asserting
-the diagnostic and whether the event is emitted. See `validateArgs` in
-[`OperationCollection.ts`](../src/domain/rum/operation/OperationCollection.ts) and its co-located tests.
+the diagnostic and whether the event is emitted. See `validateDurationVitalArgs` in [`api.ts`](../src/api.ts) and
+[`api.spec.ts`](../src/api.spec.ts), including validation of fields inside the options object.
 
 ### Deprecated Aliases
 
@@ -122,17 +122,18 @@ See [`rawRumData.types.ts`](../src/domain/rum/types/rawRumData.types.ts) for exa
 
 The SDK never throws into customer code, and favors observable failures over silent ones:
 
-| Source of the problem                       | Handling                                                               |
-| ------------------------------------------- | ---------------------------------------------------------------------- |
-| Invalid configuration                       | Report with `display.error`; `init` resolves to `false`                |
-| Invalid public API call                     | Report with `display.error` and ignore the call                        |
-| Invalid external data (IPC, files on disk)  | Validate early and drop                                                |
-| Broken internal invariant                   | Throw: `monitor()` reports it as telemetry. No `?.` or fallback values |
-| Customer callback failure (e.g. beforeSend) | Report with `display.error` and keep the event; no SDK telemetry       |
+| Source of the problem                       | Handling                                                                     |
+| ------------------------------------------- | ---------------------------------------------------------------------------- |
+| Invalid configuration                       | Report with `display.error`; `init` resolves to `false`                      |
+| Invalid public API call                     | Report with the API's established error or warning level and ignore the call |
+| Invalid external data (IPC, files on disk)  | Validate early and drop                                                      |
+| Broken internal invariant                   | Throw: `monitor()` reports it as telemetry. No `?.` or fallback values       |
+| Customer callback failure (e.g. beforeSend) | Report with `display.error` and keep the event; no SDK telemetry             |
 
-For rejected public API input, `display.error` explains why the call is ignored. Use `display.warn` when collection
-continues: operation names outside the backend character set and invalid `failureReason` values warn but still emit.
-Keep each API's established validation behavior; diagnostic wording must match whether the event is sent.
+Diagnostic severity does not determine whether input is accepted. Operation validators reject a blank name with
+`display.error`; `setUserInfo` without an ID and invalid user/account standard fields use `display.warn` and leave the
+context unchanged. Operation names outside the backend character set and invalid `failureReason` values warn but still
+emit. Keep each API's established validation behavior; diagnostic wording must describe whether the call takes effect.
 
 ## Telemetry
 
