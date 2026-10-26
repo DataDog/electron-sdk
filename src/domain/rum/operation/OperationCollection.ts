@@ -179,6 +179,14 @@ function validateArgs(method: OperationMethod, name: unknown, options: unknown, 
     display.error(`${method}: operation key cannot be empty or blank. Event will not be sent.`);
     return false;
   }
+  if (isIndexableObject(options) && options.context !== undefined && !isIndexableObject(options.context)) {
+    display.error(`${method}: context must be an object when provided. Event will not be sent.`);
+    return false;
+  }
+  if (isIndexableObject(options) && options.description !== undefined && typeof options.description !== 'string') {
+    display.error(`${method}: description must be a string when provided. Event will not be sent.`);
+    return false;
+  }
   if (failureReason !== undefined && !isOneOf(failureReason, VALID_FAILURE_REASONS)) {
     // Warn but do not drop — the backend is the source of truth on the enum policy and `failureReason` carries the
     // most diagnostic value of any field on a fail event, so swallowing it on a typo would lose more signal than it

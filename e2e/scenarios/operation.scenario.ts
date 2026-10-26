@@ -1,6 +1,26 @@
 import { test, expect } from '../lib/helpers';
-import type { RumVitalOperationStepEvent } from '@datadog/electron-sdk';
+import type { FeatureOperationOptions, RumVitalOperationStepEvent } from '@datadog/electron-sdk';
 import { isMainProcessEvent } from '../lib/intake';
+
+test('rejects malformed operation options before intake delivery', async ({ mainPage, intake }) => {
+  await mainPage.flushTransport();
+
+  await mainPage.startOperation('invalid_context', { context: 42 } as unknown as FeatureOperationOptions);
+  await mainPage.succeedOperation('invalid_description', { description: {} } as unknown as FeatureOperationOptions);
+  await mainPage.failOperation('null_context', 'error', { context: null } as unknown as FeatureOperationOptions);
+  await mainPage.startOperation('valid_options', {
+    context: { source: 'operation_validation' },
+    description: 'valid operation',
+  });
+  await mainPage.flushTransport();
+
+  const vitals = (await intake.waitForEventCount('vital', 1)).map((event) => event.body as RumVitalOperationStepEvent);
+  expect(vitals).toHaveLength(1);
+  expect(vitals[0]).toMatchObject({
+    context: { source: 'operation_validation' },
+    vital: { name: 'valid_options', step_type: 'start', description: 'valid operation' },
+  });
+});
 
 test('emits start and succeed vital operation_step events', async ({ mainPage, intake }) => {
   await mainPage.flushTransport();
