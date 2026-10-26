@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerBridgeConfigResponder } from './registerBridgeConfig';
 import { setBridgeConfig, CONFIG_CHANNEL } from '../common';
+import { resetBridgeConfig } from '../mocks.specUtil';
 
 describe('registerBridgeConfigResponder', () => {
   beforeEach(() => {
-    delete (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:bridgeConfig')];
+    resetBridgeConfig();
   });
 
   function makeIpcMain() {
@@ -23,20 +24,15 @@ describe('registerBridgeConfigResponder', () => {
     expect(ipcMain.on).toHaveBeenCalledWith(CONFIG_CHANNEL, expect.any(Function));
   });
 
-  it('returns the fallback config before init', () => {
+  it('returns no config before init', () => {
     const ipcMain = makeIpcMain();
     registerBridgeConfigResponder(ipcMain as unknown as Electron.IpcMain);
     const event = { returnValue: undefined as unknown };
     ipcMain.listeners[CONFIG_CHANNEL](event);
-    expect(event.returnValue).toEqual({
-      defaultPrivacyLevel: 'mask',
-      allowedRendererHosts: ['*', ''],
-      // 'records' is intentionally omitted from the pre-init fallback (replay must wait for the real config).
-      capabilities: ['profiles'],
-    });
+    expect(event.returnValue).toBeNull();
   });
 
-  it('returns the real config after init updates the holder', () => {
+  it('returns the config once init publishes it', () => {
     const ipcMain = makeIpcMain();
     registerBridgeConfigResponder(ipcMain as unknown as Electron.IpcMain);
     setBridgeConfig({ defaultPrivacyLevel: 'allow', allowedRendererHosts: ['x.com'], capabilities: [] });

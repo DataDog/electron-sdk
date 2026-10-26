@@ -79,7 +79,7 @@ await init({
 });
 ```
 
-> **Deferred init caveat:** windows opened before `init()` are not reliably monitored until they are reloaded: they keep a fallback configuration, and what they collected before `init()` can be dropped or attributed to the previous launch. To wait for the end user's consent, call `init()` at startup with `trackingConsent: 'pending'` rather than deferring it (see [Tracking Consent](#tracking-consent)).
+> **Deferred init caveat:** a window whose page loaded before `init()` sends nothing until it reloads, not even the clicks that keep the session alive: if the end user only uses such windows, the session expires after 15 minutes and no new one starts. To wait for the end user's consent, call `init()` at startup with `trackingConsent: 'pending'` rather than deferring it (see [Tracking Consent](#tracking-consent)).
 
 #### Renderer process setup
 

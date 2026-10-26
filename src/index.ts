@@ -1,5 +1,12 @@
 import { app } from 'electron';
-import { BeforeSend, MainAssembly, RendererPipeline, createFormatHooks, registerCommonContext } from './assembly';
+import {
+  BeforeSend,
+  MainAssembly,
+  RendererPipeline,
+  createFormatHooks,
+  publishEarlyBridgeConfig,
+  registerCommonContext,
+} from './assembly';
 import { setDurationVitalApi, setGlobalContextApi, setTrackingConsentApi } from './api';
 import type { AccountInfo, UserInfo } from './domain/customer-context';
 import { AccountContext, GlobalContext, UserContext } from './domain/customer-context';
@@ -51,6 +58,8 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   if (!config) {
     return false;
   }
+  // Before the first await: see publishEarlyBridgeConfig.
+  publishEarlyBridgeConfig(config);
 
   // Built before anything that serializes payloads.
   const pathScrubber = new PathScrubber();

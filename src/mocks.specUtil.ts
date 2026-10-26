@@ -208,3 +208,8 @@ export function createServerRumAction(overrides?: RecursivePartial<RumActionEven
 }
 
 export const identityPathScrubber: Pick<PathScrubber, 'scrub'> = { scrub: (serialized) => serialized };
+
+/** Empties the process-global bridge config holder, as a new launch starts. */
+export function resetBridgeConfig(): void {
+  delete (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:bridgeConfig')];
+}
