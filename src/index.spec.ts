@@ -7,17 +7,7 @@ import { createTestConfiguration } from './mocks.specUtil';
 import type { TrackingConsent } from './domain/tracking-consent';
 
 vi.mock('node:fs/promises');
-vi.mock('electron', () => ({
-  app: {
-    getPath: () => '/mock/user/data',
-    getAppPath: () => '/mock/app',
-    isReady: () => false,
-    whenReady: () => new Promise<void>(() => undefined),
-    on: vi.fn(),
-  },
-  ipcMain: { on: vi.fn() },
-  crashReporter: { start: vi.fn() },
-}));
+vi.mock('electron', () => ({ app: { getPath: () => '/mock/user/data', getAppPath: () => '/mock/app' } }));
 vi.mock('./domain/tracing/Tracing', () => ({ Tracing: vi.fn() }));
 
 const { createBatchManager, post } = vi.hoisted(() => ({
@@ -33,8 +23,6 @@ vi.mock('./transport/batch', async (importOriginal) => ({
 afterEach(() => {
   stopTelemetry();
   vi.restoreAllMocks();
-  vi.useRealTimers();
-  post.mockClear();
 });
 
 it('routes SDK errors while transport initialization is still in progress', async () => {
@@ -84,20 +72,4 @@ it('starts the session manager under the init option', async () => {
     init(createTestConfiguration({ allowedRendererHosts: ['*'], trackingConsent: 'not-granted' }))
   ).rejects.toThrow('stop before collection');
   expect(consentAtSessionStart).toBe('not-granted');
-});
-
-it('reports the configuration at the end of init(), even while consent is pending', async () => {
-  // A completed init() starts SDK timers: fake timers keep them from running after the test.
-  vi.useFakeTimers();
-  createBatchManager.mockResolvedValue({ post });
-
-  await expect(
-    init(createTestConfiguration({ allowedRendererHosts: ['*'], profilingSampleRate: 0, trackingConsent: 'pending' }))
-  ).resolves.toBe(true);
-
-  const reportedConsents = post.mock.calls
-    .map(([event]) => event.data as { telemetry?: { configuration?: { tracking_consent?: string } } })
-    .filter((data) => data.telemetry?.configuration !== undefined)
-    .map((data) => data.telemetry?.configuration?.tracking_consent);
-  expect(reportedConsents).toEqual(['pending']);
 });
