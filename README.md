@@ -320,10 +320,10 @@ the main process, while other renderers run the Browser SDK standalone, under it
 renderers, the Browser SDK is not informed of the consent and keeps collecting, so:
 
 - Requests it traces (`allowedTracingUrls`) carry trace headers whatever the consent.
-- When consent is granted after a refusal, an open page keeps its view until its next one. Its new events are sent
-  in the new session and refer to that view. The view is never sent if it started while consent was refused, or
-  pending then refused. Otherwise it stays in the session it started in, including what it measured while consent
-  was refused. In the new session, the page's session replay can only be played back from its next view.
+- When consent is granted after a refusal, an open page's view moves to the new session with its next update, so
+  that session is created. The view keeps what it measured since it started, including while consent was refused or
+  pending then refused, and the previous session no longer lists it. In the new session, the page's session replay can
+  only be played back from its next view.
 
 ### Custom Duration Vitals
 
