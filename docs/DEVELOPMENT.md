@@ -26,23 +26,28 @@ Run tools with `yarn <command>` or from `node_modules/.bin`, never `npx`. Run ap
 
 ### Public API Checklist
 
-When adding or renaming a customer-facing API, include the following in the same PR:
+When adding or renaming a customer-facing method or package entry point, apply the relevant items in the same PR:
 
 - [ ] Export it from `src/index.ts` or its package entry point, with [JSDoc](CONVENTIONS.md#jsdoc).
 - [ ] Add the implementation and unit coverage, including
       [runtime validation](CONVENTIONS.md#runtime-validation) and
       [compatibility aliases](CONVENTIONS.md#deprecated-aliases) when applicable.
-- [ ] For runtime SDK APIs, report usage and any new configuration according to the
+- [ ] For callable runtime APIs, report usage and any new configuration according to the
       [telemetry rules](CONVENTIONS.md#telemetry).
-- [ ] Add or update the [README API reference](../README.md#api) entry for runtime SDK APIs, or the README setup
-      instructions for build-time entry points. Add a usage example in the matching feature section.
-- [ ] For runtime SDK APIs, add a control in `playground/` so the API can be exercised locally. Exercise it through
-      `e2e/app/`, updating page objects in `e2e/lib/` as needed, and assert on the observable behavior in the feature's
+- [ ] Update the [README API reference](../README.md#api) for callable runtime APIs, or the
+      [setup instructions](../README.md#setup) for entry points. Include a usage example there; update a matching
+      [feature walkthrough](../README.md#available-features) when one exists.
+- [ ] For callable runtime APIs, add a control or example in `playground/` so the API can be exercised locally. Exercise
+      it through `e2e/app/`, updating page objects in `e2e/lib/` as needed, and assert on the observable behavior in the feature's
       scenario file under `e2e/scenarios/`, including captured intake events when applicable. See the
       [test layer rules](TESTING.md#test-layers).
-- [ ] For build-time entry points such as bundler plugins, add an integration app/configuration example and coverage
-      under `e2e/integration/scenarios/` instead of runtime telemetry or `e2e/app/` intake requirements. See
-      [bundler and packager coverage](REVIEW.md#bundler-and-packager-coverage).
+- [ ] For runtime startup/bridge entry points, document changed customer setup and exercise the existing app import or
+      injection path. `./instrument` follows the [main process setup](../README.md#main-process-setup); `./preload` is
+      injected by the SDK.
+- [ ] For startup/bridge and build-time entry points, update any affected integration app/configuration examples.
+      Assess existing coverage and add or update scenarios under `e2e/integration/scenarios/` when warranted
+      by the [bundler and packager coverage rule](REVIEW.md#bundler-and-packager-coverage). One representative app is
+      enough unless the change is toolchain-specific.
 - [ ] Rebuild the SDK with `yarn build` before typechecking or building the playground and e2e app. Their `portal:`
       dependencies read SDK declarations from `dist/`; stale declarations can hide new exports or retain removed ones.
 

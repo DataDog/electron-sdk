@@ -99,10 +99,15 @@ the diagnostic and whether the event is emitted. See `validateDurationVitalArgs`
 
 ### Deprecated Aliases
 
-When preserving compatibility during an API rename, keep the old export as a thin alias, mark it with
-`@deprecated Use <newName> instead.`, and warn once per deprecated method, naming its replacement. Forward to the
-canonical implementation so validation and event construction stay shared. See `handleDeprecated` in
-[`OperationCollection.ts`](../src/domain/rum/operation/OperationCollection.ts).
+When preserving compatibility during an API rename, keep the old export as a wrapper. Its call path must warn once per
+deprecated method and run the shared implementation. Mark the export with `@deprecated Use <newName> instead.`.
+
+For operation APIs, the wrappers in [`src/index.ts`](../src/index.ts) report usage and call the deprecated collection
+methods. `handleDeprecated` in [`OperationCollection.ts`](../src/domain/rum/operation/OperationCollection.ts) emits the
+warning, then runs the shared validation and event-construction handler.
+
+State the removal timing in both the JSDoc and warning. Existing operation aliases say "will be removed in a future
+major release".
 
 Honor an alias's documented removal schedule. Other deliberate breaking changes remain allowed during 0.x releases
 under the [backward compatibility policy](REVIEW.md#backward-compatibility).
@@ -159,8 +164,9 @@ Reference an explicit PR or ticket when history matters. Update them when modify
 - Public exported types (event schemas, unions, generated types): a description only.
 
 Public API JSDoc describes the contract: behavior, parameters, emitted data, and `@experimental` / `@deprecated` status
-where applicable. Link to the README's feature section for usage walkthroughs. Scope routing, IPC mechanics, and other
-implementation reasoning belong in `docs/ARCHITECTURE.md` or internal comments.
+where applicable. Link to the relevant README API reference, setup instructions, or feature walkthrough for usage
+details. Scope routing, IPC mechanics, and other implementation reasoning belong in `docs/ARCHITECTURE.md` or internal
+comments.
 
 ### Public Docs
 
