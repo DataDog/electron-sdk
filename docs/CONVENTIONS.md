@@ -122,13 +122,13 @@ See [`rawRumData.types.ts`](../src/domain/rum/types/rawRumData.types.ts) for exa
 
 The SDK never throws into customer code, and favors observable failures over silent ones:
 
-| Source of the problem                       | Handling                                                                     |
-| ------------------------------------------- | ---------------------------------------------------------------------------- |
-| Invalid configuration                       | Report with `display.error`; `init` resolves to `false`                      |
-| Invalid public API call                     | Report with the API's established error or warning level and ignore the call |
-| Invalid external data (IPC, files on disk)  | Validate early and drop                                                      |
-| Broken internal invariant                   | Throw: `monitor()` reports it as telemetry. No `?.` or fallback values       |
-| Customer callback failure (e.g. beforeSend) | Report with `display.error` and keep the event; no SDK telemetry             |
+| Source of the problem                       | Handling                                                                |
+| ------------------------------------------- | ----------------------------------------------------------------------- |
+| Invalid configuration                       | Report with `display.error`; `init` resolves to `false`                 |
+| Public API validation                       | Preserve the API's established diagnostic level and acceptance behavior |
+| Invalid external data (IPC, files on disk)  | Validate early and drop                                                 |
+| Broken internal invariant                   | Throw: `monitor()` reports it as telemetry. No `?.` or fallback values  |
+| Customer callback failure (e.g. beforeSend) | Report with `display.error` and keep the event; no SDK telemetry        |
 
 Diagnostic severity does not determine whether input is accepted. Operation validators reject a blank name with
 `display.error`; `setUserInfo` without an ID and invalid user/account standard fields use `display.warn` and leave the

@@ -34,7 +34,8 @@ When adding or renaming a customer-facing API, include the following in the same
       [compatibility aliases](CONVENTIONS.md#deprecated-aliases) when applicable.
 - [ ] For runtime SDK APIs, report usage and any new configuration according to the
       [telemetry rules](CONVENTIONS.md#telemetry).
-- [ ] Add a usage example to the matching README feature section.
+- [ ] Add or update the [README API reference](../README.md#api) entry for runtime SDK APIs, or the README setup
+      instructions for build-time entry points. Add a usage example in the matching feature section.
 - [ ] For runtime SDK APIs, add a control in `playground/` so the API can be exercised locally. Exercise it through
       `e2e/app/`, updating page objects in `e2e/lib/` as needed, and assert on the observable behavior in the feature's
       scenario file under `e2e/scenarios/`, including captured intake events when applicable. See the
