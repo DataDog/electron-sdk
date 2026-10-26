@@ -4,7 +4,7 @@ import type { ElectronApplication } from '@playwright/test';
 import type { TrackingConsent } from '@datadog/electron-sdk';
 import { ONE_SECOND } from '@datadog/js-core/time';
 import { test, expect, launchAppManually, createUserDataDir, cleanupUserDataDir } from '../lib/helpers';
-import { decodeSessionReplay, isBridgeView, isMainProcessView, replayRecordsJson } from '../lib/intake';
+import { decodeSessionReplay, isBridgeView, isMainProcessEvent, replayRecordsJson } from '../lib/intake';
 
 test.describe('tracking consent', () => {
   test.describe('starting pending', () => {
@@ -155,7 +155,7 @@ test.describe('tracking consent', () => {
 
       expect(testServer.headersFor(205)['x-datadog-trace-id']).toBeDefined();
       await mainPage.whileFlushing(async () => {
-        await intake.getEventsByType('view', { predicate: isMainProcessView });
+        await intake.getEventsByType('execution_context', { predicate: isMainProcessEvent });
         await intake.getEventsByType('resource', { predicate: ({ body }) => body.resource.url === grantedUrl });
         await intake.waitForSpan((span) => span.name === 'http.request' && span.meta['http.url'] === grantedUrl);
         await intake.waitForLogCount(1);

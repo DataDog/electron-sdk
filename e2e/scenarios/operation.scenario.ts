@@ -1,5 +1,6 @@
 import { test, expect } from '../lib/helpers';
 import type { FeatureOperationOptions, RumVitalOperationStepEvent } from '@datadog/electron-sdk';
+import { isMainProcessEvent } from '../lib/intake';
 
 test('rejects malformed operation options before intake delivery', async ({ mainPage, intake }) => {
   await mainPage.flushTransport();
@@ -23,8 +24,7 @@ test('rejects malformed operation options before intake delivery', async ({ main
 
 test('emits start and succeed vital operation_step events', async ({ mainPage, intake }) => {
   await mainPage.flushTransport();
-  const viewEvents = await intake.getEventsByType('view');
-  const view = viewEvents[0].body;
+  const [{ body: mainContext }] = await intake.getEventsByType('execution_context', { predicate: isMainProcessEvent });
 
   await mainPage.startOperation('checkout');
   await mainPage.succeedOperation('checkout');
@@ -50,11 +50,12 @@ test('emits start and succeed vital operation_step events', async ({ mainPage, i
   expect(end.vital?.id).not.toBe(start.vital?.id);
 
   // Common RUM context is populated by the main-process Assembly pipeline.
-  expect(start.session.id).toBe(view.session.id);
-  expect(end.session.id).toBe(view.session.id);
-  expect(start.application.id).toBe(view.application.id);
-  expect(start.view.id).toBe(view.view.id);
-  expect(end.view.id).toBe(view.view.id);
+  const mainExecutionContext = { id: mainContext.execution_context.id, type: 'main-process' };
+  expect(start.session.id).toBe(mainContext.session.id);
+  expect(end.session.id).toBe(mainContext.session.id);
+  expect(start.application.id).toBe(mainContext.application.id);
+  expect(start.execution_context).toMatchObject(mainExecutionContext);
+  expect(end.execution_context).toMatchObject(mainExecutionContext);
   expect(start.source).toBe('electron');
   expect(start._dd.format_version).toBe(2);
   expect(typeof start.date).toBe('number');

@@ -257,9 +257,10 @@ await init({
 });
 ```
 
-Only returning `false` discards the event. View and native crash events cannot be discarded. The editable fields are:
+Only returning `false` discards the event. View, execution context, and native crash events cannot be discarded. The
+editable fields are:
 
-- All events: `context`, `service`, `version`, `view.name`, `view.url`, and `view.referrer`
+- All events: `context`, `service`, `version`, `view.name`, `view.url`, `view.referrer`, and `execution_context.name`
 - Views: `view.performance.lcp.resource_url`
 - Errors: `error.message`, `error.stack`, `error.handling_stack`, `error.resource.url`, `error.fingerprint`, and `_dd.debug_ids`
 - Resources: `resource.url`, GraphQL variables, request/response headers, and WebSocket close reasons and protocols
@@ -319,10 +320,10 @@ the main process, while other renderers run the Browser SDK standalone, under it
 renderers, the Browser SDK is not informed of the consent and keeps collecting, so:
 
 - Requests it traces (`allowedTracingUrls`) carry trace headers whatever the consent.
-- When consent is granted after a refusal, an open page keeps its view until its next one. Its new events are sent
-  in the new session and refer to that view. The view is never sent if it started while consent was refused, or
-  pending then refused. Otherwise it stays in the session it started in, including what it measured while consent
-  was refused. In the new session, the page's session replay can only be played back from its next view.
+- When consent is granted after a refusal, an open page's view moves to the new session with its next update, so that
+  the session shows up in Datadog. As an exception to the rule above, that view is sent even if it started while
+  consent was refused, or pending then refused, with what it measured since it started. The previous session no longer
+  lists it. In the new session, the page's session replay can only be played back from its next view.
 
 ### Custom Duration Vitals
 

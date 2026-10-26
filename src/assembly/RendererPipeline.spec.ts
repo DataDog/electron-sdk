@@ -21,7 +21,7 @@ import {
   type ServerTelemetryEvent,
 } from '../event';
 import { BRIDGE_CHANNEL, CONFIG_CHANNEL } from '../common';
-import type { Configuration, RumBeforeSend } from '../config';
+import type { RumBeforeSend } from '../config';
 import { createMockSender, createTestConfiguration, type MockSender } from '../mocks.specUtil';
 import { registerCommonContext } from './commonContext';
 import type { RendererRumEvent } from '../domain/rum';
@@ -354,37 +354,21 @@ describe('RendererPipeline', () => {
       expect(capturedStartTime).toBe(12345);
     });
 
-    describe('view started in an earlier session', () => {
-      function simulateViewAfterSessionChange(config: Configuration): TimeStamp[] {
-        vi.useFakeTimers({ now: 99999 });
-        new RendererPipeline(eventManager, hooks, config, {
-          getTrackedSessionId: (at) => (at === RENDERER_RUM_DATA.date ? 'previous-session' : 'main-session'),
-        });
-        const capturedStartTimes: TimeStamp[] = [];
-        hooks.registerRum(({ startTime }) => {
-          capturedStartTimes.push(startTime);
-          return {};
-        });
-
-        simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
-        return capturedStartTimes;
-      }
-
-      it('resolves the view at the current time, keeping its date, when execution context is enabled', () => {
-        const capturedStartTimes = simulateViewAfterSessionChange(
-          createTestConfiguration({ profilingSampleRate: 0, enableExecutionContext: true })
-        );
-
-        expect(capturedStartTimes).toEqual([99999]);
-        expect(serverEvents[serverEvents.length - 1].data.date).toBe(12345);
+    it('resolves a view started in an earlier session at the current time, keeping its date', () => {
+      vi.useFakeTimers({ now: 99999 });
+      new RendererPipeline(eventManager, hooks, DEFAULT_CONFIG, {
+        getTrackedSessionId: (at) => (at === RENDERER_RUM_DATA.date ? 'previous-session' : 'main-session'),
+      });
+      const capturedStartTimes: TimeStamp[] = [];
+      hooks.registerRum(({ startTime }) => {
+        capturedStartTimes.push(startTime);
+        return {};
       });
 
-      it('resolves the view at its date when execution context is disabled', () => {
-        const capturedStartTimes = simulateViewAfterSessionChange(DEFAULT_CONFIG);
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
 
-        expect(capturedStartTimes).toEqual([12345]);
-        expect(serverEvents[serverEvents.length - 1].data.date).toBe(12345);
-      });
+      expect(capturedStartTimes).toEqual([99999]);
+      expect(serverEvents[serverEvents.length - 1].data.date).toBe(12345);
     });
 
     it('discards the event when triggerRum returns DISCARDED', () => {

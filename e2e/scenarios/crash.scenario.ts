@@ -1,5 +1,6 @@
 import type { ElectronApplication } from '@playwright/test';
 import { test, expect, launchAppManually, createUserDataDir, cleanupUserDataDir } from '../lib/helpers';
+import { isMainProcessEvent } from '../lib/intake';
 
 test('emits a crash error event after a native crash', async ({ intake }) => {
   const userDataDir = await createUserDataDir();
@@ -10,8 +11,10 @@ test('emits a crash error event after a native crash', async ({ intake }) => {
     const { electronApp: firstElectronApp, mainPage: firstMainPage } = await launchAppManually(intake, userDataDir);
     activeApp = firstElectronApp;
     await firstMainPage.flushTransport();
-    const viewEvents = await intake.getEventsByType('view');
-    const sessionId = viewEvents[0].body.session.id;
+    const [{ body: mainContext }] = await intake.getEventsByType('execution_context', {
+      predicate: isMainProcessEvent,
+    });
+    const sessionId = mainContext.session.id;
 
     const appClosed = firstElectronApp.waitForEvent('close');
     firstMainPage.crash();
@@ -100,11 +103,8 @@ test('crash error event carries the execution_context of the process that actual
   let activeApp: ElectronApplication | undefined;
 
   try {
-    // Phase 1: launch with execution-context tracking on, capture its main-process
-    // execution_context id, then crash
-    const { electronApp: firstElectronApp, mainPage: firstMainPage } = await launchAppManually(intake, userDataDir, {
-      enableExecutionContext: true,
-    });
+    // Phase 1: launch, capture its main-process execution_context id, then crash
+    const { electronApp: firstElectronApp, mainPage: firstMainPage } = await launchAppManually(intake, userDataDir);
     activeApp = firstElectronApp;
     await firstMainPage.flushTransport();
     const firstMainEvent = (await intake.getEventsByType('execution_context')).find(
@@ -120,9 +120,7 @@ test('crash error event carries the execution_context of the process that actual
 
     // Phase 2: relaunch (a new main-process execution context is generated) and verify the replayed
     // crash error still carries the FIRST run's execution_context, not the second run's
-    const { electronApp: secondElectronApp, mainPage: secondMainPage } = await launchAppManually(intake, userDataDir, {
-      enableExecutionContext: true,
-    });
+    const { electronApp: secondElectronApp, mainPage: secondMainPage } = await launchAppManually(intake, userDataDir);
     activeApp = secondElectronApp;
     await secondMainPage.flushTransport();
 

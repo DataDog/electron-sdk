@@ -91,7 +91,6 @@ export function createTestConfiguration(overrides: Partial<Configuration> = {}):
     uploadFrequency: 'NORMAL',
     defaultPrivacyLevel: 'mask',
     allowedRendererHosts: ['*', ''],
-    enableExecutionContext: false,
     ...overrides,
   };
 }

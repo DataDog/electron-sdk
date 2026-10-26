@@ -89,7 +89,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   new RendererPipeline(eventManager, hooks, config, sessionManager);
 
-  const rum = await RumCollection.start(eventManager, hooks, sessionManager, config);
+  const rum = await RumCollection.start(eventManager, hooks, sessionManager);
   rumApi = rum.getApi();
   setDurationVitalApi(rumApi);
 

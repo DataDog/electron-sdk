@@ -48,9 +48,7 @@ export class RendererPipeline {
   private readonly bridgeOptions: BridgeOptions;
   private readonly beforeSend: BeforeSend;
   private readonly logsSampleRate: number;
-  // Only the fake view of the execution context mode leaves a session without a real view: without it, the main
-  // process view already covers each session.
-  private readonly viewStartTime: RendererViewStartTime | undefined;
+  private readonly viewStartTime: RendererViewStartTime;
 
   constructor(
     private readonly eventManager: EventManager,
@@ -58,7 +56,7 @@ export class RendererPipeline {
     config: Configuration,
     sessionManager: Pick<SessionManager, 'getTrackedSessionId'>
   ) {
-    this.viewStartTime = config.enableExecutionContext ? new RendererViewStartTime(sessionManager) : undefined;
+    this.viewStartTime = new RendererViewStartTime(sessionManager);
     this.beforeSend = new BeforeSend(config.beforeSendRum);
     this.logsSampleRate = config.logsSampleRate;
     this.bridgeOptions = {
@@ -173,7 +171,7 @@ export class RendererPipeline {
 
     const hookResult = this.hooks.triggerRum({
       eventType: data.type,
-      startTime: this.viewStartTime?.resolve(data) ?? (data.date as TimeStamp),
+      startTime: this.viewStartTime.resolve(data),
       source: EventSource.RENDERER,
       rendererViewId: (data as { view?: { id?: string } }).view?.id,
       webContentsId,
