@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "packageManager": "yarn@4.17.1",
-  "main": ".webpack/main",
+  "main": ".webpack/main/index.cjs",
   "integration": {
-    "devMain": ".webpack/{arch}/main/index.js",
+    "devMain": ".webpack/{arch}/main/index.cjs",
     "packagedBinary": {
       "darwin": "out/forge-webpack-darwin-{arch}/forge-webpack.app/Contents/MacOS/forge-webpack",
       "linux": "out/forge-webpack-linux-{arch}/forge-webpack",
@@ -21,8 +21,8 @@
     "@datadog/electron-sdk": "file:../../integration-sdk.tgz"
   },
   "devDependencies": {
-    "@electron-forge/cli": "7.11.2",
-    "@electron-forge/plugin-webpack": "7.11.2",
+    "@electron-forge/cli": "8.0.1",
+    "@electron-forge/plugin-webpack": "8.0.1",
     "@types/node": "24.13.3",
     "@vercel/webpack-asset-relocator-loader": "1.10.0",
     "css-loader": "7.1.4",
