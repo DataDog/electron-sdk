@@ -61,10 +61,11 @@ test.describe('deferred init', () => {
     electronApp = await launchDeferredInitApp(intake, userDataDir, sdkConfigOverrides);
   }
 
-  test('page loaded before init is not blocked and stays on the bridge', async ({ intake }) => {
+  test('page loaded before init is not blocked and stays on the bridge, masked', async ({ intake }) => {
     await launch(intake);
     const window = await openWindow(electronApp, PRE_INIT_LOAD_TIMEOUT);
     expect(await readAllowedHosts(window)).toEqual(['*', '']);
+    expect(await readPrivacyLevel(window)).toBe('mask');
   });
 
   test('page loaded after init reads the configured value', async ({ intake }) => {

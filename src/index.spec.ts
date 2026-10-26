@@ -24,6 +24,10 @@ vi.mock('./transport/batch', async (importOriginal) => ({
 afterEach(() => {
   stopTelemetry();
   vi.restoreAllMocks();
+  // restoreAllMocks only restores spies: reset the hoisted mocks and the process-global holder init() publishes to.
+  createBatchManager.mockReset();
+  post.mockReset();
+  resetBridgeConfig();
 });
 
 it('routes SDK errors while transport initialization is still in progress', async () => {
@@ -76,8 +80,6 @@ it('starts the session manager under the init option', async () => {
 });
 
 it('publishes the bridge config without records before its first await', async () => {
-  // Earlier init() calls published to this process-global holder.
-  resetBridgeConfig();
   createBatchManager.mockRejectedValue(new Error('transport failed'));
 
   const initializing = init(
