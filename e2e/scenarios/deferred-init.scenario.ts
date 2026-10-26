@@ -1,9 +1,12 @@
 import { expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
+import type { InitConfiguration } from '@datadog/electron-sdk';
+import type { Intake } from '../lib/intake';
+import { MainPage } from '../lib/mainPage';
 import { createUserDataDir, cleanupUserDataDir, intakeTest as test, launchDeferredInitApp } from '../lib/helpers';
 
 const MARKER_HOST = 'deferred-init.example.com';
-// A window opened before init() must load promptly; without the instrument-time responder the preload's
+// A page loaded before init() must not be blocked: without the instrument-time responder the preload's
 // synchronous config request blocks (~30s), so this bounded wait fails the test.
 const PRE_INIT_LOAD_TIMEOUT = 10_000;
 
@@ -41,13 +44,12 @@ async function openWindow(electronApp: ElectronApplication, timeout?: number): P
   return window;
 }
 
-test.describe('deferred init: bridge config', () => {
+test.describe('deferred init', () => {
   let userDataDir: string;
   let electronApp: ElectronApplication;
 
-  test.beforeEach(async ({ intake }) => {
+  test.beforeEach(async () => {
     userDataDir = await createUserDataDir();
-    electronApp = await launchDeferredInitApp(intake, userDataDir);
   });
 
   test.afterEach(async () => {
@@ -55,16 +57,35 @@ test.describe('deferred init: bridge config', () => {
     await cleanupUserDataDir(userDataDir);
   });
 
-  test('window opened before init reads the fallback config', async () => {
+  async function launch(intake: Intake, sdkConfigOverrides?: Partial<InitConfiguration>): Promise<void> {
+    electronApp = await launchDeferredInitApp(intake, userDataDir, sdkConfigOverrides);
+  }
+
+  test('page loaded before init is not blocked and stays on the bridge', async ({ intake }) => {
+    await launch(intake);
     const window = await openWindow(electronApp, PRE_INIT_LOAD_TIMEOUT);
-    expect(await readAllowedHosts(window)).not.toContain(MARKER_HOST);
-    expect(await readPrivacyLevel(window)).toBe('mask');
+    expect(await readAllowedHosts(window)).toEqual(['*', '']);
   });
 
-  test('window opened after init reads the configured value', async () => {
+  test('page loaded after init reads the configured value', async ({ intake }) => {
+    await launch(intake);
     await runInit(electronApp);
     const window = await openWindow(electronApp);
     expect(await readAllowedHosts(window)).toContain(MARKER_HOST);
     expect(await readPrivacyLevel(window)).toBe('allow');
+  });
+
+  test('page loaded before init sends nothing until it reloads', async ({ intake }) => {
+    await launch(intake, { allowedRendererHosts: ['*'] });
+    const mainPage = new MainPage(await openWindow(electronApp));
+    const bridgeWindow = await mainPage.openBridgeFileWindow(electronApp);
+    await runInit(electronApp);
+
+    await bridgeWindow.generateError('before reload');
+    await bridgeWindow.reload();
+    await bridgeWindow.generateError('after reload');
+
+    const errors = await mainPage.whileFlushing(() => intake.getSettledEventsByType('error'));
+    expect(errors.map(({ body }) => body.error.message)).toEqual(['after reload']);
   });
 });
