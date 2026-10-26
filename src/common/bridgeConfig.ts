@@ -35,10 +35,11 @@ function getHolder(): BridgeConfigHolder {
         // Pre-normalized equivalent of allowedRendererHosts: ['*']: '*' covers all non-empty hostnames
         // but the Browser SDK's matchesHostEntry requires host.length > 0, so file:// pages
         // (location.hostname === '') would not match. The '' entry covers that gap.
-        // TODO: Change to [] once a track-consent API exists. Currently ['*', ''] because customers
-        // must open a window to collect user consent before calling init(), which means windows
-        // can open before init() runs. A consent API will allow init() to be called immediately
-        // with trackingConsent: 'not-granted', eliminating the pre-init window scenario.
+        //
+        // Every host rather than []: a renderer that cannot bridge runs the Browser SDK standalone,
+        // which uploads with its own client token, outside the Electron SDK's tracking consent.
+        // Bridged, the events of a window opened before init() are dropped until init(), then judged
+        // by the consent like any others.
         allowedRendererHosts: ['*', ''],
         capabilities: ['profiles'],
       },

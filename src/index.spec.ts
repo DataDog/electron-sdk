@@ -4,6 +4,7 @@ import { SessionManager } from './domain/session';
 import { addError, stopTelemetry } from './domain/telemetry';
 import { EventKind, EventTrack, type ServerEvent } from './event';
 import { createTestConfiguration } from './mocks.specUtil';
+import type { TrackingConsent } from './domain/tracking-consent';
 
 vi.mock('node:fs/promises');
 vi.mock('electron', () => ({ app: { getPath: () => '/mock/user/data', getAppPath: () => '/mock/app' } }));
@@ -57,4 +58,18 @@ it('creates transport before the session manager', async () => {
 
   // Transport subscribes to consent while it is created, and must apply a change before the session manager does.
   expect(startSession).not.toHaveBeenCalled();
+});
+
+it('starts the session manager under the init option', async () => {
+  createBatchManager.mockResolvedValue({ post: vi.fn() });
+  let consentAtSessionStart: TrackingConsent | undefined;
+  vi.spyOn(SessionManager, 'start').mockImplementation((_events, _hooks, _config, trackingConsentManager) => {
+    consentAtSessionStart = trackingConsentManager.get();
+    return Promise.reject(new Error('stop before collection'));
+  });
+
+  await expect(
+    init(createTestConfiguration({ allowedRendererHosts: ['*'], trackingConsent: 'not-granted' }))
+  ).rejects.toThrow('stop before collection');
+  expect(consentAtSessionStart).toBe('not-granted');
 });

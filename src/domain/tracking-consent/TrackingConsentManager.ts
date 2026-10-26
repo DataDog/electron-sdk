@@ -12,8 +12,8 @@ export const TRACKING_CONSENT_HISTORY_FILE_NAME = '_dd_tracking_consent_history'
 
 /**
  * Owns the consent state and its persisted, timestamped history, with synchronous change notifications.
- * Its format hooks discard RUM events and spans that started in a refused period or in no known period, including
- * events recovered at a later launch, such as crashes.
+ * Its format hooks discard RUM events, logs, telemetry and spans that started in a refused period or in no known
+ * period, including events recovered at a later launch, such as crashes.
  */
 export class TrackingConsentManager {
   private readonly changes = new Observable<TrackingConsentChange>();
@@ -32,10 +32,12 @@ export class TrackingConsentManager {
     const checkConsent = ({ startTime }: { startTime: TimeStamp }) =>
       this.allowsDataCapturedAt(startTime) ? SKIPPED : DISCARDED;
     hooks.registerRum(checkConsent);
+    hooks.registerLogs(checkConsent);
+    hooks.registerTelemetry(checkConsent);
     hooks.registerSpan(checkConsent);
   }
 
-  static async init(hooks: FormatHooks, initialConsent: TrackingConsent = 'granted'): Promise<TrackingConsentManager> {
+  static async init(hooks: FormatHooks, initialConsent: TrackingConsent): Promise<TrackingConsentManager> {
     const history = await DiskValueHistory.init<TrackingConsent>({
       filePath: path.join(app.getPath('userData'), TRACKING_CONSENT_HISTORY_FILE_NAME),
       expireDelay: SESSION_TIME_OUT_DELAY,

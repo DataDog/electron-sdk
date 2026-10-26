@@ -60,6 +60,7 @@ import {
   setGlobalContextProperty,
   removeGlobalContextProperty,
   clearGlobalContext,
+  setTrackingConsent,
   type FailureReason,
   type AddDurationVitalOptions,
   type DurationVitalOptions,
@@ -67,6 +68,7 @@ import {
   type UserInfo,
   type AccountInfo,
   type InitConfiguration,
+  type TrackingConsent,
 } from '@datadog/electron-sdk';
 
 const isDebugMode = process.env.PWDEBUG === '1';
@@ -136,10 +138,10 @@ void app.whenReady().then(async () => {
       }
     });
   }
-  // DD_E2E_DEFER_INIT reproduces the "init() gated behind user consent" flow: the SDK is instrumented
-  // (preload registered) but init() does not run and no window opens at startup. The e2e drives init and
-  // window creation from the main process via __ddE2E, so it can control the order of init vs window open
-  // (there is no renderer yet to use IPC).
+  // DD_E2E_DEFER_INIT reproduces a deferred init(): the SDK is instrumented (preload registered) but init()
+  // does not run and no window opens at startup. The e2e drives init and window creation from the main
+  // process via __ddE2E, so it can control the order of init vs window open (there is no renderer yet to
+  // use IPC).
   let initialized = false;
   if (process.env.DD_E2E_DEFER_INIT === '1') {
     console.log('Deferring SDK init (DD_E2E_DEFER_INIT=1)');
@@ -163,6 +165,10 @@ void app.whenReady().then(async () => {
 
   ipcMain.handle('stopSession', () => {
     stopSession();
+  });
+
+  ipcMain.handle('setTrackingConsent', (_event, consent: TrackingConsent) => {
+    setTrackingConsent(consent);
   });
 
   ipcMain.handle('generateUncaughtException', () => {

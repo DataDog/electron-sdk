@@ -76,6 +76,7 @@ interface ElectronAPI {
   setGlobalContextProperty: () => Promise<void>;
   removeGlobalContextProperty: () => Promise<void>;
   clearGlobalContext: () => Promise<void>;
+  setTrackingConsent: (consent: string) => Promise<void>;
   setUserInfo: () => Promise<void>;
   addUserExtraInfo: () => Promise<void>;
   clearUserInfo: () => Promise<void>;
@@ -296,6 +297,12 @@ setupDemoButton('remove-global-context-property', 'main:remove-global-context-pr
   window.electronAPI.removeGlobalContextProperty()
 );
 setupDemoButton('clear-global-context', 'main:clear-global-context', () => window.electronAPI.clearGlobalContext());
+// --- Tracking consent buttons ---
+for (const consent of ['granted', 'pending', 'not-granted']) {
+  setupDemoButton(`tracking-consent-${consent}`, `main:set-tracking-consent(${consent})`, () =>
+    window.electronAPI.setTrackingConsent(consent)
+  );
+}
 // --- User & Account context buttons ---
 setupDemoButton('set-user-info', 'main:set-user-info', () => window.electronAPI.setUserInfo());
 setupDemoButton('add-user-extra-info', 'main:add-user-extra-info', () => window.electronAPI.addUserExtraInfo());

@@ -66,6 +66,10 @@ describe('reportConfiguration', () => {
     expect(report(createTestConfiguration()).trace_sample_rate).toBe(100);
   });
 
+  it('reports the tracking consent init() starts with', () => {
+    expect(report(createTestConfiguration({ trackingConsent: 'pending' })).tracking_consent).toBe('pending');
+  });
+
   it('reports the privacy level applied to renderers', () => {
     const configuration = createTestConfiguration({ defaultPrivacyLevel: 'mask-user-input' });
 

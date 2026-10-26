@@ -1,6 +1,6 @@
 import { app } from 'electron';
 import { BeforeSend, MainAssembly, RendererPipeline, createFormatHooks, registerCommonContext } from './assembly';
-import { setDurationVitalApi, setGlobalContextApi } from './api';
+import { setDurationVitalApi, setGlobalContextApi, setTrackingConsentApi } from './api';
 import type { AccountInfo, UserInfo } from './domain/customer-context';
 import { AccountContext, GlobalContext, UserContext } from './domain/customer-context';
 import type { InitConfiguration } from './config';
@@ -38,7 +38,12 @@ export interface InternalContext {
 }
 
 /**
- * Initialize the Electron SDK
+ * Initialize the Electron SDK. Call it once per launch and await it before calling any other API.
+ *
+ * @example
+ * ```ts
+ * await init({ ...configuration, trackingConsent: 'pending' }); // false if the configuration is invalid
+ * ```
  */
 export async function init(configuration: InitConfiguration): Promise<boolean> {
   const config = buildConfiguration(configuration);
@@ -54,7 +59,8 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   eventManager = new EventManager();
   const hooks = createFormatHooks();
-  const trackingConsentManager = await TrackingConsentManager.init(hooks);
+  const trackingConsentManager = await TrackingConsentManager.init(hooks, config.trackingConsent);
+  setTrackingConsentApi(trackingConsentManager);
 
   registerCommonContext(config, hooks);
   userContext = await UserContext.init(hooks);
@@ -68,7 +74,14 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   sessionManager = await SessionManager.start(eventManager, hooks, config, trackingConsentManager);
 
   new ProfilingCollection(eventManager, sessionManager, config, hooks, trackingConsentManager);
-  replayCollection = new ReplayCollection(eventManager, config, sessionManager, hooks, pathScrubber);
+  replayCollection = new ReplayCollection(
+    eventManager,
+    config,
+    sessionManager,
+    hooks,
+    pathScrubber,
+    trackingConsentManager
+  );
 
   if (tracing.enabled) {
     new SpanProcessor(eventManager, hooks, config);
@@ -362,6 +375,7 @@ export {
   setGlobalContextProperty,
   removeGlobalContextProperty,
   clearGlobalContext,
+  setTrackingConsent,
 } from './api';
 export type { AccountInfo, UserInfo } from './domain/customer-context';
 export type {
@@ -387,6 +401,7 @@ export type {
   RumVitalOperationStepEvent,
 } from './domain/rum';
 export type { LogsEvent } from './domain/logs';
+export type { TrackingConsent } from './domain/tracking-consent';
 export type {
   TelemetryConfigurationEvent,
   TelemetryDebugEvent,
