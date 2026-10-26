@@ -23,7 +23,8 @@ IPC messages, file I/O, session events, and span callbacks all interleave. Look 
 ### Session and time attribution
 
 Resolve the session and contexts from the event's timestamp, not from the current state: an event recorded before a
-session renewal belongs to the previous session.
+session renewal belongs to the previous session. The one exception is renderer view events with execution context
+enabled, see `RendererViewStartTime` (`src/assembly/RendererViewStartTime.ts`).
 
 ### Data at boundaries
 

@@ -491,6 +491,11 @@ export class Intake {
     return options?.predicate ? ofType.filter(options.predicate) : ofType;
   }
 
+  /** Events of `type` received so far that match `predicate`, without waiting, for use inside `expect.poll`. */
+  getReceivedEvents<T extends EventType>(type: T, options?: ReadOptions<T>): ReceivedEvent<EventBodyByType[T]>[] {
+    return this.matching(type, options);
+  }
+
   async getEventsByType<T extends EventType>(
     type: T,
     options?: ReadOptions<T>

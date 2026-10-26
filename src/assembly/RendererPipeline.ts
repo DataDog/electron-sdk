@@ -22,6 +22,8 @@ import { Configuration } from '../config';
 import { BeforeSend } from './BeforeSend';
 import { isFiniteNumber } from '../tools/validation';
 import { RendererIpcGate } from './RendererIpcGate';
+import { RendererViewStartTime } from './RendererViewStartTime';
+import type { SessionManager } from '../domain/session';
 
 type BridgeEventType = 'rum' | 'log' | 'internal_telemetry' | 'profile' | 'record';
 
@@ -46,12 +48,17 @@ export class RendererPipeline {
   private readonly bridgeOptions: BridgeOptions;
   private readonly beforeSend: BeforeSend;
   private readonly logsSampleRate: number;
+  // Only the fake view of the execution context mode leaves a session without a real view: without it, the main
+  // process view already covers each session.
+  private readonly viewStartTime: RendererViewStartTime | undefined;
 
   constructor(
     private readonly eventManager: EventManager,
     private readonly hooks: FormatHooks,
-    config: Configuration
+    config: Configuration,
+    sessionManager: Pick<SessionManager, 'getTrackedSessionId'>
   ) {
+    this.viewStartTime = config.enableExecutionContext ? new RendererViewStartTime(sessionManager) : undefined;
     this.beforeSend = new BeforeSend(config.beforeSendRum);
     this.logsSampleRate = config.logsSampleRate;
     this.bridgeOptions = {
@@ -166,7 +173,7 @@ export class RendererPipeline {
 
     const hookResult = this.hooks.triggerRum({
       eventType: data.type,
-      startTime: data.date as TimeStamp,
+      startTime: this.viewStartTime?.resolve(data) ?? (data.date as TimeStamp),
       source: EventSource.RENDERER,
       rendererViewId: (data as { view?: { id?: string } }).view?.id,
       webContentsId,
