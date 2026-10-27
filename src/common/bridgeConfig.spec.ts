@@ -1,10 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { resetBridgeConfig } from '../mocks.specUtil';
 import { getBridgeConfig, setBridgeConfig } from './bridgeConfig';
 
 describe('bridgeConfig', () => {
   beforeEach(() => {
-    resetBridgeConfig();
+    delete (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:bridgeConfig')];
   });
 
   it('returns no config until init publishes one', () => {

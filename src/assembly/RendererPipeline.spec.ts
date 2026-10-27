@@ -207,7 +207,7 @@ describe('RendererPipeline', () => {
     expect(channels).not.toContain(CONFIG_CHANNEL);
   });
 
-  it('publishes the bridge config derived from config via setBridgeConfig', () => {
+  it('publishes bridgeOptions derived from config via setBridgeConfig', () => {
     const config = createTestConfiguration({
       defaultPrivacyLevel: 'allow',
       allowedRendererHosts: ['example.com'],

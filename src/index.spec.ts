@@ -2,9 +2,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { init } from './index';
 import { SessionManager } from './domain/session';
 import { addError, stopTelemetry } from './domain/telemetry';
-import { getBridgeConfig } from './common';
 import { EventKind, EventTrack, type ServerEvent } from './event';
-import { createTestConfiguration, resetBridgeConfig } from './mocks.specUtil';
+import { createTestConfiguration } from './mocks.specUtil';
 import type { TrackingConsent } from './domain/tracking-consent';
 
 vi.mock('node:fs/promises');
@@ -24,10 +23,6 @@ vi.mock('./transport/batch', async (importOriginal) => ({
 afterEach(() => {
   stopTelemetry();
   vi.restoreAllMocks();
-  // restoreAllMocks only restores spies: reset the hoisted mocks and the process-global holder init() publishes to.
-  createBatchManager.mockReset();
-  post.mockReset();
-  resetBridgeConfig();
 });
 
 it('routes SDK errors while transport initialization is still in progress', async () => {
@@ -77,24 +72,4 @@ it('starts the session manager under the init option', async () => {
     init(createTestConfiguration({ allowedRendererHosts: ['*'], trackingConsent: 'not-granted' }))
   ).rejects.toThrow('stop before collection');
   expect(consentAtSessionStart).toBe('not-granted');
-});
-
-it('publishes the bridge config without records before its first await', async () => {
-  createBatchManager.mockRejectedValue(new Error('transport failed'));
-
-  const initializing = init(
-    createTestConfiguration({
-      defaultPrivacyLevel: 'allow',
-      allowedRendererHosts: ['example.com'],
-      profilingSampleRate: 100,
-      sessionReplaySampleRate: 100,
-    })
-  );
-
-  expect(getBridgeConfig()).toEqual({
-    defaultPrivacyLevel: 'allow',
-    allowedRendererHosts: ['example.com'],
-    capabilities: ['profiles'],
-  });
-  await expect(initializing).rejects.toThrow('transport failed');
 });

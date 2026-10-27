@@ -430,7 +430,7 @@ The SDK injects a preload script (`@datadog/electron-sdk/preload`) into every re
 
 The preload fetches bridge configuration from the main process synchronously at load time via a `datadog:bridge-config` IPC request. This config drives renderer behavior: `defaultPrivacyLevel`, `allowedRendererHosts`, and the advertised `capabilities` (the bridge features the Browser SDK may use, e.g. profiling or session replay).
 
-The responder is registered at **instrument time** (when `@datadog/electron-sdk/instrument` loads), backed by a process-global holder keyed with `Symbol.for('@datadog/electron-sdk:bridgeConfig')`. The holder stays empty until `init()` publishes the configuration, right after validating it, so a page loaded earlier gets none (see `src/preload/bridge.ts`). That first publication leaves out `records`, which `RendererPipeline` adds once it listens to the bridge (see `publishEarlyBridgeConfig`).
+The responder is registered at **instrument time** (when `@datadog/electron-sdk/instrument` loads), backed by a process-global holder keyed with `Symbol.for('@datadog/electron-sdk:bridgeConfig')`. The holder stays empty until `RendererPipeline` publishes the configuration, once it listens to the bridge, so a page loaded earlier gets none (see `src/preload/bridge.ts`).
 
 The process-global (`Symbol.for`) is required because `instrument` and the `init()` bundle are separate module instances: a module-level variable would not be shared between them, so the responder would never see the configuration.
 

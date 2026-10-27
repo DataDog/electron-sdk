@@ -1,11 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerBridgeConfigResponder } from './registerBridgeConfig';
 import { setBridgeConfig, CONFIG_CHANNEL } from '../common';
-import { resetBridgeConfig } from '../mocks.specUtil';
 
 describe('registerBridgeConfigResponder', () => {
   beforeEach(() => {
-    resetBridgeConfig();
+    delete (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:bridgeConfig')];
   });
 
   function makeIpcMain() {

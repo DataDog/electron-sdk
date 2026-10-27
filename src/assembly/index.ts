@@ -1,5 +1,5 @@
 export { MainAssembly } from './MainAssembly';
-export { RendererPipeline, publishEarlyBridgeConfig } from './RendererPipeline';
+export { RendererPipeline } from './RendererPipeline';
 export { BeforeSend } from './BeforeSend';
 export type { BridgeOptions } from '../common';
 export { registerCommonContext } from './commonContext';

@@ -65,7 +65,7 @@ import { app, BrowserWindow } from 'electron';
 This instruments the needed Electron APIs. `dd-trace` is initialized with the resolved configuration when `init()`
 is called.
 
-Then initialize the Electron SDK by calling `init` before creating any browser windows:
+Then initialize the Electron SDK, awaiting `init` before creating any browser windows:
 
 ```ts
 import { init } from '@datadog/electron-sdk';
@@ -79,7 +79,7 @@ await init({
 });
 ```
 
-> **Deferred init caveat:** a window whose page loaded before `init()` sends nothing until it reloads, not even the clicks that keep the session alive: if the end user only uses such windows, the session expires after 15 minutes and no new one starts. To wait for the end user's consent, call `init()` at startup with `trackingConsent: 'pending'` rather than deferring it (see [Tracking Consent](#tracking-consent)).
+> **Deferred init caveat:** windows opened before `init()` resolves are not tracked until they are reloaded. To wait for the end user's consent, call `init()` at startup with `trackingConsent: 'pending'` rather than deferring it (see [Tracking Consent](#tracking-consent)).
 
 #### Renderer process setup
 
