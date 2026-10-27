@@ -8,6 +8,7 @@ describe('computeIntakeHostname', () => {
 
   it('normalizes subdomain sites', () => {
     expect(computeIntakeHostname('us3.datadoghq.com')).toBe('browser-intake-us3-datadoghq.com');
+    expect(computeIntakeHostname('us2.ddog-gov.com')).toBe('browser-intake-us2-ddog-gov.com');
   });
 
   it('returns the proxy hostname when proxy is set', () => {
@@ -25,6 +26,15 @@ describe('computeIntakeUrlForTrack', () => {
   it('generates intakeUrl for spans track', () => {
     expect(computeIntakeUrlForTrack('ap1.datadoghq.com', 'spans')).toBe(
       'https://browser-intake-ap1-datadoghq.com/api/v2/spans?ddsource=electron'
+    );
+  });
+
+  it('generates intakeUrl for a subdomain fed site', () => {
+    expect(computeIntakeUrlForTrack('us2.ddog-gov.com', 'rum')).toBe(
+      'https://browser-intake-us2-ddog-gov.com/api/v2/rum?ddsource=electron'
+    );
+    expect(computeIntakeUrlForTrack('us2.ddog-gov.com', 'profiling/quota?session_id=abc', { subdomain: 'quota' })).toBe(
+      'https://quota.browser-intake-us2-ddog-gov.com/api/v2/profiling/quota?session_id=abc&ddsource=electron'
     );
   });
 
