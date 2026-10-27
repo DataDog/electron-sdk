@@ -59,8 +59,8 @@ export interface BeforeSendContext {
  * Keep this callback fast. Only supported field changes are applied; mutations to unsupported fields are ignored.
  * Editable string fields must remain strings. To clear one, assign an empty string; deleting it or assigning null or
  * undefined is ignored.
- * Only an explicit false discards the event; any other return value keeps it. View and crash events cannot be
- * discarded.
+ * Only an explicit false discards the event; any other return value keeps it. View, execution context and crash
+ * events cannot be discarded.
  *
  * @example
  * ```ts
@@ -151,8 +151,8 @@ export interface InitConfiguration {
    * ignored, preserving the original value. Supported object and array fields can be cleared with `null` or
    * `undefined`; they are normalized to an empty object or array, respectively.
    *
-   * Mutations to unsupported fields are ignored. Only an explicit `false` discards an event; view and crash events
-   * cannot be discarded.
+   * Mutations to unsupported fields are ignored. Only an explicit `false` discards an event; view, execution context
+   * and crash events cannot be discarded.
    *
    * @example
    * ```ts
@@ -166,13 +166,6 @@ export interface InitConfiguration {
    * @example ['app.example.com', '*.staging.example.com', 'file://', '*']
    */
   allowedRendererHosts: string[];
-  /**
-   * Enables execution-context tracking (main + renderer process lifecycle RUM events) and
-   * switches the main-process view to a lightweight "fake view" (no action/error/resource
-   * counters). Defaults to `false`. Temporary flag for dogfooding the feature internally —
-   * expect it to be removed without a deprecation cycle before or at v1.0.0.
-   */
-  enableExecutionContext?: boolean;
 }
 
 export interface Configuration {
@@ -198,7 +191,6 @@ export interface Configuration {
   defaultPrivacyLevel: DefaultPrivacyLevel;
   allowedRendererHosts: string[];
   beforeSendRum?: RumBeforeSend;
-  enableExecutionContext: boolean;
 }
 
 /**
@@ -507,6 +499,5 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     ),
     allowedRendererHosts,
     beforeSendRum: validateBeforeSendRum(initConfig.beforeSendRum),
-    enableExecutionContext: initConfig.enableExecutionContext === true,
   };
 }

@@ -22,6 +22,8 @@ import { Configuration } from '../config';
 import { BeforeSend } from './BeforeSend';
 import { isFiniteNumber } from '../tools/validation';
 import { RendererIpcGate } from './RendererIpcGate';
+import { RendererViewStartTime } from './RendererViewStartTime';
+import type { SessionManager } from '../domain/session';
 
 type BridgeEventType = 'rum' | 'log' | 'internal_telemetry' | 'profile' | 'record';
 
@@ -46,12 +48,15 @@ export class RendererPipeline {
   private readonly bridgeOptions: BridgeOptions;
   private readonly beforeSend: BeforeSend;
   private readonly logsSampleRate: number;
+  private readonly viewStartTime: RendererViewStartTime;
 
   constructor(
     private readonly eventManager: EventManager,
     private readonly hooks: FormatHooks,
-    config: Configuration
+    config: Configuration,
+    sessionManager: Pick<SessionManager, 'getTrackedSessionId'>
   ) {
+    this.viewStartTime = new RendererViewStartTime(sessionManager);
     this.beforeSend = new BeforeSend(config.beforeSendRum);
     this.logsSampleRate = config.logsSampleRate;
     this.bridgeOptions = {
@@ -166,7 +171,7 @@ export class RendererPipeline {
 
     const hookResult = this.hooks.triggerRum({
       eventType: data.type,
-      startTime: data.date as TimeStamp,
+      startTime: this.viewStartTime.resolve(data),
       source: EventSource.RENDERER,
       rendererViewId: (data as { view?: { id?: string } }).view?.id,
       webContentsId,

@@ -308,7 +308,6 @@ void app
       telemetryUsageSampleRate: 100,
       allowedRendererHosts: ['*'],
       defaultPrivacyLevel: 'allow',
-      enableExecutionContext: true,
       trackingConsent: process.env.PLAYGROUND_TRACKING_CONSENT as TrackingConsent | undefined,
       ...(process.env.DD_SDK_PROXY ? { proxy: process.env.DD_SDK_PROXY } : {}),
     });

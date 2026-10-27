@@ -1,16 +1,14 @@
 import { EventManager } from '../../event';
 import type { FormatHooks } from '../../assembly';
-import type { Configuration } from '../../config';
 import type { SessionManager } from '../session';
 import { ErrorCollection, CrashCollection } from './error';
 import { VitalCollection } from './vital';
 import { OperationCollection } from './operation';
-import { ViewCollection } from './view';
 import { ExecutionContextCollection } from './executionContext';
 
 export class RumCollection {
   private constructor(
-    private readonly viewCollection: ViewCollection | ExecutionContextCollection,
+    private readonly executionContextCollection: ExecutionContextCollection,
     private readonly errorCollection: ErrorCollection,
     private readonly vitalCollection: VitalCollection,
     private readonly operationCollection: OperationCollection
@@ -19,18 +17,15 @@ export class RumCollection {
   static async start(
     eventManager: EventManager,
     hooks: FormatHooks,
-    sessionManager: SessionManager,
-    configuration: Configuration
+    sessionManager: SessionManager
   ): Promise<RumCollection> {
-    const viewCollection: ViewCollection | ExecutionContextCollection = configuration.enableExecutionContext
-      ? await ExecutionContextCollection.start(eventManager, hooks, sessionManager)
-      : await ViewCollection.start(eventManager, hooks);
+    const executionContextCollection = await ExecutionContextCollection.start(eventManager, hooks, sessionManager);
 
     const errorCollection = new ErrorCollection(eventManager);
     const vitalCollection = new VitalCollection(eventManager);
     const operationCollection = new OperationCollection(eventManager);
     CrashCollection.start(eventManager);
-    return new RumCollection(viewCollection, errorCollection, vitalCollection, operationCollection);
+    return new RumCollection(executionContextCollection, errorCollection, vitalCollection, operationCollection);
   }
 
   getApi() {
@@ -42,7 +37,7 @@ export class RumCollection {
   }
 
   stop(): void {
-    this.viewCollection.stop();
+    this.executionContextCollection.stop();
     this.errorCollection.stop();
     this.vitalCollection.stop();
     this.operationCollection.stop();
