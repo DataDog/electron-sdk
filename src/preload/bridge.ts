@@ -12,10 +12,10 @@ if (!window[DD_BRIDGE_INIT]) {
 
   const config = ipcRenderer.sendSync(CONFIG_CHANNEL) as BridgeOptions | null;
 
-  // A page loaded before init() publishes the config gets none: its view can start before this launch's consent and
-  // session are recorded and be judged by the previous launch's, and its later events would refer to that view. It
-  // sends nothing until it reloads, but still gets the bridge for every host ('' covers file://), so that its Browser
-  // SDK does not run standalone, uploading with its own client token outside the tracking consent.
+  // A page loaded before init() publishes the config gets none: what it collects before this launch's consent and
+  // session are recorded can be judged by the previous launch's. It sends nothing until it reloads, but still gets the
+  // bridge for every host ('' covers file://), so that its Browser SDK does not run standalone, uploading with its own
+  // client token outside the tracking consent.
   const { defaultPrivacyLevel, allowedRendererHosts, capabilities } = config ?? {
     defaultPrivacyLevel: 'mask',
     allowedRendererHosts: ['*', ''],

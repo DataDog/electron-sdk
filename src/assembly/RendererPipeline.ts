@@ -81,8 +81,7 @@ export class RendererPipeline {
       })
     );
 
-    // The CONFIG_CHANNEL responder returns no config until here, once the listener exists and this launch's consent
-    // and session are recorded: a page loaded earlier sends nothing until it reloads (see src/preload/bridge.ts).
+    // Published once it listens and this launch's consent and session are recorded (see src/preload/bridge.ts).
     setBridgeConfig(this.bridgeOptions);
   }
 

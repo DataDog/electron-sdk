@@ -23,6 +23,9 @@ vi.mock('./transport/batch', async (importOriginal) => ({
 afterEach(() => {
   stopTelemetry();
   vi.restoreAllMocks();
+  // restoreAllMocks only restores spies: reset the hoisted mocks too.
+  createBatchManager.mockReset();
+  post.mockReset();
 });
 
 it('routes SDK errors while transport initialization is still in progress', async () => {
