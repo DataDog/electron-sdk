@@ -7,7 +7,7 @@ const isDebugMode = process.env.PWDEBUG === '1';
 let mainWindow: BrowserWindow | null = null;
 let customSessionWindow: BrowserWindow | null = null;
 
-void init(getConfiguration());
+const initialized = init(getConfiguration());
 
 ipcMain.handle('flushTransport', async () => {
   await _flushTransport();
@@ -28,7 +28,9 @@ ipcMain.handle('openCustomSessionWindow', () => {
   customSessionWindow = createWindow('persist:dd-custom-session');
 });
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
+  // Windows opened before init() resolves are not tracked until they are reloaded.
+  await initialized;
   mainWindow = createWindow();
 });
 

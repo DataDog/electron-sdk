@@ -81,8 +81,7 @@ export class RendererPipeline {
       })
     );
 
-    // The CONFIG_CHANNEL responder is registered at instrument time; here we publish the real config
-    // so it replaces the fallback returned for windows loaded before init().
+    // Published once it listens and this launch's consent and session are recorded (see src/preload/bridge.ts).
     setBridgeConfig(this.bridgeOptions);
   }
 

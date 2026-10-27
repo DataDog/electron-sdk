@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { init } from './index';
 import { SessionManager } from './domain/session';
 import { addError, stopTelemetry } from './domain/telemetry';
+import { getBridgeConfig } from './common';
 import { EventKind, EventTrack, type ServerEvent } from './event';
 import { createTestConfiguration } from './mocks.specUtil';
 import type { TrackingConsent } from './domain/tracking-consent';
@@ -23,6 +24,9 @@ vi.mock('./transport/batch', async (importOriginal) => ({
 afterEach(() => {
   stopTelemetry();
   vi.restoreAllMocks();
+  // restoreAllMocks only restores spies: reset the hoisted mocks too.
+  createBatchManager.mockReset();
+  post.mockReset();
 });
 
 it('routes SDK errors while transport initialization is still in progress', async () => {
@@ -72,4 +76,19 @@ it('starts the session manager under the init option', async () => {
     init(createTestConfiguration({ allowedRendererHosts: ['*'], trackingConsent: 'not-granted' }))
   ).rejects.toThrow('stop before collection');
   expect(consentAtSessionStart).toBe('not-granted');
+});
+
+it('publishes no bridge config before the session manager starts', async () => {
+  createBatchManager.mockResolvedValue({ post: vi.fn() });
+  let bridgeConfigAtSessionStart: ReturnType<typeof getBridgeConfig> | undefined;
+  vi.spyOn(SessionManager, 'start').mockImplementation(() => {
+    bridgeConfigAtSessionStart = getBridgeConfig();
+    return Promise.reject(new Error('stop before collection'));
+  });
+
+  await expect(init(createTestConfiguration({ allowedRendererHosts: ['*'] }))).rejects.toThrow(
+    'stop before collection'
+  );
+  // A page loaded during the earlier awaits must not send what the previous launch's consent and session would judge.
+  expect(bridgeConfigAtSessionStart).toBeNull();
 });
