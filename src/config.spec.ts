@@ -129,17 +129,6 @@ describe('buildConfiguration', () => {
   });
 
   describe('site validation', () => {
-    const VALID_DATADOG_SITES = [
-      'datadoghq.com',
-      'datadoghq.eu',
-      'us3.datadoghq.com',
-      'us5.datadoghq.com',
-      'ap1.datadoghq.com',
-      'ap2.datadoghq.com',
-      'ddog-gov.com',
-      'datad0g.com',
-    ];
-
     it.each([
       { value: undefined, description: 'undefined' },
       { value: '', description: 'empty string' },
@@ -154,20 +143,22 @@ describe('buildConfiguration', () => {
 
       expect(buildConfiguration(config)).toBeUndefined();
       expect(display.error).toHaveBeenCalledWith(
-        `Configuration error: 'site' must be one of: ${VALID_DATADOG_SITES.join(', ')}`
+        "Configuration error: 'site' must be a valid Datadog site, see https://docs.datadoghq.com/getting_started/site/"
       );
     });
 
     it.each([
-      { site: 'datadoghq.com', expectedUrl: 'https://browser-intake-datadoghq.com/api/v2/rum' },
-      { site: 'datadoghq.eu', expectedUrl: 'https://browser-intake-datadoghq.eu/api/v2/rum' },
-      { site: 'us3.datadoghq.com', expectedUrl: 'https://browser-intake-us3-datadoghq.com/api/v2/rum' },
-      { site: 'us5.datadoghq.com', expectedUrl: 'https://browser-intake-us5-datadoghq.com/api/v2/rum' },
-      { site: 'ap1.datadoghq.com', expectedUrl: 'https://browser-intake-ap1-datadoghq.com/api/v2/rum' },
-      { site: 'ap2.datadoghq.com', expectedUrl: 'https://browser-intake-ap2-datadoghq.com/api/v2/rum' },
-      { site: 'ddog-gov.com', expectedUrl: 'https://browser-intake-ddog-gov.com/api/v2/rum' },
-      { site: 'datad0g.com', expectedUrl: 'https://browser-intake-datad0g.com/api/v2/rum' },
-    ])('accepts valid site: $site', ({ site }) => {
+      'datadoghq.com',
+      'datadoghq.eu',
+      'us3.datadoghq.com',
+      'us5.datadoghq.com',
+      'ap1.datadoghq.com',
+      'ap2.datadoghq.com',
+      'ddog-gov.com',
+      'us2.ddog-gov.com',
+      'datad0g.com',
+      'future-region.datadoghq.com',
+    ])('accepts valid site: %s', (site) => {
       const config = {
         ...DEFAULT_CONFIG,
         site,
@@ -178,6 +169,14 @@ describe('buildConfiguration', () => {
       expect(result).toBeDefined();
       expect(result?.site).toBe(site);
     });
+
+    // Best-effort check, as in the Browser SDK: malformed values containing a Datadog domain name pass
+    it.each(['https://datadoghq.com', 'app.datadoghq.com', 'datadog.example.com'])(
+      'accepts any value containing a Datadog domain name: %s',
+      (site) => {
+        expect(buildConfiguration({ ...DEFAULT_CONFIG, site })?.site).toBe(site);
+      }
+    );
   });
 
   describe('error logging', () => {

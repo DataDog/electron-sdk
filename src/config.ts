@@ -6,16 +6,9 @@ import type { RumEvent } from './domain/rum';
 import type { TrackingConsent } from './domain/tracking-consent';
 import { isFiniteNumber, isOneOf, isValidString } from './tools/validation';
 
-const VALID_DATADOG_SITES = [
-  'datadoghq.com',
-  'datadoghq.eu',
-  'us3.datadoghq.com',
-  'us5.datadoghq.com',
-  'ap1.datadoghq.com',
-  'ap2.datadoghq.com',
-  'ddog-gov.com',
-  'datad0g.com', // Internal staging site
-] as const;
+// Best-effort check copied from the Browser SDK, so new Datadog sites work without an SDK release:
+// https://github.com/DataDog/browser-sdk/blob/main/packages/js-core/src/entries/configuration.ts
+const DATADOG_SITE_REGEX = /(datadog|ddog|datad0g|dd0g)/;
 
 export const VALID_TRACKING_CONSENTS: readonly TrackingConsent[] = ['granted', 'pending', 'not-granted'];
 
@@ -225,8 +218,10 @@ function validateRequiredString(value: unknown, fieldName: string): string | und
 }
 
 function validateSite(value: unknown): string | undefined {
-  if (!isOneOf(value, VALID_DATADOG_SITES)) {
-    display.error(`Configuration error: 'site' must be one of: ${VALID_DATADOG_SITES.join(', ')}`);
+  if (typeof value !== 'string' || !DATADOG_SITE_REGEX.test(value)) {
+    display.error(
+      "Configuration error: 'site' must be a valid Datadog site, see https://docs.datadoghq.com/getting_started/site/"
+    );
     return undefined;
   }
   return value;
