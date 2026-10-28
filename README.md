@@ -2,8 +2,6 @@
 
 Real User Monitoring for Electron applications.
 
-> **Alpha (v0.X.X)** — This SDK is in early development. APIs may change between releases.
-
 ## Getting Started
 
 ### Prerequisites
