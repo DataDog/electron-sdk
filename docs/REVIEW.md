@@ -53,8 +53,8 @@ See `monitor` and `callMonitored` in `src/domain/telemetry/Telemetry.ts`.
 
 ### Backward compatibility
 
-Breaking changes must be intentional and flagged in the PR title (💥). The SDK is in 0.x: breaking changes are
-acceptable, as long as they are deliberate. Watch for:
+Breaking changes must be intentional and flagged in the PR title (💥). Since 1.0, they require a major version, so
+they are only acceptable when one is planned. Watch for:
 
 - Public API changes (renamed/removed methods, changed signatures in `InitConfiguration` or public classes).
 - Event field renames or removals: downstream dashboards and monitors rely on stable field names.
