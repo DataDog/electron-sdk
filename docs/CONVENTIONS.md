@@ -86,17 +86,59 @@ that releases it. Instantiating such a component in a test then requires releasi
 Components that hold no such resource don't need a `stop()`, and a `stop()` with no production caller is fine as long as
 it releases a real resource. Format hooks are tied to SDK lifetime and don't need cleanup.
 
+## Public API
+
+### Runtime Validation
+
+TypeScript signatures don't constrain JavaScript callers. Validators accept `unknown` and narrow it before reading
+properties. Reuse `src/tools/validation.ts` helpers and `isIndexableObject` from `@datadog/js-core/util`.
+
+Test the runtime contract with values that bypass the type system (`badValue as unknown as ExpectedType`), asserting
+the diagnostic and whether the event is emitted. See `validateDurationVitalArgs` in [`api.ts`](../src/api.ts) and
+[`api.spec.ts`](../src/api.spec.ts), including validation of fields inside the options object.
+
+### Deprecated Aliases
+
+When preserving compatibility during an API rename, keep the old export as a wrapper. Its call path must warn once per
+deprecated method and run the shared implementation. Mark the export with `@deprecated Use <newName> instead.`.
+
+For operation APIs, the wrappers in [`src/index.ts`](../src/index.ts) report usage and call the deprecated collection
+methods. `handleDeprecated` in [`OperationCollection.ts`](../src/domain/rum/operation/OperationCollection.ts) emits the
+warning, then runs the shared validation and event-construction handler.
+
+State the removal timing in both the JSDoc and warning. Existing operation aliases say "will be removed in a future
+major release".
+
+Honor an alias's documented removal schedule. Other deliberate breaking changes remain allowed during 0.x releases
+under the [backward compatibility policy](REVIEW.md#backward-compatibility).
+
+### Types from Schemas
+
+Derive internal types from generated schema fields instead of duplicating their enums or shapes:
+
+```typescript
+type StepType = NonNullable<RumVitalOperationStepEvent['vital']>['step_type'];
+```
+
+See [`rawRumData.types.ts`](../src/domain/rum/types/rawRumData.types.ts) for examples and
+[RUM Events Schema Management](DEVELOPMENT.md#rum-events-schema-management) for source files and regeneration commands.
+
 ## Error Handling
 
 The SDK never throws into customer code, and favors observable failures over silent ones:
 
-| Source of the problem                       | Handling                                                               |
-| ------------------------------------------- | ---------------------------------------------------------------------- |
-| Invalid configuration                       | Report with `display.error`; `init` resolves to `false`                |
-| Invalid public API call                     | Report with `display.error` and ignore the call                        |
-| Invalid external data (IPC, files on disk)  | Validate early and drop                                                |
-| Broken internal invariant                   | Throw: `monitor()` reports it as telemetry. No `?.` or fallback values |
-| Customer callback failure (e.g. beforeSend) | Report with `display.error` and keep the event; no SDK telemetry       |
+| Source of the problem                       | Handling                                                                |
+| ------------------------------------------- | ----------------------------------------------------------------------- |
+| Invalid configuration                       | Report with `display.error`; `init` resolves to `false`                 |
+| Public API validation                       | Preserve the API's established diagnostic level and acceptance behavior |
+| Invalid external data (IPC, files on disk)  | Validate early and drop                                                 |
+| Broken internal invariant                   | Throw: `monitor()` reports it as telemetry. No `?.` or fallback values  |
+| Customer callback failure (e.g. beforeSend) | Report with `display.error` and keep the event; no SDK telemetry        |
+
+Diagnostic severity does not determine whether input is accepted. Operation validators reject a blank name with
+`display.error`; `setUserInfo` without an ID and invalid user/account standard fields use `display.warn` and leave the
+context unchanged. Operation names outside the backend character set and invalid `failureReason` values warn but still
+emit. Keep each API's established validation behavior; diagnostic wording must describe whether the call takes effect.
 
 ## Telemetry
 
@@ -120,6 +162,11 @@ Reference an explicit PR or ticket when history matters. Update them when modify
 - Customer-facing API (exports of `src/index.ts`, bundler plugin entry points) and `InitConfiguration` options: a
   description and at least one `@example`.
 - Public exported types (event schemas, unions, generated types): a description only.
+
+Public API JSDoc describes the contract: behavior, parameters, emitted data, and `@experimental` / `@deprecated` status
+where applicable. Link to the relevant README API reference, setup instructions, or feature walkthrough for usage
+details. Scope routing, IPC mechanics, and other implementation reasoning belong in `docs/ARCHITECTURE.md` or internal
+comments.
 
 ### Public Docs
 
