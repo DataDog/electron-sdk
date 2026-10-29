@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import { BeforeSend, MainAssembly, RendererPipeline, createFormatHooks, registerCommonContext } from './assembly';
-import { setDurationVitalApi, setGlobalContextApi, setTrackingConsentApi } from './api';
+import { setDurationVitalApi, setGlobalContextApi, setLogsApi, setTrackingConsentApi } from './api';
+import { LogsCollection } from './domain/logs';
 import type { AccountInfo, UserInfo } from './domain/customer-context';
 import { AccountContext, GlobalContext, UserContext } from './domain/customer-context';
 import type { InitConfiguration } from './config';
@@ -92,6 +93,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   const rum = await RumCollection.start(eventManager, hooks, sessionManager);
   rumApi = rum.getApi();
   setDurationVitalApi(rumApi);
+  setLogsApi(new LogsCollection(eventManager, config));
 
   beforeQuitHandler?.stop();
   beforeQuitHandler = new BeforeQuitHandler(app, _flushTransport);
@@ -367,6 +369,7 @@ export function getInternalContext(): InternalContext | undefined {
 }
 
 export {
+  logger,
   addDurationVital,
   startDurationVital,
   stopDurationVital,
@@ -400,7 +403,7 @@ export type {
   RumVitalDurationEvent,
   RumVitalOperationStepEvent,
 } from './domain/rum';
-export type { LogsEvent } from './domain/logs';
+export type { LogsEvent, LogStatus } from './domain/logs';
 export type { TrackingConsent } from './domain/tracking-consent';
 export type {
   TelemetryConfigurationEvent,
