@@ -25,7 +25,7 @@
     "@datadog/datadog-ci": "5.24.1",
     "@playwright/test": "1.61.1",
     "@types/node": "25.9.5",
-    "chokidar": "5.0.0",
+    "chokidar": "6.0.0",
     "concurrently": "10.0.3",
     "electron": "41.1.0",
     "electron-reloader": "1.2.3",
