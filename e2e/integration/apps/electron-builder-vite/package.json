@@ -36,7 +36,7 @@
   },
   "devDependencies": {
     "@electron/asar": "4.3.0",
-    "@types/node": "24.13.3",
+    "@types/node": "26.6.5",
     "electron": "41.1.0",
     "electron-builder": "26.15.3",
     "typescript": "5.9.3",

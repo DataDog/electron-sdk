@@ -21,7 +21,7 @@
     "@datadog/electron-sdk": "file:../../integration-sdk.tgz"
   },
   "devDependencies": {
-    "@types/node": "24.13.3",
+    "@types/node": "26.6.5",
     "electron": "41.1.0",
     "electron-builder": "26.15.3",
     "electron-vite": "6.0.0",
