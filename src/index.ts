@@ -293,7 +293,7 @@ export function failOperation(name: string, failureReason: FailureReason, option
 
 /**
  * @deprecated Use `startOperation` instead. This alias exists for backwards compatibility with the API name used in
- * early previews and will be removed in a future major release.
+ * early previews and will be removed in the next major release.
  *
  * @experimental This API is in preview and may change in future releases.
  * @see README "Operation Monitoring" for usage details.
@@ -307,7 +307,7 @@ export function startFeatureOperation(name: string, options?: FeatureOperationOp
 
 /**
  * @deprecated Use `succeedOperation` instead. This alias exists for backwards compatibility with the API name used in
- * early previews and will be removed in a future major release.
+ * early previews and will be removed in the next major release.
  *
  * @experimental This API is in preview and may change in future releases.
  * @see README "Operation Monitoring" for usage details.
@@ -321,7 +321,7 @@ export function succeedFeatureOperation(name: string, options?: FeatureOperation
 
 /**
  * @deprecated Use `failOperation` instead. This alias exists for backwards compatibility with the API name used in
- * early previews and will be removed in a future major release.
+ * early previews and will be removed in the next major release.
  *
  * @experimental This API is in preview and may change in future releases.
  * @see README "Operation Monitoring" for usage details.
