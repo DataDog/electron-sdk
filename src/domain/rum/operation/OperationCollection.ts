@@ -110,7 +110,7 @@ export class OperationCollection {
     if (!this.warnedDeprecations.has(deprecatedMethod)) {
       this.warnedDeprecations.add(deprecatedMethod);
       display.warn(
-        `${deprecatedMethod}() is deprecated and will be removed in a future major release. Use ${canonical}() instead.`
+        `${deprecatedMethod}() is deprecated and will be removed in the next major release. Use ${canonical}() instead.`
       );
     }
     this.handle(canonical, name, options, failureReason);
