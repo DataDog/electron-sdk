@@ -6,16 +6,9 @@ import type { RumEvent } from './domain/rum';
 import type { TrackingConsent } from './domain/tracking-consent';
 import { isFiniteNumber, isOneOf, isValidString } from './tools/validation';
 
-const VALID_DATADOG_SITES = [
-  'datadoghq.com',
-  'datadoghq.eu',
-  'us3.datadoghq.com',
-  'us5.datadoghq.com',
-  'ap1.datadoghq.com',
-  'ap2.datadoghq.com',
-  'ddog-gov.com',
-  'datad0g.com', // Internal staging site
-] as const;
+// Best-effort check copied from the Browser SDK, so new Datadog sites work without an SDK release:
+// https://github.com/DataDog/browser-sdk/blob/main/packages/js-core/src/entries/configuration.ts
+const DATADOG_SITE_REGEX = /(datadog|ddog|datad0g|dd0g)/;
 
 export const VALID_TRACKING_CONSENTS: readonly TrackingConsent[] = ['granted', 'pending', 'not-granted'];
 
@@ -59,8 +52,8 @@ export interface BeforeSendContext {
  * Keep this callback fast. Only supported field changes are applied; mutations to unsupported fields are ignored.
  * Editable string fields must remain strings. To clear one, assign an empty string; deleting it or assigning null or
  * undefined is ignored.
- * Only an explicit false discards the event; any other return value keeps it. View and crash events cannot be
- * discarded.
+ * Only an explicit false discards the event; any other return value keeps it. View, execution context and crash
+ * events cannot be discarded.
  *
  * @example
  * ```ts
@@ -151,8 +144,8 @@ export interface InitConfiguration {
    * ignored, preserving the original value. Supported object and array fields can be cleared with `null` or
    * `undefined`; they are normalized to an empty object or array, respectively.
    *
-   * Mutations to unsupported fields are ignored. Only an explicit `false` discards an event; view and crash events
-   * cannot be discarded.
+   * Mutations to unsupported fields are ignored. Only an explicit `false` discards an event; view, execution context
+   * and crash events cannot be discarded.
    *
    * @example
    * ```ts
@@ -166,13 +159,6 @@ export interface InitConfiguration {
    * @example ['app.example.com', '*.staging.example.com', 'file://', '*']
    */
   allowedRendererHosts: string[];
-  /**
-   * Enables execution-context tracking (main + renderer process lifecycle RUM events) and
-   * switches the main-process view to a lightweight "fake view" (no action/error/resource
-   * counters). Defaults to `false`. Temporary flag for dogfooding the feature internally —
-   * expect it to be removed without a deprecation cycle before or at v1.0.0.
-   */
-  enableExecutionContext?: boolean;
 }
 
 export interface Configuration {
@@ -198,7 +184,6 @@ export interface Configuration {
   defaultPrivacyLevel: DefaultPrivacyLevel;
   allowedRendererHosts: string[];
   beforeSendRum?: RumBeforeSend;
-  enableExecutionContext: boolean;
 }
 
 /**
@@ -233,8 +218,10 @@ function validateRequiredString(value: unknown, fieldName: string): string | und
 }
 
 function validateSite(value: unknown): string | undefined {
-  if (!isOneOf(value, VALID_DATADOG_SITES)) {
-    display.error(`Configuration error: 'site' must be one of: ${VALID_DATADOG_SITES.join(', ')}`);
+  if (typeof value !== 'string' || !DATADOG_SITE_REGEX.test(value)) {
+    display.error(
+      "Configuration error: 'site' must be a valid Datadog site, see https://docs.datadoghq.com/getting_started/site/"
+    );
     return undefined;
   }
   return value;
@@ -507,6 +494,5 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     ),
     allowedRendererHosts,
     beforeSendRum: validateBeforeSendRum(initConfig.beforeSendRum),
-    enableExecutionContext: initConfig.enableExecutionContext === true,
   };
 }

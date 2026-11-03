@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { BridgeOptions } from '../common';
 
 const mockSend = vi.fn();
 const mockExposeInMainWorld = vi.fn();
@@ -29,23 +30,32 @@ describe('bridge', () => {
     delete win.__dd_bridge_initialized;
   });
 
-  async function load(config: unknown = null): Promise<void> {
-    mockSendSync.mockReturnValue(config);
+  async function load(config: Partial<BridgeOptions> | null): Promise<void> {
+    // Once init() has published the config, the main process sends every field.
+    mockSendSync.mockReturnValue(
+      config && { defaultPrivacyLevel: 'mask', allowedRendererHosts: ['*', ''], capabilities: [], ...config }
+    );
     await import('./bridge');
   }
 
   it('sets window.DatadogEventBridge', async () => {
-    await load();
+    await load(null);
     expect((window as unknown as Record<string, unknown>).DatadogEventBridge).toBeDefined();
   });
 
-  it('getCapabilities returns empty array string', async () => {
-    await load();
+  it('advertises no capability to a page loaded before init', async () => {
+    await load(null);
     const bridge = (window as unknown as Record<string, { getCapabilities(): string }>).DatadogEventBridge;
     expect(bridge.getCapabilities()).toBe('[]');
   });
 
-  it('getPrivacyLevel defaults to mask when config is null', async () => {
+  it('getCapabilities returns configured capabilities', async () => {
+    await load({ capabilities: ['profiles', 'records'] });
+    const bridge = (window as unknown as Record<string, { getCapabilities(): string }>).DatadogEventBridge;
+    expect(JSON.parse(bridge.getCapabilities())).toEqual(['profiles', 'records']);
+  });
+
+  it('masks a page loaded before init', async () => {
     await load(null);
     const bridge = (window as unknown as Record<string, { getPrivacyLevel(): string }>).DatadogEventBridge;
     expect(bridge.getPrivacyLevel()).toBe('mask');
@@ -89,14 +99,23 @@ describe('bridge', () => {
   });
 
   it('send calls ipcRenderer.send with the bridge channel', async () => {
-    await load();
+    await load({});
     const bridge = (window as unknown as Record<string, { send(msg: string): void }>).DatadogEventBridge;
     bridge.send('{"type":"rum"}');
     expect(mockSend).toHaveBeenCalledWith('datadog:bridge-send', '{"type":"rum"}');
   });
 
+  it('keeps a page loaded before init on the bridge, but drops what it sends', async () => {
+    await load(null);
+    const bridge = (window as unknown as Record<string, { getAllowedWebViewHosts(): string; send(msg: string): void }>)
+      .DatadogEventBridge;
+    bridge.send('{"type":"rum"}');
+    expect(JSON.parse(bridge.getAllowedWebViewHosts())).toEqual(['*', '']);
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
   it('calls contextBridge.exposeInMainWorld with the bridge object', async () => {
-    await load();
+    await load(null);
     expect(mockExposeInMainWorld).toHaveBeenCalledWith(
       'DatadogEventBridge',
       expect.objectContaining({
@@ -122,9 +141,7 @@ describe('bridge', () => {
     // window state, as would happen when Electron runs the same preload script twice per frame.
     vi.resetModules();
     vi.clearAllMocks();
-    mockSendSync.mockReturnValue({ defaultPrivacyLevel: 'mask' });
-
-    await import('./bridge');
+    await load({ defaultPrivacyLevel: 'mask' });
 
     expect(mockSendSync).not.toHaveBeenCalled();
     expect(mockExposeInMainWorld).not.toHaveBeenCalled();

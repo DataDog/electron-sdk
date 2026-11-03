@@ -9,9 +9,18 @@ export class BridgeWindowPage {
 
   static async waitForReady(electronApp: ElectronApplication): Promise<BridgeWindowPage> {
     const page = await electronApp.waitForEvent('window');
+    await BridgeWindowPage.waitForBridgeReady(page);
+    return new BridgeWindowPage(page);
+  }
+
+  private static async waitForBridgeReady(page: Page) {
     await page.waitForSelector('#status');
     await page.waitForFunction('document.getElementById("status")?.textContent === "bridge-ready"');
-    return new BridgeWindowPage(page);
+  }
+
+  async reload() {
+    await this.page.reload();
+    await BridgeWindowPage.waitForBridgeReady(this.page);
   }
 
   async setRendererGlobalContext(context: Record<string, unknown>) {

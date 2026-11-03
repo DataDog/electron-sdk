@@ -20,7 +20,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { RumCollection } from './RumCollection';
 import { EventManager, EventKind, EventFormat, type RawRumEvent } from '../../event';
 import { createFormatHooks, type FormatHooks } from '../../assembly';
-import type { Configuration } from '../../config';
 import type { SessionManager } from '../session';
 import type { RawRumView } from './types';
 import { PROCESS_UPDATE_INTERVAL } from './executionContext';
@@ -56,19 +55,8 @@ describe('RumCollection', () => {
     mfs.reset();
   });
 
-  it('uses ViewCollection when enableExecutionContext is false', async () => {
-    const configuration = { enableExecutionContext: false } as Configuration;
-    const rum = await RumCollection.start(eventManager, hooks, sessionManager, configuration);
-    // ViewCollection.start emits the real generateUUID-based view id, not the session id
-    expect((rawRumEvents[0].data as RawRumView).view.id).not.toBe('session-1');
-    // ExecutionContextCollection must stay unstarted on the disabled path — no execution_context event
-    expect(rawRumEvents.find((e) => e.data.type === 'execution_context')).toBeUndefined();
-    rum.stop();
-  });
-
-  it('uses MainProcessContext and starts ExecutionContextCollection when enableExecutionContext is true', async () => {
-    const configuration = { enableExecutionContext: true } as Configuration;
-    const rum = await RumCollection.start(eventManager, hooks, sessionManager, configuration);
+  it('uses MainProcessContext and starts ExecutionContextCollection', async () => {
+    const rum = await RumCollection.start(eventManager, hooks, sessionManager);
 
     const viewEvent = rawRumEvents.find((e) => e.data.type === 'view');
     expect((viewEvent!.data as RawRumView).view.id).toBe('session-1');
@@ -80,9 +68,8 @@ describe('RumCollection', () => {
     rum.stop();
   });
 
-  it('stop() also stops ExecutionContextCollection when enableExecutionContext is true', async () => {
-    const configuration = { enableExecutionContext: true } as Configuration;
-    const rum = await RumCollection.start(eventManager, hooks, sessionManager, configuration);
+  it('stop() also stops ExecutionContextCollection', async () => {
+    const rum = await RumCollection.start(eventManager, hooks, sessionManager);
 
     rum.stop();
     rawRumEvents.length = 0;

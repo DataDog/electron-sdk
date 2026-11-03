@@ -18,7 +18,14 @@ import {
 } from '../lib/integrationFixture';
 import { getElectronBuilderViteArchivePath } from '../lib/electronBuilderVite';
 import { getCompatibilityRun } from '../../lib/compatibility';
-import type { Intake, EventBodyByType, EventType, ReceivedEvent, Span } from '../../lib/intake';
+import {
+  isMainProcessEvent,
+  type Intake,
+  type EventBodyByType,
+  type EventType,
+  type ReceivedEvent,
+  type Span,
+} from '../../lib/intake';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { ONE_SECOND } from '@datadog/js-core/time';
 
@@ -84,15 +91,13 @@ test.describe('electron-builder runtime dependency packaging @integration', () =
   });
 });
 
-test.describe('view event on startup @integration', () => {
-  test('sends a view event with a session id on startup', async ({ window, intake }) => {
-    const viewEvents = await flushUntilEventArrives(window, intake, 'view', 1);
-    expect(viewEvents).toHaveLength(1);
-    const view = viewEvents[0].body;
+test.describe('main execution context on startup @integration', () => {
+  test('sends a main-process execution context event with a session id on startup', async ({ window, intake }) => {
+    const [{ body: mainContext }] = await flushUntilMainContextArrives(window, intake);
 
-    expect(view.type).toBe('view');
-    expect(view.session.id).toBeDefined();
-    expect(view.application.id).toBe('integration-test-app-id');
+    expect(mainContext.type).toBe('execution_context');
+    expect(mainContext.session.id).toBeDefined();
+    expect(mainContext.application.id).toBe('integration-test-app-id');
   });
 });
 
@@ -125,8 +130,7 @@ test.describe('main-process fetch resource @integration', () => {
     intake,
     testServer,
   }) => {
-    const [viewEvent] = await flushUntilEventArrives(window, intake, 'view', 1);
-    const view = viewEvent.body;
+    const [{ body: mainContext }] = await flushUntilMainContextArrives(window, intake);
 
     const url = testServer.urlFor(200);
     await window.evaluate((u) => (globalThis as unknown as IntegrationTestWindow).electronAPI?.mainFetch(u), url);
@@ -137,16 +141,19 @@ test.describe('main-process fetch resource @integration', () => {
     expect(resource.resource.method).toBe('GET');
     expect(resource.resource.status_code).toBe(200);
     expect(resource.resource.url).toBe(url);
-    expect(resource.application.id).toBe(view.application.id);
-    expect(resource.session.id).toBe(view.session.id);
-    expect(resource.view.id).toBe(view.view.id);
+    expect(resource.application.id).toBe(mainContext.application.id);
+    expect(resource.session.id).toBe(mainContext.session.id);
+    expect(resource.execution_context).toMatchObject({
+      id: mainContext.execution_context.id,
+      type: 'main-process',
+    });
     expect(resource._dd.trace_id).toBeDefined();
     expect(resource._dd.span_id).toBeDefined();
 
     const span = await intake.waitForSpan((s: Span) => BigInt(`0x${s.trace_id}`) === BigInt(resource._dd.trace_id!));
-    expect(span.meta['_dd.application.id']).toBe(view.application.id);
-    expect(span.meta['_dd.session.id']).toBe(view.session.id);
-    expect(span.meta['_dd.view.id']).toBe(view.view.id);
+    expect(span.meta['_dd.application.id']).toBe(mainContext.application.id);
+    expect(span.meta['_dd.session.id']).toBe(mainContext.session.id);
+    expect(span.meta['_dd.execution_context.id']).toBe(mainContext.execution_context.id);
     expect(span.service).toBe('integration-test-app');
 
     // Regression guard for double-instrumentation. Each app follows the README
@@ -200,7 +207,7 @@ test.describe('crash reporting across restart @integration', () => {
       const firstWindow = await firstApp.firstWindow();
       await firstWindow.waitForLoadState('load');
       await firstWindow.waitForTimeout(500);
-      await flushUntilEventArrives(firstWindow, intake, 'view', 1);
+      await flushUntilMainContextArrives(firstWindow, intake);
 
       const appClosed = firstApp.waitForEvent('close');
       void firstWindow
@@ -256,6 +263,10 @@ async function flushTransport(window: Page): Promise<void> {
  * arrive or `timeout` ms elapses. Handles variable crash processing time across toolchains
  * and modes (e.g. slower when reading from an asar archive in packaged mode).
  */
+function flushUntilMainContextArrives(window: Page, intake: Intake) {
+  return flushUntilEventArrives(window, intake, 'execution_context', 1, undefined, isMainProcessEvent);
+}
+
 async function flushUntilEventArrives<T extends EventType>(
   window: Page,
   intake: Intake,

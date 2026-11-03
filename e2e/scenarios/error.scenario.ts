@@ -1,9 +1,9 @@
 import { test, expect } from '../lib/helpers';
+import { isMainProcessEvent } from '../lib/intake';
 
 test('emits an error event on uncaught exception', async ({ mainPage, intake }) => {
   await mainPage.flushTransport();
-  const viewEvents = await intake.getEventsByType('view');
-  const view = viewEvents[0].body;
+  const [{ body: mainContext }] = await intake.getEventsByType('execution_context', { predicate: isMainProcessEvent });
 
   await mainPage.generateUncaughtException();
   await mainPage.flushTransport();
@@ -21,14 +21,13 @@ test('emits an error event on uncaught exception', async ({ mainPage, intake }) 
   // The app path is scrubbed to `/`: main-process frames are root-relative, matching uploaded source maps.
   expect(error.error.stack).toMatch(/\(\/main\.js:\d+:\d+\)/);
   expect(error.error.id).toBeDefined();
-  expect(error.session.id).toBe(view.session.id);
-  expect(error.view.id).toBe(view.view.id);
+  expect(error.session.id).toBe(mainContext.session.id);
+  expect(error.execution_context).toMatchObject({ id: mainContext.execution_context.id, type: 'main-process' });
 });
 
 test('emits an error event on manual addError call', async ({ mainPage, intake }) => {
   await mainPage.flushTransport();
-  const viewEvents = await intake.getEventsByType('view');
-  const view = viewEvents[0].body;
+  const [{ body: mainContext }] = await intake.getEventsByType('execution_context', { predicate: isMainProcessEvent });
 
   await mainPage.generateManualError();
   await mainPage.flushTransport();
@@ -44,15 +43,14 @@ test('emits an error event on manual addError call', async ({ mainPage, intake }
   expect(error.error.type).toBe('Error');
   expect(error.error.stack).toBeDefined();
   expect(error.error.id).toBeDefined();
-  expect(error.session.id).toBe(view.session.id);
-  expect(error.view.id).toBe(view.view.id);
+  expect(error.session.id).toBe(mainContext.session.id);
+  expect(error.execution_context).toMatchObject({ id: mainContext.execution_context.id, type: 'main-process' });
   expect(error.context).toEqual({ foo: 'bar' });
 });
 
 test('emits an error event on unhandled rejection', async ({ mainPage, intake }) => {
   await mainPage.flushTransport();
-  const viewEvents = await intake.getEventsByType('view');
-  const view = viewEvents[0].body;
+  const [{ body: mainContext }] = await intake.getEventsByType('execution_context', { predicate: isMainProcessEvent });
 
   await mainPage.generateUnhandledRejection();
   await mainPage.flushTransport();
@@ -68,6 +66,6 @@ test('emits an error event on unhandled rejection', async ({ mainPage, intake })
   expect(error.error.type).toBe('Error');
   expect(error.error.stack).toBeDefined();
   expect(error.error.id).toBeDefined();
-  expect(error.session.id).toBe(view.session.id);
-  expect(error.view.id).toBe(view.view.id);
+  expect(error.session.id).toBe(mainContext.session.id);
+  expect(error.execution_context).toMatchObject({ id: mainContext.execution_context.id, type: 'main-process' });
 });

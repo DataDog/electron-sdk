@@ -1,11 +1,11 @@
 import { test, expect } from '../lib/helpers';
-import { isBridgeView } from '../lib/intake';
+import { isBridgeView, isMainProcessEvent } from '../lib/intake';
 
 test.describe('bridge window — file:// window', () => {
   test('renderer RUM view events arrive at the intake via the bridge', async ({ electronApp, mainPage, intake }) => {
-    // Flush the initial main-process view
+    // Flush the initial main-process execution context
     await mainPage.flushTransport();
-    await intake.getEventsByType('view');
+    await intake.getEventsByType('execution_context', { predicate: isMainProcessEvent });
 
     await mainPage.openBridgeFileWindow(electronApp);
     await mainPage.flushTransport();
@@ -22,7 +22,7 @@ test.describe('bridge window — file:// window', () => {
 test.describe('bridge window — http:// window', () => {
   test('renderer RUM view events arrive at the intake via the bridge', async ({ electronApp, mainPage, intake }) => {
     await mainPage.flushTransport();
-    await intake.getEventsByType('view');
+    await intake.getEventsByType('execution_context', { predicate: isMainProcessEvent });
 
     await mainPage.openBridgeHttpWindow(electronApp);
     await mainPage.flushTransport();
@@ -43,7 +43,7 @@ test.describe('bridge window — contextIsolation: false', () => {
     intake,
   }) => {
     await mainPage.flushTransport();
-    await intake.getEventsByType('view');
+    await intake.getEventsByType('execution_context', { predicate: isMainProcessEvent });
 
     await mainPage.openBridgeFileWindowNoIsolation(electronApp);
     await mainPage.flushTransport();
@@ -60,8 +60,9 @@ test.describe('bridge window — contextIsolation: false', () => {
 test.describe('bridge window — event types', () => {
   test('renderer view events have correct attributes', async ({ electronApp, mainPage, intake }) => {
     await mainPage.flushTransport();
-    const mainViewEvents = await intake.getEventsByType('view');
-    const mainView = mainViewEvents[0].body;
+    const [{ body: mainContext }] = await intake.getEventsByType('execution_context', {
+      predicate: isMainProcessEvent,
+    });
 
     await mainPage.openBridgeFileWindow(electronApp);
     await mainPage.flushTransport();
@@ -70,19 +71,20 @@ test.describe('bridge window — event types', () => {
     const view = bridgeViews[0].body;
 
     // Session attributes come from the main process (assembly hooks)
-    expect(view.session.id).toBe(mainView.session.id);
+    expect(view.session.id).toBe(mainContext.session.id);
     expect(view.application.id).toBe('e2e-test-app-id');
     expect(view.service).toBe('e2e-renderer');
 
     // View attributes come from the renderer's browser-rum
     expect(view.view.id).toBeDefined();
-    expect(view.view.id).not.toBe(mainView.view.id);
+    expect(view.view.id).not.toBe(mainContext.view.id);
   });
 
   test('renderer error events are captured with correct attributes', async ({ electronApp, mainPage, intake }) => {
     await mainPage.flushTransport();
-    const mainViewEvents = await intake.getEventsByType('view');
-    const mainView = mainViewEvents[0].body;
+    const [{ body: mainContext }] = await intake.getEventsByType('execution_context', {
+      predicate: isMainProcessEvent,
+    });
 
     const bridgeWindowPage = await mainPage.openBridgeFileWindow(electronApp);
 
@@ -99,7 +101,7 @@ test.describe('bridge window — event types', () => {
 
     expect(error.error.source).toBe('source');
     // Session from main process
-    expect(error.session.id).toBe(mainView.session.id);
+    expect(error.session.id).toBe(mainContext.session.id);
   });
 
   test('renderer resource events are captured', async ({ electronApp, mainPage, intake }) => {

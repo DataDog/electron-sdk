@@ -194,6 +194,43 @@ describe('OperationCollection', () => {
     });
   });
 
+  describe.each([
+    'startOperation',
+    'succeedOperation',
+    'failOperation',
+    'startFeatureOperation',
+    'succeedFeatureOperation',
+    'failFeatureOperation',
+  ] as const)('%s option field validation', (method) => {
+    it.each([
+      ['context', { context: 42 }, 'context must be an object when provided'],
+      ['description', { description: {} }, 'description must be a string when provided'],
+    ])('rejects a wrong-type %s and emits no event', (_field, invalidOptions, diagnostic) => {
+      const api = operationCollection.getApi();
+      const options = invalidOptions as unknown as FeatureOperationOptions;
+      if (method === 'failOperation' || method === 'failFeatureOperation') {
+        api[method]('login', 'error', options);
+      } else {
+        api[method]('login', options);
+      }
+
+      expect(rawRumEvents).toHaveLength(0);
+      expect(display.error).toHaveBeenCalledOnce();
+      expect(vi.mocked(display.error).mock.calls[0][0]).toContain(diagnostic);
+      expect(vi.mocked(display.error).mock.calls[0][0]).toContain('Event will not be sent.');
+    });
+  });
+
+  it('preserves valid empty context and description fields', () => {
+    operationCollection.getApi().startOperation('login', { context: {}, description: '' });
+
+    expect(rawRumEvents).toHaveLength(1);
+    const data = rawRumEvents[0].data as RawRumOperationStepVital;
+    expect(data.context).toEqual({});
+    expect(data.vital.description).toBe('');
+    expect(display.error).not.toHaveBeenCalled();
+  });
+
   // --- Name character-set validation (schema facet-path rule) ---
   // The authoritative _vital-common-schema.json says vital.name "must contain only letters, digits, or the characters
   // - _ . @ $". Names that fail this rule are warned about but still emitted — the backend is the source of truth, so

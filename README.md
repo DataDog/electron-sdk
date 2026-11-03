@@ -2,8 +2,6 @@
 
 Real User Monitoring for Electron applications.
 
-> **Alpha (v0.X.X)** — This SDK is in early development. APIs may change between releases.
-
 ## Getting Started
 
 ### Prerequisites
@@ -65,7 +63,7 @@ import { app, BrowserWindow } from 'electron';
 This instruments the needed Electron APIs. `dd-trace` is initialized with the resolved configuration when `init()`
 is called.
 
-Then initialize the Electron SDK by calling `init` before creating any browser windows:
+Then initialize the Electron SDK, awaiting `init` before creating any browser windows:
 
 ```ts
 import { init } from '@datadog/electron-sdk';
@@ -79,7 +77,7 @@ await init({
 });
 ```
 
-> **Deferred init caveat:** windows opened before `init()` are not reliably monitored until they are reloaded: they keep a fallback configuration, and what they collected before `init()` can be dropped or attributed to the previous launch. To wait for the end user's consent, call `init()` at startup with `trackingConsent: 'pending'` rather than deferring it (see [Tracking Consent](#tracking-consent)).
+> **Deferred init caveat:** windows opened before `init()` resolves are not tracked until they are reloaded. To wait for the end user's consent, call `init()` at startup with `trackingConsent: 'pending'` rather than deferring it (see [Tracking Consent](#tracking-consent)).
 
 #### Renderer process setup
 
@@ -257,9 +255,10 @@ await init({
 });
 ```
 
-Only returning `false` discards the event. View and native crash events cannot be discarded. The editable fields are:
+Only returning `false` discards the event. View, execution context, and native crash events cannot be discarded. The
+editable fields are:
 
-- All events: `context`, `service`, `version`, `view.name`, `view.url`, and `view.referrer`
+- All events: `context`, `service`, `version`, `view.name`, `view.url`, `view.referrer`, and `execution_context.name`
 - Views: `view.performance.lcp.resource_url`
 - Errors: `error.message`, `error.stack`, `error.handling_stack`, `error.resource.url`, `error.fingerprint`, and `_dd.debug_ids`
 - Resources: `resource.url`, GraphQL variables, request/response headers, and WebSocket close reasons and protocols
@@ -319,10 +318,10 @@ the main process, while other renderers run the Browser SDK standalone, under it
 renderers, the Browser SDK is not informed of the consent and keeps collecting, so:
 
 - Requests it traces (`allowedTracingUrls`) carry trace headers whatever the consent.
-- When consent is granted after a refusal, an open page keeps its view until its next one. Its new events are sent
-  in the new session and refer to that view. The view is never sent if it started while consent was refused, or
-  pending then refused. Otherwise it stays in the session it started in, including what it measured while consent
-  was refused. In the new session, the page's session replay can only be played back from its next view.
+- When consent is granted after a refusal, an open page's view moves to the new session with its next update, so that
+  the session shows up in Datadog. As an exception to the rule above, that view is sent even if it started while
+  consent was refused, or pending then refused, with what it measured since it started. The previous session no longer
+  lists it. In the new session, the page's session replay can only be played back from its next view.
 
 ### Custom Duration Vitals
 
@@ -703,7 +702,7 @@ interface FeatureOperationOptions {
 | ------------------------- | ----------------------------------------- | -------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `clientToken`             | `string`                                  | Yes      | —           | Datadog client token                                                                                                                                                                 |
 | `applicationId`           | `string`                                  | Yes      | —           | RUM application ID                                                                                                                                                                   |
-| `site`                    | `string`                                  | Yes      | —           | Datadog site (e.g. `datadoghq.com`, `datadoghq.eu`, `us3.datadoghq.com`, `us5.datadoghq.com`, `ap1.datadoghq.com`, `ddog-gov.com`)                                                   |
+| `site`                    | `string`                                  | Yes      | —           | Datadog site (e.g. `datadoghq.com`, `datadoghq.eu`, `us3.datadoghq.com`, `us5.datadoghq.com`, `ap1.datadoghq.com`, `ddog-gov.com`, `us2.ddog-gov.com`)                               |
 | `service`                 | `string`                                  | Yes      | —           | Service name                                                                                                                                                                         |
 | `env`                     | `string`                                  | No       | —           | Application environment                                                                                                                                                              |
 | `version`                 | `string`                                  | No       | —           | Application version                                                                                                                                                                  |

@@ -204,7 +204,7 @@ describe('beforeSendRum', () => {
       date: 1,
       application: { id: 'app-id' },
       session: { id: 'session-id', type: 'user' },
-      view: { id: 'view-id', name: 'main process', url: 'electron://main-process' },
+      view: { id: 'view-id', url: 'electron://fake', is_fake: true },
       vital: { id: 'vital-id', name: 'startup', type: 'duration', duration: 1 },
     } as RumVitalDurationEvent;
     const beforeSend = new BeforeSend((event) => {

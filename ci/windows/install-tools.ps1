@@ -40,7 +40,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Yarn preparation failed' }
 Install-SignedExecutable -Url 'https://github.com/git-for-windows/git/releases/download/v2.50.1.windows.1/Git-2.50.1-64-bit.exe' `
     -Path 'C:\git-install.exe' -Arguments @('/VERYSILENT', '/NORESTART', '/DIR="C:\Program Files\Git"')
 
-Invoke-WebRequest -UseBasicParsing -Uri 'https://www.7-zip.org/a/7z2501-x64.exe' -OutFile C:\7z-install.exe
+Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/ip7z/7zip/releases/download/25.01/7z2501-x64.exe' -OutFile C:\7z-install.exe
 if ((Get-FileHash C:\7z-install.exe -Algorithm SHA256).Hash.ToLowerInvariant() -ne '78afa2a1c773caf3cf7edf62f857d2a8a5da55fb0fff5da416074c0d28b2b55f') {
     throw '7-Zip installer checksum mismatch'
 }

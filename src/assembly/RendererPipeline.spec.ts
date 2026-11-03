@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { DISCARDED } from '@datadog/js-core/assembly';
 import { RendererPipeline } from './RendererPipeline';
@@ -48,6 +48,7 @@ vi.mock('../common', async (importOriginal) => {
 });
 
 const DEFAULT_CONFIG = createTestConfiguration({ profilingSampleRate: 0 });
+const SESSION_MANAGER = { getTrackedSessionId: () => 'main-session' };
 
 const RENDERER_RUM_DATA = {
   type: 'view',
@@ -195,7 +196,11 @@ describe('RendererPipeline', () => {
       handle: (event) => logsEvents.push(event),
     });
 
-    new RendererPipeline(eventManager, hooks, DEFAULT_CONFIG);
+    new RendererPipeline(eventManager, hooks, DEFAULT_CONFIG, SESSION_MANAGER);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('registers a listener on BRIDGE_CHANNEL', () => {
@@ -215,7 +220,7 @@ describe('RendererPipeline', () => {
       sessionReplaySampleRate: 0,
     });
     mockSetBridgeConfig.mockClear();
-    new RendererPipeline(eventManager, hooks, config);
+    new RendererPipeline(eventManager, hooks, config, SESSION_MANAGER);
     expect(mockSetBridgeConfig).toHaveBeenCalledWith({
       defaultPrivacyLevel: 'allow',
       allowedRendererHosts: ['example.com'],
@@ -227,21 +232,21 @@ describe('RendererPipeline', () => {
     it('advertises the profiles capability when profilingSampleRate > 0', () => {
       const config = createTestConfiguration({ profilingSampleRate: 100, sessionReplaySampleRate: 0 });
       mockSetBridgeConfig.mockClear();
-      new RendererPipeline(new EventManager(), createFormatHooks(), config);
+      new RendererPipeline(new EventManager(), createFormatHooks(), config, SESSION_MANAGER);
       expect((mockSetBridgeConfig.mock.calls[0]?.[0] as BridgeOptions).capabilities).toEqual(['profiles']);
     });
 
     it('advertises replay and profiling capabilities when both are enabled', () => {
       const config = createTestConfiguration({ profilingSampleRate: 100, sessionReplaySampleRate: 100 });
       mockSetBridgeConfig.mockClear();
-      new RendererPipeline(new EventManager(), createFormatHooks(), config);
+      new RendererPipeline(new EventManager(), createFormatHooks(), config, SESSION_MANAGER);
       expect((mockSetBridgeConfig.mock.calls[0]?.[0] as BridgeOptions).capabilities).toEqual(['profiles', 'records']);
     });
 
     it('advertises no capabilities when profiling and replay are disabled', () => {
       const config = createTestConfiguration({ profilingSampleRate: 0, sessionReplaySampleRate: 0 });
       mockSetBridgeConfig.mockClear();
-      new RendererPipeline(new EventManager(), createFormatHooks(), config);
+      new RendererPipeline(new EventManager(), createFormatHooks(), config, SESSION_MANAGER);
       expect((mockSetBridgeConfig.mock.calls[0]?.[0] as BridgeOptions).capabilities).toEqual([]);
     });
   });
@@ -295,7 +300,7 @@ describe('RendererPipeline', () => {
         event.view.name = 'redacted view';
         return true;
       };
-      new RendererPipeline(eventManager, hooks, createTestConfiguration({ beforeSendRum }));
+      new RendererPipeline(eventManager, hooks, createTestConfiguration({ beforeSendRum }), SESSION_MANAGER);
 
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
 
@@ -308,7 +313,8 @@ describe('RendererPipeline', () => {
       new RendererPipeline(
         eventManager,
         hooks,
-        createTestConfiguration({ beforeSendRum: (event) => event.type !== 'action' })
+        createTestConfiguration({ beforeSendRum: (event) => event.type !== 'action' }),
+        SESSION_MANAGER
       );
 
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_CLICK_DATA }));
@@ -346,6 +352,23 @@ describe('RendererPipeline', () => {
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
 
       expect(capturedStartTime).toBe(12345);
+    });
+
+    it('resolves a view started in an earlier session at the current time, keeping its date', () => {
+      vi.useFakeTimers({ now: 99999 });
+      new RendererPipeline(eventManager, hooks, DEFAULT_CONFIG, {
+        getTrackedSessionId: (at) => (at === RENDERER_RUM_DATA.date ? 'previous-session' : 'main-session'),
+      });
+      const capturedStartTimes: TimeStamp[] = [];
+      hooks.registerRum(({ startTime }) => {
+        capturedStartTimes.push(startTime);
+        return {};
+      });
+
+      simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }));
+
+      expect(capturedStartTimes).toEqual([99999]);
+      expect(serverEvents[serverEvents.length - 1].data.date).toBe(12345);
     });
 
     it('discards the event when triggerRum returns DISCARDED', () => {
@@ -693,7 +716,7 @@ describe('RendererPipeline', () => {
     it('drops renderer logs before enrichment when logsSampleRate is 0', () => {
       const callback = vi.fn(() => ({}));
       hooks.registerLogs(callback);
-      new RendererPipeline(eventManager, hooks, createTestConfiguration({ logsSampleRate: 0 }));
+      new RendererPipeline(eventManager, hooks, createTestConfiguration({ logsSampleRate: 0 }), SESSION_MANAGER);
 
       simulateLog();
 
@@ -703,7 +726,7 @@ describe('RendererPipeline', () => {
 
     it('samples each renderer log independently when logsSampleRate is between 0 and 100', () => {
       const random = vi.spyOn(Math, 'random').mockReturnValueOnce(0.25).mockReturnValueOnce(0.75);
-      new RendererPipeline(eventManager, hooks, createTestConfiguration({ logsSampleRate: 50 }));
+      new RendererPipeline(eventManager, hooks, createTestConfiguration({ logsSampleRate: 50 }), SESSION_MANAGER);
 
       try {
         simulateLog({ ...RENDERER_LOG_DATA, message: 'sampled in' });
@@ -854,7 +877,12 @@ describe('RendererPipeline', () => {
           event.kind === EventKind.SERVER && event.track === EventTrack.RUM,
         handle: (event) => relayed.push(event),
       });
-      new RendererPipeline(optedOutManager, createFormatHooks(), createTestConfiguration({ telemetrySampleRate: 0 }));
+      new RendererPipeline(
+        optedOutManager,
+        createFormatHooks(),
+        createTestConfiguration({ telemetrySampleRate: 0 }),
+        SESSION_MANAGER
+      );
 
       simulateTelemetry();
 
@@ -921,7 +949,7 @@ describe('RendererPipeline', () => {
   describe('origin enforcement (integration)', () => {
     it('processes messages from an allowed origin', () => {
       const config = createTestConfiguration({ allowedRendererHosts: ['example.com'], profilingSampleRate: 0 });
-      new RendererPipeline(eventManager, hooks, config);
+      new RendererPipeline(eventManager, hooks, config, SESSION_MANAGER);
 
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }), 'https://example.com');
 
@@ -930,7 +958,7 @@ describe('RendererPipeline', () => {
 
     it('drops messages from a disallowed origin', () => {
       const config = createTestConfiguration({ allowedRendererHosts: ['example.com'], profilingSampleRate: 0 });
-      new RendererPipeline(eventManager, hooks, config);
+      new RendererPipeline(eventManager, hooks, config, SESSION_MANAGER);
 
       simulateIpcMessage(JSON.stringify({ eventType: 'rum', event: RENDERER_RUM_DATA }), 'https://other.com');
 

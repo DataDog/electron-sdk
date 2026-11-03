@@ -1,9 +1,10 @@
 import { expect, test } from '../lib/helpers';
 import type { RumVitalDurationEvent } from '@datadog/electron-sdk';
+import { isMainProcessEvent } from '../lib/intake';
 
 test('emits custom duration vitals from the main process', async ({ mainPage, intake }) => {
   await mainPage.flushTransport();
-  const view = (await intake.getEventsByType('view'))[0].body;
+  const [{ body: mainContext }] = await intake.getEventsByType('execution_context', { predicate: isMainProcessEvent });
 
   const directStartTime = Date.now();
   await mainPage.addDurationVital('database.migration', {
@@ -35,9 +36,9 @@ test('emits custom duration vitals from the main process', async ({ mainPage, in
   expect(measured.context).toEqual({ source: 'menu' });
   expect(measured.vital).not.toHaveProperty('vital_key');
 
-  expect(direct.session.id).toBe(view.session.id);
-  expect(direct.application.id).toBe(view.application.id);
-  expect(direct.view.id).toBe(view.view.id);
+  expect(direct.session.id).toBe(mainContext.session.id);
+  expect(direct.application.id).toBe(mainContext.application.id);
+  expect(direct.execution_context).toMatchObject({ id: mainContext.execution_context.id, type: 'main-process' });
   expect(direct.source).toBe('electron');
   expect(direct._dd.format_version).toBe(2);
 });

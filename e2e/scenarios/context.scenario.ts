@@ -1,15 +1,16 @@
 import { test, expect } from '../lib/helpers';
-import { isMainProcessView } from '../lib/intake';
+import { isMainProcessEvent } from '../lib/intake';
 
 test.describe('event attribution with session renewal', () => {
   test.use({ rumBrowserSdk: {} });
 
-  test('attributes event to correct session and view based on startTime', async ({ mainPage, intake }) => {
+  test('attributes event to correct session and execution context based on startTime', async ({ mainPage, intake }) => {
     await mainPage.flushTransport();
-    const viewEvents = await intake.getEventsByType('view');
-    const firstView = viewEvents.find(isMainProcessView)!.body;
-    const firstSessionId = firstView.session.id;
-    const firstViewId = firstView.view.id;
+    const [{ body: firstContext }] = await intake.getEventsByType('execution_context', {
+      predicate: isMainProcessEvent,
+    });
+    const firstSessionId = firstContext.session.id;
+    const firstExecutionContextId = firstContext.execution_context.id;
 
     // Record timestamp while first session is active
     const timestampInFirstSession = Date.now();
@@ -21,13 +22,13 @@ test.describe('event attribution with session renewal', () => {
     await mainPage.generateManualError(timestampInFirstSession);
     await mainPage.flushTransport();
 
-    // Verify error is attributed to first session/view
+    // Verify error is attributed to first session/execution context
     const errorEvents = await intake.getEventsByType('error');
     expect(errorEvents).toHaveLength(1);
 
     const error = errorEvents[0].body;
     expect(error.session.id).toBe(firstSessionId);
-    expect(error.view.id).toBe(firstViewId);
+    expect(error.execution_context).toMatchObject({ id: firstExecutionContextId, type: 'main-process' });
     expect(error.date).toBe(timestampInFirstSession);
   });
 });

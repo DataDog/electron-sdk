@@ -1,5 +1,5 @@
 import { test, expect } from '../lib/helpers';
-import { isBridgeView } from '../lib/intake';
+import { isBridgeView, isMainProcessEvent } from '../lib/intake';
 import type { ElectronApplication } from '@playwright/test';
 import type { MainPage } from '../lib/mainPage';
 
@@ -73,7 +73,7 @@ test.describe('allowedRendererHosts — frame tracking lifecycle', () => {
 
   test('bridge events arrive before and after closing a window', async ({ electronApp, mainPage, intake }) => {
     await mainPage.flushTransport();
-    await intake.getEventsByType('view');
+    await intake.getEventsByType('execution_context', { predicate: isMainProcessEvent });
 
     const win1 = await mainPage.openBridgeHttpWindow(electronApp);
     await mainPage.flushTransport();
@@ -104,7 +104,7 @@ for (const scenario of SCENARIOS) {
     if (scenario.expectEvents) {
       test('bridge events arrive from an allowed renderer', async ({ electronApp, mainPage, intake }) => {
         await mainPage.flushTransport();
-        await intake.getEventsByType('view');
+        await intake.getEventsByType('execution_context', { predicate: isMainProcessEvent });
 
         await scenario.openWindow(mainPage, electronApp);
         await mainPage.flushTransport();
@@ -115,14 +115,14 @@ for (const scenario of SCENARIOS) {
     } else {
       test('no bridge events arrive from a blocked renderer', async ({ electronApp, mainPage, intake }) => {
         await mainPage.flushTransport();
-        await intake.getEventsByType('view');
+        await intake.getEventsByType('execution_context', { predicate: isMainProcessEvent });
 
         await scenario.openWindow(mainPage, electronApp);
         await mainPage.flushTransport();
-        await new Promise((r) => setTimeout(r, 2000));
 
-        const bridgeViews = (await intake.getEventsByType('view')).filter(isBridgeView);
-        expect(bridgeViews).toHaveLength(0);
+        await expect(intake.waitForEventCount('view', 1, { predicate: isBridgeView, timeout: 2000 })).rejects.toThrow(
+          /Timed out/
+        );
       });
     }
   });

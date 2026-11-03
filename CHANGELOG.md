@@ -2,6 +2,63 @@
 
 All notable changes to `@datadog/electron-sdk` are documented here.
 
+## [1.0.0] - 2026-10-29
+
+This is the first generally available release. It turns on execution context tracking for everyone, rewrites app paths to be root-relative so stack traces resolve with uploaded source maps, and adds a tracking consent API.
+
+**Migrating from 0.x:**
+
+- **Await `init()` before creating windows** (#263): a window opened before `init()` resolves doesn't send its page events until it is reloaded. If you delay `init()` until the end user consents, call it at startup with `trackingConsent: 'pending'` instead (see [Tracking Consent](https://github.com/DataDog/electron-sdk/blob/v1.0.0/README.md#tracking-consent)).
+- **The `main process` view is replaced by execution contexts** (#262): main-process data is no longer attached to the `main process` view (`electron://main-process`). Update any dashboard, monitor or query that filters on that view to use `@execution_context.type:main-process` instead.
+- **App paths are root-relative** (#241): the app path (and its resolved realpath) is replaced with `/` in every payload. View and resource URLs, error stacks, logs, spans, replay `href` and profile resources now carry paths relative to the app root: `file:///Users/alice/…/app.asar/dist/renderer/index.js` becomes `/dist/renderer/index.js`. Update queries and monitors that match the old values. Error Tracking issues from frames under the app path are regrouped once. To get readable stacks, [upload your source maps](https://github.com/DataDog/electron-sdk/blob/v1.0.0/README.md#source-maps). Other paths stay absolute, such as `app.asar.unpacked` (native modules) and the `userData` and `crashDumps` folders. `beforeSendRum` still receives the original paths, so rewrites you already have keep working.
+- **Main-process IPC spans are removed** (#259): `electron.main.receive`, `electron.main.handle` and `electron.main.send` are no longer emitted, and HTTP spans issued from IPC handlers are now root spans. `traceSamplingRules` that match `electron.main.*` or IPC channel names no longer match anything. Target `http.request` spans instead, for example `{ tags: { 'http.url': '*/health' }, sampleRate: 0 }`.
+- **Bundler plugins no longer copy runtime dependencies by default** (#216): `copyRuntimeDependencies` now defaults to `false`, and your packager must include `@datadog/electron-sdk` and `dd-trace` in the app. If you use Electron Forge's Vite or Webpack plugin, update `packagerConfig.ignore` as described in [Electron Forge](https://github.com/DataDog/electron-sdk/blob/v1.0.0/README.md#electron-forge). If your packager can't include them, set `copyRuntimeDependencies: true` as a best-effort fallback.
+
+### 💥 Breaking Changes
+
+- 💥 [RUM-19119] drop the events of pages loaded before init() resolves (#263)
+- 💥 [RUM-18606] enable execution context by default (#262)
+- 💥 [RUM-17990] scrub the app path from payloads (#241)
+- 💥 [RUM-18777] remove main-process IPC tracing (#259)
+- 💥 [RUM-18428] stop copying runtime dependencies by default in bundler plugins (#216)
+
+### ✨ Features
+
+- ✨ accept any datadog site (#275)
+- ✨ Expose the tracking consent API (#257)
+- ✨ [RUM-17990] add a path scrubber for serialized payloads (#240)
+- ✨ Apply tracking consent to spans and profiles (#247)
+- ✨ Apply tracking consent to the session lifecycle (#234)
+- ✨ Persist tracking consent for crash recovery (#233)
+- ✨ Add consent-aware batch storage (#225)
+
+### 🐛 Bug Fixes
+
+- 🐛 validate operation context and description types (#274)
+- 🐛 [RUM-18606] create sessions started while a bridged page stays open (#264)
+- 🐛 finish net.request spans on response (#258)
+- 🐛 [RUM-18947] accept renderer logs with non-string message or status (#245)
+
+### 📝 Documentation
+
+- 📝 [RUM-17990] document source map upload for electron apps (#253)
+- 📝 refresh review guide and coding conventions (#254)
+
+### Internal
+
+- 👷 Update dependency eslint-plugin-unicorn to v78 (#270)
+- 👷 Update dependency vite to v8 [SECURITY] (#273)
+- 👷 Update dependency electron-vite to v6 (#269)
+- 👷 Lock file maintenance (#191)
+- 👷 Update dependency @electron/get to v5 (#243)
+- 👷 Update dependency vitest to v4.1.11 [SECURITY] (#218)
+- 👷 Update dependency vite to v8.1.6 [SECURITY] (#261)
+- 👷 [RUM-17990] playground fixes for source map validation (#250)
+- 👷 [EENG-7150] Use slack-notifier v3-sdm template image (#246)
+- 👷 Update dependency eslint-plugin-unicorn to v76 (#228)
+- 👷 [RUM-17990] add playground source map upload tooling (#237)
+- 👷 [RUM-18686] Electron OS and Version testing [windows] (#229)
+
 ## [0.10.0] - 2026-09-30
 
 ### ✨ Features

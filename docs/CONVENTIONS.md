@@ -106,11 +106,10 @@ For operation APIs, the wrappers in [`src/index.ts`](../src/index.ts) report usa
 methods. `handleDeprecated` in [`OperationCollection.ts`](../src/domain/rum/operation/OperationCollection.ts) emits the
 warning, then runs the shared validation and event-construction handler.
 
-State the removal timing in both the JSDoc and warning. Existing operation aliases say "will be removed in a future
-major release".
+Use the same removal deadline in the README, public JSDoc, and runtime warning. For operation aliases, follow the
+README's "next major release" deadline.
 
-Honor an alias's documented removal schedule. Other deliberate breaking changes remain allowed during 0.x releases
-under the [backward compatibility policy](REVIEW.md#backward-compatibility).
+Honor the documented removal schedule and the [backward compatibility policy](REVIEW.md#backward-compatibility).
 
 ### Types from Schemas
 
