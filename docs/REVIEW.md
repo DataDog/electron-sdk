@@ -25,8 +25,8 @@ IPC messages, file I/O, session events, and span callbacks all interleave. Look 
 See "Minimal First" and "Scope and Consistency" in `docs/CONVENTIONS.md`. Compare each new behavior with its existing
 siblings, not only with the PR's own goal:
 
-- **Public APIs** of the package entry points (`exports` in `package.json`): argument validation, calls before or during
-  `init()`, error reporting.
+- **Public APIs** of the package entry points (`exports` in `package.json`): argument validation and error reporting,
+  plus calls before or during `init()` for the main entry point.
 - **Event types**: RUM events, logs, telemetry, spans, profiles and replay are expected to go through the same gates
   (consent, sampling, session), unless `docs/ARCHITECTURE.md` documents why one differs.
 - **Existing patterns**, unless `docs/ARCHITECTURE.md` documents another place: shared components are built and wired
