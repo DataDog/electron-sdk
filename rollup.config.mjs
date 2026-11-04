@@ -60,7 +60,16 @@ const config = [
       },
     ],
     external: ['electron', 'dd-trace'],
-    plugins: sharedPlugins,
+    plugins: [
+      ...sharedPlugins,
+      {
+        name: 'instrument-declaration',
+        generateBundle() {
+          // This entry exposes only side effects; its implementation types are not public.
+          this.emitFile({ type: 'asset', fileName: 'instrument.d.ts', source: 'export {};\n' });
+        },
+      },
+    ],
   },
   // Vite plugin: ensures Electron instrumentation runs before hoisted requires
   {
@@ -86,15 +95,6 @@ const config = [
     external: ['electron'],
     output: {
       file: 'dist/index.d.ts',
-      format: 'esm',
-    },
-    plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
-  },
-  // TypeScript declarations: instrument
-  {
-    input: 'src/entries/instrument.ts',
-    output: {
-      file: 'dist/instrument.d.ts',
       format: 'esm',
     },
     plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
@@ -168,6 +168,7 @@ const config = [
     output: {
       file: 'dist/preload.js',
       format: 'cjs',
+      sourcemap: true,
     },
     external: ['electron'],
     plugins: sharedPlugins,

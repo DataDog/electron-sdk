@@ -1,9 +1,10 @@
 import { timeStampNow } from '@datadog/js-core/time';
-import { isIndexableObject, type Context, generateUUID } from '@datadog/js-core/util';
+import { isIndexableObject, generateUUID } from '@datadog/js-core/util';
 import { EventFormat, EventKind, EventManager } from '../../../event';
 import { display } from '../../../tools/display';
 import { isOneOf, isValidString, VALID_VITAL_NAME_REGEX } from '../../../tools/validation';
 import type { RawRumOperationStepVital } from '../types';
+import type { FailureReason, FeatureOperationOptions } from './operation.types';
 
 type OperationMethod = 'startOperation' | 'succeedOperation' | 'failOperation';
 
@@ -16,37 +17,6 @@ const DEPRECATED_TO_CANONICAL: Record<string, OperationMethod> = {
   succeedFeatureOperation: 'succeedOperation',
   failFeatureOperation: 'failOperation',
 };
-
-/**
- * Failure reason for a RUM Operation step.
- *
- * Matches the schema enum values in vital-operation-step-schema.json.
- */
-export type FailureReason = 'error' | 'abandoned' | 'other';
-
-/**
- * Options accepted by the RUM Operation APIs.
- *
- * Mirrors the browser-sdk's `FeatureOperationOptions` shape so consumers can share one mental model across main
- * process and renderer process.
- */
-export interface FeatureOperationOptions {
-  /**
-   * Key distinguishing parallel operations with the same name (e.g. separate upload tasks sharing the name "upload").
-   * When omitted, the operation is treated as unkeyed.
-   */
-  operationKey?: string;
-
-  /**
-   * Custom attributes merged into the event's `context` section.
-   */
-  context?: Context;
-
-  /**
-   * Free-form description attached to `vital.description`.
-   */
-  description?: string;
-}
 
 /**
  * Collect RUM vital operation step events emitted from the main process.

@@ -2,7 +2,8 @@ import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { EventSource } from '../../event';
 import { createFormatHooks, type FormatHooks, type RumEventType } from '../../assembly';
-import { UserContext, type UserInfo } from './userContext';
+import { UserContext } from './userContext';
+import type { UserInfo } from './user.types';
 import type { ContextHistory } from './contextManager';
 
 const T0 = 0 as TimeStamp;
