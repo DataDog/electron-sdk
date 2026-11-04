@@ -1,6 +1,6 @@
-import { Context, generateUUID, jsonStringify } from '@datadog/js-core/util';
 import type { TimeStamp } from '@datadog/js-core/time';
 import { timeStampNow } from '@datadog/js-core/time';
+import { Context, generateUUID, jsonStringify } from '@datadog/js-core/util';
 import { EventFormat, EventKind, EventManager } from '../../../event';
 import type { RawRumError } from '../types';
 import { monitor } from '../../telemetry';

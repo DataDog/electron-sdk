@@ -1,5 +1,5 @@
-import { isIndexableObject, generateUUID } from '@datadog/js-core/util';
 import { tryJsonParse } from '@datadog/browser-core';
+import { isIndexableObject, generateUUID } from '@datadog/js-core/util';
 import { CreationReason, type SegmentMetadata } from '../../../domain/replay';
 import { display } from '../../../tools/display';
 import { hasNonEmptyStringId, isFiniteNumber, isNonNegativeInteger } from '../../../tools/validation';

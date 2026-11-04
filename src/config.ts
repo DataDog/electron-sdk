@@ -1,5 +1,5 @@
-import { isIndexableObject, ONE_KIBI_BYTE, ONE_MEBI_BYTE } from '@datadog/js-core/util';
 import { ONE_SECOND } from '@datadog/js-core/time';
+import { isIndexableObject, ONE_KIBI_BYTE, ONE_MEBI_BYTE } from '@datadog/js-core/util';
 import { DefaultPrivacyLevel } from '@datadog/browser-core';
 import { display } from './tools/display';
 import type { RumEvent } from './domain/rum';

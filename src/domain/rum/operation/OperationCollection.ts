@@ -1,5 +1,5 @@
-import { isIndexableObject, type Context, generateUUID } from '@datadog/js-core/util';
 import { timeStampNow } from '@datadog/js-core/time';
+import { isIndexableObject, type Context, generateUUID } from '@datadog/js-core/util';
 import { EventFormat, EventKind, EventManager } from '../../../event';
 import { display } from '../../../tools/display';
 import { isOneOf, isValidString, VALID_VITAL_NAME_REGEX } from '../../../tools/validation';

@@ -1,6 +1,6 @@
-import { generateUUID, type Subscription } from '@datadog/js-core/util';
 import { app, webContents as webContentsModule } from 'electron';
 import { elapsed, ONE_SECOND, timeStampNow, toServerDuration, type TimeStamp } from '@datadog/js-core/time';
+import { generateUUID, type Subscription } from '@datadog/js-core/util';
 import { SKIPPED } from '@datadog/js-core/assembly';
 import {
   EventFormat,

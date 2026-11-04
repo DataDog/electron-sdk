@@ -1,5 +1,5 @@
-import { generateUUID } from '@datadog/js-core/util';
 import zlib from 'node:zlib';
+import { generateUUID } from '@datadog/js-core/util';
 import { display } from '../../../tools/display';
 import { BatchConsumer } from '../BatchConsumer';
 

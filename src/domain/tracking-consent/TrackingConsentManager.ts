@@ -1,6 +1,6 @@
-import { Observable, type Subscription } from '@datadog/js-core/util';
 import { app } from 'electron';
 import * as path from 'node:path';
+import { Observable, type Subscription } from '@datadog/js-core/util';
 import { DISCARDED, SKIPPED } from '@datadog/js-core/assembly';
 import { timeStampNow, type TimeStamp } from '@datadog/js-core/time';
 import type { FormatHooks } from '../../assembly';
