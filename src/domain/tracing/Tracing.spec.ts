@@ -17,7 +17,7 @@ function createTracerRequire() {
   };
   const requireFn = ((id: string) => {
     if (id === 'dd-trace-electron') return { default: tracer };
-    if (id === 'dd-trace-electron/package.json') return { version: '5.118.0' };
+    if (id === 'dd-trace-electron/package.json') return { version: '6.23.0' };
     throw new Error(`Unexpected module: ${id}`);
   }) as NodeRequire;
   return { init, use, flush, requireFn };
@@ -53,7 +53,7 @@ describe('Tracing', () => {
     });
     expect(tracing.enabled).toBe(true);
     expect(tracing.telemetryInitialized).toBe(true);
-    expect(tracing.version).toBe('5.118.0');
+    expect(tracing.version).toBe('6.23.0');
   });
 
   it('uses the trace sample rate without sampling rules', () => {

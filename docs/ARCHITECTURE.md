@@ -458,11 +458,9 @@ SDK. It is declared as a **direct runtime dependency** in `package.json`, not as
 peer dependency. When customers install `@datadog/electron-sdk`, they get dd-trace-electron
 automatically.
 
-Unlike the public `dd-trace` package, dd-trace-electron's entrypoint skips the
-`openfeature/register` step that `dd-trace` runs on load, and its `package.json` does not declare
-OpenFeature, ASM, IAST, or profiling native modules as dependencies at all (optional or otherwise)
-— only the lightweight runtime deps the Electron exporter actually needs (`dc-polyfill`,
-`opentracing`, `import-in-the-middle`).
+Its entrypoint skips `openfeature/register`, and its manifest omits the unused native dependencies
+for ASM, IAST, metrics, profiling, and code rewriting. It still declares optional
+`@opentelemetry/api` and `@opentelemetry/api-logs` packages.
 
 #### Why bundle it
 
@@ -471,11 +469,11 @@ The SDK is tightly coupled to a specific dd-trace build:
 - The SDK initializes dd-trace-electron with the `electron` exporter, a custom exporter built specifically for the Electron SDK.
 - The `SpanProcessor` subscribes to a specific diagnostics channel (`datadog:apm:electron:export`) that dd-trace-electron publishes to.
 
-Making it a direct dependency ensures a single, tested version is always present. Using
-`dd-trace-electron` rather than the public `dd-trace` package also means it can never be
-deduplicated with a customer's own direct `dd-trace` dependency (e.g. if they run their own APM
-tracing) — they always resolve to separate module instances, so the SDK's `tracer.init()` call
-can't collide with a customer-owned tracer instance. The alternatives to bundling were considered:
+Making it a direct dependency keeps the tracer version pinned to the SDK. The distinct package name
+prevents package-manager deduplication with an application's `dd-trace` dependency. Both builds
+still use the process-wide `global._ddtrace` singleton, so separate package names do not guarantee
+independent tracer instances. Applications should let the SDK initialize its tracer rather than
+initializing both packages separately. The alternatives were considered:
 
 | Approach                                             | Pros                                                                                | Cons                                                                                                                                                                              |
 | ---------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -484,31 +482,25 @@ can't collide with a customer-owned tracer instance. The alternatives to bundlin
 | **Optional dependency**                              | —                                                                                   | SDK does not work without dd-trace-electron; same mismatch risk as peer; confusing DX                                                                                             |
 | **Vendored / embedded in SDK bundle** (POC approach) | Single file, no transitive deps                                                     | Fragile: dd-trace-electron uses dynamic requires, native module loading, and runtime path resolution that break when bundled into a single file; would need constant re-vendoring |
 
-#### Bundler externalization still applies
+#### Runtime dependency staging
 
-dd-trace-electron still uses dynamic requires, native module loading, and runtime path resolution
-that break when bundled into a single file, so the bundler plugins still externalize it. The
-application packager stages its runtime dependencies by default; set
-`copyRuntimeDependencies: true` to enable plugin copying as a compatibility fallback (see
-[Bundler plugins](#bundler-plugins)). The
-`copyPackageTree` helper in all three plugins walks only the `dependencies` field of each
-package's `package.json`, skipping `optionalDependencies` — this used to be load-bearing for
-excluding dd-trace's optional deps (OpenTelemetry bindings, OpenFeature, ASM, IAST) from the
-packaged app. Since dd-trace-electron doesn't declare those as dependencies at all, this filtering
-is now defense-in-depth rather than a required exclusion mechanism.
+The bundler plugins externalize `dd-trace-electron` because its dynamic requires and runtime path
+resolution still require its package files. The application packager stages the SDK,
+`dd-trace-electron`, and their runtime dependencies by default. Forge Vite and Webpack need the
+`packagerConfig.ignore` override described in [the setup guide](RUNTIME_DEPENDENCIES.md).
+
+With `copyRuntimeDependencies: true`, the plugins copy package trees into the build output as a
+best-effort compatibility fallback. Their `copyPackageTree` helper walks `dependencies`, skipping
+`optionalDependencies`. Default packager staging can retain the optional OpenTelemetry API
+packages. Neither path needs to strip the native product dependencies omitted from the
+`dd-trace-electron` manifest.
 
 #### Dependency size
 
-| What                                                              | Size      | Notes                                           |
-| ----------------------------------------------------------------- | --------- | ----------------------------------------------- |
-| dd-trace-electron                                                 | ~7 MB     | The core dd-trace-electron package              |
-| Runtime transitive deps (dc-polyfill, import-in-the-middle, etc.) | ~1 MB     | Required by dd-trace-electron at runtime        |
-| **Total copied by bundler plugins**                               | **~8 MB** | What bundler plugins copy via `copyPackageTree` |
-| electron-sdk own dist                                             | ~4 MB     | SDK code + WASM chunks                          |
-
-`dd-trace-electron` doesn't declare OpenTelemetry bindings, OpenFeature, ASM, IAST, or profiling
-native modules as dependencies, so there is nothing equivalent to strip — unlike the public
-`dd-trace` package, whose optional native modules can run into the tens of MB.
+The Electron build omits the public `dd-trace` package's unused native product dependencies.
+The final application size still depends on the packager and installed dependency tree. Packager
+staging may retain optional dependencies and production packages already included in the bundles;
+see [runtime dependency setup](RUNTIME_DEPENDENCIES.md#why-the-forge-override-is-required).
 
 ## Two-Tier Configuration
 

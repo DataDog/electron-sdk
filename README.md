@@ -133,12 +133,12 @@ mode, so the Electron setting is authoritative.
 
 The SDK instruments Electron as it is loaded, which requires correct module loading order. The SDK provides bundler plugins to ensure this works in all environments.
 
-Each plugin accepts `copyRuntimeDependencies`, which controls whether it copies the SDK, `dd-trace`,
+Each plugin accepts `copyRuntimeDependencies`, which controls whether it copies the SDK, `dd-trace-electron`,
 and their runtime dependencies into the build output. It defaults to `false`: the application
 packager must include those dependencies in the packaged app. Set `copyRuntimeDependencies: true`
 only as a best-effort compatibility fallback when the packager cannot stage them.
 
-Keep `@datadog/electron-sdk` in the application's production `dependencies`; it brings `dd-trace`
+Keep `@datadog/electron-sdk` in the application's production `dependencies`; it brings `dd-trace-electron`
 as a runtime dependency. Applications already using `copyRuntimeDependencies: false` with working
 packager staging need no configuration change.
 

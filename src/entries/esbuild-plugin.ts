@@ -2,13 +2,13 @@
  * esbuild plugin for Electron apps using the Datadog Electron SDK.
  *
  * This plugin:
- * 1. Externalizes dd-trace and @datadog/electron-sdk so they remain as runtime
+ * 1. Externalizes dd-trace-electron and @datadog/electron-sdk so they remain as runtime
  *    dependencies instead of being bundled.
  * 2. Prepends a banner that loads @datadog/electron-sdk/instrument before the
  *    main entry, using require for CJS output and createRequire for ESM output.
  *    This registers the SDK preload and patches BrowserWindow for automatic
  *    preload injection.
- * 3. Copies dd-trace, @datadog/electron-sdk, and their runtime dependencies
+ * 3. Copies dd-trace-electron, @datadog/electron-sdk, and their runtime dependencies
  *    into the build output's node_modules only when `copyRuntimeDependencies: true`.
  *    Copying is disabled by default; the application packager must stage them.
  *
