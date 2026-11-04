@@ -43,7 +43,7 @@ function createWindow(partition?: string): BrowserWindow {
     height: 600,
     show: isDebugMode,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       partition,
