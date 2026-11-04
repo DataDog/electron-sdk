@@ -24,6 +24,8 @@ Run tools with `yarn <command>` or from `node_modules/.bin`, never `npx`. Run ap
 - **Unit tests**: `yarn test:unit` - For SDK code changes
 - **E2E tests**: `yarn test:e2e:init && yarn test:e2e` - For integration testing
 
+Repository linting skips the Git-ignored `playground/test/local/` directory.
+
 ### Git Hooks
 
 The project uses [husky](https://typicode.github.io/husky/) and [lint-staged](https://github.com/lint-staged/lint-staged) for git hooks:
@@ -41,6 +43,9 @@ The SDK builds both CommonJS and ES modules for maximum compatibility:
 - **CJS**: `dist/index.cjs` - For Node.js and Electron main process
 - **ESM**: `dist/index.mjs` - For modern bundlers
 - **Types**: `dist/index.d.ts` - Single TypeScript definition file
+
+The instrumentation entry exposes only side effects, so its build emits an empty `dist/instrument.d.ts` directly.
+JavaScript outputs, including the renderer preload, include sourcemaps.
 
 ### Build-Time Constants
 

@@ -9,13 +9,7 @@ import {
 } from './contextManager';
 import { display } from '../../tools/display';
 import type { FormatHooks } from '../../assembly';
-
-export interface UserInfo {
-  id?: string;
-  name?: string;
-  email?: string;
-  extraInfo?: Record<string, unknown>;
-}
+import type { UserInfo } from './user.types';
 
 // `id` is intentionally NOT marked required here: the RUM schema makes `usr.id` optional (unlike
 // `account.id`), so an id-less user carrying only attributes is valid — e.g. when the backend

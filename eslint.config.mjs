@@ -12,6 +12,7 @@ export default tseslint.config(
       'coverage/**',
       '.claude/**',
       '.worktrees/**',
+      'playground/test/local/**',
       '**/*.mjs',
       'rum-events-format/**',
       '**/rendererRumEvent.types.ts',

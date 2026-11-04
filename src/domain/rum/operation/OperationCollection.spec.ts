@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { OperationCollection, type FeatureOperationOptions } from './OperationCollection';
+import { OperationCollection } from './OperationCollection';
+import type { FeatureOperationOptions } from './operation.types';
 import { EventFormat, EventKind, EventManager, type RawRumEvent } from '../../../event';
 import type { RawRumOperationStepVital } from '../types';
 import { display } from '../../../tools/display';
