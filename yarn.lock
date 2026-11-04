@@ -218,7 +218,7 @@ __metadata:
     "@vitest/coverage-v8": "npm:4.1.12"
     "@vitest/ui": "npm:4.1.12"
     concurrently: "npm:10.0.6"
-    dd-trace-electron: "npm:5.118.0"
+    dd-trace-electron: "npm:6.23.0"
     electron: "npm:41.1.0"
     eslint: "npm:10.13.0"
     eslint-config-prettier: "npm:10.1.8"
@@ -1755,21 +1755,21 @@ __metadata:
   languageName: node
   linkType: hard
 
-"dd-trace-electron@npm:5.118.0":
-  version: 5.118.0
-  resolution: "dd-trace-electron@npm:5.118.0"
+"dd-trace-electron@npm:6.23.0":
+  version: 6.23.0
+  resolution: "dd-trace-electron@npm:6.23.0"
   dependencies:
     "@opentelemetry/api": "npm:>=1.0.0 <1.10.0"
     "@opentelemetry/api-logs": "npm:<1.0.0"
     dc-polyfill: "npm:^0.1.11"
-    import-in-the-middle: "npm:^3.3.2"
+    import-in-the-middle: "npm:3.5.3"
     opentracing: "npm:>=0.14.7"
   dependenciesMeta:
     "@opentelemetry/api":
       optional: true
     "@opentelemetry/api-logs":
       optional: true
-  checksum: 10c0/de6435962c053cd40f5f43f3e2180dd39ecd7fb8dd2bc158194af599b0c87c41e3fb5345b5f15ddd5da00dda1eea11b1ea679e6886ecf754d5e00a3643b93825
+  checksum: 10c0/e1d562d8aae91a101d1e29dbfff9847f699e39984b6c87ff5618da85f27f26c632e90ad0d246abd062010653cf4f2798a17f59fadf64db73a02390988cd0fce2
   languageName: node
   linkType: hard
 
@@ -1961,10 +1961,17 @@ __metadata:
   languageName: node
   linkType: hard
 
-"es-module-lexer@npm:^2.0.0, es-module-lexer@npm:^2.2.0":
+"es-module-lexer@npm:^2.0.0":
   version: 2.3.1
   resolution: "es-module-lexer@npm:2.3.1"
   checksum: 10c0/ada8b222772b5b8ea92eb6054c383233207418621855a07b480fdd36979b658a41414be09e793fcdd8a67a182741475f47830a01ff2ebd4353d7f6965c7c45f9
+  languageName: node
+  linkType: hard
+
+"es-module-lexer@npm:^3.0.3":
+  version: 3.0.4
+  resolution: "es-module-lexer@npm:3.0.4"
+  checksum: 10c0/6e89027c3ce2e78c577bee234d3cf9e41035b6622cc2d399bffda322556f09735a864b3c7729da8528c96ec8cf00d93d7d418cdedb6765e9e4d228954fbfde3d
   languageName: node
   linkType: hard
 
@@ -2563,14 +2570,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"import-in-the-middle@npm:^3.3.2":
-  version: 3.3.3
-  resolution: "import-in-the-middle@npm:3.3.3"
+"import-in-the-middle@npm:3.5.3":
+  version: 3.5.3
+  resolution: "import-in-the-middle@npm:3.5.3"
   dependencies:
     cjs-module-lexer: "npm:^2.2.0"
-    es-module-lexer: "npm:^2.2.0"
+    es-module-lexer: "npm:^3.0.3"
     module-details-from-path: "npm:^1.0.4"
-  checksum: 10c0/8851038b0314fdf54368e036a79b2f8046bca938ea5cc66ff9dda774c76a1540b59acddc7d9999ba7fee5769a5bc562b98acc39e9a257f4953ee629238cb8de1
+  checksum: 10c0/f342bb5b83d2c7e2e7c3f87832f6ee020c15b0c478895e4a597524d7827a51e206acba2755fedc346026eb9d7748bc89c7eda7b289a10e13a84f9f35eb60ea34
   languageName: node
   linkType: hard
 

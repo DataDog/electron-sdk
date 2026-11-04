@@ -1,16 +1,16 @@
 # Runtime Dependencies
 
 `copyRuntimeDependencies` defaults to `false` for every Datadog bundler plugin. The plugins still
-externalize the SDK and `dd-trace` and inject instrumentation, but do not copy runtime dependencies
+externalize the SDK and `dd-trace-electron` and inject instrumentation, but do not copy runtime dependencies
 into the build output. The application packager must include those dependencies in the packaged app;
 disabling plugin copying does not configure the packager automatically.
 
-| Application setup               | Required configuration                                                           |
-| ------------------------------- | -------------------------------------------------------------------------------- |
-| Forge with its Vite plugin      | Retain `.vite` and root `node_modules` using the override below.                 |
-| Forge with its Webpack plugin   | Retain `.webpack` and root `node_modules` using the override below.              |
-| electron-builder or plain Forge | Preserve the packager's default production dependency staging.                   |
-| Custom packaging                | Include the SDK, `dd-trace`, and their runtime dependencies in the packaged app. |
+| Application setup               | Required configuration                                                                    |
+| ------------------------------- | ----------------------------------------------------------------------------------------- |
+| Forge with its Vite plugin      | Retain `.vite` and root `node_modules` using the override below.                          |
+| Forge with its Webpack plugin   | Retain `.webpack` and root `node_modules` using the override below.                       |
+| electron-builder or plain Forge | Preserve the packager's default production dependency staging.                            |
+| Custom packaging                | Include the SDK, `dd-trace-electron`, and their runtime dependencies in the packaged app. |
 
 Applications already using `copyRuntimeDependencies: false` with working packager staging need no
 configuration change.
@@ -25,7 +25,7 @@ First, keep `@datadog/electron-sdk` in the application's production `dependencie
 }
 ```
 
-The SDK declares `dd-trace` as a runtime dependency, so installing it separately is not required for
+The SDK declares `dd-trace-electron` as a runtime dependency, so installing it separately is not required for
 SDK use.
 
 For Forge Vite and Webpack, merge the following overrides into the existing `packagerConfig`.
@@ -100,7 +100,7 @@ export const mainConfig = {
 ## Why the Forge override is required
 
 Forge's Vite and Webpack plugins normally set `packagerConfig.ignore` to retain only `.vite` or
-`.webpack`. Because the Datadog plugin externalizes the SDK and `dd-trace`, those packages are not
+`.webpack`. Because the Datadog plugin externalizes the SDK and `dd-trace-electron`, those packages are not
 part of the bundle. The override also retains `node_modules`, allowing Electron Packager to prune it
 to the production dependency tree and include that tree in the application.
 
@@ -144,6 +144,6 @@ installation layout; prefer packager staging when available.
 1. Remove previous build and package output before rebuilding, so dependencies copied by an earlier
    build cannot hide missing packager configuration.
 2. Inspect the packaged application's `node_modules` (inside `app.asar` if enabled) for the SDK,
-   `dd-trace`, and their runtime dependencies.
+   `dd-trace-electron`, and their runtime dependencies.
 3. Launch the packaged application outside the development checkout and verify SDK event delivery.
    A development launch can resolve the checkout's `node_modules` and does not verify packaging.
