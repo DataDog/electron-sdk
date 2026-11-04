@@ -93,6 +93,7 @@ const config = [
   // TypeScript declarations: instrument
   {
     input: 'src/entries/instrument.ts',
+    external: ['electron', 'dd-trace-electron'],
     output: {
       file: 'dist/instrument.d.ts',
       format: 'esm',
