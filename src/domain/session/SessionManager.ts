@@ -1,6 +1,5 @@
 import { ONE_MINUTE, timeStampNow, type TimeStamp } from '@datadog/js-core/time';
-import { deepClone } from '@datadog/js-core/util';
-import { generateUUID, type Subscription } from '@datadog/browser-core';
+import { deepClone, generateUUID, type Subscription } from '@datadog/js-core/util';
 import { type EndUserActivityEvent, EventKind, EventManager, LifecycleKind } from '../../event';
 import type { FormatHooks } from '../../assembly';
 import type { Configuration } from '../../config';

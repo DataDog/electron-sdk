@@ -1,4 +1,4 @@
-import { generateUUID } from '@datadog/browser-core';
+import { generateUUID } from '@datadog/js-core/util';
 import path from 'node:path';
 import { monitor } from '../../domain/telemetry';
 import type { ServerEvent } from '../../event';

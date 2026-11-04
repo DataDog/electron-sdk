@@ -110,3 +110,6 @@ enough unless the change is toolchain-specific.
 - Issues that predate the PR, or that the next PR of a stack handles.
 - Missing `CHANGELOG.md` entries: the changelog is generated at release time.
 - PR shape checks on generated dependency updates (Renovate).
+- Integration app lockfiles (`e2e/integration/apps/*/yarn.lock`) behind their `package.json`: they depend on
+  `integration-sdk.tgz`, built at test time, so Renovate skips them (`renovate.json`) and
+  `scripts/install-integration-apps.ts` resolves them on each run.

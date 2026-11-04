@@ -1,4 +1,4 @@
-import { setTimeout, clearTimeout } from '@datadog/browser-core';
+import { setTimeout, clearTimeout } from '@datadog/js-core/util';
 import { ONE_SECOND } from '@datadog/js-core/time';
 import type { Configuration } from '../../config';
 import { monitor } from '../telemetry';

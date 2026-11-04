@@ -1,5 +1,4 @@
-import type { Subscription } from '@datadog/browser-core';
-import { combine } from '@datadog/js-core/util';
+import { combine, type Subscription } from '@datadog/js-core/util';
 import { SKIPPED } from '@datadog/js-core/assembly';
 import type { TimeStamp } from '@datadog/js-core/time';
 import type { Configuration } from '../../config';

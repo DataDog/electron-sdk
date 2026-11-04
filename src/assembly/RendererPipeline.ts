@@ -12,7 +12,8 @@ import type {
   RawReplayEvent,
   ServerLogsEvent,
 } from '../event';
-import { isEmptyObject, performDraw } from '@datadog/browser-core';
+import { isEmptyObject } from '@datadog/browser-core';
+import { performDraw } from '@datadog/js-core/sample';
 import { monitor, addError as addTelemetryError, type TelemetryEvent } from '../domain/telemetry';
 import { BRIDGE_CHANNEL, setBridgeConfig, type BridgeOptions } from '../common';
 import type { FormatHooks } from './hooks';

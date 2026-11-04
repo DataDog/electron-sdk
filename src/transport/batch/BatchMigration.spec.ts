@@ -1,4 +1,4 @@
-import { generateUUID } from '@datadog/browser-core';
+import { generateUUID } from '@datadog/js-core/util';
 import fs from 'node:fs/promises';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { display } from '../../tools/display';
@@ -11,8 +11,8 @@ vi.mock('node:fs/promises');
 vi.mock('../../domain/telemetry', () => ({ monitor: <T>(callback: T): T => callback }));
 vi.mock('../../tools/display', () => ({ display: { error: vi.fn() } }));
 vi.mock('./batchFileEviction', () => ({ evictBatchFiles: vi.fn() }));
-vi.mock('@datadog/browser-core', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@datadog/browser-core')>()),
+vi.mock('@datadog/js-core/util', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datadog/js-core/util')>()),
   generateUUID: vi.fn(),
 }));
 

@@ -53,6 +53,24 @@ describe('telemetry', () => {
       expect(errorEvent(0).message).toBe('monitored error');
     });
 
+    it('reports monitored errors to the latest started telemetry', () => {
+      const previousEventManager = new EventManager();
+      const previousEvents: RawEvent[] = [];
+      previousEventManager.registerHandler<RawEvent>({
+        canHandle: (event) => event.kind === EventKind.RAW,
+        handle: (event) => previousEvents.push(event),
+      });
+      startTelemetry(previousEventManager, createTestConfiguration());
+      startTelemetry(eventManager, createTestConfiguration());
+
+      callMonitored(() => {
+        throw new Error('monitored error');
+      });
+
+      expect(previousEvents).toHaveLength(0);
+      expect(notifiedEvents).toHaveLength(1);
+    });
+
     it('captures errors from callMonitored', () => {
       const config = createTestConfiguration();
       startTelemetry(eventManager, config);

@@ -1,7 +1,7 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import type { TimeStamp } from '@datadog/js-core/time';
-import { generateUUID } from '@datadog/browser-core';
+import { generateUUID } from '@datadog/js-core/util';
 import { app, crashReporter } from 'electron';
 import { EventFormat, EventKind, EventManager } from '../../../event';
 import type { CrashReport } from '../../../wasm';

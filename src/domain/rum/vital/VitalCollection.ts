@@ -1,8 +1,6 @@
 import type { Duration, TimeStamp } from '@datadog/js-core/time';
 import { elapsed, timeStampNow, toServerDuration } from '@datadog/js-core/time';
-import { combine } from '@datadog/js-core/util';
-import type { Context, Subscription } from '@datadog/browser-core';
-import { generateUUID } from '@datadog/browser-core';
+import { combine, type Context, type Subscription, generateUUID } from '@datadog/js-core/util';
 import { EventFormat, EventKind, EventManager, LifecycleKind, type SessionRenewEvent } from '../../../event';
 import type { RawRumDurationVital } from '../types';
 

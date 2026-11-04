@@ -1,8 +1,11 @@
-import { jsonStringify, performDraw, type Subscription } from '@datadog/browser-core';
-// These are internal browser-core exports, not part of the public API
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore TODO(RUM-14336) expose those APIs from browser-core
-import { startMonitorErrorCollection, monitor, callMonitored } from '@datadog/browser-core/cjs/tools/monitor';
+import { performDraw } from '@datadog/js-core/sample';
+import { jsonStringify, type Subscription } from '@datadog/js-core/util';
+import {
+  startMonitorErrorCollection,
+  stopMonitorErrorCollection,
+  monitor,
+  callMonitored,
+} from '@datadog/js-core/monitor';
 import type { Configuration } from '../../config';
 import { EventKind, EventManager, SessionRenewEvent, LifecycleKind, EventFormat } from '../../event';
 import {
@@ -14,8 +17,6 @@ import {
 import { SessionBudget } from './sessionBudget';
 
 export { monitor, callMonitored };
-
-const noop = () => undefined;
 
 let telemetryInstance: Telemetry | undefined;
 
@@ -105,14 +106,15 @@ class Telemetry {
   }
 
   stop(): void {
-    // resetMonitor() was removed in browser-core v7 (stale .d.ts, missing from JS).
-    // Detach the error callback so monitor errors are silently dropped after telemetry stops.
-    startMonitorErrorCollection(noop);
+    stopMonitorErrorCollection();
     this.sessionRenewSubscription?.unsubscribe();
   }
 }
 
 export function startTelemetry(eventManager: EventManager, configuration: Configuration): void {
+  // Monitor error collection keeps its first callback, so release the previous instance's before
+  // registering this one.
+  telemetryInstance?.stop();
   telemetryInstance = new Telemetry(eventManager, configuration);
 }
 

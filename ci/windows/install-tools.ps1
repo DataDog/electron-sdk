@@ -34,7 +34,7 @@ Remove-Item C:\node.zip
 if ($LASTEXITCODE -ne 0) { throw 'Corepack installation failed' }
 & corepack.cmd enable --install-directory C:\node
 if ($LASTEXITCODE -ne 0) { throw 'Corepack enable failed' }
-& corepack.cmd prepare yarn@4.17.1 --activate
+& corepack.cmd prepare yarn@4.18.1 --activate
 if ($LASTEXITCODE -ne 0) { throw 'Yarn preparation failed' }
 
 Install-SignedExecutable -Url 'https://github.com/git-for-windows/git/releases/download/v2.50.1.windows.1/Git-2.50.1-64-bit.exe' `
@@ -60,7 +60,7 @@ if ($LASTEXITCODE -ne 0 -or $actualNodeVersion -ne 'v25.9.0') { throw 'Node vali
 $actualCorepackVersion = & corepack.cmd --version
 if ($LASTEXITCODE -ne 0 -or $actualCorepackVersion -ne '0.34.0') { throw 'Corepack validation failed' }
 $actualYarnVersion = & yarn.cmd --version
-if ($LASTEXITCODE -ne 0 -or $actualYarnVersion -ne '4.17.1') { throw 'Yarn validation failed' }
+if ($LASTEXITCODE -ne 0 -or $actualYarnVersion -ne '4.18.1') { throw 'Yarn validation failed' }
 & npm.cmd --version
 if ($LASTEXITCODE -ne 0) { throw 'npm validation failed' }
 

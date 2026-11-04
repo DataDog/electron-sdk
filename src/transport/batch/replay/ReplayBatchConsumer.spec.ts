@@ -5,8 +5,8 @@ import { mockFs } from '../../../mocks.specUtil';
 
 vi.mock('node:fs/promises');
 vi.mock('../../userAgent');
-vi.mock('@datadog/browser-core', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@datadog/browser-core')>()),
+vi.mock('@datadog/js-core/util', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datadog/js-core/util')>()),
   generateUUID: vi.fn(() => 'test-request-id'),
 }));
 vi.stubGlobal('__SDK_VERSION__', '0.0.0-test');
