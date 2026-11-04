@@ -1,4 +1,4 @@
-import { jsonStringify } from '@datadog/browser-core';
+import { jsonStringify } from '@datadog/js-core/util';
 import { RawTelemetryData } from './rawTelemetryData.types';
 
 const MAX_TELEMETRY_EVENTS_PER_SESSION = 100;

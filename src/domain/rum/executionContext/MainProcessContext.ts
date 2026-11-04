@@ -1,7 +1,7 @@
+import { generateUUID, type Subscription } from '@datadog/js-core/util';
 import { app } from 'electron';
 import * as path from 'node:path';
 import { elapsed, timeStampNow, toServerDuration, type TimeStamp } from '@datadog/js-core/time';
-import { generateUUID, type Subscription } from '@datadog/browser-core';
 import { DISCARDED, SKIPPED } from '@datadog/js-core/assembly';
 import {
   EventFormat,

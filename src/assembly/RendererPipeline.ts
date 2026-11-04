@@ -1,3 +1,4 @@
+import { performDraw } from '@datadog/js-core/sample';
 import { ipcMain, type IpcMainEvent } from 'electron';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { combine, isIndexableObject, type RecursivePartial } from '@datadog/js-core/util';
@@ -12,7 +13,7 @@ import type {
   RawReplayEvent,
   ServerLogsEvent,
 } from '../event';
-import { isEmptyObject, performDraw } from '@datadog/browser-core';
+import { isEmptyObject } from '@datadog/browser-core';
 import { monitor, addError as addTelemetryError, type TelemetryEvent } from '../domain/telemetry';
 import { BRIDGE_CHANNEL, setBridgeConfig, type BridgeOptions } from '../common';
 import type { FormatHooks } from './hooks';

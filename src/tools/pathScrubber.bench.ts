@@ -1,5 +1,5 @@
 // Run with `yarn vitest bench --run src/tools/pathScrubber.bench.ts` (through `yarn`, so the pinned Node is used).
-import { ONE_KIBI_BYTE, ONE_MEBI_BYTE } from '@datadog/browser-core';
+import { ONE_KIBI_BYTE, ONE_MEBI_BYTE } from '@datadog/js-core/util';
 import { bench, describe } from 'vitest';
 import { PathScrubber } from './pathScrubber';
 

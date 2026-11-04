@@ -1,4 +1,4 @@
-import { generateUUID } from '@datadog/browser-core';
+import { generateUUID } from '@datadog/js-core/util';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { monitor } from '../../domain/telemetry';

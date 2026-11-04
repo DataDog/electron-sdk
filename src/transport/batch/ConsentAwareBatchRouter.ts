@@ -1,4 +1,4 @@
-import type { Subscription } from '@datadog/browser-core';
+import type { Subscription } from '@datadog/js-core/util';
 import type { TrackingConsentChange, TrackingConsentManager } from '../../domain/tracking-consent';
 import { monitor } from '../../domain/telemetry';
 import type { ServerEvent } from '../../event';
