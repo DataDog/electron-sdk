@@ -51,7 +51,8 @@ to `@datadog/js-core`, so check both. This applies to small type guards too: use
 `@datadog/js-core/util` rather than open-coding `typeof x === 'object' && x !== null`.
 
 ```typescript
-import { generateUUID, Observable, ONE_MINUTE } from '@datadog/browser-core';
+import { generateUUID, Observable } from '@datadog/js-core/util';
+import { ONE_MINUTE } from '@datadog/js-core/time';
 ```
 
 ## Classes

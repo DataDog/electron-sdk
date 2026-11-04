@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { monitorInstrumentation } from './monitorInstrumentation';
 
-// Uses the real callMonitored from browser-core (via ./Telemetry). Without
+// Uses the real callMonitored from js-core (via ./Telemetry). Without
 // telemetry init it simply runs the callback and swallows any thrown error, which is exactly the
 // behavior these tests rely on.
 
