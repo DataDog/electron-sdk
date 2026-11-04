@@ -112,6 +112,9 @@ class Telemetry {
 }
 
 export function startTelemetry(eventManager: EventManager, configuration: Configuration): void {
+  // Monitor error collection keeps its first callback, so release the previous instance's before
+  // registering this one.
+  telemetryInstance?.stop();
   telemetryInstance = new Telemetry(eventManager, configuration);
 }
 
