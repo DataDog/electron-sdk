@@ -33,11 +33,7 @@ export class AccountContext extends ContextManager<AccountInfo> {
   constructor(hooks: FormatHooks, history?: ContextHistory) {
     super('account', ACCOUNT_PROPERTIES, history);
     this.registerRumHook(hooks, 'account');
-    hooks.registerLogs(({ startTime }) => {
-      const context = this.getContext(startTime);
-      if (isEmptyObject(context)) return SKIPPED;
-      return { account: context };
-    });
+    this.registerLogsHook(hooks, 'account');
     hooks.registerSpan(({ startTime }) => {
       const context = this.getContext(startTime);
       if (isEmptyObject(context)) return SKIPPED;

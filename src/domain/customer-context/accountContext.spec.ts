@@ -1,4 +1,5 @@
-import { beforeEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { display, SANITIZE_DEFAULT_MAX_CHARACTER_COUNT } from '@datadog/browser-core';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { EventSource } from '../../event';
 import { createFormatHooks, type FormatHooks, type RumEventType } from '../../assembly';
@@ -22,6 +23,27 @@ describe('AccountContext', () => {
   beforeEach(() => {
     hooks = createFormatHooks();
     accountContext = new AccountContext(hooks);
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  describe('logs context', () => {
+    it('includes email in the shared extras budget for main logs and leaves renderer context unchanged', () => {
+      vi.spyOn(display, 'warn').mockImplementation(() => undefined);
+      const oversized = 'x'.repeat(SANITIZE_DEFAULT_MAX_CHARACTER_COUNT + 1);
+      accountContext.setContext({
+        id: 'account-1',
+        name: 'Acme',
+        extraInfo: { oversized, email: 'contact@example.com' },
+      });
+
+      expect(hooks.triggerLogs({ startTime: T0, source: EventSource.MAIN })).toEqual({
+        account: { id: 'account-1', name: 'Acme' },
+      });
+      expect(hooks.triggerLogs({ startTime: T0, source: EventSource.RENDERER })).toEqual({
+        account: { id: 'account-1', name: 'Acme', oversized, email: 'contact@example.com' },
+      });
+    });
   });
 
   describe('when account is not set', () => {
@@ -82,6 +104,9 @@ describe('AccountContext', () => {
       accountContext = new AccountContext(hooks, history);
 
       expect(triggerRum('error')).toEqual({ account: { id: 'historical-account', tier: 'enterprise' } });
+      expect(hooks.triggerLogs({ startTime: T0, source: EventSource.MAIN })).toEqual({
+        account: { id: 'historical-account', tier: 'enterprise' },
+      });
       expect(triggerSpan()).toEqual({
         meta: {
           'account.id': 'historical-account',

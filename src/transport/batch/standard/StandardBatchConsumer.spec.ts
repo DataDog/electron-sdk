@@ -1,9 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { StandardBatchConsumer } from './StandardBatchConsumer';
 import type { BatchConsumerConfig } from '../BatchConsumer';
 import path from 'node:path';
 import { getUserAgent } from '../../userAgent';
 import { mockFs } from '../../../mocks.specUtil';
+import { display } from '../../../tools/display';
 
 vi.mock('node:fs/promises');
 vi.mock('../../userAgent');
@@ -27,6 +28,90 @@ describe('StandardBatchConsumer — request construction', () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     fsMocks.access.mockResolvedValue(undefined);
     fsMocks.unlink.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe('oversized logs batches', () => {
+    const batchPath = path.join(config.trackPath, 'test.log');
+    let content: string;
+    let checkpoint: string;
+
+    beforeEach(() => {
+      consumer = new StandardBatchConsumer({ ...config, splitOnPayloadTooLarge: true });
+      content = [1, 2, 3].map((id) => JSON.stringify({ id })).join('\n');
+      fsMocks.readdir.mockResolvedValue(['test.log']);
+      fsMocks.readFile.mockImplementation(() => Promise.resolve(content));
+      fsMocks.writeFile.mockImplementation((_path, value: string) => {
+        checkpoint = value;
+        return Promise.resolve();
+      });
+      fsMocks.rename.mockImplementation(() => {
+        content = checkpoint;
+        return Promise.resolve();
+      });
+    });
+
+    it('splits rejected groups and drops only the individually oversized log', async () => {
+      const warning = vi.spyOn(display, 'warn').mockImplementation(() => undefined);
+      const requests: number[][] = [];
+      const accepted: number[] = [];
+      vi.mocked(fetch).mockImplementation(async (request) => {
+        const events = (await (request as Request).json()) as { id: number }[];
+        const ids = events.map(({ id }) => id);
+        requests.push(ids);
+        const tooLarge = ids.length > 1 || ids[0] === 2;
+        if (!tooLarge) accepted.push(...ids);
+        return { ok: !tooLarge, status: tooLarge ? 413 : 200 } as Response;
+      });
+
+      await consumer.upload();
+
+      expect(requests).toEqual([[1, 2, 3], [1, 2], [1], [2], [3]]);
+      expect(accepted).toEqual([1, 3]);
+      expect(warning).toHaveBeenCalledOnce();
+      expect(fsMocks.unlink).toHaveBeenCalledExactlyOnceWith(batchPath);
+    });
+
+    it.each(['server', 'network'])('retries only unfinished logs after a %s failure', async (failure) => {
+      vi.mocked(fetch)
+        .mockResolvedValueOnce({ ok: false, status: 413 } as Response)
+        .mockResolvedValueOnce({ ok: true, status: 200 } as Response);
+      if (failure === 'network') {
+        vi.mocked(fetch).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+      } else {
+        vi.mocked(fetch).mockResolvedValueOnce({ ok: false, status: 503 } as Response);
+      }
+
+      await consumer.upload();
+      expect(content).toBe('{"id":3}\n');
+      expect(fsMocks.unlink).not.toHaveBeenCalled();
+
+      // A newly created consumer recovers the checkpoint after a process restart.
+      await new StandardBatchConsumer({ ...config, splitOnPayloadTooLarge: true }).upload();
+      const [retry] = vi.mocked(fetch).mock.calls[3] as [Request];
+      expect(await retry.json()).toEqual([{ id: 3 }]);
+      expect(fsMocks.unlink).toHaveBeenCalledExactlyOnceWith(batchPath);
+    });
+
+    it.each(['writeFile', 'rename'] as const)(
+      'preserves the original batch if checkpoint %s fails',
+      async (operation) => {
+        const original = content;
+        fsMocks[operation].mockRejectedValueOnce(new Error('disk failure'));
+        vi.mocked(fetch)
+          .mockResolvedValueOnce({ ok: false, status: 413 } as Response)
+          .mockResolvedValueOnce({ ok: true, status: 200 } as Response);
+
+        await consumer.upload();
+
+        expect(content).toBe(original);
+        expect(fetch).toHaveBeenCalledTimes(2);
+        expect(fsMocks.unlink).not.toHaveBeenCalledWith(batchPath);
+      }
+    );
   });
 
   describe('request headers', () => {

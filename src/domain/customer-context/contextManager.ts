@@ -1,10 +1,11 @@
 import { combine, deepClone } from '@datadog/js-core/util';
 import { SKIPPED } from '@datadog/js-core/assembly';
 import { type TimeStamp, timeStampNow } from '@datadog/js-core/time';
-import { isEmptyObject } from '@datadog/browser-core';
+import { isEmptyObject, sanitize } from '@datadog/browser-core';
 import { display } from '../../tools/display';
 import { initContextHistory } from './contextHistory';
 import type { FormatHooks } from '../../assembly';
+import { EventSource } from '../../event';
 
 export type Context = Record<string, unknown>;
 
@@ -90,6 +91,25 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
       if (isEmptyObject(context)) return SKIPPED;
       return key ? { [key]: context } : { context };
     });
+  }
+
+  protected registerLogsHook(hooks: FormatHooks, key: 'usr' | 'account'): void {
+    hooks.registerLogs(({ startTime, source }) => {
+      const context = this.getContext(startTime);
+      if (isEmptyObject(context)) return SKIPPED;
+      return { [key]: source === EventSource.MAIN ? this.sanitizeContext(context) : context };
+    });
+  }
+
+  private sanitizeContext(context: Context): Context {
+    const extraInfo = { ...context };
+    const standardFields: Context = {};
+    // Extra attributes must not consume the budget for reserved identity fields.
+    for (const key of Object.keys(this.propertiesConfig)) {
+      if (key in context) standardFields[key] = sanitize(context[key]);
+      delete extraInfo[key];
+    }
+    return { ...(sanitize(extraInfo) as Context), ...standardFields };
   }
 
   isEmpty(): boolean {
