@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { downloadArtifact } from '@electron/get';
+import { loadIntegrationVariants, getIntegrationVariantEnvironment } from './lib/integrationVariants.ts';
 import { command } from './lib/command.ts';
 import { printLog, runMain } from './lib/executionUtils.ts';
 import { RetryingFetchDownloader } from './lib/retryingFetchDownloader.ts';
@@ -45,11 +46,16 @@ runMain(async () => {
     .map((entry) => entry.name)
     .sort();
   const apps = [
-    { source: 'e2e/app', destination: 'e2e-app', variant: 'default', sdk: 'file:../compatibility-sdk.tgz' },
+    {
+      source: 'e2e/app',
+      destination: 'e2e-app',
+      variant: loadIntegrationVariants()[0],
+      sdk: 'file:../compatibility-sdk.tgz',
+    },
     ...integrationApps.flatMap((app) =>
-      ['default', 'plugin-copy'].map((variant) => ({
+      loadIntegrationVariants().map((variant) => ({
         source: `e2e/integration/apps/${app}`,
-        destination: `integration-apps/${app}/${variant}`,
+        destination: `integration-apps/${app}/${variant.name}`,
         variant,
         sdk: 'file:../../../compatibility-sdk.tgz',
       }))
@@ -59,9 +65,7 @@ runMain(async () => {
     printLog(`Preparing ${app.destination}`);
     const destination = path.join(generated, app.destination);
     await materializeApp(path.join(root, app.source), destination, target, app.sdk);
-    const environment = {
-      DD_ELECTRON_COPY_RUNTIME_DEPENDENCIES: String(app.variant === 'plugin-copy'),
-    };
+    const environment = getIntegrationVariantEnvironment(app.variant);
     command`yarn install --no-immutable`
       .withCurrentWorkingDirectory(destination)
       .withEnvironment(environment)

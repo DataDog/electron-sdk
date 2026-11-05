@@ -1,52 +1,51 @@
-/**
- * Installs dependencies for all integration test apps and prepares them for testing.
- *
- * For each app under e2e/integration/apps/:
- *   - Runs `yarn install`
- *   - Runs `yarn package`
- */
+/** Installs and packages every maintained integration app in each supported plugin configuration. */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { command } from './lib/command.ts';
+import { materializeApp } from './lib/compatibility.ts';
+import { getIntegrationVariantEnvironment, loadIntegrationVariants } from './lib/integrationVariants.ts';
 import { printLog, runMain } from './lib/executionUtils.ts';
 
 const appsDir = path.join(import.meta.dirname, '../e2e/integration/apps');
+const generatedDir = path.join(appsDir, '../generated');
 const packageOutputDirectories = ['dist', 'out', '.vite', '.webpack'];
 
-runMain(() => {
-  const apps = fs
-    .readdirSync(appsDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name);
-
-  for (const app of apps) {
-    const appDir = path.join(appsDir, app);
-    const generatedFiles = ['yarn.lock', '.yarnrc.yml']
-      .filter((fileName) => fs.existsSync(path.join(appDir, fileName)))
-      .map((fileName) => {
-        const filePath = path.join(appDir, fileName);
-        return { filePath, contents: fs.readFileSync(filePath) };
-      });
-
-    try {
-      printLog(`\n=== Installing ${app} ===`);
-      // Use --no-immutable because the integration-sdk.tgz is built fresh on every CI run,
-      // so its hash changes and the committed yarn.lock needs to be updated.
-      command`yarn install --no-immutable`.withCurrentWorkingDirectory(appDir).withLogs().run();
-
-      printLog(`\n=== Packaging ${app} ===`);
-      for (const outputDirectory of packageOutputDirectories) {
-        fs.rmSync(path.join(appDir, outputDirectory), { recursive: true, force: true });
+runMain(async () => {
+  fs.rmSync(generatedDir, { recursive: true, force: true });
+  const apps = fs.readdirSync(appsDir, { withFileTypes: true }).filter((entry) => entry.isDirectory());
+  for (const { name: app } of apps) {
+    const source = path.join(appsDir, app);
+    for (const variant of loadIntegrationVariants()) {
+      const appDir = variant.name === 'default' ? source : path.join(generatedDir, `${app}-${variant.name}`);
+      if (variant.name !== 'default') {
+        await materializeApp(source, appDir, undefined, 'file:../../integration-sdk.tgz');
       }
-      command`yarn package`.withCurrentWorkingDirectory(appDir).withLogs().run();
-    } finally {
-      // Yarn may update the tarball checksum, lockfile metadata, and compatibility settings
-      // while installing. Preserve the developer's original files after packaging.
-      for (const { filePath, contents } of generatedFiles) {
-        fs.writeFileSync(filePath, contents);
+      const generatedFiles =
+        variant.name !== 'default'
+          ? []
+          : ['yarn.lock', '.yarnrc.yml']
+              .filter((fileName) => fs.existsSync(path.join(appDir, fileName)))
+              .map((fileName) => {
+                const filePath = path.join(appDir, fileName);
+                return { filePath, contents: fs.readFileSync(filePath) };
+              });
+      const environment = getIntegrationVariantEnvironment(variant);
+      try {
+        printLog(`\n=== Installing ${app} (${variant.name}) ===`);
+        command`yarn install --no-immutable`
+          .withCurrentWorkingDirectory(appDir)
+          .withEnvironment(environment)
+          .withLogs()
+          .run();
+        printLog(`\n=== Packaging ${app} (${variant.name}) ===`);
+        for (const outputDirectory of packageOutputDirectories) {
+          fs.rmSync(path.join(appDir, outputDirectory), { recursive: true, force: true });
+        }
+        command`yarn package`.withCurrentWorkingDirectory(appDir).withEnvironment(environment).withLogs().run();
+      } finally {
+        for (const { filePath, contents } of generatedFiles) fs.writeFileSync(filePath, contents);
       }
     }
   }
-
-  printLog('\nAll integration apps ready.');
+  printLog('\nAll integration apps and option variants ready.');
 });

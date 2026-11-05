@@ -1,7 +1,7 @@
 export interface DatadogBundlerPluginOptions {
   /**
-   * Use the SDK's embedded tracer instead of loading dd-trace-electron from node_modules.
-   * With copyRuntimeDependencies enabled, the tracer package tree is not copied.
+   * Bundle the SDK into the application and emit instrumentation, preload, and tracer assets.
+   * SDK and tracer package trees are not copied, regardless of copyRuntimeDependencies.
    * The package remains a runtime dependency; application packagers may still include it.
    *
    * @default false

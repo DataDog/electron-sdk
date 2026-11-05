@@ -6,8 +6,7 @@
  * because `require('electron')` runs before `@datadog/electron-sdk/instrument`.
  *
  * This plugin:
- * 1. Externalizes the electron-sdk so it remains as runtime
- *    requires (not bundled), preserving runtime instrumentation.
+ * 1. Keeps the SDK external by default; bundledMode inlines it and emits runtime assets.
  * 2. Prepends SDK instrumentation (via @datadog/electron-sdk/instrument)
  *    to the very top of the main process entry chunk, before any hoisted
  *    requires. No manual import needed.
@@ -29,6 +28,7 @@ import { readFileSync, cpSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { createInstrumentationBanner, emitSdkRuntimeAssets } from './sdk-runtime-assets';
 import { createBundledModeBanner } from './tracer-runtime';
 import type { DatadogBundlerPluginOptions } from './bundler-plugin-options';
 
@@ -37,7 +37,11 @@ export type { DatadogBundlerPluginOptions } from './bundler-plugin-options';
 interface VitePlugin {
   name: string;
   config?: () => { build: { rollupOptions: { external: RegExp[] } } };
-  renderChunk?: (code: string, chunk: { isEntry: boolean }, options: { format: string }) => string | null;
+  renderChunk?: (
+    code: string,
+    chunk: { isEntry: boolean; fileName?: string },
+    options: { format: string }
+  ) => string | null;
   writeBundle?: (options: { dir?: string }) => void;
 }
 
@@ -69,21 +73,22 @@ export function datadogVitePlugin(pluginOptions: DatadogBundlerPluginOptions = {
         build: {
           rollupOptions: {
             external:
-              pluginOptions.bundledMode === true
-                ? [/^@datadog\/electron-sdk/]
-                : [/^@datadog\/electron-sdk/, /^dd-trace-electron(?:\/|$)/],
+              pluginOptions.bundledMode === true ? [] : [/^@datadog\/electron-sdk/, /^dd-trace-electron(?:\/|$)/],
           },
         },
       };
     },
     renderChunk(code, chunk, options) {
       if (!chunk.isEntry) return null;
+      if (pluginOptions.bundledMode === true) {
+        return `${createInstrumentationBanner(options.format === 'es' ? 'esm' : 'cjs', chunk.fileName)}\n${code}`;
+      }
       const banner = options.format === 'es' ? ESM_BANNER : CJS_BANNER;
       return `${createBundledModeBanner(pluginOptions.bundledMode, options.format === 'es' ? 'esm' : 'cjs')}\n${banner}\n${code}`;
     },
   };
 
-  if (pluginOptions.copyRuntimeDependencies !== true) return plugin;
+  if (pluginOptions.bundledMode !== true && pluginOptions.copyRuntimeDependencies !== true) return plugin;
 
   plugin.writeBundle = (outputOptions) => {
     // Copy externalized packages and their transitive dependencies into
@@ -92,9 +97,13 @@ export function datadogVitePlugin(pluginOptions: DatadogBundlerPluginOptions = {
     // project's node_modules is not included.
     const outDir = outputOptions.dir;
     if (!outDir) return;
+    if (pluginOptions.bundledMode === true) {
+      emitSdkRuntimeAssets(currentFile, outDir);
+      return;
+    }
 
     const destModules = join(outDir, 'node_modules');
-    const visited = new Set<string>(pluginOptions.bundledMode === true ? ['dd-trace-electron'] : []);
+    const visited = new Set<string>();
 
     function copyPackageTree(pkg: string): void {
       if (visited.has(pkg)) return;

@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { getTracerModule } from './tracer-runtime';
+import { loadTracerRuntime } from './tracer-runtime';
 import { display } from '../tools/display';
 
 // Keep loading lazy so the disabled instrumentation list is set before the tracer evaluates.
@@ -19,7 +19,7 @@ type Tracer = typeof import('dd-trace-electron').default;
  */
 export function loadTracer(requireFn: NodeRequire): Tracer {
   try {
-    return (requireFn(getTracerModule()) as { default: Tracer }).default;
+    return loadTracerRuntime(requireFn);
   } catch {
     display.warn('Tracer could not be loaded, monitoring will not work');
     return createNoopTracer();

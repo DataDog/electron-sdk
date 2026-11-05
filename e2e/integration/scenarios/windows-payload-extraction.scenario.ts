@@ -14,12 +14,12 @@ test.describe('Windows unsigned payload extraction @integration @windows', () =>
 
   test('extracts the packager-owned Vite output below the legacy path limit', async ({ app, mode, variant }) => {
     test.skip(
-      app !== 'electron-builder-vite' || mode !== 'packaged' || variant !== null,
-      'electron-builder-vite default packaged only'
+      app !== 'electron-builder-vite' || mode !== 'packaged' || variant === 'plugin-copy',
+      'electron-builder-vite default and bundled packaged outputs only'
     );
 
     const appDirectory = getIntegrationAppDirectory(app, variant);
-    const viteOutput = dirname(findDevMainScript(appDirectory, variant));
+    const viteOutput = dirname(findDevMainScript(appDirectory));
     expect(existsSync(join(viteOutput, 'node_modules'))).toBe(false);
 
     const temporaryDirectory = await mkdtemp(join(tmpdir(), 'dd-electron-msix-'));
@@ -27,14 +27,17 @@ test.describe('Windows unsigned payload extraction @integration @windows', () =>
     try {
       const extractionRoot = createLongExtractionRoot(temporaryDirectory);
 
-      // The tracer is embedded in the SDK; plugin copying must not restore its deep package tree.
+      // The external-copy variant retains the historical deep dependency tree as a control.
       const pluginCopyAppDirectory = getIntegrationAppDirectory(app, 'plugin-copy');
-      const pluginCopyOutput = dirname(findDevMainScript(pluginCopyAppDirectory, 'plugin-copy'));
+      const pluginCopyOutput = dirname(findDevMainScript(pluginCopyAppDirectory));
       const pluginCopyFiles = await listPayloadFiles(pluginCopyOutput);
-      expect(pluginCopyFiles).toContain(join('node_modules', '@datadog', 'electron-sdk', 'dist', 'tracer.cjs'));
-      expect(pluginCopyFiles.some((file) => file.startsWith(join('node_modules', 'dd-trace-electron') + sep))).toBe(
-        false
+      const overlong = pluginCopyFiles.filter(
+        (file) =>
+          file.startsWith(join('node_modules', 'dd-trace-electron') + sep) &&
+          join(extractionRoot, file).length >= LEGACY_WINDOWS_MAX_PATH
       );
+      expect(overlong.length).toBeGreaterThan(0);
+      if (variant === 'bundled') expect(await listPayloadFiles(viteOutput)).toContain(join('.datadog', 'tracer.cjs'));
 
       // With copying disabled, every loose payload file fits under the same destination.
       const payloadFiles = await listPayloadFiles(viteOutput);

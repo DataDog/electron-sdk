@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { getTracerModule } from '../../entries/tracer-runtime';
+import { loadTracerRuntime } from '../../entries/tracer-runtime';
 import { version as tracerVersion } from 'dd-trace-electron/package.json';
 import type { SamplingRule } from 'dd-trace-electron';
 import { isSampledSessionActive } from '../../common';
@@ -33,7 +33,7 @@ export class Tracing {
 
   constructor(config: Configuration, requireFn: NodeRequire = _require) {
     try {
-      const tracer = (requireFn(getTracerModule()) as { default: typeof import('dd-trace-electron').default }).default;
+      const tracer = loadTracerRuntime(requireFn);
 
       tracer.init({
         experimental: { exporter: 'electron' as 'datadog' },

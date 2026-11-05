@@ -28,6 +28,7 @@ describe('Tracing', () => {
   afterEach(() => {
     setSampledSessionActive(false);
     delete (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:bundledMode')];
+    delete (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:embeddedTracer')];
   });
 
   it('initializes dd-trace-electron with normalized matching rules and a fallback sample rate', () => {
@@ -74,6 +75,21 @@ describe('Tracing', () => {
     expect(tracing.enabled).toBe(true);
     expect(tracing.telemetryInitialized).toBe(true);
     expect(embeddedRequire).toHaveBeenCalledOnce();
+  });
+
+  it('reuses the tracer loaded by emitted instrumentation when init is bundled elsewhere', () => {
+    const tracer = { init: vi.fn(), use: vi.fn(), _tracingInitialized: true };
+    (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:bundledMode')] = true;
+    (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:embeddedTracer')] = tracer;
+    const requireFn = vi.fn(() => {
+      throw new Error('No tracer beside application bundle');
+    });
+
+    const tracing = new Tracing(createTestConfiguration(), requireFn as unknown as NodeRequire);
+
+    expect(tracing.enabled).toBe(true);
+    expect(tracer.init).toHaveBeenCalledOnce();
+    expect(requireFn).not.toHaveBeenCalled();
   });
 
   it('uses the trace sample rate without sampling rules', () => {

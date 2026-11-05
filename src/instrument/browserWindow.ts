@@ -1,28 +1,27 @@
 import { createRequire } from 'node:module';
+import { isBundledMode } from '../entries/tracer-runtime';
 import { callMonitored } from '../domain/telemetry';
 import { display } from '../tools/display';
 
-const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
+const _require = createRequire(typeof __filename !== 'undefined' ? __filename : import.meta.url);
 
 function resolvePackage(id: string): string {
   return _require.resolve(id);
 }
 
 export function resolvePreloadPath(_resolvePackage = resolvePackage): string | undefined {
-  try {
-    return _resolvePackage('@datadog/electron-sdk/preload');
-  } catch {
-    // Package-relative resolution fails when instrument.cjs is loaded via a symlink (e.g. Yarn
-    // portal) and the symlink target is resolved to the real path before module lookups start.
-    // Fall back to a path co-located with this file — preload.js is always bundled alongside
-    // instrument.cjs in the same dist/ directory.
+  const requests = isBundledMode()
+    ? ['./preload', '@datadog/electron-sdk/preload']
+    : ['@datadog/electron-sdk/preload', './preload'];
+  for (const request of requests) {
     try {
-      return _resolvePackage('./preload');
+      return _resolvePackage(request);
     } catch {
-      display.warn('Could not resolve preload script - BrowserWindow injection skipped');
-      return undefined;
+      // Try the alternate location for package installs, emitted assets, and symlinked development installs.
     }
   }
+  display.warn('Could not resolve preload script - BrowserWindow injection skipped');
+  return undefined;
 }
 
 export function patchBrowserWindow(electron: typeof import('electron'), preloadPath: string): void {

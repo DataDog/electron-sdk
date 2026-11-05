@@ -33,7 +33,7 @@ export function getGeneratedTargetRoot(id: string): string {
 export async function materializeApp(
   source: string,
   destination: string,
-  target: CompatibilityTarget,
+  target: CompatibilityTarget | undefined,
   sdk: string
 ): Promise<void> {
   const ignored = new Set([
@@ -53,9 +53,11 @@ export async function materializeApp(
   const packageJsonPath = path.join(destination, 'package.json');
   const packageJsonContent = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
   packageJsonContent.dependencies['@datadog/electron-sdk'] = sdk;
-  packageJsonContent.devDependencies.electron =
-    target.dependency === 'electron' ? target.version : `npm:${target.dependency}@${target.version}`;
+  if (target)
+    packageJsonContent.devDependencies.electron =
+      target.dependency === 'electron' ? target.version : `npm:${target.dependency}@${target.version}`;
   fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJsonContent, null, 2)}\n`);
+  if (!target) return;
   const yarnConfigPath = path.join(destination, '.yarnrc.yml');
   const config = fs.existsSync(yarnConfigPath) ? fs.readFileSync(yarnConfigPath, 'utf8') : 'nodeLinker: node-modules\n';
   const entry = `  - ${target.dependency}@${target.version}\n`;

@@ -4,6 +4,7 @@ import { loadTracer } from './instrument-prelude';
 describe('loadTracer', () => {
   afterEach(() => {
     delete (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:bundledMode')];
+    delete (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:embeddedTracer')];
   });
 
   it('returns the dd-trace-electron default export when require succeeds', () => {
