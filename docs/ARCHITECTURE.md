@@ -463,6 +463,10 @@ flag and use `createRequire` to load the same external package or embedded Commo
 including from ESM entry points. The tracer version is embedded at build time. Its process-wide
 `global._ddtrace` singleton remains shared; applications should let the SDK initialize the tracer.
 
+Embedded tracer instances are shared between instrumentation and initialization through
+`Symbol.for('@datadog/electron-sdk:embeddedTracer')`. Native `createRequire` calls preserve
+Electron module and preload resolution, including for separately bundled entry points.
+
 Rollup preserves lazy CommonJS evaluation and leaves optional native product requires in place.
 The Electron SDK does not enable those products. Node built-ins remain runtime requires, allowing
 HTTP, child-process, and opt-in filesystem instrumentation without upstream bundler plugins.
