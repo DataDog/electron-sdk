@@ -43,7 +43,7 @@ it('embeds a shared tracer with built-in instrumentation and no installed runtim
     import configs from './rollup.config.mjs';
     import pkg from './package.json' with { type: 'json' };
     assert.ok(pkg.files.includes('dist/tracer.cjs'));
-    assert.equal(pkg.dependencies?.['dd-trace-electron'], undefined);
+    assert.ok(pkg.dependencies['dd-trace-electron']);
     const config = configs.find(config => config.output.file === 'dist/tracer.cjs');
     const { output, ...input } = config;
     const bundle = await rollup(input);

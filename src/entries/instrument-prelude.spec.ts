@@ -1,8 +1,21 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { loadTracer } from './instrument-prelude';
 
 describe('loadTracer', () => {
+  afterEach(() => {
+    delete (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:bundledMode')];
+  });
+
   it('returns the dd-trace-electron default export when require succeeds', () => {
+    const tracer = { init: vi.fn() };
+    const requireFn = vi.fn(() => ({ default: tracer }));
+
+    expect(loadTracer(requireFn as unknown as NodeRequire)).toBe(tracer);
+    expect(requireFn).toHaveBeenCalledWith('dd-trace-electron');
+  });
+
+  it('loads the embedded tracer when bundled mode was selected before instrumentation', () => {
+    (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:bundledMode')] = true;
     const tracer = { init: vi.fn() };
     const requireFn = vi.fn(() => ({ default: tracer }));
 

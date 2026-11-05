@@ -58,6 +58,10 @@ All fixtures disable `copyRuntimeDependencies` unless `DD_ELECTRON_COPY_RUNTIME_
 selects plugin-owned copying for a compatibility variant.
 The `electron-builder-vite` app packages two isolated variants: the default packager-owned runtime dependency copy
 (`default-copy`) and `copyRuntimeDependencies: true` (`plugin-copy`), where the plugin owns dependency staging.
+The `forge-webpack` and `forge-esbuild-esm` fixtures opt into `bundledMode: true`, as does the
+`electron-builder-vite` plugin-copy variant. Other fixtures exercise the default external tracer.
+The runtime-selection scenario checks the loaded modules in the Electron main process in both modes.
+
 The Windows payload extraction scenario covers the regression described in
 [#182](https://github.com/DataDog/electron-sdk/pull/182). It verifies that plugin copying includes the embedded tracer without its former deep package tree,
 while the copy-disabled Vite output extracts completely with Windows

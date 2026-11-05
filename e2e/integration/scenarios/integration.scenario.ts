@@ -70,7 +70,9 @@ test.describe('electron-builder runtime dependency packaging @integration', () =
     };
     const archiveEntries = listPackage(archivePath, { isPack: false }).map((entry) => entry.split(sep).join(posix.sep));
 
-    expect(archiveEntries.some((entry) => entry.endsWith('/node_modules/dd-trace-electron/package.json'))).toBe(false);
+    if (!expectsPluginCopy || app === 'electron-builder-vite') {
+      expect(archiveEntries).toContain('/node_modules/dd-trace-electron/package.json');
+    }
 
     if (app === 'electron-builder-vite') {
       expect(archiveEntries).toContain('/node_modules/@datadog/electron-sdk/package.json');
@@ -82,6 +84,8 @@ test.describe('electron-builder runtime dependency packaging @integration', () =
       expect(archiveEntries.includes(`/dist/${workflow}/node_modules/@datadog/electron-sdk/dist/tracer.cjs`)).toBe(
         expectsPluginCopy
       );
+      // The plugin-copy variant opts into bundled mode: only packager-owned staging retains the tracer package.
+      expect(archiveEntries).not.toContain(`/dist/${workflow}/node_modules/dd-trace-electron/package.json`);
     } else {
       const hasNestedDependencies = archiveEntries.some(
         (entry) =>
@@ -93,6 +97,26 @@ test.describe('electron-builder runtime dependency packaging @integration', () =
         expect(archiveEntries).toContain('/node_modules/@datadog/electron-sdk/dist/tracer.cjs');
       }
     }
+  });
+});
+
+test.describe('tracer runtime selection @integration', () => {
+  test('loads only the tracer selected by bundledMode', async ({ app, variant, window, electronApp }) => {
+    await window.waitForLoadState('load');
+    const bundled =
+      app === 'forge-webpack' ||
+      app === 'forge-esbuild-esm' ||
+      (app === 'electron-builder-vite' && variant === 'plugin-copy');
+    const runtime = await electronApp.evaluate(() => {
+      const requireFn = process.getBuiltinModule('node:module').createRequire(process.execPath);
+      const loaded = Object.keys(requireFn.cache).map((file) => file.split('\\').join('/'));
+      return {
+        bundled: (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:bundledMode')] === true,
+        embedded: loaded.some((file) => file.endsWith('/dist/tracer.cjs')),
+        external: loaded.some((file) => file.endsWith('/dd-trace-electron/index.electron.js')),
+      };
+    });
+    expect(runtime).toEqual({ bundled, embedded: bundled, external: !bundled });
   });
 });
 

@@ -133,12 +133,21 @@ mode, so the Electron setting is authoritative.
 
 The SDK instruments Electron as it is loaded, which requires correct module loading order. The SDK provides bundler plugins to ensure this works in all environments.
 
-Each plugin accepts `copyRuntimeDependencies`, which controls whether it copies the SDK and its embedded runtime assets into the build output. It defaults to `false`: the application
-packager must include those dependencies in the packaged app. Set `copyRuntimeDependencies: true`
-only as a best-effort compatibility fallback when the packager cannot stage them.
+Each plugin accepts these options:
 
-Keep `@datadog/electron-sdk` in the application's production `dependencies`; it includes the embedded tracer. Applications already using `copyRuntimeDependencies: false` with working
-packager staging need no configuration change.
+- `copyRuntimeDependencies` (default `false`): copy the SDK and its runtime dependencies into the build output. Prefer application packager staging; enable this compatibility fallback when the packager cannot stage them.
+- `bundledMode` (default `false`): load the tracer embedded in the SDK instead of the external `dd-trace-electron` package. With `copyRuntimeDependencies: true`, the plugin skips copying the tracer package tree. This currently controls tracer loading; the SDK itself remains external.
+
+```ts
+datadogVitePlugin({ bundledMode: true });
+new DatadogWebpackPlugin({ bundledMode: true });
+datadogEsbuildPlugin({ bundledMode: true });
+```
+
+Keep `@datadog/electron-sdk` in the application's production `dependencies`. It installs
+`dd-trace-electron` for the default external mode. The tracer package remains installed when
+`bundledMode` is enabled, and application packagers may still include it. Applications already using
+`copyRuntimeDependencies: false` with working packager staging need no configuration change.
 
 ##### Electron Forge
 

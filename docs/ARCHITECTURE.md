@@ -440,9 +440,9 @@ Advertised capabilities tell the Browser SDK which bridge features it may use, b
 
 The instrumentation entry point must run before `require('electron')`. Bundlers can break this ordering requirement in different ways:
 
-- **Vite** (`datadogVitePlugin` from `@datadog/electron-sdk/vite-plugin`): hoists all `require()` calls to the top of the bundle, breaking import order. The plugin externalizes the SDK and prepends the instrumentation banner before hoisted requires. Runtime dependencies are staged by the application packager unless `copyRuntimeDependencies: true` is set.
-- **Webpack** (`DatadogWebpackPlugin` from `@datadog/electron-sdk/webpack-plugin`): preserves module execution order (lazy evaluation via `__webpack_require__`), so import order is maintained. The plugin externalizes the SDK, prepends the instrumentation banner, and excludes it from `@vercel/webpack-asset-relocator-loader`. Runtime dependencies are staged by the application packager unless `copyRuntimeDependencies: true` is set.
-- **esbuild** (`datadogEsbuildPlugin` from `@datadog/electron-sdk/esbuild-plugin`): also preserves module execution order. The plugin externalizes the SDK and prepends the instrumentation banner. Runtime dependencies are staged by the application packager unless `copyRuntimeDependencies: true` is set, in which case the plugin copies them via an `onEnd` hook. In ESM output the banner loads `instrument` via `createRequire`, since ES modules have no global `require`.
+- **Vite** (`datadogVitePlugin` from `@datadog/electron-sdk/vite-plugin`): hoists all `require()` calls to the top of the bundle, breaking import order. The plugin externalizes the SDK and tracer by default and prepends the instrumentation banner before hoisted requires. Runtime dependencies are staged by the application packager unless `copyRuntimeDependencies: true` is set.
+- **Webpack** (`DatadogWebpackPlugin` from `@datadog/electron-sdk/webpack-plugin`): preserves module execution order (lazy evaluation via `__webpack_require__`), so import order is maintained. The plugin externalizes the SDK and tracer by default, prepends the instrumentation banner, and excludes it from `@vercel/webpack-asset-relocator-loader`. Runtime dependencies are staged by the application packager unless `copyRuntimeDependencies: true` is set.
+- **esbuild** (`datadogEsbuildPlugin` from `@datadog/electron-sdk/esbuild-plugin`): also preserves module execution order. The plugin externalizes the SDK and tracer by default and prepends the instrumentation banner. Runtime dependencies are staged by the application packager unless `copyRuntimeDependencies: true` is set, in which case the plugin copies them via an `onEnd` hook. In ESM output the banner loads `instrument` via `createRequire`, since ES modules have no global `require`.
 
 Packager-owned staging is the preferred path. Forge Vite and Webpack applications override
 `packagerConfig.ignore` to retain root `node_modules` alongside `.vite` or `.webpack`; see
@@ -450,10 +450,16 @@ Packager-owned staging is the preferred path. Forge Vite and Webpack application
 
 See `src/entries/instrument.ts`, `src/entries/vite-plugin.ts`, `src/entries/webpack-plugin.ts`, and `src/entries/esbuild-plugin.ts`.
 
-### Embedded dd-trace-electron
+### Tracer runtime selection
 
-The SDK builds its pinned `dd-trace-electron` development dependency into `dist/tracer.cjs`.
-Both instrumentation and initialization load this shared CommonJS asset through `createRequire`,
+`dd-trace-electron` is a pinned runtime dependency. Without a plugin, or with `bundledMode`
+omitted or false, the SDK loads the external package. The SDK also builds it into `dist/tracer.cjs`
+for explicit `bundledMode: true` usage.
+
+Each bundler plugin sets a process-wide `Symbol.for('@datadog/electron-sdk:bundledMode')` flag
+before loading instrumentation. ESM banners place the selection in an initial data-URL module import,
+so it executes before static SDK imports; CJS banners assign the flag before requiring instrumentation. Both instrumentation and initialization read that
+flag and use `createRequire` to load the same external package or embedded CommonJS asset,
 including from ESM entry points. The tracer version is embedded at build time. Its process-wide
 `global._ddtrace` singleton remains shared; applications should let the SDK initialize the tracer.
 
@@ -463,9 +469,9 @@ HTTP, child-process, and opt-in filesystem instrumentation without upstream bund
 Bundled third-party libraries require additional build-time instrumentation; external libraries
 remain eligible for normal runtime instrumentation.
 
-The application plugins externalize only the SDK. Packagers stage the SDK, including its tracer
-asset and preload; `copyRuntimeDependencies: true` copies the SDK as a compatibility fallback.
-No separate dd-trace-electron package tree is needed at runtime.
+The SDK remains external in both modes. With `copyRuntimeDependencies: true`, plugins copy its
+runtime dependency tree, skipping `dd-trace-electron` when `bundledMode: true`. The tracer remains
+installed, and application packagers may still stage it. See [runtime dependency setup](RUNTIME_DEPENDENCIES.md).
 
 ## Two-Tier Configuration
 

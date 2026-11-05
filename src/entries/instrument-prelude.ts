@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { getTracerModule } from './tracer-runtime';
 import { display } from '../tools/display';
 
 // Keep loading lazy so the disabled instrumentation list is set before the tracer evaluates.
@@ -10,7 +11,7 @@ process.env['DD_TRACE_DISABLED_INSTRUMENTATIONS'] = _existing ? `${_existing},el
 type Tracer = typeof import('dd-trace-electron').default;
 
 /**
- * Loads dd-trace-electron defensively. The tracer is embedded in the SDK, but a
+ * Loads dd-trace-electron defensively. The tracer can be external or embedded, but a
  * failure here (e.g. a corrupted install) must not throw while the app evaluates
  * `import '@datadog/electron-sdk/instrument'` and crash startup — that would bypass the intended
  * "monitoring disabled" degradation. On failure we warn and return a no-op tracer, so tracing
@@ -18,9 +19,9 @@ type Tracer = typeof import('dd-trace-electron').default;
  */
 export function loadTracer(requireFn: NodeRequire): Tracer {
   try {
-    return (requireFn('./tracer.cjs') as { default: Tracer }).default;
+    return (requireFn(getTracerModule()) as { default: Tracer }).default;
   } catch {
-    display.warn('Bundled tracer could not be loaded, monitoring will not work');
+    display.warn('Tracer could not be loaded, monitoring will not work');
     return createNoopTracer();
   }
 }

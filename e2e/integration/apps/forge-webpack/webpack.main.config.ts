@@ -4,7 +4,7 @@ const copyRuntimeDependencies = process.env.DD_ELECTRON_COPY_RUNTIME_DEPENDENCIE
 
 export const mainConfig = {
   entry: './src/main.ts',
-  plugins: [new DatadogWebpackPlugin({ copyRuntimeDependencies })],
+  plugins: [new DatadogWebpackPlugin({ copyRuntimeDependencies, bundledMode: true })],
   module: {
     rules: [
       {

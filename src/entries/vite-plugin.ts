@@ -11,9 +11,10 @@
  * 2. Prepends SDK instrumentation (via @datadog/electron-sdk/instrument)
  *    to the very top of the main process entry chunk, before any hoisted
  *    requires. No manual import needed.
- * 3. Copies @datadog/electron-sdk and its runtime assets
+ * 3. Copies @datadog/electron-sdk and its runtime dependencies
  *    into the build output's node_modules only when `copyRuntimeDependencies: true`.
  *    Copying is disabled by default; the application packager must stage them.
+ *    dd-trace-electron stays external unless bundledMode is enabled.
  *
  * Usage:
  *   import { datadogVitePlugin } from '@datadog/electron-sdk/vite-plugin';
@@ -28,6 +29,7 @@ import { readFileSync, cpSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { createBundledModeBanner } from './tracer-runtime';
 import type { DatadogBundlerPluginOptions } from './bundler-plugin-options';
 
 export type { DatadogBundlerPluginOptions } from './bundler-plugin-options';
@@ -66,7 +68,10 @@ export function datadogVitePlugin(pluginOptions: DatadogBundlerPluginOptions = {
       return {
         build: {
           rollupOptions: {
-            external: [/^@datadog\/electron-sdk/],
+            external:
+              pluginOptions.bundledMode === true
+                ? [/^@datadog\/electron-sdk/]
+                : [/^@datadog\/electron-sdk/, /^dd-trace-electron(?:\/|$)/],
           },
         },
       };
@@ -74,7 +79,7 @@ export function datadogVitePlugin(pluginOptions: DatadogBundlerPluginOptions = {
     renderChunk(code, chunk, options) {
       if (!chunk.isEntry) return null;
       const banner = options.format === 'es' ? ESM_BANNER : CJS_BANNER;
-      return `${banner}\n${code}`;
+      return `${createBundledModeBanner(pluginOptions.bundledMode, options.format === 'es' ? 'esm' : 'cjs')}\n${banner}\n${code}`;
     },
   };
 
@@ -89,7 +94,7 @@ export function datadogVitePlugin(pluginOptions: DatadogBundlerPluginOptions = {
     if (!outDir) return;
 
     const destModules = join(outDir, 'node_modules');
-    const visited = new Set<string>();
+    const visited = new Set<string>(pluginOptions.bundledMode === true ? ['dd-trace-electron'] : []);
 
     function copyPackageTree(pkg: string): void {
       if (visited.has(pkg)) return;

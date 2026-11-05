@@ -14,9 +14,10 @@
  *    relocator-loader, which would otherwise break the SDK's internal module
  *    resolution (createRequire, dynamic _require.resolve).
  *
- * 4. Copies @datadog/electron-sdk and its runtime assets
+ * 4. Copies @datadog/electron-sdk and its runtime dependencies
  *    into the build output's node_modules only when `copyRuntimeDependencies: true`.
  *    Copying is disabled by default; the application packager must stage them.
+ *    dd-trace-electron stays external unless bundledMode is enabled.
  *
  * Usage:
  *   const { DatadogWebpackPlugin } = require('@datadog/electron-sdk/webpack-plugin');
@@ -30,6 +31,7 @@ import { join, dirname } from 'node:path';
 import { mkdirSync, existsSync, readFileSync, cpSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
+import { createBundledModeBanner } from './tracer-runtime';
 import type { DatadogBundlerPluginOptions } from './bundler-plugin-options';
 
 export type { DatadogBundlerPluginOptions } from './bundler-plugin-options';
@@ -62,9 +64,9 @@ interface Compiler {
 }
 
 // Support both CJS (__filename) and ESM (import.meta.url) contexts
-const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
+const _require = createRequire(typeof __filename !== 'undefined' ? __filename : import.meta.url);
 
-const EXCLUDE_PATTERN = /[/\\]node_modules[/\\]@datadog[/\\]electron-sdk[/\\]/;
+const EXCLUDE_PATTERN = /[/\\]node_modules[/\\](dd-trace-electron|@datadog[/\\]electron-sdk)[/\\]/;
 const ASSET_RELOCATOR = '@vercel/webpack-asset-relocator-loader';
 
 function usesAssetRelocator(rule: Rule): boolean {
@@ -123,6 +125,7 @@ export class DatadogWebpackPlugin {
   apply(compiler: Compiler): void {
     // Externalize @datadog/electron-sdk so webpack doesn't bundle it
     const sdkExternals = [/^@datadog\/electron-sdk(\/.*)?$/];
+    if (this.pluginOptions.bundledMode !== true) sdkExternals.push(/^dd-trace-electron(\/.*)?$/);
     const existing = compiler.options.externals;
     if (!existing) {
       compiler.options.externals = sdkExternals;
@@ -135,7 +138,7 @@ export class DatadogWebpackPlugin {
     // Prepend the Electron instrumentation banner so the user doesn't need to
     // manually import '@datadog/electron-sdk/instrument'
     new compiler.webpack.BannerPlugin({
-      banner: 'try{require("@datadog/electron-sdk/instrument")}catch{}',
+      banner: `${createBundledModeBanner(this.pluginOptions.bundledMode)}\ntry{require("@datadog/electron-sdk/instrument")}catch{}`,
       raw: true,
       entryOnly: true,
     }).apply(compiler);
@@ -160,7 +163,7 @@ export class DatadogWebpackPlugin {
       // Copy externalized packages into node_modules alongside the bundle
       // so they are available at runtime in packaged apps
       const destModules = join(outputPath, 'node_modules');
-      const visited = new Set<string>();
+      const visited = new Set<string>(this.pluginOptions.bundledMode === true ? ['dd-trace-electron'] : []);
       copyPackageTree('@datadog/electron-sdk', destModules, visited);
     });
   }

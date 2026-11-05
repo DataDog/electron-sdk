@@ -133,7 +133,6 @@
     "@vitest/coverage-v8": "4.1.12",
     "@vitest/ui": "4.1.12",
     "concurrently": "10.0.6",
-    "dd-trace-electron": "6.23.0",
     "electron": "41.1.0",
     "eslint": "10.13.0",
     "eslint-config-prettier": "10.1.8",
@@ -172,5 +171,8 @@
     "*.{js,mjs,cjs,json,yml,yaml,md}": [
       "prettier --write"
     ]
+  },
+  "dependencies": {
+    "dd-trace-electron": "6.23.0"
   }
 }
