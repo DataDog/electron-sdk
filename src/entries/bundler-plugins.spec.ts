@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, readFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { getTracerModule } from './tracer-runtime';
 import { datadogEsbuildPlugin } from './esbuild-plugin';
@@ -13,6 +13,7 @@ vi.mock('node:module', () => ({
 }));
 
 vi.mock('node:fs', () => ({
+  copyFileSync: vi.fn(),
   cpSync: vi.fn(),
   existsSync: vi.fn(),
   mkdirSync: vi.fn(),
@@ -99,9 +100,19 @@ describe('runtime dependency copy selection', () => {
     const options = { bundledMode, copyRuntimeDependencies: true };
     const assertCopied = () => {
       const destinations = vi.mocked(cpSync).mock.calls.map(([, dest]) => String(dest).split('\\').join('/'));
-      expect(destinations.some((file) => file.endsWith('/@datadog/electron-sdk'))).toBe(true);
+      expect(destinations.some((file) => file.endsWith('/@datadog/electron-sdk'))).toBe(!bundledMode);
       expect(destinations.some((file) => file.endsWith('/dd-trace-electron'))).toBe(!bundledMode);
       expect(destinations.some((file) => file.endsWith('/dc-polyfill'))).toBe(!bundledMode);
+      if (bundledMode) {
+        const assets = vi.mocked(copyFileSync).mock.calls.map(([, dest]) => String(dest).split('\\').join('/'));
+        expect(assets).toEqual([
+          '/output/.datadog/instrument.cjs',
+          '/output/.datadog/preload.js',
+          '/output/.datadog/tracer.cjs',
+          '/output/.datadog/tracer.LICENSE',
+        ]);
+      }
+      vi.mocked(copyFileSync).mockClear();
       vi.mocked(cpSync).mockClear();
     };
 
@@ -131,7 +142,9 @@ describe('bundled mode', () => {
       );
       // A static dependency reads the mode before the entry's body executes. Resolve the defensive
       // instrumentation require from an absent package tree so this check does not need build output.
-      const source = `${banner.replace('import.meta.url', '"file:///uninstalled/main.mjs"')}
+      const source = `${banner
+        .replace('import.meta.url', '"file:///uninstalled/main.mjs"')
+        .replace('import "./.datadog/instrument.cjs";', `import "data:text/javascript,${assertion}";`)}
 import "data:text/javascript,${assertion}";`;
       const result = spawnSync(process.execPath, ['--input-type=module', '-e', source], { encoding: 'utf8' });
       expect(result.status, result.stderr).toBe(0);
@@ -142,7 +155,7 @@ import "data:text/javascript,${assertion}";`;
     const expectedModule = bundledMode === true ? './tracer.cjs' : 'dd-trace-electron';
     const assertBanner = (banner: string) => {
       const instrument = vi.fn((id: string) => {
-        expect(id).toBe('@datadog/electron-sdk/instrument');
+        expect(id).toBe(bundledMode === true ? './.datadog/instrument.cjs' : '@datadog/electron-sdk/instrument');
         expect(getTracerModule()).toBe(expectedModule);
       });
       const requireFn = (id: string) => (id === 'node:module' ? { createRequire: () => instrument } : instrument(id));
@@ -153,17 +166,22 @@ import "data:text/javascript,${assertion}";`;
     const vite = datadogVitePlugin({ bundledMode });
     const external = vite.config!().build.rollupOptions.external;
     expect(external.some((pattern) => pattern.test('dd-trace-electron'))).toBe(bundledMode !== true);
+    expect(external.some((pattern) => pattern.test('@datadog/electron-sdk'))).toBe(bundledMode !== true);
     assertBanner(vite.renderChunk!('', { isEntry: true }, { format: 'cjs' })!);
 
     const initialOptions = { external: ['electron'], banner: { js: '' } };
     datadogEsbuildPlugin({ bundledMode }).setup({ initialOptions, onEnd: vi.fn() });
     expect(initialOptions.external.includes('dd-trace-electron')).toBe(bundledMode !== true);
     expect(initialOptions.external).toContain('electron');
+    expect(initialOptions.external.includes('@datadog/electron-sdk')).toBe(bundledMode !== true);
     assertBanner(initialOptions.banner.js);
 
     const compiler = createWebpackCompiler(vi.fn(), assertBanner);
     new DatadogWebpackPlugin({ bundledMode }).apply(compiler);
     expect((compiler.options.externals as RegExp[]).some((pattern) => pattern.test('dd-trace-electron'))).toBe(
+      bundledMode !== true
+    );
+    expect((compiler.options.externals as RegExp[]).some((pattern) => pattern.test('@datadog/electron-sdk'))).toBe(
       bundledMode !== true
     );
   });

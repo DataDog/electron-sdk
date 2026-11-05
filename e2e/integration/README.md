@@ -64,20 +64,21 @@ Every app is built in three independent configurations from `variants.json`:
 | `plugin-copy` | `copyRuntimeDependencies: true`  | Production dependency |
 | `bundled`     | `bundledMode: true`              | Production dependency |
 
-Each configuration runs in development and packaged modes. The embedded-tracer variant leaves SDK staging to the application packager and does not pass
-`copyRuntimeDependencies`. Environment selection uses
+Each configuration runs in development and packaged modes. Bundled builds do not pass
+`copyRuntimeDependencies`, since the option is irrelevant in that mode. Environment selection uses
 `DD_ELECTRON_COPY_RUNTIME_DEPENDENCIES` and `DD_ELECTRON_BUNDLED_MODE`; electron-vite's automatic
 externalization exclusion is applied only in the bundled variant.
 
 The default build stays in the maintained app directory. Other variants are materialized under
 `e2e/integration/generated/<app>-<variant>/`, with independent dependencies and output directories.
 The same configuration list drives compatibility preparation and Playwright project generation.
-All maintained manifests keep the SDK in `dependencies`. The SDK remains external in all configurations; the bundled configuration selects its embedded tracer.
-Runtime tests check the loaded modules and preload selection; packaging tests check dependency placement
-in every packaged variant.
+All maintained manifests keep the SDK in `dependencies`. The standalone-output scenario proves
+bundled output can initialize and deliver events without an installed SDK or tracer, without changing
+the baseline dependency declarations. Runtime tests check the loaded modules and emitted preload;
+packaging tests check assets and dependency placement in every packaged variant.
 
 The Windows payload extraction scenario covers the regression described in
-[#182](https://github.com/DataDog/electron-sdk/pull/182). It checks the deep external-copy dependency tree against the short copy-disabled output,
+[#182](https://github.com/DataDog/electron-sdk/pull/182). It verifies that plugin copying includes the embedded tracer without its former deep package tree,
 while the copy-disabled Vite output extracts completely with Windows
 PowerShell 5.1. The separate packaging scenario checks dependency placement in `app.asar`; this does not
 run a full MSIX build or signing pipeline.

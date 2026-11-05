@@ -37,6 +37,7 @@ test.describe('Windows unsigned payload extraction @integration @windows', () =>
           join(extractionRoot, file).length >= LEGACY_WINDOWS_MAX_PATH
       );
       expect(overlong.length).toBeGreaterThan(0);
+      if (variant === 'bundled') expect(await listPayloadFiles(viteOutput)).toContain(join('.datadog', 'tracer.cjs'));
 
       // With copying disabled, every loose payload file fits under the same destination.
       const payloadFiles = await listPayloadFiles(viteOutput);

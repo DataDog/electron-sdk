@@ -16,7 +16,7 @@ Preparation downloads and verifies Electron, installs each app, and packages the
 Integration apps are discovered from the directories under `e2e/integration/apps/`.
 Tests check the actual Electron version at launch. Each integration app runs in development and
 packaged modes for three configurations: default external dependencies, `plugin-copy` external dependencies,
-and `bundled` embedded tracing. The configuration list in `e2e/integration/variants.json` is shared with the normal
+and `bundled` SDK output. The configuration list in `e2e/integration/variants.json` is shared with the normal
 integration suite. Preparation sets both `DD_ELECTRON_COPY_RUNTIME_DEPENDENCIES` and
 `DD_ELECTRON_BUNDLED_MODE` explicitly for every build. Bundled configurations pass only
 `bundledMode: true` to the plugin; the SDK stays in production dependencies in all source templates. The test runner passes only

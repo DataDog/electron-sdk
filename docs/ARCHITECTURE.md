@@ -463,19 +463,22 @@ flag and use `createRequire` to load the same external package or embedded Commo
 including from ESM entry points. The tracer version is embedded at build time. Its process-wide
 `global._ddtrace` singleton remains shared; applications should let the SDK initialize the tracer.
 
-Embedded tracer instances are shared between instrumentation and initialization through
-`Symbol.for('@datadog/electron-sdk:embeddedTracer')`. Native `createRequire` calls preserve
-Electron module and preload resolution, including for separately bundled entry points.
-
 Rollup preserves lazy CommonJS evaluation and leaves optional native product requires in place.
 The Electron SDK does not enable those products. Node built-ins remain runtime requires, allowing
 HTTP, child-process, and opt-in filesystem instrumentation without upstream bundler plugins.
 Bundled third-party libraries require additional build-time instrumentation; external libraries
 remain eligible for normal runtime instrumentation.
 
-The SDK remains external in both modes. With `copyRuntimeDependencies: true`, plugins copy its
-runtime dependency tree, skipping `dd-trace-electron` when `bundledMode: true`. The tracer remains
-installed, and application packagers may still stage it. See [runtime dependency setup](RUNTIME_DEPENDENCIES.md).
+With `bundledMode: true`, plugins allow the SDK to be bundled and emit a `.datadog` runtime directory
+containing instrumentation, preload, tracer, and tracer licenses. Instrumentation loads the colocated tracer
+and stores it under `Symbol.for('@datadog/electron-sdk:embeddedTracer')`; the SDK in the application
+bundle reuses that instance. Native `createRequire` calls prevent bundlers from rewriting Electron and
+preload resolution. Bundled instrumentation prefers its colocated preload.
+
+Runtime assets are emitted regardless of `copyRuntimeDependencies`; SDK and tracer package trees
+are not copied in bundled mode. Default mode retains externalization and optional package copying.
+Packagers may still stage installed production dependencies; fully bundled applications can use a
+build-time SDK dependency. See [runtime dependency setup](RUNTIME_DEPENDENCIES.md).
 
 ## Two-Tier Configuration
 

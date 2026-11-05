@@ -26,13 +26,17 @@ First, keep `@datadog/electron-sdk` in the application's production `dependencie
 ```
 
 The SDK installs `dd-trace-electron` as a runtime dependency for the default external mode.
-Set `bundledMode: true` in any Datadog bundler plugin to load the SDK's embedded tracer instead.
-The plugin sets this selection before loading instrumentation; direct imports without a plugin
-continue to use the external tracer. The SDK itself remains external in both modes.
+Set `bundledMode: true` in any Datadog bundler plugin to bundle the SDK into the application's
+main output. The plugin emits `.datadog/instrument.cjs`, `preload.js`, `tracer.cjs`, and tracer licenses
+beside that output and loads instrumentation before application code. Always package this directory.
+Direct imports without a plugin continue to use the external SDK and tracer.
 
-`bundledMode` and `copyRuntimeDependencies` are independent. When both are enabled, the plugin
-copies the SDK but skips the tracer package tree. The tracer remains installed, and default
-application packager staging may still include it. This option does not prune packager-owned dependencies.
+In bundled mode, `copyRuntimeDependencies` does not copy SDK or tracer package trees; runtime
+assets are emitted even when copying is disabled. The packages remain installed, and default
+packager staging can still include production dependencies. Applications whose SDK usage is fully
+bundled can declare the SDK in `devDependencies` to omit its package tree from production staging.
+For electron-vite, add both `@datadog/electron-sdk` and `dd-trace-electron` to
+`main.build.externalizeDeps.exclude` so its automatic dependency externalization does not override bundling.
 
 For Forge Vite and Webpack, merge the following overrides into the existing `packagerConfig`.
 Extend the allowlist if the application needs additional root assets at runtime.
@@ -150,6 +154,6 @@ installation layout; prefer packager staging when available.
 1. Remove previous build and package output before rebuilding, so dependencies copied by an earlier
    build cannot hide missing packager configuration.
 2. Inspect the packaged application's `node_modules` (inside `app.asar` if enabled) for the SDK,
-   including the preload asset and, in default mode, the external tracer package. With `bundledMode: true`, verify that `dist/tracer.cjs` is present inside the SDK.
+   including the preload asset and, in default mode, the external tracer package. With `bundledMode: true`, verify that the application output includes the `.datadog` runtime assets.
 3. Launch the packaged application outside the development checkout and verify SDK event delivery.
    A development launch can resolve the checkout's `node_modules` and does not verify packaging.

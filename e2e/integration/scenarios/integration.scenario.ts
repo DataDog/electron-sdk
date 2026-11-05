@@ -3,10 +3,10 @@
  *
  * Each test runs once per Playwright project (app × mode, including configured variants).
  */
-import { dirname, join, posix, sep } from 'node:path';
+import { basename, dirname, join, posix, relative, sep } from 'node:path';
 import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { cp, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import {
   test,
@@ -45,11 +45,12 @@ test.describe('SDK runtime dependency packaging @integration', () => {
     test.skip(mode !== 'packaged', 'packaged apps only');
 
     const appDir = getIntegrationAppDirectory(app, variant);
-    const expectsPluginCopy = variant === 'plugin-copy';
+    const bundled = variant === 'bundled';
+    const expectsPluginCopy = variant === 'plugin-copy' && !bundled;
     const buildOutput = dirname(findDevMainScript(appDir));
     expect(existsSync(join(buildOutput, 'node_modules'))).toBe(expectsPluginCopy);
     for (const file of ['instrument.cjs', 'preload.js', 'tracer.cjs', 'tracer.LICENSE']) {
-      expect(existsSync(join(buildOutput, '.datadog', file))).toBe(false);
+      expect(existsSync(join(buildOutput, '.datadog', file))).toBe(bundled);
     }
 
     const binary = findPackagedBinary(appDir);
@@ -74,12 +75,12 @@ test.describe('SDK runtime dependency packaging @integration', () => {
     );
     expect(hasNestedSdk).toBe(expectsPluginCopy);
     expect(hasNestedTracer).toBe(expectsPluginCopy);
-    if (!expectsPluginCopy) {
+    if (!bundled && !expectsPluginCopy) {
       expect(archiveEntries).toContain('/node_modules/@datadog/electron-sdk/package.json');
       expect(archiveEntries).toContain('/node_modules/dd-trace-electron/package.json');
     }
     for (const file of ['instrument.cjs', 'preload.js', 'tracer.cjs', 'tracer.LICENSE']) {
-      expect(archiveEntries.some((entry) => entry.endsWith(`/.datadog/${file}`))).toBe(false);
+      expect(archiveEntries.some((entry) => entry.endsWith(`/.datadog/${file}`))).toBe(bundled);
     }
   });
 });
@@ -93,7 +94,7 @@ test.describe('tracer runtime selection @integration', () => {
       const loaded = Object.keys(requireFn.cache).map((file) => file.split('\\').join('/'));
       return {
         bundled: (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:bundledMode')] === true,
-        embedded: loaded.some((file) => file.endsWith('/dist/tracer.cjs')),
+        embedded: loaded.some((file) => file.endsWith('/.datadog/tracer.cjs')),
         sdkPackage: loaded.some((file) => file.includes('/node_modules/@datadog/electron-sdk/')),
         emittedPreload: session.defaultSession
           .getPreloadScripts()
@@ -105,9 +106,59 @@ test.describe('tracer runtime selection @integration', () => {
       bundled,
       embedded: bundled,
       external: !bundled,
-      sdkPackage: true,
-      emittedPreload: false,
+      sdkPackage: !bundled,
+      emittedPreload: bundled,
     });
+  });
+});
+
+test.describe('standalone bundled output @integration', () => {
+  test('initializes and sends events without installed SDK or tracer packages', async ({
+    app,
+    mode,
+    variant,
+    intake,
+  }) => {
+    test.skip(mode !== 'dev' || variant !== 'bundled', 'bundled development outputs only');
+    const appDirectory = getIntegrationAppDirectory(app, variant);
+    const entry = findDevMainScript(appDirectory);
+    const output = dirname(entry);
+    const isolated = await mkdtemp(join(tmpdir(), 'electron-sdk-standalone-'));
+    let isolatedApp: ElectronApplication | undefined;
+    try {
+      await cp(output, isolated, {
+        recursive: true,
+        filter: (source) => !relative(output, source).split(sep).includes('node_modules'),
+      });
+      const requireFromOutput = createRequire(join(isolated, 'entry.cjs'));
+      expect(() => requireFromOutput.resolve('@datadog/electron-sdk')).toThrow();
+      expect(() => requireFromOutput.resolve('dd-trace-electron')).toThrow();
+      isolatedApp = await launchApp(
+        appDirectory,
+        'dev',
+        intake,
+        join(isolated, 'user-data'),
+        join(isolated, basename(entry))
+      );
+      // Every maintained fixture creates its first window after SDK init resolves.
+      // Waiting only for tracer init can quit before SDK event collection and shutdown hooks start.
+      await isolatedApp.firstWindow();
+      await expect
+        .poll(() =>
+          isolatedApp!.evaluate(
+            () =>
+              (globalThis as unknown as { _ddtrace?: { _tracingInitialized?: boolean } })._ddtrace?._tracingInitialized
+          )
+        )
+        .toBe(true);
+      await isolatedApp.close();
+      isolatedApp = undefined;
+      const contexts = await intake.getEventsByType('execution_context', { predicate: isMainProcessEvent });
+      expect(contexts.length).toBeGreaterThan(0);
+    } finally {
+      await isolatedApp?.close();
+      await rm(isolated, { recursive: true, force: true });
+    }
   });
 });
 
