@@ -59,8 +59,8 @@ selects plugin-owned copying for a compatibility variant.
 The `electron-builder-vite` app packages two isolated variants: the default packager-owned runtime dependency copy
 (`default-copy`) and `copyRuntimeDependencies: true` (`plugin-copy`), where the plugin owns dependency staging.
 The Windows payload extraction scenario covers the regression described in
-[#182](https://github.com/DataDog/electron-sdk/pull/182). It verifies that plugin-copied `dd-trace-electron` paths would exceed `MAX_PATH`
-at a long temporary destination, while the copy-disabled Vite output extracts completely with Windows
+[#182](https://github.com/DataDog/electron-sdk/pull/182). It verifies that plugin copying includes the embedded tracer without its former deep package tree,
+while the copy-disabled Vite output extracts completely with Windows
 PowerShell 5.1. The separate packaging scenario checks dependency placement in `app.asar`; this does not
 run a full MSIX build or signing pipeline.
 

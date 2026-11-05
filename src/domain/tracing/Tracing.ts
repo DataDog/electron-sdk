@@ -1,10 +1,11 @@
 import { createRequire } from 'node:module';
+import { version as tracerVersion } from 'dd-trace-electron/package.json';
 import type { SamplingRule } from 'dd-trace-electron';
 import { isSampledSessionActive } from '../../common';
 import { addError } from '../telemetry';
 import type { Configuration, TraceSamplingRule } from '../../config';
 
-const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
+const _require = createRequire(typeof __filename !== 'undefined' ? __filename : import.meta.url);
 
 interface ExporterWithFlush {
   flush(done: () => void): void;
@@ -15,20 +16,6 @@ interface TracerInternals {
     _exporter?: unknown;
   };
   _tracingInitialized?: boolean;
-}
-
-/**
- * dd-trace-electron's own version, read from its manifest since the tracer does not expose one.
- *
- * Deliberately soft: the version is only telemetry, so a package that hides its manifest behind an
- * `exports` map must not take tracing down with it.
- */
-function readTracerVersion(requireFn: NodeRequire): string | undefined {
-  try {
-    return (requireFn('dd-trace-electron/package.json') as { version?: string }).version;
-  } catch {
-    return undefined;
-  }
 }
 
 export class Tracing {
@@ -45,8 +32,7 @@ export class Tracing {
 
   constructor(config: Configuration, requireFn: NodeRequire = _require) {
     try {
-      const tracer = (requireFn('dd-trace-electron') as { default: typeof import('dd-trace-electron').default })
-        .default;
+      const tracer = (requireFn('./tracer.cjs') as { default: typeof import('dd-trace-electron').default }).default;
 
       tracer.init({
         experimental: { exporter: 'electron' as 'datadog' },
@@ -82,7 +68,7 @@ export class Tracing {
 
       this.enabled = true;
       this.telemetryInitialized = internals._tracingInitialized === true;
-      this.version = readTracerVersion(requireFn);
+      this.version = tracerVersion;
     } catch (error) {
       addError(error);
     }

@@ -440,9 +440,9 @@ Advertised capabilities tell the Browser SDK which bridge features it may use, b
 
 The instrumentation entry point must run before `require('electron')`. Bundlers can break this ordering requirement in different ways:
 
-- **Vite** (`datadogVitePlugin` from `@datadog/electron-sdk/vite-plugin`): hoists all `require()` calls to the top of the bundle, breaking import order. The plugin externalizes dd-trace-electron and the SDK and prepends the instrumentation banner before hoisted requires. Runtime dependencies are staged by the application packager unless `copyRuntimeDependencies: true` is set.
-- **Webpack** (`DatadogWebpackPlugin` from `@datadog/electron-sdk/webpack-plugin`): preserves module execution order (lazy evaluation via `__webpack_require__`), so import order is maintained. The plugin externalizes dd-trace-electron and the SDK, prepends the instrumentation banner, and excludes them from `@vercel/webpack-asset-relocator-loader`. Runtime dependencies are staged by the application packager unless `copyRuntimeDependencies: true` is set.
-- **esbuild** (`datadogEsbuildPlugin` from `@datadog/electron-sdk/esbuild-plugin`): also preserves module execution order. The plugin externalizes dd-trace-electron and the SDK and prepends the instrumentation banner. Runtime dependencies are staged by the application packager unless `copyRuntimeDependencies: true` is set, in which case the plugin copies them via an `onEnd` hook. In ESM output the banner loads `instrument` via `createRequire`, since ES modules have no global `require`.
+- **Vite** (`datadogVitePlugin` from `@datadog/electron-sdk/vite-plugin`): hoists all `require()` calls to the top of the bundle, breaking import order. The plugin externalizes the SDK and prepends the instrumentation banner before hoisted requires. Runtime dependencies are staged by the application packager unless `copyRuntimeDependencies: true` is set.
+- **Webpack** (`DatadogWebpackPlugin` from `@datadog/electron-sdk/webpack-plugin`): preserves module execution order (lazy evaluation via `__webpack_require__`), so import order is maintained. The plugin externalizes the SDK, prepends the instrumentation banner, and excludes it from `@vercel/webpack-asset-relocator-loader`. Runtime dependencies are staged by the application packager unless `copyRuntimeDependencies: true` is set.
+- **esbuild** (`datadogEsbuildPlugin` from `@datadog/electron-sdk/esbuild-plugin`): also preserves module execution order. The plugin externalizes the SDK and prepends the instrumentation banner. Runtime dependencies are staged by the application packager unless `copyRuntimeDependencies: true` is set, in which case the plugin copies them via an `onEnd` hook. In ESM output the banner loads `instrument` via `createRequire`, since ES modules have no global `require`.
 
 Packager-owned staging is the preferred path. Forge Vite and Webpack applications override
 `packagerConfig.ignore` to retain root `node_modules` alongside `.vite` or `.webpack`; see
@@ -450,57 +450,22 @@ Packager-owned staging is the preferred path. Forge Vite and Webpack application
 
 See `src/entries/instrument.ts`, `src/entries/vite-plugin.ts`, `src/entries/webpack-plugin.ts`, and `src/entries/esbuild-plugin.ts`.
 
-### dd-trace-electron as a bundled dependency
+### Embedded dd-trace-electron
 
-The SDK depends on [`dd-trace-electron`](https://www.npmjs.com/package/dd-trace-electron), an
-internal-use build of dd-trace published from the dd-trace-js repo specifically for the Electron
-SDK. It is declared as a **direct runtime dependency** in `package.json`, not as an optional or
-peer dependency. When customers install `@datadog/electron-sdk`, they get dd-trace-electron
-automatically.
+The SDK builds its pinned `dd-trace-electron` development dependency into `dist/tracer.cjs`.
+Both instrumentation and initialization load this shared CommonJS asset through `createRequire`,
+including from ESM entry points. The tracer version is embedded at build time. Its process-wide
+`global._ddtrace` singleton remains shared; applications should let the SDK initialize the tracer.
 
-Its entrypoint skips `openfeature/register`, and its manifest omits the unused native dependencies
-for ASM, IAST, metrics, profiling, and code rewriting. It still declares optional
-`@opentelemetry/api` and `@opentelemetry/api-logs` packages.
+Rollup preserves lazy CommonJS evaluation and leaves optional native product requires in place.
+The Electron SDK does not enable those products. Node built-ins remain runtime requires, allowing
+HTTP, child-process, and opt-in filesystem instrumentation without upstream bundler plugins.
+Bundled third-party libraries require additional build-time instrumentation; external libraries
+remain eligible for normal runtime instrumentation.
 
-#### Why bundle it
-
-The SDK is tightly coupled to a specific dd-trace build:
-
-- The SDK initializes dd-trace-electron with the `electron` exporter, a custom exporter built specifically for the Electron SDK.
-- The `SpanProcessor` subscribes to a specific diagnostics channel (`datadog:apm:electron:export`) that dd-trace-electron publishes to.
-
-Making it a direct dependency keeps the tracer version pinned to the SDK. The distinct package name
-prevents package-manager deduplication with an application's `dd-trace` dependency. Both builds
-still use the process-wide `global._ddtrace` singleton, so separate package names do not guarantee
-independent tracer instances. Applications should let the SDK initialize its tracer rather than
-initializing both packages separately. The alternatives were considered:
-
-| Approach                                             | Pros                                                                                | Cons                                                                                                                                                                              |
-| ---------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Direct dependency** (current)                      | Guaranteed compatible version; no setup burden on customers; deterministic behavior | Larger install footprint; version locked to SDK releases                                                                                                                          |
-| **Peer dependency**                                  | Customer controls version; smaller SDK package                                      | Version mismatch risk; customer must install separately; hard to guarantee the custom `electron` exporter exists in their version                                                 |
-| **Optional dependency**                              | —                                                                                   | SDK does not work without dd-trace-electron; same mismatch risk as peer; confusing DX                                                                                             |
-| **Vendored / embedded in SDK bundle** (POC approach) | Single file, no transitive deps                                                     | Fragile: dd-trace-electron uses dynamic requires, native module loading, and runtime path resolution that break when bundled into a single file; would need constant re-vendoring |
-
-#### Runtime dependency staging
-
-The bundler plugins externalize `dd-trace-electron` because its dynamic requires and runtime path
-resolution still require its package files. The application packager stages the SDK,
-`dd-trace-electron`, and their runtime dependencies by default. Forge Vite and Webpack need the
-`packagerConfig.ignore` override described in [the setup guide](RUNTIME_DEPENDENCIES.md).
-
-With `copyRuntimeDependencies: true`, the plugins copy package trees into the build output as a
-best-effort compatibility fallback. Their `copyPackageTree` helper walks `dependencies`, skipping
-`optionalDependencies`. Default packager staging can retain the optional OpenTelemetry API
-packages. Neither path needs to strip the native product dependencies omitted from the
-`dd-trace-electron` manifest.
-
-#### Dependency size
-
-The Electron build omits the public `dd-trace` package's unused native product dependencies.
-The final application size still depends on the packager and installed dependency tree. Packager
-staging may retain optional dependencies and production packages already included in the bundles;
-see [runtime dependency setup](RUNTIME_DEPENDENCIES.md#why-the-forge-override-is-required).
+The application plugins externalize only the SDK. Packagers stage the SDK, including its tracer
+asset and preload; `copyRuntimeDependencies: true` copies the SDK as a compatibility fallback.
+No separate dd-trace-electron package tree is needed at runtime.
 
 ## Two-Tier Configuration
 

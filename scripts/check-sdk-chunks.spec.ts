@@ -13,7 +13,7 @@ it('keeps the packaged WASM chunk lazy in CJS and ESM, with portable stable chun
     import { rollup } from 'rollup';
     import configs from './rollup.config.mjs';
     import pkg from './package.json' with { type: 'json' };
-    const { output, ...input } = configs[0];
+    const { output, ...input } = configs.find(config => config.input === 'src/index.ts');
     const bundle = await rollup(input);
     try {
       for (const settings of output) {

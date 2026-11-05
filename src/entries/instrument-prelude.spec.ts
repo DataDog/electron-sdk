@@ -7,7 +7,7 @@ describe('loadTracer', () => {
     const requireFn = vi.fn(() => ({ default: tracer }));
 
     expect(loadTracer(requireFn as unknown as NodeRequire)).toBe(tracer);
-    expect(requireFn).toHaveBeenCalledWith('dd-trace-electron');
+    expect(requireFn).toHaveBeenCalledWith('./tracer.cjs');
   });
 
   it('falls back to a safe no-op tracer when dd-trace-electron cannot be loaded (does not throw)', () => {

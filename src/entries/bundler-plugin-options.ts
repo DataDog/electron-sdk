@@ -1,6 +1,6 @@
 export interface DatadogBundlerPluginOptions {
   /**
-   * Copy the SDK, dd-trace-electron, and their runtime dependencies into the build output.
+   * Copy the SDK and its runtime dependencies into the build output.
    *
    * Prefer configuring the application packager to stage external dependencies. Enable this
    * compatibility fallback only when the packager cannot do so.

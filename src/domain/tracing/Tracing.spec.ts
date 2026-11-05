@@ -16,8 +16,7 @@ function createTracerRequire() {
     },
   };
   const requireFn = ((id: string) => {
-    if (id === 'dd-trace-electron') return { default: tracer };
-    if (id === 'dd-trace-electron/package.json') return { version: '6.23.0' };
+    if (id === './tracer.cjs') return { default: tracer };
     throw new Error(`Unexpected module: ${id}`);
   }) as NodeRequire;
   return { init, use, flush, requireFn };

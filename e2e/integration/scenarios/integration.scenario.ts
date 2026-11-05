@@ -70,24 +70,27 @@ test.describe('electron-builder runtime dependency packaging @integration', () =
     };
     const archiveEntries = listPackage(archivePath, { isPack: false }).map((entry) => entry.split(sep).join(posix.sep));
 
+    expect(archiveEntries.some((entry) => entry.endsWith('/node_modules/dd-trace-electron/package.json'))).toBe(false);
+
     if (app === 'electron-builder-vite') {
       expect(archiveEntries).toContain('/node_modules/@datadog/electron-sdk/package.json');
-      expect(archiveEntries).toContain('/node_modules/dd-trace-electron/package.json');
+      expect(archiveEntries).toContain('/node_modules/@datadog/electron-sdk/dist/tracer.cjs');
       expect(archiveEntries).toContain(`/dist/${workflow}/main.js`);
       expect(archiveEntries.includes(`/dist/${workflow}/node_modules/@datadog/electron-sdk/package.json`)).toBe(
         expectsPluginCopy
       );
-      expect(archiveEntries.includes(`/dist/${workflow}/node_modules/dd-trace-electron/package.json`)).toBe(
+      expect(archiveEntries.includes(`/dist/${workflow}/node_modules/@datadog/electron-sdk/dist/tracer.cjs`)).toBe(
         expectsPluginCopy
       );
     } else {
       const hasNestedDependencies = archiveEntries.some(
-        (entry) => entry.endsWith('/node_modules/dd-trace-electron/package.json') && !entry.startsWith('/node_modules/')
+        (entry) =>
+          entry.endsWith('/node_modules/@datadog/electron-sdk/dist/tracer.cjs') && !entry.startsWith('/node_modules/')
       );
       expect(hasNestedDependencies).toBe(expectsPluginCopy);
       if (!expectsPluginCopy) {
         expect(archiveEntries).toContain('/node_modules/@datadog/electron-sdk/package.json');
-        expect(archiveEntries).toContain('/node_modules/dd-trace-electron/package.json');
+        expect(archiveEntries).toContain('/node_modules/@datadog/electron-sdk/dist/tracer.cjs');
       }
     }
   });

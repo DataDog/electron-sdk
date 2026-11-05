@@ -2,13 +2,13 @@
  * esbuild plugin for Electron apps using the Datadog Electron SDK.
  *
  * This plugin:
- * 1. Externalizes dd-trace-electron and @datadog/electron-sdk so they remain as runtime
+ * 1. Externalizes @datadog/electron-sdk so it remains as runtime
  *    dependencies instead of being bundled.
  * 2. Prepends a banner that loads @datadog/electron-sdk/instrument before the
  *    main entry, using require for CJS output and createRequire for ESM output.
  *    This registers the SDK preload and patches BrowserWindow for automatic
  *    preload injection.
- * 3. Copies dd-trace-electron, @datadog/electron-sdk, and their runtime dependencies
+ * 3. Copies @datadog/electron-sdk and its runtime assets
  *    into the build output's node_modules only when `copyRuntimeDependencies: true`.
  *    Copying is disabled by default; the application packager must stage them.
  *
@@ -72,9 +72,9 @@ export function datadogEsbuildPlugin(pluginOptions: DatadogBundlerPluginOptions 
         js: existingBanner ? `${existingBanner}\n${ddBanner}` : ddBanner,
       };
 
-      // Externalize dd-trace-electron and @datadog/electron-sdk
+      // Externalize @datadog/electron-sdk
       const external = build.initialOptions.external ?? [];
-      for (const pkg of ['dd-trace-electron', '@datadog/electron-sdk']) {
+      for (const pkg of ['@datadog/electron-sdk']) {
         if (!external.includes(pkg)) {
           external.push(pkg);
         }
@@ -123,7 +123,6 @@ export function datadogEsbuildPlugin(pluginOptions: DatadogBundlerPluginOptions 
           }
         }
 
-        copyPackageTree('dd-trace-electron');
         copyPackageTree('@datadog/electron-sdk');
       });
     },
