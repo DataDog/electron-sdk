@@ -1,0 +1,5 @@
+[
+  { "name": "default", "copyRuntimeDependencies": false, "bundledMode": false },
+  { "name": "plugin-copy", "copyRuntimeDependencies": true, "bundledMode": false },
+  { "name": "bundled", "copyRuntimeDependencies": false, "bundledMode": true }
+]

@@ -35,6 +35,8 @@ yarn test:integration --project=forge-webpack-dev
 yarn test:integration --project=forge-webpack-packaged
 yarn test:integration --project=electron-builder-vite-packaged
 yarn test:integration --project=electron-builder-vite-plugin-copy-packaged
+yarn test:integration --project=forge-webpack-bundled-dev
+yarn test:integration --project=electron-vite-esm-bundled-packaged
 ```
 
 ## Supported Toolchains
@@ -54,16 +56,28 @@ Vite-based apps use `datadogVitePlugin`, webpack-based apps use `DatadogWebpackP
 The `forge-esbuild-esm` app additionally exercises the plugin's ESM path, where the banner loads `instrument` via `createRequire` because ES modules have no global `require`.
 The Forge Vite and Webpack apps override `packagerConfig.ignore` so Forge packages both the bundler
 output and root `node_modules`; Electron Packager then stages the production dependency tree.
-All fixtures disable `copyRuntimeDependencies` unless `DD_ELECTRON_COPY_RUNTIME_DEPENDENCIES=true`
-selects plugin-owned copying for a compatibility variant.
-The `electron-builder-vite` app packages two isolated variants: the default packager-owned runtime dependency copy
-(`default-copy`) and `copyRuntimeDependencies: true` (`plugin-copy`), where the plugin owns dependency staging.
-The `forge-webpack` and `forge-esbuild-esm` fixtures opt into `bundledMode: true`, as does the
-`electron-builder-vite` plugin-copy variant. Other fixtures exercise the default external tracer.
-The runtime-selection scenario checks the loaded modules in the Electron main process in both modes.
+Every app is built in three independent configurations from `variants.json`:
+
+| Variant       | Plugin options                   | SDK dependency        |
+| ------------- | -------------------------------- | --------------------- |
+| Default       | `copyRuntimeDependencies: false` | Production dependency |
+| `plugin-copy` | `copyRuntimeDependencies: true`  | Production dependency |
+| `bundled`     | `bundledMode: true`              | Production dependency |
+
+Each configuration runs in development and packaged modes. The embedded-tracer variant leaves SDK staging to the application packager and does not pass
+`copyRuntimeDependencies`. Environment selection uses
+`DD_ELECTRON_COPY_RUNTIME_DEPENDENCIES` and `DD_ELECTRON_BUNDLED_MODE`; electron-vite's automatic
+externalization exclusion is applied only in the bundled variant.
+
+The default build stays in the maintained app directory. Other variants are materialized under
+`e2e/integration/generated/<app>-<variant>/`, with independent dependencies and output directories.
+The same configuration list drives compatibility preparation and Playwright project generation.
+All maintained manifests keep the SDK in `dependencies`. The SDK remains external in all configurations; the bundled configuration selects its embedded tracer.
+Runtime tests check the loaded modules and preload selection; packaging tests check dependency placement
+in every packaged variant.
 
 The Windows payload extraction scenario covers the regression described in
-[#182](https://github.com/DataDog/electron-sdk/pull/182). It verifies that plugin copying includes the embedded tracer without its former deep package tree,
+[#182](https://github.com/DataDog/electron-sdk/pull/182). It checks the deep external-copy dependency tree against the short copy-disabled output,
 while the copy-disabled Vite output extracts completely with Windows
 PowerShell 5.1. The separate packaging scenario checks dependency placement in `app.asar`; this does not
 run a full MSIX build or signing pipeline.
@@ -76,7 +90,6 @@ Each app declares several integration properties to ease the instrumentation by 
 
 - `integration.devMain`: compiled main script path for dev-mode launch
 - `integration.packagedBinary`: per-platform packaged binary paths
-- `integration.variants`: optional alternate launch paths for independently built variants
 
 Each app declares a `package` script.
 

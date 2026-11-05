@@ -15,9 +15,11 @@ xvfb-run -a yarn test:compatibility electron-41
 Preparation downloads and verifies Electron, installs each app, and packages the integration apps.
 Integration apps are discovered from the directories under `e2e/integration/apps/`.
 Tests check the actual Electron version at launch. Each integration app runs in development and
-packaged modes, including a `plugin-copy` packaged variant where the bundler plugin copies runtime dependencies.
-Preparation sets `DD_ELECTRON_COPY_RUNTIME_DEPENDENCIES` to `true` or `false` for each variant;
-when unset, fixture builds use packager-owned copying. The test runner passes only
+packaged modes for three configurations: default external dependencies, `plugin-copy` external dependencies,
+and `bundled` embedded tracing. The configuration list in `e2e/integration/variants.json` is shared with the normal
+integration suite. Preparation sets both `DD_ELECTRON_COPY_RUNTIME_DEPENDENCIES` and
+`DD_ELECTRON_BUNDLED_MODE` explicitly for every build. Bundled configurations pass only
+`bundledMode: true` to the plugin; the SDK stays in production dependencies in all source templates. The test runner passes only
 `DD_ELECTRON_COMPATIBILITY_TARGET`, from which fixtures derive their paths and expected version.
 The existing `test:e2e` and `test:integration` commands still use their regular fixtures.
 

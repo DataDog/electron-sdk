@@ -39,3 +39,6 @@ logs/
 
 # Windows container artifacts
 windows-test-artifacts/
+
+# Isolated integration option variants
+e2e/integration/generated/

@@ -1,10 +1,11 @@
 import { DatadogWebpackPlugin } from '@datadog/electron-sdk/webpack-plugin';
 
+const bundledMode = process.env.DD_ELECTRON_BUNDLED_MODE === 'true';
 const copyRuntimeDependencies = process.env.DD_ELECTRON_COPY_RUNTIME_DEPENDENCIES === 'true';
 
 export const mainConfig = {
   entry: './src/main.ts',
-  plugins: [new DatadogWebpackPlugin({ copyRuntimeDependencies, bundledMode: true })],
+  plugins: [new DatadogWebpackPlugin(bundledMode ? { bundledMode: true } : { copyRuntimeDependencies })],
   module: {
     rules: [
       {

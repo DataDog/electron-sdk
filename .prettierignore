@@ -7,3 +7,6 @@ rum-events-format
 minidump-processor/pkg
 .worktrees
 .claude/worktrees
+
+e2e/integration/generated
+e2e/compatibility/generated
