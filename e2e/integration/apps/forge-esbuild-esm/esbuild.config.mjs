@@ -17,7 +17,7 @@ await build({
   format: 'esm',
   outfile: 'dist/main.mjs',
   external: nodeExternals,
-  plugins: [datadogEsbuildPlugin({ copyRuntimeDependencies })],
+  plugins: [datadogEsbuildPlugin({ copyRuntimeDependencies, bundledMode: true })],
 });
 
 // Preload (CJS — Electron preload scripts must be CJS regardless of main's format)
@@ -28,7 +28,7 @@ await build({
   format: 'cjs',
   outfile: 'dist/preload.cjs',
   external: nodeExternals,
-  plugins: [datadogEsbuildPlugin({ copyRuntimeDependencies })],
+  plugins: [datadogEsbuildPlugin({ copyRuntimeDependencies, bundledMode: true })],
 });
 
 // Renderer (ESM — loaded via <script type="module">)

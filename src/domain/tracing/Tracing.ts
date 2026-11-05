@@ -1,10 +1,12 @@
 import { createRequire } from 'node:module';
-import type { SamplingRule } from 'dd-trace';
+import { getTracerModule } from '../../entries/tracer-runtime';
+import { version as tracerVersion } from 'dd-trace-electron/package.json';
+import type { SamplingRule } from 'dd-trace-electron';
 import { isSampledSessionActive } from '../../common';
 import { addError } from '../telemetry';
 import type { Configuration, TraceSamplingRule } from '../../config';
 
-const _require = typeof __filename !== 'undefined' ? require : createRequire(import.meta.url);
+const _require = createRequire(typeof __filename !== 'undefined' ? __filename : import.meta.url);
 
 interface ExporterWithFlush {
   flush(done: () => void): void;
@@ -17,26 +19,12 @@ interface TracerInternals {
   _tracingInitialized?: boolean;
 }
 
-/**
- * dd-trace's own version, read from its manifest since the tracer does not expose one.
- *
- * Deliberately soft: the version is only telemetry, so a package that hides its manifest behind an
- * `exports` map must not take tracing down with it.
- */
-function readTracerVersion(requireFn: NodeRequire): string | undefined {
-  try {
-    return (requireFn('dd-trace/package.json') as { version?: string }).version;
-  } catch {
-    return undefined;
-  }
-}
-
 export class Tracing {
   enabled = false;
   /**
-   * Whether dd-trace's own init() actually ran, per `_tracingInitialized` — a stronger signal than
+   * Whether dd-trace-electron's own init() actually ran, per `_tracingInitialized` — a stronger signal than
    * `enabled`, which only reflects that the package loaded. Reserved for telemetry reporting (e.g.
-   * `use_tracing`), so a future dd-trace internals rename degrades reporting accuracy rather than
+   * `use_tracing`), so a future dd-trace-electron internals rename degrades reporting accuracy rather than
    * disabling `SpanProcessor` registration, which stays gated on `enabled`.
    */
   telemetryInitialized = false;
@@ -45,13 +33,13 @@ export class Tracing {
 
   constructor(config: Configuration, requireFn: NodeRequire = _require) {
     try {
-      const tracer = (requireFn('dd-trace') as { default: typeof import('dd-trace').default }).default;
+      const tracer = (requireFn(getTracerModule()) as { default: typeof import('dd-trace-electron').default }).default;
 
       tracer.init({
         experimental: { exporter: 'electron' as 'datadog' },
         ...(config.env !== undefined ? { env: config.env } : {}),
         sampleRate: config.traceSampleRate / 100,
-        // dd-trace otherwise applies an additional 100-traces-per-second cap to explicit sampling.
+        // dd-trace-electron otherwise applies an additional 100-traces-per-second cap to explicit sampling.
         // Disable it so Electron's configured percentage is the only sampling decision.
         // TODO(RUM-18475): consider exposing this limit as an Electron SDK configuration option.
         rateLimit: -1,
@@ -62,7 +50,7 @@ export class Tracing {
           : {}),
       });
 
-      // dd-trace owns global fetch and node:http instrumentation. Prevent those integrations from
+      // dd-trace-electron owns global fetch and node:http instrumentation. Prevent those integrations from
       // propagating trace context unless a sampled RUM session is active, while keeping their local
       // HTTP spans, which SpanProcessor uses to produce RUM resources.
       const blockPropagationWithoutSampledSession = () => !isSampledSessionActive();
@@ -81,7 +69,7 @@ export class Tracing {
 
       this.enabled = true;
       this.telemetryInitialized = internals._tracingInitialized === true;
-      this.version = readTracerVersion(requireFn);
+      this.version = tracerVersion;
     } catch (error) {
       addError(error);
     }
@@ -94,7 +82,7 @@ export class Tracing {
     });
   }
 
-  // dd-trace's electron exporter batches spans on a flushInterval (2s by default).
+  // dd-trace-electron's electron exporter batches spans on a flushInterval (2s by default).
   // Flushing it before the SDK transport ensures any pending HTTP spans become RUM resource events synchronously,
   // so _flushTransport() captures them in one shot.
   async flush(): Promise<void> {
@@ -105,7 +93,7 @@ export class Tracing {
   }
 }
 
-// Electron exposes percentages while dd-trace expects rates between 0 and 1.
+// Electron exposes percentages while dd-trace-electron expects rates between 0 and 1.
 function toDdTraceSamplingRules(rules: TraceSamplingRule[]): SamplingRule[] {
   return rules.map(({ sampleRate, ...rule }) => ({ ...rule, sampleRate: sampleRate / 100 }));
 }

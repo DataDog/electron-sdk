@@ -1,7 +1,9 @@
+import { runInNewContext } from 'node:vm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setSampledSessionActive } from '../../common';
 import { createTestConfiguration } from '../../mocks.specUtil';
 import { Tracing } from './Tracing';
+import { createBundledModeBanner } from '../../entries/tracer-runtime';
 
 function createTracerRequire() {
   const init = vi.fn();
@@ -16,17 +18,19 @@ function createTracerRequire() {
     },
   };
   const requireFn = ((id: string) => {
-    if (id === 'dd-trace') return { default: tracer };
-    if (id === 'dd-trace/package.json') return { version: '6.10.0' };
+    if (id === 'dd-trace-electron') return { default: tracer };
     throw new Error(`Unexpected module: ${id}`);
   }) as NodeRequire;
   return { init, use, flush, requireFn };
 }
 
 describe('Tracing', () => {
-  afterEach(() => setSampledSessionActive(false));
+  afterEach(() => {
+    setSampledSessionActive(false);
+    delete (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:bundledMode')];
+  });
 
-  it('initializes dd-trace with normalized matching rules and a fallback sample rate', () => {
+  it('initializes dd-trace-electron with normalized matching rules and a fallback sample rate', () => {
     const { init, requireFn } = createTracerRequire();
 
     const tracing = new Tracing(
@@ -53,7 +57,23 @@ describe('Tracing', () => {
     });
     expect(tracing.enabled).toBe(true);
     expect(tracing.telemetryInitialized).toBe(true);
-    expect(tracing.version).toBe('6.10.0');
+    expect(tracing.version).toBe('6.23.0');
+  });
+
+  it('initializes the embedded tracer selected by the plugin banner', () => {
+    // Exercise the process-wide handoff between the plugin, instrumentation, and init bundles.
+    runInNewContext(createBundledModeBanner(true), { globalThis, Symbol });
+    const { requireFn } = createTracerRequire();
+    const embeddedRequire = vi.fn((id: string) => {
+      expect(id).toBe('./tracer.cjs');
+      return requireFn('dd-trace-electron') as unknown;
+    });
+
+    const tracing = new Tracing(createTestConfiguration(), embeddedRequire as unknown as NodeRequire);
+
+    expect(tracing.enabled).toBe(true);
+    expect(tracing.telemetryInitialized).toBe(true);
+    expect(embeddedRequire).toHaveBeenCalledOnce();
   });
 
   it('uses the trace sample rate without sampling rules', () => {
@@ -98,7 +118,7 @@ describe('Tracing', () => {
     });
   });
 
-  it('gates dd-trace HTTP propagation on the current RUM session', () => {
+  it('gates dd-trace-electron HTTP propagation on the current RUM session', () => {
     const { requireFn, use } = createTracerRequire();
 
     new Tracing(createTestConfiguration(), requireFn);
@@ -117,7 +137,7 @@ describe('Tracing', () => {
     expect(propagationBlocklist()).toBe(true);
   });
 
-  it('flushes the dd-trace exporter', async () => {
+  it('flushes the dd-trace-electron exporter', async () => {
     const { flush, requireFn } = createTracerRequire();
     const tracing = new Tracing(createTestConfiguration(), requireFn);
 

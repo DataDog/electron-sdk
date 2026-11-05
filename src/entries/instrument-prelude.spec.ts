@@ -1,15 +1,29 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { loadTracer } from './instrument-prelude';
 
 describe('loadTracer', () => {
-  it('returns the dd-trace default export when require succeeds', () => {
-    const tracer = { init: vi.fn() };
-    const requireFn = (() => ({ default: tracer })) as unknown as NodeRequire;
-
-    expect(loadTracer(requireFn)).toBe(tracer);
+  afterEach(() => {
+    delete (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:bundledMode')];
   });
 
-  it('falls back to a safe no-op tracer when dd-trace cannot be loaded (does not throw)', () => {
+  it('returns the dd-trace-electron default export when require succeeds', () => {
+    const tracer = { init: vi.fn() };
+    const requireFn = vi.fn(() => ({ default: tracer }));
+
+    expect(loadTracer(requireFn as unknown as NodeRequire)).toBe(tracer);
+    expect(requireFn).toHaveBeenCalledWith('dd-trace-electron');
+  });
+
+  it('loads the embedded tracer when bundled mode was selected before instrumentation', () => {
+    (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:bundledMode')] = true;
+    const tracer = { init: vi.fn() };
+    const requireFn = vi.fn(() => ({ default: tracer }));
+
+    expect(loadTracer(requireFn as unknown as NodeRequire)).toBe(tracer);
+    expect(requireFn).toHaveBeenCalledWith('./tracer.cjs');
+  });
+
+  it('falls back to a safe no-op tracer when dd-trace-electron cannot be loaded (does not throw)', () => {
     // A load failure must not throw — otherwise `import '@datadog/electron-sdk/instrument'` would
     // crash the app instead of degrading to monitoring-disabled.
     const requireFn = (() => {

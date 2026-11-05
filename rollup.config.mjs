@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import typescript from '@rollup/plugin-typescript';
 import { nodeResolve } from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
@@ -18,7 +20,41 @@ const sharedPlugins = [
   }),
 ];
 
+const require = createRequire(import.meta.url);
+// Omitted native products remain lazy runtime requires; Electron never enables them.
+const nativeProducts = [
+  '@datadog/libdatadog',
+  '@datadog/libdatadog-extras',
+  '@datadog/native-appsec',
+  '@datadog/native-iast-taint-tracking',
+  '@datadog/native-metrics',
+  '@datadog/pprof',
+  '@datadog/wasm-js-rewriter',
+  'oxc-parser',
+];
+
 const config = [
+  {
+    input: require.resolve('dd-trace-electron'),
+    output: { file: 'dist/tracer.cjs', format: 'cjs', sourcemap: true },
+    plugins: [
+      nodeResolve({ preferBuiltins: true }),
+      commonjs({
+        strictRequires: true,
+        ignore: (id) => id === 'electron' || nativeProducts.some((name) => id === name || id.startsWith(`${name}/`)),
+      }),
+      json(),
+      {
+        name: 'tracer-licenses',
+        generateBundle() {
+          const source = ['LICENSE', 'LICENSE.Apache', 'LICENSE.BSD3', 'LICENSE-3rdparty.csv']
+            .map((file) => readFileSync(require.resolve(`dd-trace-electron/${file}`), 'utf8'))
+            .join('\n\n');
+          this.emitFile({ type: 'asset', fileName: 'tracer.LICENSE', source });
+        },
+      },
+    ],
+  },
   // Main process: ESM and CJS builds
   {
     input: 'src/index.ts',
@@ -59,7 +95,7 @@ const config = [
         sourcemap: true,
       },
     ],
-    external: ['electron', 'dd-trace'],
+    external: ['electron'],
     plugins: sharedPlugins,
   },
   // Vite plugin: ensures Electron instrumentation runs before hoisted requires
@@ -93,6 +129,7 @@ const config = [
   // TypeScript declarations: instrument
   {
     input: 'src/entries/instrument.ts',
+    external: ['electron'],
     output: {
       file: 'dist/instrument.d.ts',
       format: 'esm',
@@ -108,7 +145,7 @@ const config = [
     },
     plugins: [dts({ tsconfig: './tsconfig.build.json', respectExternal: true })],
   },
-  // Webpack plugin: copies dd-trace preload into webpack output
+  // Webpack plugin: copies dd-trace-electron preload into webpack output
   {
     input: 'src/entries/webpack-plugin.ts',
     output: [
