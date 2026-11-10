@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { display } from '../../tools/display';
 import { getUserAgent } from '../userAgent';
 import { compareBatchFileNames } from './batchFileName';
 
@@ -23,6 +24,7 @@ export abstract class BatchConsumer {
   protected intakeUrl: string;
   protected clientToken: string;
   protected userAgent: string | undefined;
+  private readFailureWarnedPaths = new Set<string>();
 
   constructor(config: BatchConsumerConfig) {
     this.trackPath = config.trackPath;
@@ -37,6 +39,12 @@ export abstract class BatchConsumer {
     }
 
     const logFiles = await this.getLogFiles();
+    const listedPaths = new Set(logFiles);
+    for (const warnedPath of this.readFailureWarnedPaths) {
+      if (!listedPaths.has(warnedPath)) {
+        this.readFailureWarnedPaths.delete(warnedPath);
+      }
+    }
 
     for (const logFile of logFiles) {
       await this.uploadBatch(logFile);
@@ -61,13 +69,22 @@ export abstract class BatchConsumer {
     }
   }
 
-  /** Reads a batch file and returns its non-empty lines. */
-  protected async readBatchFile(filePath: string) {
+  /**
+   * Reads a batch file and returns its non-empty lines, or `undefined` when the read fails, so the file is kept and
+   * retried on the next upload cycle instead of being dropped as an empty batch. A failure warns once per file while
+   * the file stays listed; a file that no longer exists (`ENOENT`, e.g. evicted by the cap after being listed) is
+   * skipped silently.
+   */
+  protected async readBatchFile(filePath: string): Promise<string[] | undefined> {
     try {
       const content = await fs.readFile(filePath, 'utf8');
       return content.split('\n').filter((line) => line.trim().length > 0);
-    } catch {
-      return [];
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT' && !this.readFailureWarnedPaths.has(filePath)) {
+        this.readFailureWarnedPaths.add(filePath);
+        display.warn('Failed to read batch file, keeping it for the next upload:', filePath, error);
+      }
+      return undefined;
     }
   }
 
@@ -76,9 +93,13 @@ export abstract class BatchConsumer {
    * sends it, and deletes the file on success.
    * If {@link buildRequest} returns `null` the file is deleted without a network call
    * (empty or malformed batch — nothing to send).
+   * If the file cannot be read it is kept for the next upload cycle and `false` is returned.
    */
   protected async uploadBatch(filePath: string): Promise<boolean> {
     const lines = await this.readBatchFile(filePath);
+    if (!lines) {
+      return false;
+    }
     const request = await this.buildRequest(lines);
 
     if (!request) {
