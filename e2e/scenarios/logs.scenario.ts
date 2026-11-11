@@ -10,6 +10,25 @@ import { isBridgeView, isMainProcessTelemetry } from '../lib/intake';
 test.describe('renderer logs', () => {
   test.use({ sdkConfigOverrides: { batchSize: 'LARGE' } });
 
+  test('drops a batch rejected with HTTP 413 and continues delivering later logs', async ({
+    electronApp,
+    mainPage,
+    intake,
+  }) => {
+    const bridge = await mainPage.openBridgeFileWindow(electronApp);
+    intake.setLogsResponseStatus(413);
+    await bridge.generateLog('rejected log');
+    await mainPage.flushTransport();
+    expect(intake.getLogs().map(({ body }) => body.message)).toEqual(['rejected log']);
+
+    intake.clear();
+    await bridge.generateLog('later log');
+    const logs = await mainPage.whileFlushing(() => intake.waitForLogCount(1));
+    expect(logs.map(({ body }) => body.message)).toEqual(['later log']);
+    await mainPage.flushTransport();
+    expect(intake.getLogs()).toHaveLength(1);
+  });
+
   test('relays a renderer log on the logs track, re-attributed to the Electron application and session', async ({
     electronApp,
     mainPage,
