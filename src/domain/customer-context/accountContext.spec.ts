@@ -1,4 +1,6 @@
-import { beforeEach, describe, it, expect, vi } from 'vitest';
+import { display as browserDisplay, SANITIZE_DEFAULT_MAX_CHARACTER_COUNT } from '@datadog/browser-core';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { display } from '../../tools/display';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { EventSource } from '../../event';
 import { createFormatHooks, type FormatHooks, type RumEventType } from '../../assembly';
@@ -20,8 +22,113 @@ describe('AccountContext', () => {
   }
 
   beforeEach(() => {
+    vi.spyOn(display, 'warn').mockImplementation(() => undefined);
     hooks = createFormatHooks();
     accountContext = new AccountContext(hooks);
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  describe('sanitization at mutation time', () => {
+    it.each(['id', 'name'] as const)('rejects an oversized %s atomically without logging its value', (field) => {
+      const browserWarning = vi.spyOn(browserDisplay, 'warn').mockImplementation(() => undefined);
+      const history = createHistory(vi.fn());
+      accountContext = new AccountContext(hooks, history);
+      const original = { id: 'original', name: 'Original', extraInfo: { plan: 'paid' } };
+      accountContext.setContext(original);
+      accountContext.setContext({
+        id: 'replacement',
+        [field]: 'x'.repeat(SANITIZE_DEFAULT_MAX_CHARACTER_COUNT),
+        extraInfo: { plan: 'other' },
+      });
+      expect(accountContext.getInfo()).toEqual(original);
+      expect(history.closeAndAdd).toHaveBeenCalledOnce();
+      expect(history.closeActive).not.toHaveBeenCalled();
+      expect(display.warn).toHaveBeenCalledExactlyOnceWith(
+        `The property "${field}" of account exceeds the context size limit; the context will not be updated.`
+      );
+      expect(browserWarning).not.toHaveBeenCalled();
+    });
+
+    it.each(['id', 'name'] as const)('counts JSON escaping at the %s size boundary', (field) => {
+      const browserWarning = vi.spyOn(browserDisplay, 'warn').mockImplementation(() => undefined);
+      const boundary = 'x'.repeat(SANITIZE_DEFAULT_MAX_CHARACTER_COUNT - 2);
+      accountContext.setContext({ id: 'customer-1', [field]: boundary });
+      expect(accountContext.getInfo()?.[field]).toBe(boundary);
+      accountContext.setContext({ id: 'customer-1', [field]: '"'.repeat(SANITIZE_DEFAULT_MAX_CHARACTER_COUNT / 2) });
+      expect(accountContext.getInfo()?.[field]).toBe(boundary);
+      expect(display.warn).toHaveBeenCalledExactlyOnceWith(
+        `The property "${field}" of account exceeds the context size limit; the context will not be updated.`
+      );
+      expect(browserWarning).not.toHaveBeenCalled();
+    });
+
+    it.each([false, true])('uses space freed by a same-call shrink, shrink first: %s', (shrinkFirst) => {
+      accountContext.setContext({ id: 'customer-1', extraInfo: { blob: 'x'.repeat(200_000), existing: 'old' } });
+      const additions = { note: 'y'.repeat(50_000), existing: 'z'.repeat(50_000) };
+      accountContext.addExtraInfo(shrinkFirst ? { blob: 'short', ...additions } : { ...additions, blob: 'short' });
+      expect(accountContext.getInfo()?.extraInfo).toEqual({ blob: 'short', ...additions });
+      expect(display.warn).not.toHaveBeenCalled();
+    });
+
+    it('preserves accepted extras and history when replacing an early key exceeds the budget', () => {
+      vi.spyOn(browserDisplay, 'warn').mockImplementation(() => undefined);
+      const history = createHistory(vi.fn());
+      accountContext = new AccountContext(hooks, history);
+      accountContext.setContext({ id: 'customer-1', extraInfo: { first: 'old', second: 'kept' } });
+      accountContext.addExtraInfo({ first: 'x'.repeat(SANITIZE_DEFAULT_MAX_CHARACTER_COUNT + 1), third: 'new' });
+      expect(accountContext.getInfo()).toEqual({
+        id: 'customer-1',
+        extraInfo: { first: 'old', second: 'kept', third: 'new' },
+      });
+      expect(history.closeAndAdd).toHaveBeenLastCalledWith(
+        { id: 'customer-1', first: 'old', second: 'kept', third: 'new' },
+        expect.any(Number)
+      );
+    });
+
+    it('keeps later extras when an earlier extra does not fit on set', () => {
+      vi.spyOn(browserDisplay, 'warn').mockImplementation(() => undefined);
+      accountContext.setContext({
+        id: 'customer-1',
+        extraInfo: {
+          huge: { nested: 'x'.repeat(SANITIZE_DEFAULT_MAX_CHARACTER_COUNT + 1) },
+          after: 'kept',
+          nullable: null,
+        },
+      });
+      expect(accountContext.getInfo()?.extraInfo).toEqual({ after: 'kept', nullable: null });
+    });
+
+    it('stores bounded extras separately from identity and shares them across event types', () => {
+      const warning = vi.mocked(display.warn);
+      accountContext.setContext({
+        id: 'customer-1',
+        name: 'Customer',
+        extraInfo: { huge: 'x'.repeat(SANITIZE_DEFAULT_MAX_CHARACTER_COUNT + 1) },
+      });
+      expect(accountContext.getInfo()).toEqual({ id: 'customer-1', name: 'Customer' });
+      expect(triggerRum()).toMatchObject({ account: { id: 'customer-1', name: 'Customer' } });
+      expect(hooks.triggerLogs({ startTime: T0, source: EventSource.RENDERER })).toEqual({
+        account: { id: 'customer-1', name: 'Customer' },
+      });
+      expect(triggerSpan()).toEqual({ meta: { 'account.id': 'customer-1', 'account.name': 'Customer' } });
+      expect(warning).toHaveBeenCalledOnce();
+    });
+
+    it('bounds accumulated extras and sanitizes cycles before storing them', () => {
+      vi.spyOn(browserDisplay, 'warn').mockImplementation(() => undefined);
+      const cyclic: Record<string, unknown> = {};
+      cyclic.self = cyclic;
+      accountContext.setContext({ id: 'customer-1', extraInfo: { cyclic, first: 'x'.repeat(120_000) } });
+      accountContext.addExtraInfo({ second: 'x'.repeat(120_000), id: 'spoofed' });
+      expect(accountContext.getInfo()?.id).toBe('customer-1');
+      expect(accountContext.getInfo()?.extraInfo?.second).toBeUndefined();
+      expect(() => JSON.stringify(accountContext.getInfo())).not.toThrow();
+      accountContext.addExtraInfo({ first: null, after: 'kept' });
+      expect(accountContext.getInfo()?.extraInfo).toMatchObject({ after: 'kept' });
+      expect(accountContext.getInfo()?.extraInfo).not.toHaveProperty('first');
+    });
   });
 
   describe('when account is not set', () => {
@@ -266,12 +373,12 @@ describe('AccountContext', () => {
   });
 });
 
-function createHistory(find: ContextHistory['find']): ContextHistory {
+function createHistory(find: ContextHistory['find']) {
   return {
     add: vi.fn(),
     closeActive: vi.fn(),
     closeAndAdd: vi.fn(),
     pruneAndPersist: vi.fn(),
     find,
-  };
+  } satisfies ContextHistory;
 }

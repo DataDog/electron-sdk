@@ -1,7 +1,7 @@
 import { combine, deepClone } from '@datadog/js-core/util';
 import { SKIPPED } from '@datadog/js-core/assembly';
 import { type TimeStamp, timeStampNow } from '@datadog/js-core/time';
-import { isEmptyObject } from '@datadog/browser-core';
+import { isEmptyObject, sanitize, SANITIZE_DEFAULT_MAX_CHARACTER_COUNT } from '@datadog/browser-core';
 import { display } from '../../tools/display';
 import { initContextHistory } from './contextHistory';
 import type { FormatHooks } from '../../assembly';
@@ -96,13 +96,19 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
     return isEmptyObject(this.standardFields) && isEmptyObject(this.extraInfo);
   }
 
+  /** Sanitizes identity and extras before storing them, recording history, or enriching events. */
   setContext(info: T): void {
     const { extraInfo, ...standardFields } = deepClone(info) as Context & { extraInfo?: Context };
     const candidate = pickNonNullish(standardFields);
     if (!this.validateProperties(candidate)) return;
 
-    this.standardFields = candidate;
-    this.extraInfo = this.filterReservedKeys(extraInfo ?? {});
+    // Give identity fields their own budgets so large extras cannot remove an id/name/email.
+    const sanitized = pickNonNullish(
+      Object.fromEntries(Object.entries(candidate).map(([key, value]) => [key, sanitize(value)]))
+    );
+    if (!this.validateProperties(sanitized)) return;
+    this.standardFields = sanitized;
+    this.extraInfo = sanitizeExtraInfo(this.filterReservedKeys(extraInfo ?? {}));
     this.recordCurrentContext();
   }
 
@@ -158,8 +164,8 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
 
   /**
    * Validates that required properties are present and that constrained properties have the right
-   * format. Returns `false` (and warns) when the candidate is invalid, in which case the caller
-   * keeps the previous context rather than corrupting it.
+   * format and fit their character budget. Returns `false` (and warns) when the candidate is invalid,
+   * so the caller keeps the previous context.
    */
   private validateProperties(standardFields: Context): boolean {
     for (const [key, { required, type }] of Object.entries(this.propertiesConfig)) {
@@ -172,6 +178,18 @@ export class ContextManager<T extends { extraInfo?: Context } = Context> {
 
       if (type === 'string' && isValuePresent(value) && typeof value !== 'string') {
         display.warn(`The property "${key}" of ${this.name} must be a string; the context will not be updated.`);
+        return false;
+      }
+
+      // Check before sanitize() so both identities reject the whole update without logging the value.
+      if (
+        type === 'string' &&
+        typeof value === 'string' &&
+        JSON.stringify(value).length > SANITIZE_DEFAULT_MAX_CHARACTER_COUNT
+      ) {
+        display.warn(
+          `The property "${key}" of ${this.name} exceeds the context size limit; the context will not be updated.`
+        );
         return false;
       }
     }
@@ -244,14 +262,41 @@ function isValuePresent(value: unknown): boolean {
 }
 
 function mergeExtraInfo(current: Context, extraInfo: Context): Context {
-  const next = deepClone(current);
-  for (const [key, value] of Object.entries(deepClone(extraInfo))) {
-    if (value === null) {
-      delete next[key];
-    } else if (value !== undefined) {
+  const next = { ...current };
+  for (const [key, value] of Object.entries(extraInfo)) {
+    if (value === null) delete next[key];
+  }
+  return sanitizeExtraInfo(pickNonNullish(extraInfo), next);
+}
+
+function sanitizeExtraInfo(extraInfo: Context, current: Context = {}): Context {
+  let next = { ...current };
+  let skipped = false;
+  // Sanitize without truncation, then budget complete attributes so an oversized update cannot
+  // remove an existing value or unrelated keys. Only the bounded result is stored in history.
+  const sanitized = sanitize(extraInfo, Infinity) as Context;
+  // Reclaim space from shrinking replacements before considering additions, regardless of key order.
+  for (const [key, value] of Object.entries(sanitized)) {
+    const previous = current[key];
+    if (
+      value !== undefined &&
+      previous !== undefined &&
+      Object.prototype.hasOwnProperty.call(current, key) &&
+      JSON.stringify(value).length <= JSON.stringify(previous).length
+    ) {
       next[key] = value;
     }
   }
+  for (const [key, value] of Object.entries(sanitized)) {
+    if (value === undefined || value === next[key]) continue;
+    const candidate = { ...next, [key]: value };
+    if (JSON.stringify(candidate).length > SANITIZE_DEFAULT_MAX_CHARACTER_COUNT) {
+      skipped = true;
+    } else {
+      next = candidate;
+    }
+  }
+  if (skipped) display.warn('Extra-info attributes exceeding the context size limit were ignored.');
   return next;
 }
 
