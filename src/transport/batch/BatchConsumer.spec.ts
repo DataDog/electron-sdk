@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { display } from '../../tools/display';
 import { BatchConsumer } from './BatchConsumer';
 import type { BatchConsumerConfig } from './BatchConsumer';
 import { getUserAgent } from '../userAgent';
-import { display } from '../../tools/display';
 import { createFsError, mockFs } from '../../mocks.specUtil';
 
 vi.mock('node:fs/promises');
@@ -83,10 +83,33 @@ describe('BatchConsumer — upload/send/delete behaviour', () => {
       expect(fsMocks.unlink).toHaveBeenCalledOnce();
     });
 
-    it('keeps the file when the intake returns a non-ok response', async () => {
+    it.each([400, 401, 403, 404, 413, 422])(
+      'deletes a batch rejected with HTTP %i and continues uploading later batches',
+      async (status) => {
+        const files = new Set(['a.log', 'b.log']);
+        fsMocks.readdir.mockImplementation(() => Promise.resolve([...files]));
+        fsMocks.readFile.mockResolvedValue('{"event":1}');
+        fsMocks.unlink.mockImplementation((file) => {
+          files.delete(String(file).split('/').pop()!);
+          return Promise.resolve();
+        });
+        vi.mocked(fetch).mockResolvedValueOnce({ ok: false, status } as Response);
+        const consumer = new TestConsumer(config, TEST_REQUEST);
+
+        await consumer.upload();
+        await consumer.upload();
+
+        expect(fetch).toHaveBeenCalledTimes(2);
+        expect(fsMocks.unlink).toHaveBeenCalledWith('/mock/track/a.log');
+        expect(fsMocks.unlink).toHaveBeenCalledWith('/mock/track/b.log');
+        expect(display.warn).toHaveBeenCalledWith(expect.stringContaining(String(status)));
+      }
+    );
+
+    it.each([408, 429, 500, 503])('keeps the file for retry on HTTP %i', async (status) => {
       fsMocks.readdir.mockResolvedValue(['batch.log']);
       fsMocks.readFile.mockResolvedValue('{"event":1}');
-      vi.mocked(fetch).mockResolvedValueOnce({ ok: false, status: 500 } as Response);
+      vi.mocked(fetch).mockResolvedValueOnce({ ok: false, status } as Response);
 
       const consumer = new TestConsumer(config, TEST_REQUEST);
       await consumer.upload();

@@ -163,6 +163,12 @@ See `src/assembly/` and `src/assembly/commonContext.ts`.
 - Contract: valid JSON in and out, never throws; an unscrubbed payload is sent rather than lost.
 - Known limits are listed in the class JSDoc.
 
+## Transport
+
+Standard JSON events (RUM, logs and spans) larger than 1 MiB after path scrubbing are dropped.
+For all tracks, batches rejected with 4xx responses are deleted, except for 408 and 429, which are retried.
+Network and server failures are retried.
+
 ## Tracking Consent
 
 `init()` creates its `TrackingConsentManager` with the `trackingConsent` option, `granted` by default, and
