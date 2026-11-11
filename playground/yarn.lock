@@ -55,12 +55,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@datadog/datadog-ci@npm:5.26.1":
-  version: 5.26.1
-  resolution: "@datadog/datadog-ci@npm:5.26.1"
+"@datadog/datadog-ci@npm:5.27.0":
+  version: 5.27.0
+  resolution: "@datadog/datadog-ci@npm:5.27.0"
   bin:
     datadog-ci: dist/bundle.js
-  checksum: 10c0/b759341f472b6bc37e2d656be196ebf467e665f43ea46a4e5915923efe696d15684ea70158617c2af30cf315f9f43ee8fab982eb2bfa99a5cc7ab433c2427723
+  checksum: 10c0/c5a88ab34583a58e96ca60d0280a63ccd1c46a31a60271529c817bc3eb6435bd5ad1d0b2afc61d3d86ada669bcfb44f065474513461a5f8d844f044f93dfcc45
   languageName: node
   linkType: hard
 
@@ -1041,7 +1041,7 @@ __metadata:
   dependencies:
     "@datadog/browser-logs": "npm:7.16.2"
     "@datadog/browser-rum": "npm:7.16.2"
-    "@datadog/datadog-ci": "npm:5.26.1"
+    "@datadog/datadog-ci": "npm:5.27.0"
     "@datadog/electron-sdk": "portal:.."
     "@playwright/test": "npm:1.64.1"
     "@types/node": "npm:25.9.9"

@@ -22,7 +22,7 @@
     "node-gyp": "12.4.0"
   },
   "devDependencies": {
-    "@datadog/datadog-ci": "5.26.1",
+    "@datadog/datadog-ci": "5.27.0",
     "@playwright/test": "1.64.1",
     "@types/node": "25.9.9",
     "chokidar": "6.0.0",
