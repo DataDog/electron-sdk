@@ -223,6 +223,7 @@ await esbuild.build({
 - **RUM Views** — One view per main process instance
 - **RUM Errors** — Capture Node errors and crashes in main process
 - **RUM Resources** — Capture RUM resources from main process network calls
+- **IPC Resources** _(experimental)_ — Capture calls to main process IPC handlers as RUM resources
 - **Traces** — Capture traces for network calls, command execution on main process
 - **Renderer Events** — Capture RUM events from renderer processes via the browser SDK
 - **Custom Duration Vitals** — Measure user-defined durations in the main process
@@ -424,6 +425,24 @@ failOperation('upload', 'abandoned', { operationKey: 'cover_photo' });
 ```
 
 The renderer process keeps using `@datadog/browser-rum` directly (with the `feature_operation_vital` experimental flag enabled on its init). API signatures match exactly, so you can start an operation in one process and complete it in the other — the backend correlates steps by `name` + `operationKey`.
+
+### IPC Resources _(experimental)_
+
+A renderer that calls `ipcRenderer.invoke` waits for the main process handler to answer. With `trackIpcResources`, each call to a handler registered with `ipcMain.handle`, `webContents.ipc.handle` or `webFrameMain.ipc.handle` is reported as a RUM resource of type `message`, in the main process view: the channel in `resource.url`, the handler's duration, and `resource.message.is_error: true` when the handler throws or rejects.
+
+> ⚗️ This option is in preview and may change before stable release.
+
+```ts
+await init({
+  ...configuration,
+  trackIpcResources: true,
+});
+```
+
+- **Volume:** a channel that a renderer polls adds one resource per call.
+- **Filtering:** `beforeSendRum` receives these resources with `source: 'main'`: return `false` to drop a channel, or rename it in `resource.url`. Keep identifiers out of channel names: the facets derived from `resource.url`, such as `url_path_group`, keep them.
+- **Not collected:** messages sent with `send`, `sendSync` or `postMessage`, `ServiceWorkerMain.ipc` handlers, and calls that start before `init()` resolves.
+- **Stack traces:** handlers are wrapped even when the option is off, so an error created before a handler's first `await` has one more SDK frame in its stack.
 
 ### Renderer Profiling
 
@@ -716,6 +735,7 @@ interface FeatureOperationOptions {
 | `batchSize`               | `'SMALL' \| 'MEDIUM' \| 'LARGE'`          | No       | `'MEDIUM'`  | Byte threshold that rotates a batch file early: `SMALL` 16 KiB, `MEDIUM` 512 KiB, `LARGE` 4 MiB                                                                                      |
 | `uploadFrequency`         | `'RARE' \| 'NORMAL' \| 'FREQUENT'`        | No       | `'NORMAL'`  | How often pending batches are uploaded, and the window over which events accumulate: `RARE` 30s, `NORMAL` 10s, `FREQUENT` 5s                                                         |
 | `defaultPrivacyLevel`     | `'mask' \| 'allow' \| 'mask-user-input'`  | No       | `'mask'`    | Default privacy level for renderer session replay                                                                                                                                    |
+| `trackIpcResources`       | `boolean`                                 | No       | `false`     | _(experimental)_ Report calls to main process IPC handlers as RUM resources. See [IPC Resources](#ipc-resources-experimental).                                                       |
 | `allowedRendererHosts`    | `string[]`                                | Yes      | —           | Hostnames allowed for the renderer bridge (required; see table below)                                                                                                                |
 | `beforeSendRum`           | `RumBeforeSend`                           | No       | —           | Modify or discard fully assembled main-process and renderer RUM events                                                                                                               |
 

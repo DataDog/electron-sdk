@@ -138,6 +138,14 @@ export interface InitConfiguration {
   uploadFrequency?: UploadFrequency;
   defaultPrivacyLevel?: DefaultPrivacyLevel;
   /**
+   * Report calls to main-process IPC handlers as RUM resources of type `message`, defaults to `false`.
+   *
+   * @experimental This option is in preview and may change in future releases.
+   * @see README "IPC Resources" for usage details.
+   * @example trackIpcResources: true
+   */
+  trackIpcResources?: boolean;
+  /**
    * Synchronously modify supported fields on fully assembled RUM events.
    *
    * Supported string fields accept only string replacements. Assigning `null`, `undefined`, or another type is
@@ -182,6 +190,7 @@ export interface Configuration {
   batchSize: BatchSize;
   uploadFrequency: UploadFrequency;
   defaultPrivacyLevel: DefaultPrivacyLevel;
+  trackIpcResources: boolean;
   allowedRendererHosts: string[];
   beforeSendRum?: RumBeforeSend;
 }
@@ -321,6 +330,17 @@ function validateEnumOption<T extends string>(
   if (!isOneOf(value, allowedValues)) {
     display.error(`Configuration error: '${fieldName}' must be one of: ${allowedValues.join(', ')}`);
     return defaultValue;
+  }
+  return value;
+}
+
+function validateBooleanOption(value: unknown, fieldName: string): boolean {
+  if (value === undefined || value === null) {
+    return false;
+  }
+  if (typeof value !== 'boolean') {
+    display.error(`Configuration error: '${fieldName}' must be a boolean`);
+    return false;
   }
   return value;
 }
@@ -492,6 +512,7 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
       VALID_PRIVACY_LEVELS,
       DefaultPrivacyLevel.MASK
     ),
+    trackIpcResources: validateBooleanOption(initConfig.trackIpcResources, 'trackIpcResources'),
     allowedRendererHosts,
     beforeSendRum: validateBeforeSendRum(initConfig.beforeSendRum),
   };
