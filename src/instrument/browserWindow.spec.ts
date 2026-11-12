@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { display } from '../tools/display';
 
-vi.mock('dd-trace', () => ({ default: {} }));
+vi.mock('dd-trace-electron', () => ({ default: {} }));
 vi.mock('../tools/display', () => ({
   display: { warn: vi.fn() },
 }));

@@ -6,14 +6,21 @@ import { DatadogWebpackPlugin } from './webpack-plugin';
 
 describe('runtime dependency copying', () => {
   it('is disabled by default and can be enabled for Vite', () => {
-    expect(datadogVitePlugin().writeBundle).toBeUndefined();
+    const plugin = datadogVitePlugin();
+    expect(plugin.writeBundle).toBeUndefined();
+    const externals = plugin.config!().build.rollupOptions.external;
+    expect(externals.some((pattern) => pattern.test('dd-trace-electron'))).toBe(true);
+    expect(externals.some((pattern) => pattern.test('dd-trace-electron/package.json'))).toBe(true);
+    expect(externals.some((pattern) => pattern.test('dd-trace'))).toBe(false);
     expect(datadogVitePlugin({ copyRuntimeDependencies: true }).writeBundle).toBeTypeOf('function');
   });
 
   it('is disabled by default and can be enabled for esbuild', () => {
     const defaultOnEnd = vi.fn();
-    datadogEsbuildPlugin().setup({ initialOptions: {}, onEnd: defaultOnEnd });
+    const initialOptions = { external: [] as string[] };
+    datadogEsbuildPlugin().setup({ initialOptions, onEnd: defaultOnEnd });
     expect(defaultOnEnd).not.toHaveBeenCalled();
+    expect(initialOptions.external).toEqual(['dd-trace-electron', '@datadog/electron-sdk']);
 
     const pluginCopyOnEnd = vi.fn();
     datadogEsbuildPlugin({ copyRuntimeDependencies: true }).setup({
@@ -39,6 +46,24 @@ describe('runtime dependency copying', () => {
       })
     );
     expect(pluginCopyAfterEmitCalls).toBe(1);
+  });
+
+  it('keeps dd-trace-electron external and excludes it from Webpack asset relocation without copying', () => {
+    const compiler = createWebpackCompiler(vi.fn());
+    const rule = {
+      use: '@vercel/webpack-asset-relocator-loader',
+      exclude: undefined as RegExp | undefined,
+    };
+    compiler.options.module.rules.push(rule);
+
+    new DatadogWebpackPlugin().apply(compiler);
+
+    const externals = compiler.options.externals as RegExp[];
+    expect(externals.some((pattern) => pattern.test('dd-trace-electron'))).toBe(true);
+    expect(externals.some((pattern) => pattern.test('dd-trace-electron/package.json'))).toBe(true);
+    expect(externals.some((pattern) => pattern.test('dd-trace'))).toBe(false);
+    expect(rule.exclude!.test('/app/node_modules/dd-trace-electron/index.js')).toBe(true);
+    expect(rule.exclude!.test('C:\\app\\node_modules\\dd-trace-electron\\index.js')).toBe(true);
   });
 });
 

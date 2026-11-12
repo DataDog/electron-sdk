@@ -49,7 +49,7 @@ yarn test:integration --project=electron-builder-vite-plugin-copy-packaged
 | `electron-builder-vite` | Vite (manual)       | CJS         | electron-builder |
 
 All apps use `import '@datadog/electron-sdk/instrument'` before importing `electron` in their main process.
-This loads the SDK's instrumentation and injects the SDK's preload script into every renderer process via `patchBrowserWindow`. The regular SDK `init()` initializes dd-trace afterward.
+This loads the SDK's instrumentation and injects the SDK's preload script into every renderer process via `patchBrowserWindow`. The regular SDK `init()` initializes dd-trace-electron afterward.
 Vite-based apps use `datadogVitePlugin`, webpack-based apps use `DatadogWebpackPlugin`, and esbuild-based apps use `datadogEsbuildPlugin` to ensure correct module loading order and preload availability in packaged builds.
 The `forge-esbuild-esm` app additionally exercises the plugin's ESM path, where the banner loads `instrument` via `createRequire` because ES modules have no global `require`.
 The Forge Vite and Webpack apps override `packagerConfig.ignore` so Forge packages both the bundler
@@ -59,7 +59,7 @@ selects plugin-owned copying for a compatibility variant.
 The `electron-builder-vite` app packages two isolated variants: the default packager-owned runtime dependency copy
 (`default-copy`) and `copyRuntimeDependencies: true` (`plugin-copy`), where the plugin owns dependency staging.
 The Windows payload extraction scenario covers the regression described in
-[#182](https://github.com/DataDog/electron-sdk/pull/182). It verifies that plugin-copied `dd-trace` paths would exceed `MAX_PATH`
+[#182](https://github.com/DataDog/electron-sdk/pull/182). It verifies that plugin-copied `dd-trace-electron` paths would exceed `MAX_PATH`
 at a long temporary destination, while the copy-disabled Vite output extracts completely with Windows
 PowerShell 5.1. The separate packaging scenario checks dependency placement in `app.asar`; this does not
 run a full MSIX build or signing pipeline.
