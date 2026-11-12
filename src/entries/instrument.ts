@@ -8,6 +8,7 @@
  * Loads the tracing runtime, then:
  * - patches BrowserWindow to inject the bridge preload
  * - answers bridge-config requests from renderer preloads
+ * - wraps IPC handlers to time them
  * - patches net for http span instrumentation
  *
  * Note: Bundlers may break the import order needed for instrumentation. Use the bundler

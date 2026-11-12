@@ -175,6 +175,12 @@ describe('reportConfiguration', () => {
     });
   });
 
+  describe('track_ipc_resources', () => {
+    it.each([true, false])('reports trackIpcResources: %s', (trackIpcResources) => {
+      expect(report(createTestConfiguration({ trackIpcResources })).track_ipc_resources).toBe(trackIpcResources);
+    });
+  });
+
   describe('use_before_send', () => {
     it('reports whether beforeSendRum is configured', () => {
       expect(report(createTestConfiguration({ beforeSendRum: () => true })).use_before_send).toBe(true);

@@ -628,6 +628,32 @@ describe('buildConfiguration', () => {
     });
   });
 
+  describe('trackIpcResources validation', () => {
+    it.each([undefined, null])('resolves to false without an error when %s', (value) => {
+      const result = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        trackIpcResources: value,
+      } as unknown as InitConfiguration);
+
+      expect(result?.trackIpcResources).toBe(false);
+      expect(display.error).not.toHaveBeenCalled();
+    });
+
+    it.each([true, false])('carries %s through to the resolved configuration', (value) => {
+      expect(buildConfiguration({ ...DEFAULT_CONFIG, trackIpcResources: value })?.trackIpcResources).toBe(value);
+    });
+
+    it('logs an error and resolves to false on a value that is not a boolean', () => {
+      const result = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        trackIpcResources: 'true',
+      } as unknown as InitConfiguration);
+
+      expect(result?.trackIpcResources).toBe(false);
+      expect(display.error).toHaveBeenCalledWith("Configuration error: 'trackIpcResources' must be a boolean");
+    });
+  });
+
   describe('sessionReplaySampleRate validation', () => {
     it('defaults to 0 when not provided', () => {
       expect(buildConfiguration({ ...DEFAULT_CONFIG })?.sessionReplaySampleRate).toBe(0);

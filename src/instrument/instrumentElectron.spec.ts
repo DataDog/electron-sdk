@@ -1,12 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { instrumentElectron } from './instrumentElectron';
 import { patchBrowserWindow } from './browserWindow';
+import { patchIpcHandlers } from './ipc';
 import { patchNet } from './net';
 import { registerBridgeConfigResponder } from './registerBridgeConfig';
 
 vi.mock('./browserWindow', () => ({
   resolvePreloadPath: vi.fn(() => '/fake/preload.js'),
   patchBrowserWindow: vi.fn(),
+}));
+vi.mock('./ipc', () => ({
+  patchIpcHandlers: vi.fn(),
 }));
 vi.mock('./net', () => ({
   patchNet: vi.fn(),
@@ -31,13 +35,17 @@ describe('instrumentElectron', () => {
   });
 
   it('patches each Electron API once for a fresh electron module', () => {
-    instrumentElectron(fakeElectron());
+    const electron = fakeElectron();
+
+    instrumentElectron(electron);
 
     expect(patchBrowserWindow).toHaveBeenCalledTimes(1);
     expect(patchBrowserWindow).toHaveBeenCalledWith(expect.anything(), '/fake/preload.js');
     expect(patchNet).toHaveBeenCalledTimes(1);
     expect(registerBridgeConfigResponder).toHaveBeenCalledTimes(1);
     expect(registerBridgeConfigResponder).toHaveBeenCalledWith(expect.anything());
+    expect(patchIpcHandlers).toHaveBeenCalledTimes(1);
+    expect(patchIpcHandlers).toHaveBeenCalledWith(electron.app, electron.ipcMain);
   });
 
   it('is idempotent: a second call on the same electron module does not re-patch', () => {
@@ -49,6 +57,7 @@ describe('instrumentElectron', () => {
     expect(patchBrowserWindow).toHaveBeenCalledTimes(1);
     expect(patchNet).toHaveBeenCalledTimes(1);
     expect(registerBridgeConfigResponder).toHaveBeenCalledTimes(1);
+    expect(patchIpcHandlers).toHaveBeenCalledTimes(1);
   });
 
   it('patches a different electron module independently', () => {
@@ -64,6 +73,7 @@ describe('instrumentElectron', () => {
     instrumentElectron({ app: { isReady: () => true } } as unknown as typeof import('electron'));
 
     expect(registerBridgeConfigResponder).not.toHaveBeenCalled();
+    expect(patchIpcHandlers).not.toHaveBeenCalled();
     expect(patchNet).not.toHaveBeenCalled();
   });
 
