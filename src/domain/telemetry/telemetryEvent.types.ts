@@ -141,6 +141,14 @@ export type TelemetryConfigurationEvent = CommonTelemetryProperties & {
        */
       start_recording_immediately?: boolean;
       /**
+       * Whether canvas elements are recorded in Session Replay
+       */
+      session_replay_canvas_recording?: boolean;
+      /**
+       * The quality preset requested for canvas recording in Session Replay
+       */
+      session_replay_canvas_recording_quality?: 'low' | 'medium' | 'high';
+      /**
        * Whether a proxy is used
        */
       use_proxy?: boolean;
@@ -397,6 +405,10 @@ export type TelemetryConfigurationEvent = CommonTelemetryProperties & {
        */
       maui_version?: string;
       /**
+       * The version of Unreal Engine used in an Unreal Engine application
+       */
+      unreal_version?: string;
+      /**
        * The threshold used for iOS App Hangs monitoring (in milliseconds)
        */
       app_hang_threshold?: number;
@@ -455,7 +467,7 @@ export type TelemetryConfigurationEvent = CommonTelemetryProperties & {
        */
       sdk_version?: string;
       /**
-       * The source of the SDK, e.g., 'browser', 'ios', 'android', 'flutter', 'react-native', 'unity', 'kotlin-multiplatform', 'maui'.
+       * The source of the SDK, e.g., 'browser', 'ios', 'android', 'flutter', 'react-native', 'unity', 'kotlin-multiplatform', 'maui', 'unreal'.
        */
       source?: string;
       /**
@@ -501,9 +513,17 @@ export type TelemetryConfigurationEvent = CommonTelemetryProperties & {
         [k: string]: unknown;
       };
       /**
-       * The percentage of sessions with Profiling enabled
+       * The percentage of sessions with Continuous profiling enabled
        */
       profiling_sample_rate?: number;
+      /**
+       * The percentage of sessions with Application Launch profiling enabled. For mobile SDKs, this is the sampling rate of application launch profiling
+       */
+      profiling_application_launch_sample_rate?: number;
+      /**
+       * Whether collecting a profile when an ANR occurs is enabled on Android
+       */
+      profiling_anr_enabled?: boolean;
       /**
        * Whether trace baggage is propagated to child spans
        */
@@ -532,6 +552,10 @@ export type TelemetryConfigurationEvent = CommonTelemetryProperties & {
        * Whether trace sampling rules are configured
        */
       use_trace_sampling_rules?: boolean;
+      /**
+       * Whether Electron IPC calls are tracked as resources
+       */
+      track_ipc_resources?: boolean;
       [k: string]: unknown;
     };
     [k: string]: unknown;
@@ -591,6 +615,7 @@ export type TelemetryCommonFeaturesUsage =
  * Schema of browser specific features usage
  */
 export type TelemetryBrowserFeaturesUsage =
+  | AttachElementStack
   | StartSessionReplayRecording
   | StartDurationVital
   | StopDurationVital
@@ -644,7 +669,8 @@ export interface CommonTelemetryProperties {
     | 'kotlin-multiplatform'
     | 'electron'
     | 'cpp'
-    | 'maui';
+    | 'maui'
+    | 'unreal';
   /**
    * The version of the SDK generating the telemetry event
    */
@@ -964,6 +990,13 @@ export interface AddViewLoadingTime {
    * Whether this call overwrote a previously set loading time
    */
   overwritten?: boolean;
+  [k: string]: unknown;
+}
+export interface AttachElementStack {
+  /**
+   * attachElementStack API
+   */
+  feature: 'attach-element-stack';
   [k: string]: unknown;
 }
 export interface StartSessionReplayRecording {

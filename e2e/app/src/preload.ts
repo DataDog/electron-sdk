@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   mainNetRequest: (url: string) => ipcRenderer.invoke('mainNetRequest', url),
   mainNetFetch: (url: string) => ipcRenderer.invoke('mainNetFetch', url),
   flushTransport: () => ipcRenderer.invoke('flushTransport'),
+  invoke: (channel: string) => ipcRenderer.invoke(channel),
   setGlobalContext: (context: Record<string, unknown>) => ipcRenderer.invoke('setGlobalContext', context),
   setGlobalContextProperty: (key: string, value: unknown) => ipcRenderer.invoke('setGlobalContextProperty', key, value),
   removeGlobalContextProperty: (key: string) => ipcRenderer.invoke('removeGlobalContextProperty', key),
