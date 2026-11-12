@@ -26,6 +26,7 @@ interface ElectronAppWindow {
     mainNetRequest: (url: string) => Promise<number>;
     mainNetFetch: (url: string) => Promise<number>;
     flushTransport: () => Promise<void>;
+    invoke: (channel: string) => Promise<unknown>;
     setGlobalContext: (context: Record<string, unknown>) => Promise<void>;
     setGlobalContextProperty: (key: string, value: unknown) => Promise<void>;
     removeGlobalContextProperty: (key: string) => Promise<void>;
@@ -198,6 +199,18 @@ export class MainPage {
 
   async flushTransport() {
     await this.page.evaluate(() => (globalThis as unknown as ElectronAppWindow).electronAPI.flushTransport());
+  }
+
+  /** Invokes `channel` from the renderer, and returns what the handler answered or the message `invoke` rejected with. */
+  async invoke(channel: string): Promise<{ result: unknown } | { error: string }> {
+    return this.page.evaluate(
+      (value) =>
+        (globalThis as unknown as ElectronAppWindow).electronAPI.invoke(value).then(
+          (result) => ({ result }),
+          (error: Error) => ({ error: error.message })
+        ),
+      channel
+    );
   }
 
   async setGlobalContext(context: Record<string, unknown>) {

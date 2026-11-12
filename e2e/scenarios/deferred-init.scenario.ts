@@ -1,7 +1,7 @@
 import { expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import type { InitConfiguration } from '@datadog/electron-sdk';
-import type { Intake } from '../lib/intake';
+import { byMessageResource, type Intake } from '../lib/intake';
 import { MainPage } from '../lib/mainPage';
 import { createUserDataDir, cleanupUserDataDir, intakeTest as test, launchDeferredInitApp } from '../lib/helpers';
 
@@ -88,5 +88,22 @@ test.describe('deferred init', () => {
 
     const errors = await mainPage.whileFlushing(() => intake.getSettledEventsByType('error'));
     expect(errors.map(({ body }) => body.error.message)).toEqual(['after reload']);
+  });
+
+  test('reports the calls to an IPC handler registered before init', async ({ intake }) => {
+    await launch(intake, { trackIpcResources: true });
+    await electronApp.evaluate(({ ipcMain }) => {
+      ipcMain.handle('e2e:settings', () => 'value');
+    });
+    await runInit(electronApp);
+    const mainPage = new MainPage(await openWindow(electronApp));
+
+    expect(await mainPage.invoke('e2e:settings')).toEqual({ result: 'value' });
+    await mainPage.flushTransport();
+
+    const resourceEvents = await intake.getSettledEventsByType('resource', {
+      predicate: byMessageResource('e2e:settings'),
+    });
+    expect(resourceEvents).toHaveLength(1);
   });
 });
