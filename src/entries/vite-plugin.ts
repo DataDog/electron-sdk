@@ -84,7 +84,7 @@ export function datadogVitePlugin(pluginOptions: DatadogBundlerPluginOptions = {
         return `${createInstrumentationBanner(options.format === 'es' ? 'esm' : 'cjs', chunk.fileName)}\n${code}`;
       }
       const banner = options.format === 'es' ? ESM_BANNER : CJS_BANNER;
-      return `${createBundledModeBanner(pluginOptions.bundledMode, options.format === 'es' ? 'esm' : 'cjs')}\n${banner}\n${code}`;
+      return `${createBundledModeBanner(pluginOptions.bundledMode, options.format === 'es' ? 'esm' : 'cjs', pluginOptions.copyRuntimeDependencies)}\n${banner}\n${code}`;
     },
   };
 

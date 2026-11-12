@@ -68,7 +68,7 @@ export function datadogEsbuildPlugin(pluginOptions: DatadogBundlerPluginOptions 
       const ddBanner =
         pluginOptions.bundledMode === true
           ? createInstrumentationBanner(isESM ? 'esm' : 'cjs')
-          : `${createBundledModeBanner(false, isESM ? 'esm' : 'cjs')}\n${isESM ? ESM_BANNER : CJS_BANNER}`;
+          : `${createBundledModeBanner(false, isESM ? 'esm' : 'cjs', pluginOptions.copyRuntimeDependencies)}\n${isESM ? ESM_BANNER : CJS_BANNER}`;
 
       // Prepend the Electron instrumentation banner
       const existingBanner = build.initialOptions.banner?.js;

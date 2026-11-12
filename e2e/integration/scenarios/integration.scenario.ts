@@ -18,6 +18,7 @@ import {
 } from '../lib/integrationFixture';
 import {
   isMainProcessEvent,
+  byMainProcessTelemetryType,
   type Intake,
   type EventBodyByType,
   type EventType,
@@ -169,6 +170,28 @@ test.describe('main execution context on startup @integration', () => {
     expect(mainContext.type).toBe('execution_context');
     expect(mainContext.session.id).toBeDefined();
     expect(mainContext.application.id).toBe('integration-test-app-id');
+  });
+});
+
+test.describe('configuration telemetry @integration', () => {
+  test('reports the effective bundler options at the intake', async ({ variant, window, intake }) => {
+    const [event] = await flushUntilEventArrives(
+      window,
+      intake,
+      'telemetry',
+      1,
+      undefined,
+      byMainProcessTelemetryType('configuration')
+    );
+    expect(event.body).toMatchObject({
+      telemetry: {
+        configuration: {
+          bundled_mode: variant === 'bundled',
+          copy_runtime_dependencies: variant === 'plugin-copy',
+          use_tracing: true,
+        },
+      },
+    });
   });
 });
 

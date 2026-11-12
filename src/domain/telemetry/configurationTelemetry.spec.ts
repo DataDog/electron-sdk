@@ -5,6 +5,8 @@ import type { RawTelemetryConfigurationData } from './rawTelemetryData.types';
 import type { Configuration } from '../../config';
 import { BatchSizes, BatchUploadFrequencies, buildConfiguration } from '../../config';
 import { createTestConfiguration } from '../../mocks.specUtil';
+import { createBundledModeBanner } from '../../entries/tracer-runtime';
+import { runInNewContext } from 'node:vm';
 
 let appReady: boolean;
 let displayCount: number;
@@ -38,6 +40,31 @@ describe('reportConfiguration', () => {
     vi.mocked(addConfiguration).mockClear();
     appReady = true;
     displayCount = 1;
+  });
+
+  afterEach(() => {
+    delete (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:bundledMode')];
+    delete (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:copyRuntimeDependencies')];
+  });
+
+  it('reports external mode without plugin copying when no bundler plugin is used', () => {
+    expect(report(createTestConfiguration())).toMatchObject({
+      bundled_mode: false,
+      copy_runtime_dependencies: false,
+    });
+  });
+
+  it.each([
+    { bundledMode: false, copyRuntimeDependencies: false },
+    { bundledMode: false, copyRuntimeDependencies: true },
+    { bundledMode: true, copyRuntimeDependencies: false },
+    { bundledMode: true, copyRuntimeDependencies: true },
+  ])('reports effective bundler options %j', ({ bundledMode, copyRuntimeDependencies }) => {
+    runInNewContext(createBundledModeBanner(bundledMode, 'cjs', copyRuntimeDependencies), { globalThis, Symbol });
+    expect(report(createTestConfiguration())).toMatchObject({
+      bundled_mode: bundledMode,
+      copy_runtime_dependencies: !bundledMode && copyRuntimeDependencies,
+    });
   });
 
   it('reports the configured sample rates', () => {

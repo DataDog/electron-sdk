@@ -1,5 +1,6 @@
 import { app, screen } from 'electron';
 import { resolveUploadFrequency, type Configuration } from '../../config';
+import { getBundlerConfiguration } from '../../entries/tracer-runtime';
 import { addConfiguration } from './Telemetry';
 import type { RawTelemetryConfigurationData } from './rawTelemetryData.types';
 
@@ -20,8 +21,8 @@ export interface ConfigurationTelemetryContext {
  * behaviour, and telemetry should describe what the SDK does. Sample rates nested under another rate
  * are the exception — they are reported as configured, matching the other SDKs, so
  * `session_replay_sample_rate` is the rate applied to sampled sessions rather than the combined one.
- * Options with no schema field are omitted rather than forced into an unrelated one — see
- * {@link buildConfigurationTelemetry}.
+ * Electron build options extend the shared configuration schema through its allowed additional
+ * properties. Other options with no schema field are omitted rather than forced into an unrelated one.
  */
 export function reportConfiguration(configuration: Configuration, context: ConfigurationTelemetryContext): void {
   addConfiguration(buildConfigurationTelemetry(configuration, context));
@@ -31,7 +32,10 @@ function buildConfigurationTelemetry(
   configuration: Configuration,
   { useTracing, tracerVersion }: ConfigurationTelemetryContext
 ): RawTelemetryConfigurationData {
+  const { bundledMode, copyRuntimeDependencies } = getBundlerConfiguration();
   return {
+    bundled_mode: bundledMode,
+    copy_runtime_dependencies: copyRuntimeDependencies,
     session_sample_rate: configuration.sessionSampleRate,
     trace_sample_rate: configuration.traceSampleRate,
     session_replay_sample_rate: configuration.sessionReplaySampleRate,

@@ -26,7 +26,12 @@ export type TelemetryType = NonNullable<TelemetryEvent['telemetry']['type']>;
 export type RawTelemetryType = RawTelemetryData['telemetry']['type'];
 
 /** The SDK configuration reported by a configuration event. */
-export type RawTelemetryConfigurationData = TelemetryConfigurationEvent['telemetry']['configuration'];
+export type RawTelemetryConfigurationData = TelemetryConfigurationEvent['telemetry']['configuration'] & {
+  /** Whether the SDK and its tracer use the emitted bundled runtime. */
+  bundled_mode?: boolean;
+  /** Whether the bundler plugin stages runtime package trees. Always false in bundled mode. */
+  copy_runtime_dependencies?: boolean;
+};
 
 /** A single public-API usage reported by a usage event. */
 export type RawTelemetryUsageData = TelemetryUsageEvent['telemetry']['usage'];

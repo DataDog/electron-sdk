@@ -143,7 +143,7 @@ export class DatadogWebpackPlugin {
       banner:
         this.pluginOptions.bundledMode === true
           ? createInstrumentationBanner('cjs')
-          : `${createBundledModeBanner(false)}\ntry{require("@datadog/electron-sdk/instrument")}catch{}`,
+          : `${createBundledModeBanner(false, 'cjs', this.pluginOptions.copyRuntimeDependencies)}\ntry{require("@datadog/electron-sdk/instrument")}catch{}`,
       raw: true,
       entryOnly: true,
     }).apply(compiler);
