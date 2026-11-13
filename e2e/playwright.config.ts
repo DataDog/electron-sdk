@@ -3,7 +3,7 @@ import type { IntegrationFixtures } from './integration/lib/integrationFixture';
 
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { getCompatibilityRun } from './lib/compatibility';
+import variants from './integration/variants.json';
 const INTEGRATION_APPS = readdirSync(join(__dirname, 'integration/apps'), { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
   .map((entry) => entry.name)
@@ -12,7 +12,7 @@ const INTEGRATION_MODES = ['dev', 'packaged'] as const;
 
 export type IntegrationApp = (typeof INTEGRATION_APPS)[number];
 export type IntegrationMode = (typeof INTEGRATION_MODES)[number];
-export type IntegrationVariant = null | 'plugin-copy';
+export type IntegrationVariant = null | 'plugin-copy' | 'bundled';
 
 export default defineConfig<IntegrationFixtures>({
   timeout: 60000, // Integration scenarios include app startup and event propagation.
@@ -35,18 +35,14 @@ export default defineConfig<IntegrationFixtures>({
       testMatch: '**/*.scenario.ts',
     },
     ...INTEGRATION_APPS.flatMap((app) =>
-      INTEGRATION_MODES.map((mode) => ({
-        name: `${app}-${mode}`,
-        testDir: './integration/scenarios',
-        testMatch: '**/*.scenario.ts',
-        use: { app, mode, variant: null },
-      }))
+      variants.flatMap(({ name }) =>
+        INTEGRATION_MODES.map((mode) => ({
+          name: `${app}${name === 'default' ? '' : `-${name}`}-${mode}`,
+          testDir: './integration/scenarios',
+          testMatch: '**/*.scenario.ts',
+          use: { app, mode, variant: name === 'default' ? null : (name as IntegrationVariant) },
+        }))
+      )
     ),
-    ...(getCompatibilityRun() ? INTEGRATION_APPS : ['electron-builder-vite']).map((app) => ({
-      name: `${app}-plugin-copy-packaged`,
-      testDir: './integration/scenarios',
-      testMatch: '**/*.scenario.ts',
-      use: { app, mode: 'packaged' as const, variant: 'plugin-copy' as const },
-    })),
   ],
 });

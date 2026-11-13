@@ -20,6 +20,7 @@ it('copies local sources and Git refs without importing host installs or generat
     'node_modules/electron/index.js', // Exclude root dependencies installed on the host.
     'e2e/app/node_modules/electron/index.js', // Exclude dependencies nested inside fixture apps too.
     'e2e/app/dist/main.js', // Exclude compiled app output so the container builds it afresh.
+    'e2e/integration/generated/forge-vite-bundled/package.json',
     'e2e/compatibility/generated/electron-41/metadata.json', // Exclude previously prepared compatibility fixtures.
     'windows-test-artifacts/previous/container.log', // Exclude artifacts from previous Windows runs.
     '.npm-cache/file', // Exclude the host's npm cache.

@@ -469,9 +469,21 @@ HTTP, child-process, and opt-in filesystem instrumentation without upstream bund
 Bundled third-party libraries require additional build-time instrumentation; external libraries
 remain eligible for normal runtime instrumentation.
 
-The SDK remains external in both modes. With `copyRuntimeDependencies: true`, plugins copy its
-runtime dependency tree, skipping `dd-trace-electron` when `bundledMode: true`. The tracer remains
-installed, and application packagers may still stage it. See [runtime dependency setup](RUNTIME_DEPENDENCIES.md).
+With `bundledMode: true`, plugins allow the SDK to be bundled and emit a `.datadog` runtime directory
+containing instrumentation, preload, tracer, and tracer licenses. Instrumentation loads the colocated tracer
+and stores it under `Symbol.for('@datadog/electron-sdk:embeddedTracer')`; the SDK in the application
+bundle reuses that instance. Native `createRequire` calls prevent bundlers from rewriting Electron and
+preload resolution. Bundled instrumentation prefers its colocated preload.
+
+Runtime assets are emitted regardless of `copyRuntimeDependencies`; SDK and tracer package trees
+are not copied in bundled mode. Default mode retains externalization and optional package copying.
+Packagers may still stage installed production dependencies; fully bundled applications can use a
+build-time SDK dependency. See [runtime dependency setup](RUNTIME_DEPENDENCIES.md).
+
+Configuration telemetry reports effective `bundled_mode` and `copy_runtime_dependencies` booleans.
+The plugins stamp the copy option alongside the mode before loading instrumentation, so it remains
+available when the SDK is external or inlined. Bundled mode always reports copying as false; without
+a plugin, both values are false.
 
 ## Two-Tier Configuration
 

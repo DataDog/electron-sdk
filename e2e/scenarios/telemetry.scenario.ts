@@ -81,6 +81,8 @@ test('SDK sends a configuration telemetry event on init', async ({ mainPage, int
     use_proxy: true,
     is_main_process: true,
     track_errors: true,
+    bundled_mode: false,
+    copy_runtime_dependencies: false,
   });
   // batch_size is the batch window in milliseconds, which for this SDK is the upload period itself.
   const { batch_size: batchSize, batch_upload_frequency: uploadFrequency } = event.telemetry.configuration;

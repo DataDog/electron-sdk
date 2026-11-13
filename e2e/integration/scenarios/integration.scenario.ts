@@ -3,10 +3,10 @@
  *
  * Each test runs once per Playwright project (app × mode, including configured variants).
  */
-import { dirname, join, posix, sep } from 'node:path';
+import { basename, dirname, join, posix, relative, sep } from 'node:path';
 import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { cp, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import {
   test,
@@ -16,10 +16,9 @@ import {
   findDevMainScript,
   findPackagedBinary,
 } from '../lib/integrationFixture';
-import { getElectronBuilderViteArchivePath } from '../lib/electronBuilderVite';
-import { getCompatibilityRun } from '../../lib/compatibility';
 import {
   isMainProcessEvent,
+  byMainProcessTelemetryType,
   type Intake,
   type EventBodyByType,
   type EventType,
@@ -42,26 +41,24 @@ interface IntegrationTestWindow {
   };
 }
 
-test.describe('electron-builder runtime dependency packaging @integration', () => {
+test.describe('SDK runtime dependency packaging @integration', () => {
   test('stages Datadog dependencies according to the plugin option', ({ app, mode, variant }) => {
-    test.skip(
-      mode !== 'packaged' || (!getCompatibilityRun() && app !== 'electron-builder-vite'),
-      'packaged compatibility apps or electron-builder-vite only'
-    );
+    test.skip(mode !== 'packaged', 'packaged apps only');
 
     const appDir = getIntegrationAppDirectory(app, variant);
-    const workflow = variant === 'plugin-copy' ? 'plugin-copy' : 'default-copy';
-    const expectsPluginCopy = variant === 'plugin-copy';
-    const buildOutput = dirname(findDevMainScript(appDir, variant));
+    const bundled = variant === 'bundled';
+    const expectsPluginCopy = variant === 'plugin-copy' && !bundled;
+    const buildOutput = dirname(findDevMainScript(appDir));
     expect(existsSync(join(buildOutput, 'node_modules'))).toBe(expectsPluginCopy);
+    for (const file of ['instrument.cjs', 'preload.js', 'tracer.cjs', 'tracer.LICENSE']) {
+      expect(existsSync(join(buildOutput, '.datadog', file))).toBe(bundled);
+    }
 
-    const binary = findPackagedBinary(appDir, variant);
+    const binary = findPackagedBinary(appDir);
     const archivePath =
-      app === 'electron-builder-vite'
-        ? getElectronBuilderViteArchivePath(appDir, variant)
-        : process.platform === 'darwin'
-          ? join(dirname(dirname(binary)), 'Resources', 'app.asar')
-          : join(dirname(binary), 'resources', 'app.asar');
+      process.platform === 'darwin'
+        ? join(dirname(dirname(binary)), 'Resources', 'app.asar')
+        : join(dirname(binary), 'resources', 'app.asar');
     expect(existsSync(archivePath)).toBe(true);
 
     const requireFromApp = createRequire(join(appDir, 'package.json'));
@@ -70,53 +67,99 @@ test.describe('electron-builder runtime dependency packaging @integration', () =
     };
     const archiveEntries = listPackage(archivePath, { isPack: false }).map((entry) => entry.split(sep).join(posix.sep));
 
-    if (!expectsPluginCopy || app === 'electron-builder-vite') {
+    const hasNestedSdk = archiveEntries.some(
+      (entry) =>
+        entry.endsWith('/node_modules/@datadog/electron-sdk/package.json') && !entry.startsWith('/node_modules/')
+    );
+    const hasNestedTracer = archiveEntries.some(
+      (entry) => entry.endsWith('/node_modules/dd-trace-electron/package.json') && !entry.startsWith('/node_modules/')
+    );
+    expect(hasNestedSdk).toBe(expectsPluginCopy);
+    expect(hasNestedTracer).toBe(expectsPluginCopy);
+    if (!bundled && !expectsPluginCopy) {
+      expect(archiveEntries).toContain('/node_modules/@datadog/electron-sdk/package.json');
       expect(archiveEntries).toContain('/node_modules/dd-trace-electron/package.json');
     }
-
-    if (app === 'electron-builder-vite') {
-      expect(archiveEntries).toContain('/node_modules/@datadog/electron-sdk/package.json');
-      expect(archiveEntries).toContain('/node_modules/@datadog/electron-sdk/dist/tracer.cjs');
-      expect(archiveEntries).toContain(`/dist/${workflow}/main.js`);
-      expect(archiveEntries.includes(`/dist/${workflow}/node_modules/@datadog/electron-sdk/package.json`)).toBe(
-        expectsPluginCopy
-      );
-      expect(archiveEntries.includes(`/dist/${workflow}/node_modules/@datadog/electron-sdk/dist/tracer.cjs`)).toBe(
-        expectsPluginCopy
-      );
-      // The plugin-copy variant opts into bundled mode: only packager-owned staging retains the tracer package.
-      expect(archiveEntries).not.toContain(`/dist/${workflow}/node_modules/dd-trace-electron/package.json`);
-    } else {
-      const hasNestedDependencies = archiveEntries.some(
-        (entry) =>
-          entry.endsWith('/node_modules/@datadog/electron-sdk/dist/tracer.cjs') && !entry.startsWith('/node_modules/')
-      );
-      expect(hasNestedDependencies).toBe(expectsPluginCopy);
-      if (!expectsPluginCopy) {
-        expect(archiveEntries).toContain('/node_modules/@datadog/electron-sdk/package.json');
-        expect(archiveEntries).toContain('/node_modules/@datadog/electron-sdk/dist/tracer.cjs');
-      }
+    for (const file of ['instrument.cjs', 'preload.js', 'tracer.cjs', 'tracer.LICENSE']) {
+      expect(archiveEntries.some((entry) => entry.endsWith(`/.datadog/${file}`))).toBe(bundled);
     }
   });
 });
 
 test.describe('tracer runtime selection @integration', () => {
-  test('loads only the tracer selected by bundledMode', async ({ app, variant, window, electronApp }) => {
+  test('loads only the tracer selected by bundledMode', async ({ variant, window, electronApp }) => {
     await window.waitForLoadState('load');
-    const bundled =
-      app === 'forge-webpack' ||
-      app === 'forge-esbuild-esm' ||
-      (app === 'electron-builder-vite' && variant === 'plugin-copy');
-    const runtime = await electronApp.evaluate(() => {
+    const bundled = variant === 'bundled';
+    const runtime = await electronApp.evaluate(({ session }) => {
       const requireFn = process.getBuiltinModule('node:module').createRequire(process.execPath);
       const loaded = Object.keys(requireFn.cache).map((file) => file.split('\\').join('/'));
       return {
         bundled: (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:bundledMode')] === true,
-        embedded: loaded.some((file) => file.endsWith('/dist/tracer.cjs')),
+        embedded: loaded.some((file) => file.endsWith('/.datadog/tracer.cjs')),
+        sdkPackage: loaded.some((file) => file.includes('/node_modules/@datadog/electron-sdk/')),
+        emittedPreload: session.defaultSession
+          .getPreloadScripts()
+          .some((script) => script.filePath.split('\\').join('/').endsWith('/.datadog/preload.js')),
         external: loaded.some((file) => file.endsWith('/dd-trace-electron/index.electron.js')),
       };
     });
-    expect(runtime).toEqual({ bundled, embedded: bundled, external: !bundled });
+    expect(runtime).toEqual({
+      bundled,
+      embedded: bundled,
+      external: !bundled,
+      sdkPackage: !bundled,
+      emittedPreload: bundled,
+    });
+  });
+});
+
+test.describe('standalone bundled output @integration', () => {
+  test('initializes and sends events without installed SDK or tracer packages', async ({
+    app,
+    mode,
+    variant,
+    intake,
+  }) => {
+    test.skip(mode !== 'dev' || variant !== 'bundled', 'bundled development outputs only');
+    const appDirectory = getIntegrationAppDirectory(app, variant);
+    const entry = findDevMainScript(appDirectory);
+    const output = dirname(entry);
+    const isolated = await mkdtemp(join(tmpdir(), 'electron-sdk-standalone-'));
+    let isolatedApp: ElectronApplication | undefined;
+    try {
+      await cp(output, isolated, {
+        recursive: true,
+        filter: (source) => !relative(output, source).split(sep).includes('node_modules'),
+      });
+      const requireFromOutput = createRequire(join(isolated, 'entry.cjs'));
+      expect(() => requireFromOutput.resolve('@datadog/electron-sdk')).toThrow();
+      expect(() => requireFromOutput.resolve('dd-trace-electron')).toThrow();
+      isolatedApp = await launchApp(
+        appDirectory,
+        'dev',
+        intake,
+        join(isolated, 'user-data'),
+        join(isolated, basename(entry))
+      );
+      // Every maintained fixture creates its first window after SDK init resolves.
+      // Waiting only for tracer init can quit before SDK event collection and shutdown hooks start.
+      await isolatedApp.firstWindow();
+      await expect
+        .poll(() =>
+          isolatedApp!.evaluate(
+            () =>
+              (globalThis as unknown as { _ddtrace?: { _tracingInitialized?: boolean } })._ddtrace?._tracingInitialized
+          )
+        )
+        .toBe(true);
+      await isolatedApp.close();
+      isolatedApp = undefined;
+      const contexts = await intake.getEventsByType('execution_context', { predicate: isMainProcessEvent });
+      expect(contexts.length).toBeGreaterThan(0);
+    } finally {
+      await isolatedApp?.close();
+      await rm(isolated, { recursive: true, force: true });
+    }
   });
 });
 
@@ -127,6 +170,28 @@ test.describe('main execution context on startup @integration', () => {
     expect(mainContext.type).toBe('execution_context');
     expect(mainContext.session.id).toBeDefined();
     expect(mainContext.application.id).toBe('integration-test-app-id');
+  });
+});
+
+test.describe('configuration telemetry @integration', () => {
+  test('reports the effective bundler options at the intake', async ({ variant, window, intake }) => {
+    const [event] = await flushUntilEventArrives(
+      window,
+      intake,
+      'telemetry',
+      1,
+      undefined,
+      byMainProcessTelemetryType('configuration')
+    );
+    expect(event.body).toMatchObject({
+      telemetry: {
+        configuration: {
+          bundled_mode: variant === 'bundled',
+          copy_runtime_dependencies: variant === 'plugin-copy',
+          use_tracing: true,
+        },
+      },
+    });
   });
 });
 
@@ -231,7 +296,7 @@ test.describe('crash reporting across restart @integration', () => {
 
     try {
       // Phase 1: Launch, confirm SDK is running, then crash
-      const firstApp = await launchApp(appDir, mode, intake, userDataDir, variant);
+      const firstApp = await launchApp(appDir, mode, intake, userDataDir);
       activeApp = firstApp;
       const firstWindow = await firstApp.firstWindow();
       await firstWindow.waitForLoadState('load');
@@ -251,7 +316,7 @@ test.describe('crash reporting across restart @integration', () => {
       intake.clear();
 
       // Phase 2: Relaunch — crash dump is processed on startup, error event sent to intake
-      const secondApp = await launchApp(appDir, mode, intake, userDataDir, variant);
+      const secondApp = await launchApp(appDir, mode, intake, userDataDir);
       activeApp = secondApp;
       const secondWindow = await secondApp.firstWindow();
       await secondWindow.waitForLoadState('load');

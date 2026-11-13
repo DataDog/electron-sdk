@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, readFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { getTracerModule } from './tracer-runtime';
+import { getBundlerConfiguration, getTracerModule } from './tracer-runtime';
 import { datadogEsbuildPlugin } from './esbuild-plugin';
 import { datadogVitePlugin } from './vite-plugin';
 import { DatadogWebpackPlugin } from './webpack-plugin';
@@ -13,6 +13,7 @@ vi.mock('node:module', () => ({
 }));
 
 vi.mock('node:fs', () => ({
+  copyFileSync: vi.fn(),
   cpSync: vi.fn(),
   existsSync: vi.fn(),
   mkdirSync: vi.fn(),
@@ -99,9 +100,19 @@ describe('runtime dependency copy selection', () => {
     const options = { bundledMode, copyRuntimeDependencies: true };
     const assertCopied = () => {
       const destinations = vi.mocked(cpSync).mock.calls.map(([, dest]) => String(dest).split('\\').join('/'));
-      expect(destinations.some((file) => file.endsWith('/@datadog/electron-sdk'))).toBe(true);
+      expect(destinations.some((file) => file.endsWith('/@datadog/electron-sdk'))).toBe(!bundledMode);
       expect(destinations.some((file) => file.endsWith('/dd-trace-electron'))).toBe(!bundledMode);
       expect(destinations.some((file) => file.endsWith('/dc-polyfill'))).toBe(!bundledMode);
+      if (bundledMode) {
+        const assets = vi.mocked(copyFileSync).mock.calls.map(([, dest]) => String(dest).split('\\').join('/'));
+        expect(assets).toEqual([
+          '/output/.datadog/instrument.cjs',
+          '/output/.datadog/preload.js',
+          '/output/.datadog/tracer.cjs',
+          '/output/.datadog/tracer.LICENSE',
+        ]);
+      }
+      vi.mocked(copyFileSync).mockClear();
       vi.mocked(cpSync).mockClear();
     };
 
@@ -119,51 +130,75 @@ describe('runtime dependency copy selection', () => {
 describe('bundled mode', () => {
   afterEach(() => {
     delete (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:bundledMode')];
+    delete (globalThis as Record<symbol, unknown>)[Symbol.for('@datadog/electron-sdk:copyRuntimeDependencies')];
   });
 
-  it.each([false, true])('sets bundledMode=%s before static ESM instrumentation imports', (bundledMode) => {
-    const vite = datadogVitePlugin({ bundledMode });
+  it.each([
+    { bundledMode: false, copyRuntimeDependencies: false },
+    { bundledMode: false, copyRuntimeDependencies: true },
+    { bundledMode: true, copyRuntimeDependencies: false },
+  ])('sets build options %j before static ESM instrumentation imports', (options) => {
+    const { bundledMode, copyRuntimeDependencies } = options;
+    const vite = datadogVitePlugin(options);
     const initialOptions = { format: 'esm', banner: { js: '' } };
-    datadogEsbuildPlugin({ bundledMode }).setup({ initialOptions, onEnd: vi.fn() });
+    datadogEsbuildPlugin(options).setup({ initialOptions, onEnd: vi.fn() });
     for (const banner of [vite.renderChunk!('', { isEntry: true }, { format: 'es' })!, initialOptions.banner.js]) {
       const assertion = encodeURIComponent(
-        `if(globalThis[Symbol.for('@datadog/electron-sdk:bundledMode')]!==${bundledMode}) throw Error('Mode was set too late');`
+        `if(globalThis[Symbol.for('@datadog/electron-sdk:bundledMode')]!==${bundledMode} || globalThis[Symbol.for('@datadog/electron-sdk:copyRuntimeDependencies')]!==${copyRuntimeDependencies}) throw Error('Build options were set too late');`
       );
       // A static dependency reads the mode before the entry's body executes. Resolve the defensive
       // instrumentation require from an absent package tree so this check does not need build output.
-      const source = `${banner.replace('import.meta.url', '"file:///uninstalled/main.mjs"')}
+      const source = `${banner
+        .replace('import.meta.url', '"file:///uninstalled/main.mjs"')
+        .replace('import "./.datadog/instrument.cjs";', `import "data:text/javascript,${assertion}";`)}
 import "data:text/javascript,${assertion}";`;
       const result = spawnSync(process.execPath, ['--input-type=module', '-e', source], { encoding: 'utf8' });
       expect(result.status, result.stderr).toBe(0);
     }
   });
 
-  it.each([undefined, false, true])('selects bundledMode=%s before instrumentation in all plugins', (bundledMode) => {
+  it.each([
+    {},
+    { bundledMode: false, copyRuntimeDependencies: false },
+    { bundledMode: false, copyRuntimeDependencies: true },
+    { bundledMode: true },
+    { bundledMode: true, copyRuntimeDependencies: true },
+  ])('selects effective build options %j before instrumentation in all plugins', (options) => {
+    const { bundledMode, copyRuntimeDependencies } = options;
     const expectedModule = bundledMode === true ? './tracer.cjs' : 'dd-trace-electron';
     const assertBanner = (banner: string) => {
       const instrument = vi.fn((id: string) => {
-        expect(id).toBe('@datadog/electron-sdk/instrument');
+        expect(id).toBe(bundledMode === true ? './.datadog/instrument.cjs' : '@datadog/electron-sdk/instrument');
         expect(getTracerModule()).toBe(expectedModule);
+        expect(getBundlerConfiguration()).toEqual({
+          bundledMode: bundledMode === true,
+          copyRuntimeDependencies: bundledMode !== true && copyRuntimeDependencies === true,
+        });
       });
       const requireFn = (id: string) => (id === 'node:module' ? { createRequire: () => instrument } : instrument(id));
       runInNewContext(banner, { globalThis, Symbol, require: requireFn, __filename: '/app/main.cjs' });
       expect(instrument).toHaveBeenCalledOnce();
     };
 
-    const vite = datadogVitePlugin({ bundledMode });
+    const vite = datadogVitePlugin(options);
     const external = vite.config!().build.rollupOptions.external;
     expect(external.some((pattern) => pattern.test('dd-trace-electron'))).toBe(bundledMode !== true);
+    expect(external.some((pattern) => pattern.test('@datadog/electron-sdk'))).toBe(bundledMode !== true);
     assertBanner(vite.renderChunk!('', { isEntry: true }, { format: 'cjs' })!);
 
     const initialOptions = { external: ['electron'], banner: { js: '' } };
-    datadogEsbuildPlugin({ bundledMode }).setup({ initialOptions, onEnd: vi.fn() });
+    datadogEsbuildPlugin(options).setup({ initialOptions, onEnd: vi.fn() });
     expect(initialOptions.external.includes('dd-trace-electron')).toBe(bundledMode !== true);
     expect(initialOptions.external).toContain('electron');
+    expect(initialOptions.external.includes('@datadog/electron-sdk')).toBe(bundledMode !== true);
     assertBanner(initialOptions.banner.js);
 
     const compiler = createWebpackCompiler(vi.fn(), assertBanner);
-    new DatadogWebpackPlugin({ bundledMode }).apply(compiler);
+    new DatadogWebpackPlugin(options).apply(compiler);
     expect((compiler.options.externals as RegExp[]).some((pattern) => pattern.test('dd-trace-electron'))).toBe(
+      bundledMode !== true
+    );
+    expect((compiler.options.externals as RegExp[]).some((pattern) => pattern.test('@datadog/electron-sdk'))).toBe(
       bundledMode !== true
     );
   });

@@ -23,7 +23,11 @@ export async function copyWindowsContainerWorkspace(source: string, destination:
       // Keep Git objects and refs intact, including names which overlap with artifact directories.
       if (relative === '.git' || relative.startsWith('.git/')) return true;
       if (rootArtifacts.has(relative.split('/')[0])) return false;
-      if (relative === 'e2e/compatibility/generated' || relative === 'e2e/integration/integration-sdk.tgz')
+      if (
+        relative === 'e2e/compatibility/generated' ||
+        relative === 'e2e/integration/generated' ||
+        relative === 'e2e/integration/integration-sdk.tgz'
+      )
         return false;
       return !buildDirectories.has(path.basename(entry)) && !entry.endsWith('.tsbuildinfo');
     },

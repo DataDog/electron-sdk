@@ -13,6 +13,30 @@ describe('resolvePreloadPath', () => {
     expect(result).toBe('/node_modules/@datadog/electron-sdk/dist/preload.js');
   });
 
+  it('prefers the emitted preload in bundled mode even when the SDK is installed', async () => {
+    const { resolvePreloadPath } = await import('./browserWindow');
+    const mode = Symbol.for('@datadog/electron-sdk:bundledMode');
+    (globalThis as Record<symbol, unknown>)[mode] = true;
+    try {
+      const resolve = vi.fn((id: string) => (id === './preload' ? '/app/.datadog/preload.js' : '/sdk/preload.js'));
+      expect(resolvePreloadPath(resolve)).toBe('/app/.datadog/preload.js');
+      expect(resolve).toHaveBeenCalledExactlyOnceWith('./preload');
+    } finally {
+      delete (globalThis as Record<symbol, unknown>)[mode];
+    }
+  });
+
+  it('resolves the colocated preload when the SDK package is unavailable', async () => {
+    const { resolvePreloadPath } = await import('./browserWindow');
+    const resolve = vi.fn((id: string) => {
+      if (id === './preload') return '/app/.datadog/preload.js';
+      throw new Error('MODULE_NOT_FOUND');
+    });
+    expect(resolvePreloadPath(resolve)).toBe('/app/.datadog/preload.js');
+    expect(resolve).toHaveBeenNthCalledWith(1, '@datadog/electron-sdk/preload');
+    expect(resolve).toHaveBeenNthCalledWith(2, './preload');
+  });
+
   it('returns undefined and warns when the package cannot be resolved', async () => {
     const { resolvePreloadPath } = await import('./browserWindow');
     const result = resolvePreloadPath(() => {
