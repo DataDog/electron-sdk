@@ -222,6 +222,13 @@ module.exports = {
 };
 ```
 
+The Webpack plugin also applies `dd-trace-electron`'s experimental build-time instrumentation,
+preserving tracing for supported CommonJS dependencies when Webpack bundles them. This applies
+with either value of `bundledMode`. The plugin sets `optimization.minimize: false` for the main
+compilation because the tracer plugin does not support minification. ESM dependency modules are
+not instrumented by the tracer's Webpack plugin. Apply the SDK plugin to the main-process config;
+renderer bundling is separate.
+
 **esbuild:**
 
 ```ts
@@ -229,9 +236,23 @@ module.exports = {
 import { datadogEsbuildPlugin } from '@datadog/electron-sdk/esbuild-plugin';
 
 await esbuild.build({
+  bundle: true,
+  platform: 'node',
+  external: ['electron'],
   plugins: [datadogEsbuildPlugin()],
 });
 ```
+
+The esbuild plugin also applies `dd-trace-electron/esbuild` when `bundle: true`, preserving supported
+dependency instrumentation in CJS and ESM application output with either value of `bundledMode`.
+When `minify` or `minifyIdentifiers` is enabled, the SDK plugin enables `keepNames` as required for
+tracing. Transpile-only builds (`bundle: false`, the esbuild default) keep normal runtime imports
+and skip build-time dependency instrumentation. `bundledMode: true` requires `bundle: true`.
+
+Plain Forge applications and `tsc`-only main builds can use normal runtime SDK dependencies without
+bundling the SDK. Packaging files into `app.asar` does not inline their JavaScript imports. The SDK's
+Vite plugin handles startup and runtime assets; it does not add tracer build-time instrumentation
+for bundled third-party dependencies.
 
 ## Available Features
 

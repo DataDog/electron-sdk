@@ -11,11 +11,16 @@
  *    into the build output's node_modules only when `copyRuntimeDependencies: true`.
  *    Copying is disabled by default; the application packager must stage them.
  *    dd-trace-electron stays external unless bundledMode is enabled.
+ * 4. Applies dd-trace-electron/esbuild to dependencies when bundling, preserving
+ *    function names when minifying identifiers. Transpile-only builds keep runtime loading.
  *
  * Usage:
  *   import { datadogEsbuildPlugin } from '@datadog/electron-sdk/esbuild-plugin';
  *
  *   await esbuild.build({
+ *     bundle: true,
+ *     platform: 'node',
+ *     external: ['electron'],
  *     plugins: [datadogEsbuildPlugin()],
  *   });
  */
@@ -35,7 +40,11 @@ interface EsbuildPlugin {
   name: string;
   setup: (build: {
     initialOptions: {
+      bundle?: boolean;
       format?: string;
+      minify?: boolean;
+      minifyIdentifiers?: boolean;
+      keepNames?: boolean;
       banner?: { js?: string };
       external?: string[];
       outdir?: string;
@@ -44,6 +53,9 @@ interface EsbuildPlugin {
     onEnd: (cb: () => void) => void;
   }) => void;
 }
+
+const currentFile = typeof __filename !== 'undefined' ? __filename : fileURLToPath(import.meta.url);
+const _require = createRequire(currentFile);
 
 const CJS_BANNER = 'try{require("@datadog/electron-sdk/instrument")}catch{}';
 
@@ -64,6 +76,10 @@ export function datadogEsbuildPlugin(pluginOptions: DatadogBundlerPluginOptions 
   return {
     name: 'datadog-electron-sdk',
     setup(build) {
+      const bundling = build.initialOptions.bundle === true;
+      if (pluginOptions.bundledMode === true && !bundling) {
+        throw new Error('Datadog bundledMode requires esbuild bundle: true.');
+      }
       const isESM = build.initialOptions.format === 'esm';
       const ddBanner =
         pluginOptions.bundledMode === true
@@ -77,19 +93,22 @@ export function datadogEsbuildPlugin(pluginOptions: DatadogBundlerPluginOptions 
         js: existingBanner ? `${existingBanner}\n${ddBanner}` : ddBanner,
       };
 
-      // Externalize @datadog/electron-sdk
-      const external = build.initialOptions.external ?? [];
-      for (const pkg of pluginOptions.bundledMode === true ? [] : ['@datadog/electron-sdk', 'dd-trace-electron']) {
-        if (!external.includes(pkg)) {
-          external.push(pkg);
+      if (bundling) {
+        const external = build.initialOptions.external ?? [];
+        for (const pkg of pluginOptions.bundledMode === true ? [] : ['@datadog/electron-sdk', 'dd-trace-electron']) {
+          if (!external.includes(pkg)) external.push(pkg);
         }
+        build.initialOptions.external = external;
+
+        // The tracer needs original function names, including in minified dependency factories.
+        if (build.initialOptions.minify || build.initialOptions.minifyIdentifiers) {
+          build.initialOptions.keepNames = true;
+        }
+        const tracingPlugin = _require('dd-trace-electron/esbuild') as EsbuildPlugin;
+        tracingPlugin.setup(build);
       }
-      build.initialOptions.external = external;
 
       if (pluginOptions.bundledMode !== true && pluginOptions.copyRuntimeDependencies !== true) return;
-
-      const currentFile = typeof __filename !== 'undefined' ? __filename : fileURLToPath(import.meta.url);
-      const _require = createRequire(currentFile);
 
       build.onEnd(() => {
         const outDir =
