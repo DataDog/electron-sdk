@@ -27,19 +27,13 @@ test.describe('Windows unsigned payload extraction @integration @windows', () =>
     try {
       const extractionRoot = createLongExtractionRoot(temporaryDirectory);
 
-      // Reproduce the loose dd-trace MAX_PATH hazard from https://github.com/DataDog/electron-sdk/pull/182.
-      // The fixture explicitly enables copying, preserving this check across the default change in
-      // https://github.com/DataDog/electron-sdk/pull/216.
+      // The tracer is embedded in the SDK; plugin copying must not restore its deep package tree.
       const pluginCopyAppDirectory = getIntegrationAppDirectory(app, 'plugin-copy');
       const pluginCopyOutput = dirname(findDevMainScript(pluginCopyAppDirectory, 'plugin-copy'));
       const pluginCopyFiles = await listPayloadFiles(pluginCopyOutput);
-      const overlongDependencies = pluginCopyFiles.filter(
-        (file) =>
-          file.startsWith(join('node_modules', 'dd-trace') + sep) &&
-          join(extractionRoot, file).length >= LEGACY_WINDOWS_MAX_PATH
-      );
-      expect(overlongDependencies.length, 'Plugin copy must exceed MAX_PATH at this extraction root').toBeGreaterThan(
-        0
+      expect(pluginCopyFiles).toContain(join('node_modules', '@datadog', 'electron-sdk', 'dist', 'tracer.cjs'));
+      expect(pluginCopyFiles.some((file) => file.startsWith(join('node_modules', 'dd-trace-electron') + sep))).toBe(
+        false
       );
 
       // With copying disabled, every loose payload file fits under the same destination.

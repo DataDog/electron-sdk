@@ -2,15 +2,16 @@
  * esbuild plugin for Electron apps using the Datadog Electron SDK.
  *
  * This plugin:
- * 1. Externalizes dd-trace and @datadog/electron-sdk so they remain as runtime
+ * 1. Externalizes @datadog/electron-sdk so it remains as runtime
  *    dependencies instead of being bundled.
  * 2. Prepends a banner that loads @datadog/electron-sdk/instrument before the
  *    main entry, using require for CJS output and createRequire for ESM output.
  *    This registers the SDK preload and patches BrowserWindow for automatic
  *    preload injection.
- * 3. Copies dd-trace, @datadog/electron-sdk, and their runtime dependencies
+ * 3. Copies @datadog/electron-sdk and its runtime dependencies
  *    into the build output's node_modules only when `copyRuntimeDependencies: true`.
  *    Copying is disabled by default; the application packager must stage them.
+ *    dd-trace-electron stays external unless bundledMode is enabled.
  *
  * Usage:
  *   import { datadogEsbuildPlugin } from '@datadog/electron-sdk/esbuild-plugin';
@@ -25,6 +26,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { createBundledModeBanner } from './tracer-runtime';
 import type { DatadogBundlerPluginOptions } from './bundler-plugin-options';
 
 export type { DatadogBundlerPluginOptions } from './bundler-plugin-options';
@@ -63,7 +65,7 @@ export function datadogEsbuildPlugin(pluginOptions: DatadogBundlerPluginOptions 
     name: 'datadog-electron-sdk',
     setup(build) {
       const isESM = build.initialOptions.format === 'esm';
-      const ddBanner = isESM ? ESM_BANNER : CJS_BANNER;
+      const ddBanner = `${createBundledModeBanner(pluginOptions.bundledMode, isESM ? 'esm' : 'cjs')}\n${isESM ? ESM_BANNER : CJS_BANNER}`;
 
       // Prepend the Electron instrumentation banner
       const existingBanner = build.initialOptions.banner?.js;
@@ -72,9 +74,11 @@ export function datadogEsbuildPlugin(pluginOptions: DatadogBundlerPluginOptions 
         js: existingBanner ? `${existingBanner}\n${ddBanner}` : ddBanner,
       };
 
-      // Externalize dd-trace and @datadog/electron-sdk
+      // Externalize @datadog/electron-sdk
       const external = build.initialOptions.external ?? [];
-      for (const pkg of ['dd-trace', '@datadog/electron-sdk']) {
+      for (const pkg of pluginOptions.bundledMode === true
+        ? ['@datadog/electron-sdk']
+        : ['@datadog/electron-sdk', 'dd-trace-electron']) {
         if (!external.includes(pkg)) {
           external.push(pkg);
         }
@@ -93,7 +97,7 @@ export function datadogEsbuildPlugin(pluginOptions: DatadogBundlerPluginOptions 
         if (!outDir) return;
 
         const destModules = join(outDir, 'node_modules');
-        const visited = new Set<string>();
+        const visited = new Set<string>(pluginOptions.bundledMode === true ? ['dd-trace-electron'] : []);
 
         function copyPackageTree(pkg: string): void {
           if (visited.has(pkg)) return;
@@ -123,7 +127,6 @@ export function datadogEsbuildPlugin(pluginOptions: DatadogBundlerPluginOptions 
           }
         }
 
-        copyPackageTree('dd-trace');
         copyPackageTree('@datadog/electron-sdk');
       });
     },
