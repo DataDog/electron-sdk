@@ -1,6 +1,6 @@
 import { EventFormat, EventKind, EventSource, EventTrack, LifecycleKind } from './event.constants';
 import { RawTelemetryData, TelemetryEvent } from '../domain/telemetry';
-import { MainRumEvent, RawRumData, RendererRumEvent } from '../domain/rum';
+import type { MainRumEvent, RawRumData, RendererRumEvent } from '../domain/rum/types';
 import type { TimeStamp } from '@datadog/js-core/time';
 import { RawTraceData } from '../domain/tracing/rawTracingData.types';
 import type { BrowserProfileEvent, BrowserProfilerTrace } from '../domain/profiling';

@@ -81,6 +81,7 @@
     "dist/esbuild-plugin.mjs.map",
     "dist/esbuild-plugin.d.ts",
     "dist/preload.js",
+    "dist/preload.js.map",
     "README.md",
     "LICENSE",
     "LICENSE-3rdparty.csv"

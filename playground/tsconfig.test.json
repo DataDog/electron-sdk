@@ -19,5 +19,5 @@
     "rootDir": ".."
   },
   "include": ["test/**/*.ts", "../e2e/lib/intake.ts", "../e2e/lib/appPathCheck.ts"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "test/local"]
 }
