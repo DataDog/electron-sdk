@@ -8,8 +8,23 @@ import { datadogEsbuildPlugin } from './esbuild-plugin';
 import { datadogVitePlugin } from './vite-plugin';
 import { DatadogWebpackPlugin } from './webpack-plugin';
 
+const { applyTracingPlugin, setupTracingEsbuildPlugin } = vi.hoisted(() => ({
+  applyTracingPlugin: vi.fn(),
+  setupTracingEsbuildPlugin: vi.fn<ReturnType<typeof datadogEsbuildPlugin>['setup']>(),
+}));
+
 vi.mock('node:module', () => ({
-  createRequire: () => ({ resolve: (id: string) => `/packages/${id}/index.js` }),
+  createRequire: () =>
+    Object.assign(
+      (id: string) => {
+        if (id === 'dd-trace-electron/esbuild') return { name: 'datadog-esbuild', setup: setupTracingEsbuildPlugin };
+        if (id !== 'dd-trace-electron/webpack') throw new Error(`Unexpected package: ${id}`);
+        return class {
+          apply = applyTracingPlugin;
+        };
+      },
+      { resolve: (id: string) => `/packages/${id}/index.js` }
+    ),
 }));
 
 vi.mock('node:fs', () => ({
@@ -21,6 +36,89 @@ vi.mock('node:fs', () => ({
 }));
 
 afterEach(() => vi.resetAllMocks());
+
+describe('Webpack dependency instrumentation', () => {
+  it.each([{}, { bundledMode: true }, { copyRuntimeDependencies: true }])(
+    'applies the tracer plugin without requiring minifier configuration: %j',
+    (options) => {
+      const compiler = createWebpackCompiler(vi.fn());
+      const optimization = { minimize: true, concatenateModules: true };
+      compiler.options.optimization = optimization;
+
+      new DatadogWebpackPlugin(options).apply(compiler);
+
+      expect(applyTracingPlugin).toHaveBeenCalledExactlyOnceWith(compiler);
+      expect(optimization).toEqual({ minimize: false, concatenateModules: true });
+    }
+  );
+
+  it('disables the production minification default before the tracer plugin is applied', () => {
+    const compiler = createWebpackCompiler(vi.fn());
+    applyTracingPlugin.mockImplementation(() => {
+      expect(compiler.options.optimization?.minimize).toBe(false);
+    });
+
+    new DatadogWebpackPlugin().apply(compiler);
+
+    expect(applyTracingPlugin).toHaveBeenCalledOnce();
+  });
+});
+
+describe('esbuild dependency instrumentation', () => {
+  it.each([{}, { bundledMode: true }, { copyRuntimeDependencies: true }])(
+    'configures runtime loading before applying the tracer plugin: %j',
+    (options) => {
+      const build = { initialOptions: { bundle: true }, onEnd: vi.fn() };
+      setupTracingEsbuildPlugin.mockImplementation((configuredBuild) => {
+        expect(configuredBuild.initialOptions.banner?.js).toContain('@datadog/electron-sdk:bundledMode');
+        expect(configuredBuild.initialOptions.external).toEqual(
+          options.bundledMode ? [] : ['@datadog/electron-sdk', 'dd-trace-electron']
+        );
+      });
+
+      datadogEsbuildPlugin(options).setup(build);
+
+      expect(setupTracingEsbuildPlugin).toHaveBeenCalledExactlyOnceWith(build);
+    }
+  );
+
+  it.each([{ minify: true }, { minifyIdentifiers: true }])('preserves names before tracing setup: %j', (options) => {
+    const build = { initialOptions: { bundle: true, keepNames: false, ...options }, onEnd: vi.fn() };
+    setupTracingEsbuildPlugin.mockImplementation((configuredBuild) => {
+      expect(configuredBuild.initialOptions.keepNames).toBe(true);
+    });
+
+    datadogEsbuildPlugin().setup(build);
+
+    expect(setupTracingEsbuildPlugin).toHaveBeenCalledOnce();
+    expect(build.initialOptions).toMatchObject(options);
+  });
+
+  it('preserves non-minifying options', () => {
+    const build = { initialOptions: { bundle: true, keepNames: false }, onEnd: vi.fn() };
+    datadogEsbuildPlugin().setup(build);
+    expect(build.initialOptions.keepNames).toBe(false);
+  });
+
+  it.each([undefined, false])('leaves dependency loading to Node when bundle=%s', (bundle) => {
+    const build = { initialOptions: { bundle }, onEnd: vi.fn() };
+    datadogEsbuildPlugin().setup(build);
+    expect(build.initialOptions).not.toHaveProperty('external');
+    expect(build.initialOptions).toHaveProperty(
+      'banner.js',
+      expect.stringContaining('@datadog/electron-sdk/instrument')
+    );
+    expect(setupTracingEsbuildPlugin).not.toHaveBeenCalled();
+    expect(build.onEnd).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, false])('rejects bundledMode without bundling: bundle=%s', (bundle) => {
+    expect(() =>
+      datadogEsbuildPlugin({ bundledMode: true }).setup({ initialOptions: { bundle }, onEnd: vi.fn() })
+    ).toThrow('bundledMode requires esbuild bundle: true');
+    expect(setupTracingEsbuildPlugin).not.toHaveBeenCalled();
+  });
+});
 
 describe('runtime dependency copying', () => {
   it('is disabled by default and can be enabled for Vite', () => {
@@ -35,14 +133,14 @@ describe('runtime dependency copying', () => {
 
   it('is disabled by default and can be enabled for esbuild', () => {
     const defaultOnEnd = vi.fn();
-    const initialOptions = { external: [] as string[] };
+    const initialOptions = { bundle: true, external: [] as string[] };
     datadogEsbuildPlugin().setup({ initialOptions, onEnd: defaultOnEnd });
     expect(defaultOnEnd).not.toHaveBeenCalled();
     expect(initialOptions.external).toEqual(['@datadog/electron-sdk', 'dd-trace-electron']);
 
     const pluginCopyOnEnd = vi.fn();
     datadogEsbuildPlugin({ copyRuntimeDependencies: true }).setup({
-      initialOptions: {},
+      initialOptions: { bundle: true },
       onEnd: pluginCopyOnEnd,
     });
     expect(pluginCopyOnEnd).toHaveBeenCalledOnce();
@@ -118,7 +216,7 @@ describe('runtime dependency copy selection', () => {
 
     datadogVitePlugin(options).writeBundle!({ dir: '/output' });
     assertCopied();
-    datadogEsbuildPlugin(options).setup({ initialOptions: { outdir: '/output' }, onEnd: (cb) => cb() });
+    datadogEsbuildPlugin(options).setup({ initialOptions: { bundle: true, outdir: '/output' }, onEnd: (cb) => cb() });
     assertCopied();
     new DatadogWebpackPlugin(options).apply(
       createWebpackCompiler((_name, cb) => cb({ outputOptions: { path: '/output' } }))
@@ -140,7 +238,7 @@ describe('bundled mode', () => {
   ])('sets build options %j before static ESM instrumentation imports', (options) => {
     const { bundledMode, copyRuntimeDependencies } = options;
     const vite = datadogVitePlugin(options);
-    const initialOptions = { format: 'esm', banner: { js: '' } };
+    const initialOptions = { bundle: true, format: 'esm', banner: { js: '' } };
     datadogEsbuildPlugin(options).setup({ initialOptions, onEnd: vi.fn() });
     for (const banner of [vite.renderChunk!('', { isEntry: true }, { format: 'es' })!, initialOptions.banner.js]) {
       const assertion = encodeURIComponent(
@@ -186,7 +284,7 @@ import "data:text/javascript,${assertion}";`;
     expect(external.some((pattern) => pattern.test('@datadog/electron-sdk'))).toBe(bundledMode !== true);
     assertBanner(vite.renderChunk!('', { isEntry: true }, { format: 'cjs' })!);
 
-    const initialOptions = { external: ['electron'], banner: { js: '' } };
+    const initialOptions = { bundle: true, external: ['electron'], banner: { js: '' } };
     datadogEsbuildPlugin(options).setup({ initialOptions, onEnd: vi.fn() });
     expect(initialOptions.external.includes('dd-trace-electron')).toBe(bundledMode !== true);
     expect(initialOptions.external).toContain('electron');

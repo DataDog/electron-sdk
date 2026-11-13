@@ -3,6 +3,7 @@ export interface DatadogBundlerPluginOptions {
    * Bundle the SDK into the application and emit instrumentation, preload, and tracer assets.
    * SDK and tracer package trees are not copied, regardless of copyRuntimeDependencies.
    * The package remains a runtime dependency; application packagers may still include it.
+   * Requires `bundle: true` when using esbuild.
    *
    * @default false
    * @example

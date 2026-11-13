@@ -1,7 +1,7 @@
 /**
  * Webpack plugin for Electron apps using the Datadog Electron SDK.
  *
- * This plugin handles four concerns for packaged Electron apps:
+ * This plugin handles instrumentation and runtime packaging for Electron apps:
  *
  * 1. Prepends Electron instrumentation (via @datadog/electron-sdk/instrument)
  *    as a banner to the main entry, so the user doesn't need to manually
@@ -17,6 +17,9 @@
  *    into the build output's node_modules only when `copyRuntimeDependencies: true`.
  *    Copying is disabled by default; the application packager must stage them.
  *    dd-trace-electron stays external unless bundledMode is enabled.
+ *
+ * 5. Applies dd-trace-electron's Webpack instrumentation to bundled CommonJS dependencies.
+ *    Main-process minification is disabled because the tracer plugin does not support it.
  *
  * Usage:
  *   const { DatadogWebpackPlugin } = require('@datadog/electron-sdk/webpack-plugin');
@@ -47,9 +50,12 @@ type BannerPluginConstructor = new (options: { banner: string; raw: boolean; ent
   apply: (compiler: Compiler) => void;
 };
 
+type TracingPluginConstructor = new () => { apply: (compiler: Compiler) => void };
+
 interface Compiler {
   options: {
     externals?: unknown;
+    optimization?: { minimize?: boolean };
     module: {
       rules: (Rule | { oneOf?: Rule[] })[];
     };
@@ -125,6 +131,13 @@ export class DatadogWebpackPlugin {
   constructor(private readonly pluginOptions: DatadogBundlerPluginOptions = {}) {}
 
   apply(compiler: Compiler): void {
+    // The tracer's loader instruments CommonJS module factories before they are bundled.
+    // Its Webpack plugin rejects minification, including Webpack's production default.
+    compiler.options.optimization ??= {};
+    compiler.options.optimization.minimize = false;
+    const TracingWebpackPlugin = _require('dd-trace-electron/webpack') as TracingPluginConstructor;
+    new TracingWebpackPlugin().apply(compiler);
+
     // Externalize @datadog/electron-sdk so webpack doesn't bundle it
     const sdkExternals =
       this.pluginOptions.bundledMode === true ? [] : [/^@datadog\/electron-sdk(\/.*)?$/, /^dd-trace-electron(\/.*)?$/];
