@@ -3,6 +3,7 @@ import type { FormatHooks } from '../../../assembly';
 import type { SessionManager } from '../../session';
 import { MainProcessContext } from './MainProcessContext';
 import { RendererProcessContexts } from './RendererProcessContexts';
+import type { FeatureFlagsForEvents } from '../../../config';
 
 /**
  * Orchestrates execution-context tracking for main and renderer processes: starts and stops a session-scoped
@@ -18,9 +19,15 @@ export class ExecutionContextCollection {
   static async start(
     eventManager: EventManager,
     hooks: FormatHooks,
-    sessionManager: SessionManager
+    sessionManager: SessionManager,
+    trackFeatureFlagsForEvents: readonly FeatureFlagsForEvents[] = []
   ): Promise<ExecutionContextCollection> {
-    const mainProcessContext = await MainProcessContext.start(eventManager, hooks, sessionManager);
+    const mainProcessContext = await MainProcessContext.start(
+      eventManager,
+      hooks,
+      sessionManager,
+      trackFeatureFlagsForEvents
+    );
     const rendererProcessContexts = RendererProcessContexts.start(eventManager, hooks);
     return new ExecutionContextCollection(mainProcessContext, rendererProcessContexts);
   }
@@ -28,5 +35,9 @@ export class ExecutionContextCollection {
   stop(): void {
     this.mainProcessContext.stop();
     this.rendererProcessContexts.stop();
+  }
+
+  getApi() {
+    return this.mainProcessContext.getApi();
   }
 }

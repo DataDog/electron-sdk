@@ -1,6 +1,6 @@
 import { app } from 'electron';
 import { BeforeSend, MainAssembly, RendererPipeline, createFormatHooks, registerCommonContext } from './assembly';
-import { setDurationVitalApi, setGlobalContextApi, setTrackingConsentApi } from './api';
+import { setDurationVitalApi, setFeatureFlagApi, setGlobalContextApi, setTrackingConsentApi } from './api';
 import type { AccountInfo, UserInfo } from './domain/customer-context';
 import { AccountContext, GlobalContext, UserContext } from './domain/customer-context';
 import type { InitConfiguration } from './config';
@@ -89,9 +89,10 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
 
   new RendererPipeline(eventManager, hooks, config, sessionManager);
 
-  const rum = await RumCollection.start(eventManager, hooks, sessionManager);
+  const rum = await RumCollection.start(eventManager, hooks, sessionManager, config.trackFeatureFlagsForEvents);
   rumApi = rum.getApi();
   setDurationVitalApi(rumApi);
+  setFeatureFlagApi(rumApi);
 
   beforeQuitHandler?.stop();
   beforeQuitHandler = new BeforeQuitHandler(app, _flushTransport);
@@ -367,6 +368,7 @@ export function getInternalContext(): InternalContext | undefined {
 }
 
 export {
+  addFeatureFlagEvaluation,
   addDurationVital,
   startDurationVital,
   stopDurationVital,
@@ -381,6 +383,7 @@ export type { AccountInfo, UserInfo } from './domain/customer-context';
 export type {
   BeforeSendContext,
   ElectronEventSource,
+  FeatureFlagsForEvents,
   InitConfiguration,
   RumBeforeSend,
   TraceSamplingRule,

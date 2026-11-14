@@ -83,6 +83,45 @@ describe('buildConfiguration', () => {
     }
   );
 
+  describe('trackFeatureFlagsForEvents', () => {
+    it.each([undefined, null])('defaults to views and errors only when unset: %j', (value) => {
+      const configuration = buildConfiguration({ ...DEFAULT_CONFIG, trackFeatureFlagsForEvents: value as undefined });
+      expect(configuration?.trackFeatureFlagsForEvents).toEqual([]);
+    });
+
+    it('copies the selected additional event types', () => {
+      const events: NonNullable<InitConfiguration['trackFeatureFlagsForEvents']> = ['resource', 'vital'];
+      const configuration = buildConfiguration({ ...DEFAULT_CONFIG, trackFeatureFlagsForEvents: events });
+      events.length = 0;
+
+      expect(configuration?.trackFeatureFlagsForEvents).toEqual(['resource', 'vital']);
+    });
+
+    it('ignores unsupported entries while keeping supported event types', () => {
+      const configuration = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        trackFeatureFlagsForEvents: [
+          'resource',
+          'action',
+          42,
+        ] as unknown as InitConfiguration['trackFeatureFlagsForEvents'],
+      });
+
+      expect(configuration?.trackFeatureFlagsForEvents).toEqual(['resource']);
+      expect(display.error).toHaveBeenCalledWith(expect.stringContaining('trackFeatureFlagsForEvents'));
+    });
+
+    it('reports an invalid list and falls back to views and errors only', () => {
+      const configuration = buildConfiguration({
+        ...DEFAULT_CONFIG,
+        trackFeatureFlagsForEvents: 'resource' as unknown as InitConfiguration['trackFeatureFlagsForEvents'],
+      });
+
+      expect(configuration?.trackFeatureFlagsForEvents).toEqual([]);
+      expect(display.error).toHaveBeenCalledOnce();
+    });
+  });
+
   describe('successful configuration', () => {
     it('builds config with required fields only', () => {
       const config = {

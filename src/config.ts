@@ -27,6 +27,11 @@ export const BatchUploadFrequencies = {
 export type BatchSize = keyof typeof BatchSizes;
 export type UploadFrequency = keyof typeof BatchUploadFrequencies;
 
+/** Additional main-process RUM event types that can carry evaluated feature flags. */
+export type FeatureFlagsForEvents = 'resource' | 'vital';
+
+const VALID_FEATURE_FLAG_EVENTS: readonly FeatureFlagsForEvents[] = ['resource', 'vital'];
+
 export interface TraceSamplingRule {
   /** Percentage of matching traces to keep, between 0 and 100. */
   sampleRate: number;
@@ -88,6 +93,12 @@ export interface InitConfiguration {
    * @example trackingConsent: 'pending'
    */
   trackingConsent?: TrackingConsent;
+  /**
+   * Include evaluated feature flags on these additional main-process RUM event types.
+   * Views and errors always include flags. Defaults to `[]`; renderer events use the Browser RUM SDK configuration.
+   * @example trackFeatureFlagsForEvents: ['resource', 'vital']
+   */
+  trackFeatureFlagsForEvents?: FeatureFlagsForEvents[];
   /**
    * Percentage of logs received from renderer processes to forward (0–100), defaults to `100`.
    * Applied independently to each bridged log.
@@ -171,6 +182,7 @@ export interface Configuration {
   proxy?: string;
   sessionSampleRate: number;
   trackingConsent: TrackingConsent;
+  trackFeatureFlagsForEvents: FeatureFlagsForEvents[];
   logsSampleRate: number;
   traceSampleRate: number;
   traceSamplingRules: TraceSamplingRule[];
@@ -278,6 +290,21 @@ function validateTraceSamplingRules(value: unknown): TraceSamplingRule[] | undef
     return undefined;
   }
   return value;
+}
+
+function validateTrackFeatureFlagsForEvents(value: unknown): FeatureFlagsForEvents[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) {
+    display.error("Configuration error: 'trackFeatureFlagsForEvents' must be an array of 'resource' or 'vital'");
+    return [];
+  }
+  return value.filter((eventType): eventType is FeatureFlagsForEvents => {
+    if (isOneOf(eventType, VALID_FEATURE_FLAG_EVENTS)) return true;
+    display.error(
+      "Configuration error: unsupported 'trackFeatureFlagsForEvents' entry ignored; use 'resource' or 'vital'"
+    );
+    return false;
+  });
 }
 
 function isValidTraceSamplingRule(value: unknown): value is TraceSamplingRule {
@@ -471,6 +498,7 @@ export function buildConfiguration(initConfig: InitConfiguration): Configuration
     proxy,
     sessionSampleRate,
     trackingConsent,
+    trackFeatureFlagsForEvents: validateTrackFeatureFlagsForEvents(initConfig.trackFeatureFlagsForEvents),
     logsSampleRate,
     traceSampleRate,
     traceSamplingRules,

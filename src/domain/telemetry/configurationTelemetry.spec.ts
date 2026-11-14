@@ -70,6 +70,12 @@ describe('reportConfiguration', () => {
     expect(report(createTestConfiguration({ trackingConsent: 'pending' })).tracking_consent).toBe('pending');
   });
 
+  it('reports the additional event types selected for feature flag tracking', () => {
+    const configuration = createTestConfiguration({ trackFeatureFlagsForEvents: ['resource', 'vital'] });
+
+    expect(report(configuration).track_feature_flags_for_events).toEqual(['resource', 'vital']);
+  });
+
   it('reports the privacy level applied to renderers', () => {
     const configuration = createTestConfiguration({ defaultPrivacyLevel: 'mask-user-input' });
 
