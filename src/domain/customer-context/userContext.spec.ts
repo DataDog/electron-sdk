@@ -1,4 +1,6 @@
-import { beforeEach, describe, it, expect, vi } from 'vitest';
+import { display as browserDisplay, SANITIZE_DEFAULT_MAX_CHARACTER_COUNT } from '@datadog/browser-core';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { display } from '../../tools/display';
 import { type TimeStamp } from '@datadog/js-core/time';
 import { EventSource } from '../../event';
 import { createFormatHooks, type FormatHooks, type RumEventType } from '../../assembly';
@@ -20,8 +22,116 @@ describe('UserContext', () => {
   }
 
   beforeEach(() => {
+    vi.spyOn(display, 'warn').mockImplementation(() => undefined);
     hooks = createFormatHooks();
     userContext = new UserContext(hooks);
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  describe('sanitization at mutation time', () => {
+    it.each(['id', 'name', 'email'] as const)(
+      'rejects an oversized %s atomically without logging its value',
+      (field) => {
+        const browserWarning = vi.spyOn(browserDisplay, 'warn').mockImplementation(() => undefined);
+        const history = createHistory(vi.fn());
+        userContext = new UserContext(hooks, history);
+        const original = { id: 'original', name: 'Original', extraInfo: { plan: 'paid' } };
+        userContext.setUserInfo(original);
+        userContext.setUserInfo({
+          id: 'replacement',
+          [field]: 'x'.repeat(SANITIZE_DEFAULT_MAX_CHARACTER_COUNT),
+          extraInfo: { plan: 'other' },
+        });
+        expect(userContext.getInfo()).toEqual(original);
+        expect(history.closeAndAdd).toHaveBeenCalledOnce();
+        expect(history.closeActive).not.toHaveBeenCalled();
+        expect(display.warn).toHaveBeenCalledExactlyOnceWith(
+          `The property "${field}" of user exceeds the context size limit; the context will not be updated.`
+        );
+        expect(browserWarning).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each(['id', 'name', 'email'] as const)('counts JSON escaping at the %s size boundary', (field) => {
+      const browserWarning = vi.spyOn(browserDisplay, 'warn').mockImplementation(() => undefined);
+      const boundary = 'x'.repeat(SANITIZE_DEFAULT_MAX_CHARACTER_COUNT - 2);
+      userContext.setUserInfo({ id: 'customer-1', [field]: boundary });
+      expect(userContext.getInfo()?.[field]).toBe(boundary);
+      userContext.setUserInfo({ id: 'customer-1', [field]: '"'.repeat(SANITIZE_DEFAULT_MAX_CHARACTER_COUNT / 2) });
+      expect(userContext.getInfo()?.[field]).toBe(boundary);
+      expect(display.warn).toHaveBeenCalledExactlyOnceWith(
+        `The property "${field}" of user exceeds the context size limit; the context will not be updated.`
+      );
+      expect(browserWarning).not.toHaveBeenCalled();
+    });
+
+    it.each([false, true])('uses space freed by a same-call shrink, shrink first: %s', (shrinkFirst) => {
+      userContext.setContext({ id: 'customer-1', extraInfo: { blob: 'x'.repeat(200_000), existing: 'old' } });
+      const additions = { note: 'y'.repeat(50_000), existing: 'z'.repeat(50_000) };
+      userContext.addExtraInfo(shrinkFirst ? { blob: 'short', ...additions } : { ...additions, blob: 'short' });
+      expect(userContext.getInfo()?.extraInfo).toEqual({ blob: 'short', ...additions });
+      expect(display.warn).not.toHaveBeenCalled();
+    });
+
+    it('preserves accepted extras and history when replacing an early key exceeds the budget', () => {
+      vi.spyOn(browserDisplay, 'warn').mockImplementation(() => undefined);
+      const history = createHistory(vi.fn());
+      userContext = new UserContext(hooks, history);
+      userContext.setContext({ id: 'customer-1', extraInfo: { first: 'old', second: 'kept' } });
+      userContext.addExtraInfo({ first: 'x'.repeat(SANITIZE_DEFAULT_MAX_CHARACTER_COUNT + 1), third: 'new' });
+      expect(userContext.getInfo()).toEqual({
+        id: 'customer-1',
+        extraInfo: { first: 'old', second: 'kept', third: 'new' },
+      });
+      expect(history.closeAndAdd).toHaveBeenLastCalledWith(
+        { id: 'customer-1', first: 'old', second: 'kept', third: 'new' },
+        expect.any(Number)
+      );
+    });
+
+    it('keeps later extras when an earlier extra does not fit on set', () => {
+      vi.spyOn(browserDisplay, 'warn').mockImplementation(() => undefined);
+      userContext.setContext({
+        id: 'customer-1',
+        extraInfo: {
+          huge: { nested: 'x'.repeat(SANITIZE_DEFAULT_MAX_CHARACTER_COUNT + 1) },
+          after: 'kept',
+          nullable: null,
+        },
+      });
+      expect(userContext.getInfo()?.extraInfo).toEqual({ after: 'kept', nullable: null });
+    });
+
+    it('stores bounded extras separately from identity and shares them across event types', () => {
+      const warning = vi.mocked(display.warn);
+      userContext.setContext({
+        id: 'customer-1',
+        name: 'Customer',
+        extraInfo: { huge: 'x'.repeat(SANITIZE_DEFAULT_MAX_CHARACTER_COUNT + 1) },
+      });
+      expect(userContext.getInfo()).toEqual({ id: 'customer-1', name: 'Customer' });
+      expect(triggerRum()).toMatchObject({ usr: { id: 'customer-1', name: 'Customer' } });
+      expect(hooks.triggerLogs({ startTime: T0, source: EventSource.RENDERER })).toEqual({
+        usr: { id: 'customer-1', name: 'Customer' },
+      });
+      expect(triggerSpan()).toEqual({ meta: { 'usr.id': 'customer-1', 'usr.name': 'Customer' } });
+      expect(warning).toHaveBeenCalledOnce();
+    });
+
+    it('bounds accumulated extras and sanitizes cycles before storing them', () => {
+      vi.spyOn(browserDisplay, 'warn').mockImplementation(() => undefined);
+      const cyclic: Record<string, unknown> = {};
+      cyclic.self = cyclic;
+      userContext.setContext({ id: 'customer-1', extraInfo: { cyclic, first: 'x'.repeat(120_000) } });
+      userContext.addExtraInfo({ second: 'x'.repeat(120_000), id: 'spoofed' });
+      expect(userContext.getInfo()?.id).toBe('customer-1');
+      expect(userContext.getInfo()?.extraInfo?.second).toBeUndefined();
+      expect(() => JSON.stringify(userContext.getInfo())).not.toThrow();
+      userContext.addExtraInfo({ first: null, after: 'kept' });
+      expect(userContext.getInfo()?.extraInfo).toMatchObject({ after: 'kept' });
+      expect(userContext.getInfo()?.extraInfo).not.toHaveProperty('first');
+    });
   });
 
   describe('when user is not set', () => {
@@ -53,12 +163,12 @@ describe('UserContext', () => {
       });
     });
 
-    it('skips non-serializable extraInfo values without throwing', () => {
+    it('converts non-serializable extraInfo values before adding span metadata', () => {
       userContext.setContext({ id: 'user-1', extraInfo: { plan: 'premium', count: BigInt(1) } });
 
       expect(() => triggerSpan()).not.toThrow();
       expect(triggerSpan()).toEqual({
-        meta: { 'usr.id': 'user-1', 'usr.plan': 'premium' },
+        meta: { 'usr.id': 'user-1', 'usr.plan': 'premium', 'usr.count': '[BigInt] 1' },
       });
     });
 
@@ -214,6 +324,20 @@ describe('UserContext', () => {
   });
 
   describe('setUserInfo', () => {
+    it.each([{}, { name: 'Replacement' }])('keeps the user and history when the id is oversized (%j)', (fields) => {
+      vi.spyOn(browserDisplay, 'warn').mockImplementation(() => undefined);
+      const history = createHistory(vi.fn());
+      userContext = new UserContext(hooks, history);
+      userContext.setUserInfo({ id: 'original', name: 'Original' });
+      userContext.setUserInfo({ ...fields, id: 'x'.repeat(SANITIZE_DEFAULT_MAX_CHARACTER_COUNT + 1) });
+      expect(userContext.getInfo()).toEqual({ id: 'original', name: 'Original' });
+      expect(history.closeAndAdd).toHaveBeenCalledOnce();
+      expect(history.closeActive).not.toHaveBeenCalled();
+      expect(display.warn).toHaveBeenCalledExactlyOnceWith(
+        'The property "id" of user exceeds the context size limit; the context will not be updated.'
+      );
+    });
+
     it('sets the user when an id is provided', () => {
       userContext.setUserInfo({ id: 'user-1', name: 'Alice' });
 
@@ -316,12 +440,12 @@ describe('UserContext', () => {
   });
 });
 
-function createHistory(find: ContextHistory['find']): ContextHistory {
+function createHistory(find: ContextHistory['find']) {
   return {
     add: vi.fn(),
     closeActive: vi.fn(),
     closeAndAdd: vi.fn(),
     pruneAndPersist: vi.fn(),
     find,
-  };
+  } satisfies ContextHistory;
 }

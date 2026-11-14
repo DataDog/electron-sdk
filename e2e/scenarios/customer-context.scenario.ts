@@ -49,6 +49,37 @@ async function getContext(
 }
 
 for (const { label, eventKey } of scenarios) {
+  test(`uses space freed by a same-call ${label} extra-info shrink`, async ({ mainPage, intake }) => {
+    const ops = getOps(mainPage, label);
+    await ops.setInfo({ ...INITIAL_INFO, extraInfo: { blob: 'x'.repeat(200_000) } });
+    await ops.addExtraInfo({ note: 'y'.repeat(50_000), blob: 'short' });
+    expect(await getContext(mainPage, intake, eventKey)).toEqual({
+      ...INITIAL_INFO,
+      note: 'y'.repeat(50_000),
+      blob: 'short',
+    });
+  });
+
+  test(`preserves ${label} extras when an oversized update replaces an earlier key`, async ({ mainPage, intake }) => {
+    const ops = getOps(mainPage, label);
+    await ops.setInfo({ ...INITIAL_INFO, extraInfo: { first: 'old', second: 'kept' } });
+    await ops.addExtraInfo({ first: 'x'.repeat(230_000), third: 'new' });
+    expect(await getContext(mainPage, intake, eventKey)).toEqual({
+      ...INITIAL_INFO,
+      first: 'old',
+      second: 'kept',
+      third: 'new',
+    });
+  });
+
+  test(`bounds ${label} extras without losing identity on subsequent events`, async ({ mainPage, intake }) => {
+    const ops = getOps(mainPage, label);
+    await ops.setInfo({ ...INITIAL_INFO, extraInfo: { first: 'x'.repeat(120_000) } });
+    await ops.addExtraInfo({ second: 'x'.repeat(120_000) });
+    const context = await getContext(mainPage, intake, eventKey);
+    expect(context).toEqual({ ...INITIAL_INFO, first: 'x'.repeat(120_000) });
+  });
+
   test(`attaches ${label} info to subsequent events`, async ({ mainPage, intake }) => {
     await getOps(mainPage, label).setInfo(INITIAL_INFO);
 
@@ -173,3 +204,13 @@ test('merges the global context into renderer events, renderer keys winning', as
     context: { team: 'renderer-owned', build: '1.2.3' },
   });
 });
+
+for (const { label, eventKey } of scenarios) {
+  test(`preserves ${label} identity after an oversized id or name`, async ({ mainPage, intake }) => {
+    const ops = getOps(mainPage, label);
+    await ops.setInfo({ ...INITIAL_INFO, extraInfo: { plan: 'paid' } });
+    await ops.setInfo({ id: 'x'.repeat(230_000), name: 'Replacement' });
+    await ops.setInfo({ id: 'replacement', name: 'x'.repeat(230_000) });
+    expect(await getContext(mainPage, intake, eventKey)).toEqual({ ...INITIAL_INFO, plan: 'paid' });
+  });
+}
