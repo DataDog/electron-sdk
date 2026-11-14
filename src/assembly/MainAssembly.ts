@@ -47,6 +47,33 @@ export class MainAssembly {
     const startTime = event.startTime ?? timeStampNow();
     const source = EventSource.MAIN;
 
+    if (event.format === EventFormat.LOGS) {
+      const hookResult = this.hooks.triggerLogs({ startTime, source });
+      if (hookResult !== DISCARDED) {
+        return {
+          kind: EventKind.SERVER,
+          track: EventTrack.LOGS,
+          source,
+          // Collection already bounded and snapshotted the message, context, and error.
+          // Reserve identity objects as a whole, even when SDK context is absent.
+          data: {
+            ...event.context,
+            usr: undefined,
+            account: undefined,
+            view: undefined,
+            execution_context: undefined,
+            session: undefined,
+            session_id: undefined,
+            user_action: undefined,
+            source: undefined,
+            ddsource: undefined,
+            ...hookResult,
+            ...event.data,
+          },
+        };
+      }
+    }
+
     if (event.format === EventFormat.RUM) {
       const hookResult = this.hooks.triggerRum({
         eventType: event.data.type,
