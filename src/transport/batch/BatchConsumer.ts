@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { display } from '../../tools/display';
 import { getUserAgent } from '../userAgent';
 import { compareBatchFileNames } from './batchFileName';
 
@@ -16,7 +17,7 @@ export interface BatchConsumerConfig {
 /**
  * Reads rotated `.log` batch files from disk, parses their newline-delimited JSON
  * content, and uploads the events to the Datadog intake endpoint.
- * Successfully uploaded files are deleted from disk.
+ * Successfully uploaded files and batches rejected with HTTP 413 are deleted from disk.
  */
 export abstract class BatchConsumer {
   protected trackPath: string;
@@ -73,7 +74,7 @@ export abstract class BatchConsumer {
 
   /**
    * Reads a batch file, delegates request construction to {@link buildRequest},
-   * sends it, and deletes the file on success.
+   * sends it, and deletes the file on success or HTTP 413.
    * If {@link buildRequest} returns `null` the file is deleted without a network call
    * (empty or malformed batch — nothing to send).
    */
@@ -88,7 +89,10 @@ export abstract class BatchConsumer {
 
     try {
       const response = await fetch(request);
-      if (response.ok) {
+      if (response.status === 413) {
+        display.warn('Dropping batch rejected by the intake as too large (HTTP 413).');
+      }
+      if (response.ok || response.status === 413) {
         await fs.unlink(filePath);
         return true;
       }

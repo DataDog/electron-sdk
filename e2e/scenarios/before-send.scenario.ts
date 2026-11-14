@@ -59,3 +59,22 @@ test('filters renderer RUM events', async ({ electronApp, intake, mainPage }) =>
 
   await intake.assertNoNewEvents('error');
 });
+
+test('drops an oversized RUM event without losing the next event', async ({ electronApp, intake, mainPage }) => {
+  await electronApp.evaluate(() => {
+    (globalThis as unknown as { __ddE2E: E2EControls }).__ddE2E.beforeSendRum = (event) => {
+      if (event.type === 'error' && event.context?.size === 'oversized') {
+        const large = 'é'.repeat(200_000);
+        event.context = { huge: large };
+        event.error.message = large;
+        event.error.stack = large;
+      }
+      return true;
+    };
+  });
+  await mainPage.generateManualError(undefined, { size: 'oversized' });
+  await mainPage.generateManualError(undefined, { size: 'normal' });
+  await mainPage.flushTransport();
+  const errors = await intake.getEventsByType('error');
+  expect(errors.map(({ body }) => body.context)).toEqual([{ size: 'normal' }]);
+});

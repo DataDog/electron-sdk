@@ -159,7 +159,7 @@ See `src/assembly/` and `src/assembly/commonContext.ts`.
 
 `PathScrubber` (`src/tools/pathScrubber.ts`) replaces the app path with `/` in serialized payloads, so stack frames and URLs match uploaded source maps. Only the app path is rewritten: other paths, such as the data folders (`userData`, `crashDumps`), are left as is.
 
-- Built once in `init()` and injected into the three exit points (`StandardBatchProducer`, `ProfileBatchProducer`, `Segment.flush`), after `beforeSendRum`. Batch rotation and the replay raw size (`raw_segment_size`) are computed on the scrubbed text.
+- Built once in `init()` and injected into the three exit points (`StandardBatchProducer`, `ProfileBatchProducer`, `Segment.flush`), after `beforeSendRum`. The standard JSON event cap, batch rotation, and replay raw size (`raw_segment_size`) are computed on the scrubbed text.
 - Contract: valid JSON in and out, never throws; an unscrubbed payload is sent rather than lost.
 - Known limits are listed in the class JSDoc.
 
@@ -205,6 +205,10 @@ other stores or authorized uploads from progressing.
 Before moving individual files, authorization renames the directory to `authorized-pending-<uuid>`.
 This records the grant on disk: after restart, unfinished moves can resume. A crash before that rename
 succeeds leaves undecided storage, which `Transport` clears at startup for **all** tracks, even disabled ones.
+
+Standard JSON events (RUM, logs, and spans) larger than 1,000,000 UTF-8 bytes after path scrubbing are
+dropped before writing. Replay segments and profiles use their own payload formats. On every track,
+a batch rejected with HTTP 413 is deleted rather than retried; other failed uploads retain their batches.
 
 The existing best-effort limit of 100 completed batches applies to the authorized root. A separate limit
 of 100 applies across all remaining pending and migration directories together, so creating new periods
@@ -326,7 +330,8 @@ Browser Logs uses an always-tracked session stub in bridge mode, so renderer
 from RUM `sessionSampleRate`, and sampled-in logs have no relay cap.
 
 LOGS batches rotate at either the configured byte threshold or 1,000 events, keeping each JSON array
-within the Logs intake request limit without dropping events.
+within the Logs intake request limit. Individual events above the standard JSON event cap are dropped
+before batching; HTTP 413 deletes the rejected batch.
 
 ## Profiling
 
