@@ -95,6 +95,45 @@ describe('MainProcessContext', () => {
     expect(result.execution_context).toBeUndefined();
   });
 
+  it('emits an updated view with feature flags as soon as an evaluation is recorded', () => {
+    const startTime = rawRumEvents[0].startTime!;
+    vi.advanceTimersByTime(10);
+    context.getApi().addFeatureFlagEvaluation('search', true);
+
+    const update = rawRumEvents[rawRumEvents.length - 1];
+    expect(update.data).toMatchObject({
+      type: 'view',
+      view: { id: 'session-1', is_active: true },
+      _dd: { document_version: 2 },
+    });
+    expect(update.startTime).toBe(startTime);
+    expect(hooks.triggerRum({ eventType: 'view', startTime, source: EventSource.MAIN })).toMatchObject({
+      feature_flags: { search: true },
+    });
+  });
+
+  it('stops accepting flags at expiry, retains the final view flags, and resets on renewal', () => {
+    const startTime = rawRumEvents[0].startTime!;
+    context.getApi().addFeatureFlagEvaluation('search', true);
+    vi.advanceTimersByTime(10);
+    eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_EXPIRED });
+    const finalView = rawRumEvents.filter((event) => event.data.type === 'view').slice(-1)[0];
+    expect(finalView.data).toMatchObject({ view: { is_active: false } });
+    expect(hooks.triggerRum({ eventType: 'view', startTime, source: EventSource.MAIN })).toMatchObject({
+      feature_flags: { search: true },
+    });
+    const count = rawRumEvents.length;
+    context.getApi().addFeatureFlagEvaluation('search', false);
+    expect(rawRumEvents).toHaveLength(count);
+
+    vi.advanceTimersByTime(10);
+    currentSessionId = 'session-2';
+    eventManager.notify({ kind: EventKind.LIFECYCLE, lifecycle: LifecycleKind.SESSION_RENEW });
+    expect(
+      hooks.triggerRum({ eventType: 'error', startTime: timeStampNow(), source: EventSource.MAIN })
+    ).not.toHaveProperty('feature_flags');
+  });
+
   it('span hook tags spans within the pair with _dd.execution_context.id', () => {
     const executionContext = rawRumEvents.find((e) => e.data.type === 'execution_context')!;
     const contextData = (executionContext.data as RawRumExecutionContext).execution_context;

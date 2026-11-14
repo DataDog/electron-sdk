@@ -5,6 +5,7 @@ import { ErrorCollection, CrashCollection } from './error';
 import { VitalCollection } from './vital';
 import { OperationCollection } from './operation';
 import { ExecutionContextCollection } from './executionContext';
+import type { FeatureFlagsForEvents } from '../../config';
 
 export class RumCollection {
   private constructor(
@@ -17,9 +18,15 @@ export class RumCollection {
   static async start(
     eventManager: EventManager,
     hooks: FormatHooks,
-    sessionManager: SessionManager
+    sessionManager: SessionManager,
+    trackFeatureFlagsForEvents: readonly FeatureFlagsForEvents[] = []
   ): Promise<RumCollection> {
-    const executionContextCollection = await ExecutionContextCollection.start(eventManager, hooks, sessionManager);
+    const executionContextCollection = await ExecutionContextCollection.start(
+      eventManager,
+      hooks,
+      sessionManager,
+      trackFeatureFlagsForEvents
+    );
 
     const errorCollection = new ErrorCollection(eventManager);
     const vitalCollection = new VitalCollection(eventManager);
@@ -30,6 +37,7 @@ export class RumCollection {
 
   getApi() {
     return {
+      ...this.executionContextCollection.getApi(),
       ...this.errorCollection.getApi(),
       ...this.vitalCollection.getApi(),
       ...this.operationCollection.getApi(),

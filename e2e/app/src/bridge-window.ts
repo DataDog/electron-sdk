@@ -35,4 +35,7 @@ type RendererGlobalContext = Parameters<typeof datadogRum.setGlobalContext>[0];
 (window as unknown as Record<string, unknown>).setRendererGlobalContext = (context: RendererGlobalContext) =>
   datadogRum.setGlobalContext(context);
 
+(window as unknown as Record<string, unknown>).addRendererFeatureFlagEvaluation = (key: string, value: unknown) =>
+  datadogRum.addFeatureFlagEvaluation(key, value);
+
 document.getElementById('status')!.textContent = 'bridge-ready';

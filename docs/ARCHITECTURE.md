@@ -155,6 +155,17 @@ See `src/assembly/` and `src/assembly/commonContext.ts`.
 
 **Fake views.** Every RUM event needs a `view.id` to resolve against, but the main process has no real navigable page to attach one to. Fake views are synthetically created by the SDK to carry execution-context events during the transition phase where execution-context events still require a `view.id`. Every event type associated with a fake view carries `view.is_fake: true`, so the backend and frontend can filter it out. `FakeViewContext` (`src/domain/rum/executionContext/FakeViewContext.ts`) attaches this fake view to main-process events (and as `container.view` to renderer events), pointing at the same `id` `MainProcessContext` maintains as an actual `view` RUM document.
 
+### Feature Flag Tracking
+
+`FeatureFlagContext` stores evaluated flag values for the main process's session-scoped fake view.
+`MainProcessContext` starts and closes this history at the same timestamps as its view, and emits a
+view update when `addFeatureFlagEvaluation` records a value. As in Browser RUM, evaluations update a
+single context per view; format hooks resolve that context by the event timestamp for views, errors,
+and any main-process resources or vitals opted in through `trackFeatureFlagsForEvents` (default `[]`).
+`DiskValueHistory` retains past contexts for recovered crash reports without carrying them into a new
+view. Renderer flag contexts are owned by Browser RUM and forwarded unchanged. Main-process flags do
+not enrich renderer events, logs, telemetry or spans.
+
 ### Payload Scrubbing
 
 `PathScrubber` (`src/tools/pathScrubber.ts`) replaces the app path with `/` in serialized payloads, so stack frames and URLs match uploaded source maps. Only the app path is rewritten: other paths, such as the data folders (`userData`, `crashDumps`), are left as is.

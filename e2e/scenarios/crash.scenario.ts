@@ -51,7 +51,7 @@ test('emits a crash error event after a native crash', async ({ intake }) => {
   }
 });
 
-test('crash error event carries user and account context set before the crash', async ({ intake }) => {
+test('crash error event carries customer context and feature flags set before the crash', async ({ intake }) => {
   const userDataDir = await createUserDataDir();
   let activeApp: ElectronApplication | undefined;
 
@@ -63,6 +63,8 @@ test('crash error event carries user and account context set before the crash', 
 
     await firstMainPage.setUserInfo({ id: 'crash-user', name: 'Alice' });
     await firstMainPage.setAccountInfo({ id: 'crash-account', name: 'Acme Corp' });
+    await firstMainPage.addFeatureFlagEvaluation('new_search', true);
+    await firstMainPage.flushTransport();
 
     const appClosed = firstElectronApp.waitForEvent('close');
     firstMainPage.crash();
@@ -82,6 +84,12 @@ test('crash error event carries user and account context set before the crash', 
     expect(error.error.is_crash).toBe(true);
     expect(error.usr).toMatchObject({ id: 'crash-user', name: 'Alice' });
     expect(error.account).toMatchObject({ id: 'crash-account', name: 'Acme Corp' });
+    expect(error.feature_flags).toEqual({ new_search: true });
+
+    await secondMainPage.generateManualError();
+    await secondMainPage.flushTransport();
+    const [currentError] = await intake.getEventsByType('error', { predicate: (event) => !event.body.error.is_crash });
+    expect(currentError.body.feature_flags).toBeUndefined();
   } finally {
     try {
       await activeApp?.close();
