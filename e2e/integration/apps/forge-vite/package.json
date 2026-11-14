@@ -17,7 +17,7 @@
     "package": "electron-forge package"
   },
   "dependencies": {
-    "@datadog/browser-rum": "7.16.2",
+    "@datadog/browser-rum": "7.17.0",
     "@datadog/electron-sdk": "file:../../integration-sdk.tgz"
   },
   "devDependencies": {
@@ -26,6 +26,6 @@
     "@types/node": "24.19.2",
     "electron": "41.1.0",
     "typescript": "5.9.3",
-    "vite": "8.3.5"
+    "vite": "8.3.6"
   }
 }

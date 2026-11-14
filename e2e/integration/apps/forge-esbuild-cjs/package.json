@@ -18,7 +18,7 @@
     "package": "yarn build && electron-forge package"
   },
   "dependencies": {
-    "@datadog/browser-rum": "7.16.2",
+    "@datadog/browser-rum": "7.17.0",
     "@datadog/electron-sdk": "file:../../integration-sdk.tgz"
   },
   "devDependencies": {

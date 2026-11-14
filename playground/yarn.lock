@@ -5,53 +5,53 @@ __metadata:
   version: 10
   cacheKey: 10c0
 
-"@datadog/browser-core@npm:7.16.2":
-  version: 7.16.2
-  resolution: "@datadog/browser-core@npm:7.16.2"
+"@datadog/browser-core@npm:7.17.0":
+  version: 7.17.0
+  resolution: "@datadog/browser-core@npm:7.17.0"
   dependencies:
-    "@datadog/js-core": "npm:0.0.19"
-  checksum: 10c0/b216fe5116821ab5edf799ea1294c2f49700ee4274c67f2e800da6e8f9848faf639e90e8aae1787cc4c34b948e1c14ccf39551b302c7a4a3cad9d639e4f15fed
+    "@datadog/js-core": "npm:0.0.20"
+  checksum: 10c0/1e4d0291d509a00a1d7962960d8bfe90884499207f970ee39dfa06993eae0804b4564f5db7042b9a7d9410c99e520109bdf30f5396ab750f1f96162852f709c4
   languageName: node
   linkType: hard
 
-"@datadog/browser-logs@npm:7.16.2":
-  version: 7.16.2
-  resolution: "@datadog/browser-logs@npm:7.16.2"
+"@datadog/browser-logs@npm:7.17.0":
+  version: 7.17.0
+  resolution: "@datadog/browser-logs@npm:7.17.0"
   dependencies:
-    "@datadog/browser-core": "npm:7.16.2"
-    "@datadog/js-core": "npm:0.0.19"
+    "@datadog/browser-core": "npm:7.17.0"
+    "@datadog/js-core": "npm:0.0.20"
   peerDependencies:
-    "@datadog/browser-rum": 7.16.2
+    "@datadog/browser-rum": 7.17.0
   peerDependenciesMeta:
     "@datadog/browser-rum":
       optional: true
-  checksum: 10c0/c6476d9c6dd175d7864b792c8a8108aaeab616608cb29ade8d946f7f594f78c95131ba8aa85972062323f74b79b4884968770f662130ec061944c5e68372cfd5
+  checksum: 10c0/c5a0b946a549aa4e2310f787ee58d0a5a9c4179d9d7e8223b4cf9e6addb2819a87710aafb4d474973c52461acd060c30accb4ebc065cd8ee474a064f54239876
   languageName: node
   linkType: hard
 
-"@datadog/browser-rum-core@npm:7.16.2":
-  version: 7.16.2
-  resolution: "@datadog/browser-rum-core@npm:7.16.2"
+"@datadog/browser-rum-core@npm:7.17.0":
+  version: 7.17.0
+  resolution: "@datadog/browser-rum-core@npm:7.17.0"
   dependencies:
-    "@datadog/browser-core": "npm:7.16.2"
-    "@datadog/js-core": "npm:0.0.19"
-  checksum: 10c0/acca1aba8607041bcbfd9697622cc842c353b7b5c265914eb81d92ec648e347f3947f6118cd7d212ca1b745fd6871d3427ec90264dc07768d5832caeb2cc2146
+    "@datadog/browser-core": "npm:7.17.0"
+    "@datadog/js-core": "npm:0.0.20"
+  checksum: 10c0/cde41576f6cab01b43fd52eba94c939cdde1e377d48f78658d42fedf7bd58757e607f07e0e2c67ab7da15798159f4db040a9c39086168439908a20e5f340423a
   languageName: node
   linkType: hard
 
-"@datadog/browser-rum@npm:7.16.2":
-  version: 7.16.2
-  resolution: "@datadog/browser-rum@npm:7.16.2"
+"@datadog/browser-rum@npm:7.17.0":
+  version: 7.17.0
+  resolution: "@datadog/browser-rum@npm:7.17.0"
   dependencies:
-    "@datadog/browser-core": "npm:7.16.2"
-    "@datadog/browser-rum-core": "npm:7.16.2"
-    "@datadog/js-core": "npm:0.0.19"
+    "@datadog/browser-core": "npm:7.17.0"
+    "@datadog/browser-rum-core": "npm:7.17.0"
+    "@datadog/js-core": "npm:0.0.20"
   peerDependencies:
-    "@datadog/browser-logs": 7.16.2
+    "@datadog/browser-logs": 7.17.0
   peerDependenciesMeta:
     "@datadog/browser-logs":
       optional: true
-  checksum: 10c0/120d2f1736c39ee59746090d6c177f2df71dd0b815565af591f09192a06cda0dca92822eaf99466303c3939dc9622bbaf81c085f2b03e65fe13328b9a7801641
+  checksum: 10c0/510e3797c78609e8cc08fd4065e05694503a071e24671d4376b1debeab3f585ed982ac8c2e2a6826c8ba3273bbde9e73ab9849ae0c63f14e98f1f4d238fa33da
   languageName: node
   linkType: hard
 
@@ -83,10 +83,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@datadog/js-core@npm:0.0.19":
-  version: 0.0.19
-  resolution: "@datadog/js-core@npm:0.0.19"
-  checksum: 10c0/869936ea183c1971b6a147565c9be5f4da3361605be432b0b4c90dc194d746d39c0ee730d04884ecdbe73b1d9a1ad4ed511bbb0bdb9cef3bdc8fd29ae6ef43a9
+"@datadog/js-core@npm:0.0.20":
+  version: 0.0.20
+  resolution: "@datadog/js-core@npm:0.0.20"
+  checksum: 10c0/feb7aa7b8a6170fad325393a86bf24ba7bf1686587dec1856364952d2fc650594e20e12bf49584e1111b02cb8edb5926ba1f2598689187abc9404d6ab0f7fa4e
   languageName: node
   linkType: hard
 
@@ -580,14 +580,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@playwright/test@npm:1.64.1":
-  version: 1.64.1
-  resolution: "@playwright/test@npm:1.64.1"
+"@playwright/test@npm:1.65.0":
+  version: 1.65.0
+  resolution: "@playwright/test@npm:1.65.0"
   dependencies:
-    playwright: "npm:1.64.1"
+    playwright: "npm:1.65.0"
   bin:
     playwright: cli.js
-  checksum: 10c0/0a1a853d76d6c532cafaf0366a5448584b766737ebd39bbd23dc0580f3d3b6ef4c833082af47a792e7fc2501f444debdfaad37a87a76cc5b195f3803fc80ea3c
+  checksum: 10c0/137a641e1be8035686a165e69d86d242ee7ed5cbe71e5230f9195cb6e65be37a66ba697f16919b508d04c4d682fd4e167d1a755b64ceb545afac780de72b594b
   languageName: node
   linkType: hard
 
@@ -1039,11 +1039,11 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "electron-sdk-playground@workspace:."
   dependencies:
-    "@datadog/browser-logs": "npm:7.16.2"
-    "@datadog/browser-rum": "npm:7.16.2"
+    "@datadog/browser-logs": "npm:7.17.0"
+    "@datadog/browser-rum": "npm:7.17.0"
     "@datadog/datadog-ci": "npm:5.27.0"
     "@datadog/electron-sdk": "portal:.."
-    "@playwright/test": "npm:1.64.1"
+    "@playwright/test": "npm:1.65.0"
     "@types/node": "npm:25.9.9"
     chokidar: "npm:6.0.0"
     concurrently: "npm:10.0.6"
@@ -1831,23 +1831,23 @@ __metadata:
   languageName: node
   linkType: hard
 
-"playwright-core@npm:1.64.1":
-  version: 1.64.1
-  resolution: "playwright-core@npm:1.64.1"
+"playwright-core@npm:1.65.0":
+  version: 1.65.0
+  resolution: "playwright-core@npm:1.65.0"
   bin:
     playwright-core: cli.js
-  checksum: 10c0/91c4f5ed1cff4b0e18b6ac62f66770f5f1b6c204d4aebd6a321c07466dca18a70822ac692597c6059705a703f9768097ac551df179fb49294d639509148e04f3
+  checksum: 10c0/ed905c6fc2457a725c3fdb3ad4500f43c7a1bb2c6e4e8c708e1e314930c7dce446a5756ad073425bf3c6e3ca975e5a35fb0221118e2d51ef7b4b6c6d13d0644c
   languageName: node
   linkType: hard
 
-"playwright@npm:1.64.1":
-  version: 1.64.1
-  resolution: "playwright@npm:1.64.1"
+"playwright@npm:1.65.0":
+  version: 1.65.0
+  resolution: "playwright@npm:1.65.0"
   dependencies:
-    playwright-core: "npm:1.64.1"
+    playwright-core: "npm:1.65.0"
   bin:
     playwright: cli.js
-  checksum: 10c0/edf52d0a79feca37bf383e841a467aa68750684128218eac560063991c9e4b615a94901f580cd8a088bb05fd53008ab4a0e5e8d976067698b60ae5d1de2459f3
+  checksum: 10c0/a7d71f3ca5bcad0531b5f3c39ae1a9be0da8e74be6fee8510d99b9f5fc07fd5b3d889aa4ca487c70ca29aba8625f74e3c2c7473b4c8a784dc14fefff80474ac3
   languageName: node
   linkType: hard
 
