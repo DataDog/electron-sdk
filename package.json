@@ -129,7 +129,7 @@
     "@types/node": "24.19.2",
     "@vitest/coverage-v8": "4.1.12",
     "@vitest/ui": "4.1.12",
-    "concurrently": "10.0.6",
+    "concurrently": "10.0.7",
     "electron": "41.1.0",
     "eslint": "10.14.0",
     "eslint-config-prettier": "10.1.8",
