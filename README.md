@@ -349,6 +349,32 @@ stopDurationVital('document.open', {
 
 Times passed to the API are in milliseconds. Use `vitalKey` to measure overlapping durations with the same name; it identifies the measurement but is not included in the event. A measurement must be started and stopped in the same process. In renderer processes, use the equivalent `@datadog/browser-rum` APIs directly.
 
+### Feature Flag Tracking
+
+Record the result of a feature flag evaluation to correlate rollouts with RUM errors:
+
+```ts
+import { addFeatureFlagEvaluation } from '@datadog/electron-sdk';
+
+// After awaiting init(), report the value returned by your application's flag provider.
+addFeatureFlagEvaluation('new_search', true);
+```
+
+Evaluations appear in `feature_flags` on main-process views and errors. The latest value for each key is kept for the current main-process view (one per session) and cleared at session expiry. Calls before initialization or without an active session are ignored. Flag history is retained on disk for recovered crash reports, like user and account context.
+
+To also attach evaluations to main-process network resources or vitals, opt in at initialization:
+
+```ts
+await init({
+  ...configuration,
+  trackFeatureFlagsForEvents: ['resource', 'vital'],
+});
+```
+
+`trackFeatureFlagsForEvents` defaults to `[]` and accepts `'resource'` and `'vital'`. Views and errors always include evaluations. Invalid entries are reported and ignored.
+
+In renderers, use `datadogRum.addFeatureFlagEvaluation(key, value)` from `@datadog/browser-rum`. Each renderer keeps its own view-scoped evaluations; main-process evaluations are not shared with windows. The Electron API records values from any flag provider; it does not fetch or evaluate flags. See [RUM Feature Flag Tracking](https://docs.datadoghq.com/real_user_monitoring/feature_flag_tracking/setup/) for provider integrations.
+
 ### Global Context
 
 Attach custom attributes from the main process to all subsequent RUM events, including renderer events.

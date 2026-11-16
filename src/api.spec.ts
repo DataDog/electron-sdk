@@ -4,6 +4,7 @@ const { addUsage, display, rumApi, globalContextApi } = vi.hoisted(() => ({
   addUsage: vi.fn(),
   display: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
   rumApi: {
+    addFeatureFlagEvaluation: vi.fn<(key: string, value: unknown) => void>(),
     addDurationVital: vi.fn(),
     startDurationVital: vi.fn(),
     stopDurationVital: vi.fn(),
@@ -24,6 +25,8 @@ vi.mock('./domain/telemetry', () => ({
 vi.mock('./tools/display', () => ({ display }));
 
 import {
+  addFeatureFlagEvaluation,
+  setFeatureFlagApi,
   addDurationVital,
   clearGlobalContext,
   getGlobalContext,
@@ -36,7 +39,46 @@ import {
   stopDurationVital,
 } from './api';
 
-describe.sequential('duration vital public API', () => {
+describe('feature flag public API', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setFeatureFlagApi(undefined);
+  });
+
+  it('ignores calls before initialization and reports usage without the flag values', () => {
+    expect(() => addFeatureFlagEvaluation('search', true)).not.toThrow();
+    expect(rumApi.addFeatureFlagEvaluation).not.toHaveBeenCalled();
+    expect(addUsage).toHaveBeenCalledExactlyOnceWith({ feature: 'add-feature-flag-evaluation' });
+  });
+
+  it.each(['', ' ', ' padded ', 42, null])('rejects invalid keys: %j', (key) => {
+    setFeatureFlagApi(rumApi);
+    addFeatureFlagEvaluation(key as string, true);
+    expect(display.error).toHaveBeenCalledOnce();
+    expect(rumApi.addFeatureFlagEvaluation).not.toHaveBeenCalled();
+  });
+
+  it('sanitizes values into a copy that can be serialized', () => {
+    setFeatureFlagApi(rumApi);
+    const value: Record<string, unknown> = { variant: 'dark' };
+    value.self = value;
+    addFeatureFlagEvaluation('theme', value);
+    value.variant = 'light';
+
+    const [key, sanitized] = rumApi.addFeatureFlagEvaluation.mock.calls[0];
+    expect(key).toBe('theme');
+    expect(sanitized).toMatchObject({ variant: 'dark' });
+    expect(() => JSON.stringify(sanitized)).not.toThrow();
+  });
+
+  it.each([false, 0, '', null])('preserves JSON values including falsy values: %j', (value) => {
+    setFeatureFlagApi(rumApi);
+    addFeatureFlagEvaluation('search', value);
+    expect(rumApi.addFeatureFlagEvaluation).toHaveBeenCalledWith('search', value);
+  });
+});
+
+describe('duration vital public API', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setDurationVitalApi(undefined);
@@ -156,7 +198,7 @@ describe.sequential('duration vital public API', () => {
   });
 });
 
-describe.sequential('global context public API', () => {
+describe('global context public API', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setGlobalContextApi(globalContextApi);
@@ -282,7 +324,7 @@ describe.sequential('global context public API', () => {
   });
 });
 
-describe.sequential('tracking consent public API', () => {
+describe('tracking consent public API', () => {
   let api: typeof import('./api');
   const manager = { update: vi.fn() };
 

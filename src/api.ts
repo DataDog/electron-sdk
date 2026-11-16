@@ -22,10 +22,36 @@ type GlobalContextApi = Pick<
 >;
 
 type TrackingConsentApi = Pick<TrackingConsentManager, 'update'>;
+type FeatureFlagApi = Pick<ReturnType<RumCollection['getApi']>, 'addFeatureFlagEvaluation'>;
 
 let durationVitalApi: DurationVitalApi | undefined;
 let globalContextApi: GlobalContextApi | undefined;
 let trackingConsentApi: TrackingConsentApi | undefined;
+let featureFlagApi: FeatureFlagApi | undefined;
+
+export function setFeatureFlagApi(api: FeatureFlagApi | undefined): void {
+  featureFlagApi = api;
+}
+
+/**
+ * Record an already-evaluated feature flag on the main process's current RUM view and errors.
+ * Use `trackFeatureFlagsForEvents` at init to include evaluations on resources and vitals too.
+ * Evaluations are cleared when the session ends. Renderer processes use the Browser RUM SDK's
+ * `addFeatureFlagEvaluation` and keep their own view-scoped evaluations.
+ *
+ * @example
+ * ```ts
+ * await init({ ...configuration });
+ * addFeatureFlagEvaluation('new_search', true);
+ * ```
+ */
+export function addFeatureFlagEvaluation(key: string, value: unknown): void {
+  callMonitored(() => {
+    addUsage({ feature: 'add-feature-flag-evaluation' });
+    if (!validateContextKey('addFeatureFlagEvaluation', key)) return;
+    featureFlagApi?.addFeatureFlagEvaluation(key, sanitize(value));
+  });
+}
 
 export function setDurationVitalApi(api: DurationVitalApi | undefined): void {
   durationVitalApi = api;
@@ -173,7 +199,7 @@ export function clearGlobalContext(): void {
   });
 }
 
-function validateContextKey(method: GlobalContextMethod, key: unknown): key is string {
+function validateContextKey(method: GlobalContextMethod | 'addFeatureFlagEvaluation', key: unknown): key is string {
   if (!isValidString(key) || key !== key.trim()) {
     display.error(
       `${method}: key cannot be empty, blank, or have leading or trailing whitespace. The attribute will be ignored.`
