@@ -10,6 +10,7 @@ import {
 import { display } from '../../tools/display';
 import type { FormatHooks } from '../../assembly';
 
+/** User identity and attributes attached to SDK events. */
 export interface UserInfo {
   id?: string;
   name?: string;

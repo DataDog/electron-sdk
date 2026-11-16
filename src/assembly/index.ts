@@ -12,5 +12,3 @@ export type {
   SpanAssembleParams,
   TelemetryAssembleParams,
 } from './hooks';
-export { UserContext } from '../domain/customer-context';
-export type { AccountInfo, UserInfo } from '../domain/customer-context';

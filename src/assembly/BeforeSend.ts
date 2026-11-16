@@ -1,7 +1,7 @@
 import { isEmptyObject, objectEntries, sanitize } from '@datadog/browser-core';
 import { deepClone, getType } from '@datadog/js-core/util';
 import type { ElectronEventSource, RumBeforeSend } from '../config';
-import type { RumEvent } from '../domain/rum';
+import type { RumEvent } from '../domain/rum/types';
 import { display } from '../tools/display';
 
 type ModifiableFieldType = 'string' | 'object' | 'array';

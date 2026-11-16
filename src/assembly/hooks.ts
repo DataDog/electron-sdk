@@ -1,7 +1,7 @@
 import type { TimeStamp } from '@datadog/js-core/time';
 import { combine, type RecursivePartial } from '@datadog/js-core/util';
 import { DISCARDED, SKIPPED } from '@datadog/js-core/assembly';
-import type { RumEvent } from '../domain/rum';
+import type { RumEvent } from '../domain/rum/types';
 import type { TelemetryEvent } from '../domain/telemetry';
 import type { LogsEvent } from '../domain/logs';
 import { RawSpanData } from '../domain/tracing/rawTracingData.types';
