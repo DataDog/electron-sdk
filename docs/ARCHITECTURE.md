@@ -351,7 +351,7 @@ signal the renderer to stop its profiler on `quota_ko`.
 
 ## Instrumentation & Tracing
 
-The SDK instruments the Electron main process to collect spans for outgoing HTTP requests. It also injects a preload script into every renderer process, enabling the Browser SDK to route RUM events through IPC to the Electron SDK.
+The SDK instruments the Electron main process to collect spans for outgoing HTTP requests and to time IPC handlers. It also injects a preload script into every renderer process, enabling the Browser SDK to route RUM events through IPC to the Electron SDK.
 
 ### Responsibilities
 
@@ -361,13 +361,14 @@ Instrumentation is split between the SDK and dd-trace:
 
 - `patchBrowserWindow` (`src/instrument/browserWindow.ts`): injects the SDK's preload script into renderer processes.
 - `patchNet` (`src/instrument/net.ts`): wraps `net.fetch` and `net.request` to create HTTP spans.
+- `patchIpcHandlers` (`src/instrument/ipc.ts`): wraps IPC `handle` registrations to time them (see [IPC handlers](#ipc-handlers)).
 
 **dd-trace** provides the span runtime and export pipeline:
 
 - Span creation API (`ddTrace.startSpan()`, `ddTrace.inject()`): used by the SDK's patches to create and propagate spans.
 - The `electron` exporter: collects finished spans and publishes them to a Node.js diagnostics channel (`datadog:apm:electron:export`).
 
-dd-trace's own `electron` instrumentation plugin is explicitly disabled by setting `DD_TRACE_DISABLED_INSTRUMENTATIONS=electron` in `instrument-prelude.ts`, preventing it from double-wrapping `net` alongside the SDK's patches and from emitting IPC spans: the SDK does not trace IPC. This will be removed once the `electron` plugin is dropped from dd-trace.
+dd-trace's own `electron` instrumentation plugin is explicitly disabled by setting `DD_TRACE_DISABLED_INSTRUMENTATIONS=electron` in `instrument-prelude.ts`, preventing it from double-wrapping `net` and `ipcMain.handle` alongside the SDK's patches, and from emitting IPC spans: the SDK does not trace IPC. This will be removed once the `electron` plugin is dropped from dd-trace.
 
 ### Instrumentation entry point (`@datadog/electron-sdk/instrument`)
 
@@ -381,7 +382,7 @@ import { app, BrowserWindow } from 'electron';
 On load it:
 
 1. Loads the tracing runtime before Electron.
-2. Calls `patchBrowserWindow` and `patchNet`, and registers the bridge-config responder on `ipcMain`.
+2. Calls `patchBrowserWindow`, `patchNet` and `patchIpcHandlers`, and registers the bridge-config responder on `ipcMain`.
 
 The regular SDK `init()` then initializes dd-trace with the `electron` exporter and the resolved tracing
 configuration.
@@ -416,6 +417,12 @@ consent does not end or prevent the session, so trace context propagates as when
 traces in a sampled session, Electron `net` requests omit trace headers, while global `fetch` and `node:http` propagate
 the rejected sampling decision so downstream spans inherit it. Rejected traces are not sent to the spans intake. Their
 HTTP spans still produce RUM resources without trace or span identifiers.
+
+### IPC handlers
+
+- **Per instance:** `handle` is an own property of each `IpcMain`, so `ipcMain` is patched on load, `webContents.ipc` and `mainFrame.ipc` at `web-contents-created`, and each frame's `ipc` at `frame-created`.
+- **Across bundles:** like dd-trace's span export, each finished call is published on a diagnostics channel (`datadog:electron-sdk:ipc-handle`), and the wrapper calls the handler untouched while nothing subscribes, as with the option off. With `trackIpcResources`, `RumCollection` starts an `IpcCollection` that subscribes to it and emits a resource dated at the handler start, which goes through the same gates as the other main-process events: consent, session and `beforeSendRum`.
+- **Scope:** `handle` only. `ipcMain.on` listeners, which receive `send` and `sendSync` messages, are planned in RUM-18778. `ServiceWorkerMain.ipc` handlers, which only service worker invokes reach, are not patched.
 
 ### Preload injection
 
@@ -498,6 +505,6 @@ The `copyPackageTree` function in all three bundler plugins walks only the `depe
 
 - **Required fields** (e.g. `clientToken`): validation returns `undefined` to signal initialization should abort; no exceptions thrown.
 - **Optional fields** (e.g. `env`): invalid values silently fall back to `undefined`.
-- **Enum fields** (e.g. `batchSize`): invalid values are reported and fall back to the default, except `trackingConsent`, whose default grants consent: an invalid or `null` value aborts initialization.
+- **Enum and boolean fields** (e.g. `batchSize`, `trackIpcResources`): invalid values are reported and fall back to the default, except `trackingConsent`, whose default grants consent: an invalid or `null` value aborts initialization.
 
 See `src/config.ts`.

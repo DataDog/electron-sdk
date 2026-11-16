@@ -90,6 +90,7 @@ export function createTestConfiguration(overrides: Partial<Configuration> = {}):
     batchSize: 'MEDIUM',
     uploadFrequency: 'NORMAL',
     defaultPrivacyLevel: 'mask',
+    trackIpcResources: false,
     allowedRendererHosts: ['*', ''],
     ...overrides,
   };
