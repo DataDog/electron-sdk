@@ -1,7 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { display } from '../../tools/display';
 import { getUserAgent } from '../userAgent';
 import { compareBatchFileNames } from './batchFileName';
+import { isMissingPath } from './fsErrors';
 
 /** Configuration for a {@link BatchConsumer} instance. */
 export interface BatchConsumerConfig {
@@ -23,6 +25,7 @@ export abstract class BatchConsumer {
   protected intakeUrl: string;
   protected clientToken: string;
   protected userAgent: string | undefined;
+  private readonly warnedFiles = new Set<string>();
 
   constructor(config: BatchConsumerConfig) {
     this.trackPath = config.trackPath;
@@ -37,6 +40,11 @@ export abstract class BatchConsumer {
     }
 
     const logFiles = await this.getLogFiles();
+    for (const warnedFile of this.warnedFiles) {
+      if (!logFiles.includes(warnedFile)) {
+        this.warnedFiles.delete(warnedFile);
+      }
+    }
 
     for (const logFile of logFiles) {
       await this.uploadBatch(logFile);
@@ -61,13 +69,21 @@ export abstract class BatchConsumer {
     }
   }
 
-  /** Reads a batch file and returns its non-empty lines. */
-  protected async readBatchFile(filePath: string) {
+  /**
+   * Reads a batch file and returns its non-empty lines, or `undefined` when the read fails.
+   * A failed read warns once per file while the file stays listed; a file removed since the listing
+   * (evicted by a producer) is silent.
+   */
+  protected async readBatchFile(filePath: string): Promise<string[] | undefined> {
     try {
       const content = await fs.readFile(filePath, 'utf8');
       return content.split('\n').filter((line) => line.trim().length > 0);
-    } catch {
-      return [];
+    } catch (error) {
+      if (!isMissingPath(error) && !this.warnedFiles.has(filePath)) {
+        this.warnedFiles.add(filePath);
+        display.warn('Failed to read batch file, keeping it for the next upload:', filePath, error);
+      }
+      return undefined;
     }
   }
 
@@ -76,9 +92,13 @@ export abstract class BatchConsumer {
    * sends it, and deletes the file on success.
    * If {@link buildRequest} returns `null` the file is deleted without a network call
    * (empty or malformed batch — nothing to send).
+   * A file whose read fails is kept for the next upload, without calling {@link buildRequest}.
    */
   protected async uploadBatch(filePath: string): Promise<boolean> {
     const lines = await this.readBatchFile(filePath);
+    if (!lines) {
+      return false;
+    }
     const request = await this.buildRequest(lines);
 
     if (!request) {
@@ -100,8 +120,8 @@ export abstract class BatchConsumer {
 
   /**
    * Builds the HTTP {@link Request} for the given batch file lines.
-   * Return `null` if the lines produce no sendable payload — the base class
-   * will delete the file and skip the network call.
+   * Return `null` if the lines produce no sendable payload (empty or malformed batch): the base class
+   * deletes the file and skips the network call. Never called for a file whose read failed.
    * May be async to allow payload transforms (e.g. compression).
    */
   protected abstract buildRequest(lines: string[]): Promise<Request | null> | Request | null;
