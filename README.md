@@ -18,7 +18,7 @@ npm install @datadog/electron-sdk
 
 ### Setup
 
-The Electron SDK uses dd-trace under the hood to monitor the main process and relies on the browser SDK to monitor renderer processes.
+The Electron SDK uses dd-trace-electron under the hood to monitor the main process and relies on the browser SDK to monitor renderer processes.
 
 ```mermaid
 graph TB
@@ -28,7 +28,7 @@ graph TB
         end
 
         subgraph Main Process
-            DDT[dd-trace]
+            DDT[dd-trace-electron]
             SDK[Electron SDK]
         end
     end
@@ -60,7 +60,7 @@ import '@datadog/electron-sdk/instrument';
 import { app, BrowserWindow } from 'electron';
 ```
 
-This instruments the needed Electron APIs. `dd-trace` is initialized with the resolved configuration when `init()`
+This instruments the needed Electron APIs. `dd-trace-electron` is initialized with the resolved configuration when `init()`
 is called.
 
 Then initialize the Electron SDK, awaiting `init` before creating any browser windows:
@@ -133,12 +133,12 @@ mode, so the Electron setting is authoritative.
 
 The SDK instruments Electron as it is loaded, which requires correct module loading order. The SDK provides bundler plugins to ensure this works in all environments.
 
-Each plugin accepts `copyRuntimeDependencies`, which controls whether it copies the SDK, `dd-trace`,
+Each plugin accepts `copyRuntimeDependencies`, which controls whether it copies the SDK, `dd-trace-electron`,
 and their runtime dependencies into the build output. It defaults to `false`: the application
 packager must include those dependencies in the packaged app. Set `copyRuntimeDependencies: true`
 only as a best-effort compatibility fallback when the packager cannot stage them.
 
-Keep `@datadog/electron-sdk` in the application's production `dependencies`; it brings `dd-trace`
+Keep `@datadog/electron-sdk` in the application's production `dependencies`; it brings `dd-trace-electron`
 as a runtime dependency. Applications already using `copyRuntimeDependencies: false` with working
 packager staging need no configuration change.
 
