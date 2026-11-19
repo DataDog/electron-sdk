@@ -1,9 +1,13 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { StandardServerEvent } from '../../../event';
+import { display } from '../../../tools/display';
 import type { PathScrubber } from '../../../tools/pathScrubber';
 import { BatchProducer } from '../BatchProducer';
 import type { BatchProducerConfig } from '../BatchProducer';
+
+/** Bound each serialized JSON event before it can make a whole batch unuploadable. */
+const MAX_EVENT_BYTES = 1_000_000;
 
 /** Configuration for a {@link StandardBatchProducer} instance. */
 export interface StandardBatchProducerConfig extends BatchProducerConfig {
@@ -53,14 +57,18 @@ export class StandardBatchProducer extends BatchProducer {
   }
 
   /**
-   * Serializes the event's `data` as a path-scrubbed JSON line and appends it to the current batch file, rotating first
-   * if the size limit would be exceeded. Scrubbing comes first because the scrubbed size drives rotation.
+   * Serializes the event's `data` as a path-scrubbed JSON line, dropping events over MAX_EVENT_BYTES.
+   * Accepted events are appended to the current batch, rotating first if its size limit would be exceeded.
+   * Both limits use the scrubbed size.
    */
   protected async writeData(event: StandardServerEvent) {
-    await this.ensureTrackDirectoryExists();
-
     const serialized = `${this.pathScrubber.scrub(JSON.stringify(event.data))}\n`;
     const dataSize = Buffer.byteLength(serialized, 'utf8');
+    if (dataSize - 1 > MAX_EVENT_BYTES) {
+      display.warn(`Dropping event exceeding the ${MAX_EVENT_BYTES} byte serialized size limit.`);
+      return;
+    }
+    await this.ensureTrackDirectoryExists();
 
     const exceedsByteLimit = this.currentBatchSize + dataSize > this.batchSize;
     const reachedEventLimit =

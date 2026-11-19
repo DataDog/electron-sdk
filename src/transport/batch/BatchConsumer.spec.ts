@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { display } from '../../tools/display';
 import { BatchConsumer } from './BatchConsumer';
 import type { BatchConsumerConfig } from './BatchConsumer';
 import { getUserAgent } from '../userAgent';
@@ -6,6 +7,7 @@ import { mockFs } from '../../mocks.specUtil';
 
 vi.mock('node:fs/promises');
 vi.mock('../userAgent');
+vi.mock('../../tools/display', () => ({ display: { warn: vi.fn() } }));
 const fsMocks = mockFs();
 
 const TEST_USER_AGENT = 'TestApp/1.0.0';
@@ -76,6 +78,26 @@ describe('BatchConsumer — upload/send/delete behaviour', () => {
       await consumer.upload();
 
       expect(fsMocks.unlink).toHaveBeenCalledOnce();
+    });
+
+    it('deletes a batch rejected with HTTP 413 and continues uploading later batches', async () => {
+      const files = new Set(['a.log', 'b.log']);
+      fsMocks.readdir.mockImplementation(() => Promise.resolve([...files]));
+      fsMocks.readFile.mockResolvedValue('{"event":1}');
+      fsMocks.unlink.mockImplementation((file) => {
+        files.delete(String(file).split('/').pop()!);
+        return Promise.resolve();
+      });
+      vi.mocked(fetch).mockResolvedValueOnce({ ok: false, status: 413 } as Response);
+      const consumer = new TestConsumer(config, TEST_REQUEST);
+
+      await consumer.upload();
+      await consumer.upload();
+
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(fsMocks.unlink).toHaveBeenCalledWith('/mock/track/a.log');
+      expect(fsMocks.unlink).toHaveBeenCalledWith('/mock/track/b.log');
+      expect(display.warn).toHaveBeenCalledWith(expect.stringContaining('413'));
     });
 
     it('keeps the file when the intake returns a non-ok response', async () => {

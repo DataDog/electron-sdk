@@ -227,6 +227,7 @@ export class Intake {
   private server: http.Server | null = null;
   private rumEvents: ReceivedEvent[] = [];
   private logs: ReceivedEvent<LogsEvent>[] = [];
+  private logsResponseStatus = 202;
   private logRequestSizes: number[] = [];
   private replaySegments: ReplaySegment[] = [];
   private traces: Trace[] = [];
@@ -346,6 +347,10 @@ export class Intake {
     }
   }
 
+  setLogsResponseStatus(status: number): void {
+    this.logsResponseStatus = status;
+  }
+
   setQuotaResponse(decision: 'quota_ok' | 'quota_ko'): void {
     this.quotaDecision = decision;
   }
@@ -437,8 +442,9 @@ export class Intake {
               this.storeRumEvents(parsedBody, headers, ddforward);
             }
 
-            res.writeHead(202, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ status: 'accepted' }));
+            const status = ddforward.startsWith('/api/v2/logs') ? this.logsResponseStatus : 202;
+            res.writeHead(status, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: status === 202 ? 'accepted' : 'rejected' }));
           } catch {
             res.writeHead(400, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'Invalid JSON' }));
@@ -686,6 +692,7 @@ export class Intake {
   clear(): void {
     this.rumEvents = [];
     this.logs = [];
+    this.logsResponseStatus = 202;
     this.logRequestSizes = [];
     this.replaySegments = [];
     this.traces = [];

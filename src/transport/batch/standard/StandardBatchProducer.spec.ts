@@ -7,7 +7,7 @@ import { display } from '../../../tools/display';
 
 vi.mock('node:fs/promises');
 vi.mock('../../../tools/display', () => ({
-  display: { error: vi.fn() },
+  display: { error: vi.fn(), warn: vi.fn() },
 }));
 const fsMocks = mockFs();
 const markingScrubber = { scrub: (serialized: string) => serialized.replace(/\/secret\/app/g, '') };
@@ -114,6 +114,30 @@ describe('StandardBatchProducer', () => {
       expect(fsMocks.appendFile).toHaveBeenCalledTimes(2);
       expect(fsMocks.appendFile).toHaveBeenNthCalledWith(1, tmp, `{"a":1}\n`, 'utf8');
       expect(fsMocks.appendFile).toHaveBeenNthCalledWith(2, tmp, `{"b":2}\n`, 'utf8');
+    });
+
+    it('drops oversized UTF-8 events without losing adjacent events or rotating their batch', async () => {
+      const producer = await StandardBatchProducer.create(makeConfig({ batchSize: 5_000_000 }), identityPathScrubber);
+      const boundary = { message: 'x'.repeat(1_000_000 - JSON.stringify({ message: '' }).length) };
+      producer.post({ data: boundary });
+      producer.post({ data: { message: 'é'.repeat(500_000) } });
+      producer.post({ data: { message: 'after' } });
+      await producer.flush();
+
+      expect(fsMocks.appendFile.mock.calls.map((call) => JSON.parse(call[1] as string) as unknown)).toEqual([
+        boundary,
+        { message: 'after' },
+      ]);
+      expect(new Set(fsMocks.appendFile.mock.calls.map((call) => call[0] as string)).size).toBe(1);
+      expect(display.warn).toHaveBeenCalledWith(expect.stringContaining('1000000 byte'));
+    });
+
+    it('checks the event limit after path scrubbing', async () => {
+      const producer = await StandardBatchProducer.create(config, { scrub: () => '{"message":"scrubbed"}' });
+      producer.post({ data: { message: 'x'.repeat(1_000_001) } });
+      await producer.flush();
+
+      expect(fsMocks.appendFile.mock.calls[0][1]).toBe('{"message":"scrubbed"}\n');
     });
 
     it('writes scrubbed lines', async () => {
