@@ -578,6 +578,16 @@ Remove all global context attributes from subsequent events.
 
 Set the user identity. The user is attached to all subsequent RUM events and spans. An `id` is required; calls without one are ignored with a warning.
 
+User and account fields are sanitized when set or updated, before they are stored or attached to events.
+Each standard identity field and each context's combined `extraInfo` have separate 220 Ki character budgets.
+Extra attributes that exceed the combined budget are skipped. `setUserInfo` and `setAccountInfo` replace the previous
+extras with the accepted attributes. `addUserExtraInfo` and `addAccountExtraInfo` merge updates: skipped attributes keep
+their previous values, and unrelated attributes remain. Shrinking replacements free space for additions in the same call.
+Circular and non-JSON values are made serializable. If a standard identity field (`id`, `name`, or user `email`) exceeds
+its budget, the entire setter call is ignored with an Electron warning that does not include the value; the previous
+identity and extras remain intact.
+`getUserInfo()` and `getAccountInfo()` return these sanitized values.
+
 ```ts
 interface UserInfo {
   id?: string;
