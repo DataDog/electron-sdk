@@ -39,3 +39,6 @@ logs/
 
 # Windows container artifacts
 windows-test-artifacts/
+
+# Generated Bazel integration workspace
+e2e/integration/generated/

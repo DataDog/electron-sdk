@@ -1,0 +1,33 @@
+load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_run_binary")
+load("@npm//:defs.bzl", "npm_link_all_packages")
+
+npm_link_all_packages(name = "node_modules")
+
+js_binary(
+    name = "builder",
+    entry_point = "build.mjs",
+    data = [":node_modules"],
+)
+
+[js_run_binary(
+    name = "build_" + mode,
+    tool = ":builder",
+    srcs = glob(["src/**", "vite.*.config.ts", "workflow.ts"]) + ["package.json"],
+    args = [mode + "-dist", mode],
+    out_dirs = [mode + "-dist"],
+    patch_node_fs = False,
+) for mode in ["default-copy", "plugin-copy"]]
+
+js_binary(
+    name = "stager",
+    entry_point = "stage.mjs",
+    data = [":node_modules/@datadog/electron-sdk"],
+)
+
+[js_run_binary(
+    name = mode + "_app",
+    tool = ":stager",
+    srcs = [":build_" + mode],
+    args = [mode + "-dist", mode + "_app", mode],
+    out_dirs = [mode + "_app"],
+) for mode in ["default-copy", "plugin-copy"]]
