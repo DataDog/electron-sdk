@@ -12,7 +12,7 @@ export const VIEW_HISTORY_FILE_NAME = '_dd_view_history';
 /**
  * Attaches the fake main-process view to every event, resolved by event timestamp from a disk-persisted history:
  * main-process RUM events as their `view`, renderer RUM events as their `container.view`, and main-process
- * telemetry, logs and spans as their view id.
+ * telemetry and spans as their view id.
  *
  * Transitional: it exists only while events still require a `view.id`, and goes away with fake views. See "Fake
  * views" in docs/ARCHITECTURE.md.
@@ -39,16 +39,6 @@ export class FakeViewContext {
       // A renderer telemetry event already carries the view its browser SDK reported, which is the view
       // its RUM events are attached to. The telemetry schema has no `container` to hold the main-process
       // view alongside it (unlike RUM events above), so the renderer's view is kept as it is.
-      if (params.source === EventSource.RENDERER) return SKIPPED;
-      const id = this.history.find(params.startTime);
-      if (id === undefined) return SKIPPED;
-      return { view: { id } };
-    });
-
-    hooks.registerLogs((params) => {
-      // A renderer log already carries the view its browser SDK reported, which is the view its RUM
-      // events are attached to. Logs have no `container` to hold the main-process view alongside it,
-      // so the renderer's view is kept as it is — same reasoning as telemetry above.
       if (params.source === EventSource.RENDERER) return SKIPPED;
       const id = this.history.find(params.startTime);
       if (id === undefined) return SKIPPED;

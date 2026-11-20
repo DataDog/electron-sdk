@@ -44,6 +44,12 @@ describe('computeIntakeUrlForTrack', () => {
     );
   });
 
+  it.each([undefined, 'http://localhost:3000'])('routes main logs as electron with proxy %s', (proxy) => {
+    const url = new URL(computeIntakeUrlForTrack('datad0g.com', 'logs', { logsSource: 'electron', proxy }));
+    const target = proxy ? url.searchParams.get('ddforward') : `${url.pathname}${url.search}`;
+    expect(target).toBe('/api/v2/logs?ddsource=electron');
+  });
+
   it('uses proxy when provided, with ddforward for rum track', () => {
     expect(computeIntakeUrlForTrack('datadoghq.com', 'rum', { proxy: 'http://localhost:3000' })).toBe(
       'http://localhost:3000?ddforward=%2Fapi%2Fv2%2Frum%3Fddsource%3Delectron'

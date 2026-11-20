@@ -227,6 +227,7 @@ export class Intake {
   private server: http.Server | null = null;
   private rumEvents: ReceivedEvent[] = [];
   private logs: ReceivedEvent<LogsEvent>[] = [];
+  private logsResponseStatus = 202;
   private logRequestSizes: number[] = [];
   private replaySegments: ReplaySegment[] = [];
   private traces: Trace[] = [];
@@ -346,6 +347,10 @@ export class Intake {
     }
   }
 
+  setLogsResponseStatus(status: number): void {
+    this.logsResponseStatus = status;
+  }
+
   setQuotaResponse(decision: 'quota_ok' | 'quota_ko'): void {
     this.quotaDecision = decision;
   }
@@ -428,6 +433,11 @@ export class Intake {
           this.payloadTexts.push({ source: ddforward, text: rawBody.toString() });
           try {
             const parsedBody: unknown = JSON.parse(rawBody.toString());
+            if (ddforward.startsWith('/api/v2/logs') && this.logsResponseStatus !== 202) {
+              res.writeHead(this.logsResponseStatus);
+              res.end();
+              return;
+            }
             if (ddforward.startsWith('/api/v2/spans')) {
               this.storeTraces(parsedBody);
             } else if (ddforward.startsWith('/api/v2/logs')) {

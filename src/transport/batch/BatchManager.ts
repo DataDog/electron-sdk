@@ -49,13 +49,13 @@ export class BatchManager {
     pathScrubber: Pick<PathScrubber, 'scrub'>
   ) {
     const { uploadFrequency } = batchConfig;
-    const trackPath = getTrackPath(batchConfig.path, batchConfig.trackType);
+    const trackPath = getTrackPath(batchConfig.path, batchConfig.trackType, batchConfig.logsSource);
     const router = await ConsentAwareBatchRouter.create(
       trackPath,
       (directory) => BatchManager.createProducer(batchConfig, directory, pathScrubber),
       consentManager
     );
-    const consumer = BatchManager.createConsumer(config, batchConfig.trackType, trackPath);
+    const consumer = BatchManager.createConsumer(config, batchConfig, trackPath);
     const manager = new BatchManager(router, consumer, uploadFrequency);
     manager.start();
 
@@ -174,10 +174,11 @@ export class BatchManager {
   }
 
   /** The consumer scans the track root, never pending stores or migration directories. */
-  private static createConsumer(config: Configuration, trackType: EventTrack, trackPath: string): BatchConsumer {
+  private static createConsumer(config: Configuration, batchConfig: BatchConfig, trackPath: string): BatchConsumer {
+    const { trackType, logsSource } = batchConfig;
     const consumerConfig: BatchConsumerConfig = {
       trackPath,
-      intakeUrl: computeIntakeUrlForTrack(config.site, trackType, { proxy: config.proxy }),
+      intakeUrl: computeIntakeUrlForTrack(config.site, trackType, { proxy: config.proxy, logsSource }),
       clientToken: config.clientToken,
     };
     if (trackType === EventTrack.REPLAY) {
