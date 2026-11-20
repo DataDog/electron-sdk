@@ -50,6 +50,19 @@ describe('ProfileBatchProducer', () => {
     });
   });
 
+  it('evicts completed batches on rotation without flush', async () => {
+    const producer = await ProfileBatchProducer.create({ trackPath: TRACK_PATH }, identityPathScrubber);
+    fsMocks.readdir.mockResolvedValue(Array.from({ length: 105 }, (_, i) => `batch-100-${i + 1}.log`));
+    fsMocks.unlink.mockResolvedValue(undefined);
+
+    producer.post({ data: {}, trace: {} });
+    await (producer as unknown as { writeQueue: Promise<void> }).writeQueue;
+
+    expect(fsMocks.unlink.mock.calls).toEqual(
+      Array.from({ length: 5 }, (_, i) => [path.join(TRACK_PATH, `batch-100-${i + 1}.log`)])
+    );
+  });
+
   describe('post()', () => {
     it('writes event JSON on line 1 and trace JSON on line 2', async () => {
       const producer = await ProfileBatchProducer.create({ trackPath: TRACK_PATH }, identityPathScrubber);

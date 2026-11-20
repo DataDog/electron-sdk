@@ -1,3 +1,5 @@
+const batchFileCollator = new Intl.Collator(undefined, { numeric: true });
+
 /**
  * Compares batch file names by age (oldest first).
  *
@@ -7,5 +9,5 @@
  * stay in lockstep if the naming ever changes.
  */
 export function compareBatchFileNames(a: string, b: string): number {
-  return a.localeCompare(b, undefined, { numeric: true });
+  return batchFileCollator.compare(a, b);
 }

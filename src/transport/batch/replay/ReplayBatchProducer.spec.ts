@@ -61,6 +61,19 @@ describe('ReplayBatchProducer', () => {
     fsMocks.rename.mockResolvedValue(undefined);
   });
 
+  it('evicts completed batches on rotation without flush', async () => {
+    const producer = await ReplayBatchProducer.create(config);
+    fsMocks.readdir.mockResolvedValue(Array.from({ length: 105 }, (_, i) => `batch-100-${i + 1}.log`));
+    fsMocks.unlink.mockResolvedValue(undefined);
+
+    producer.post(makeEvent());
+    await (producer as unknown as { writeQueue: Promise<void> }).writeQueue;
+
+    expect(fsMocks.unlink.mock.calls).toEqual(
+      Array.from({ length: 5 }, (_, i) => [path.join(config.trackPath, `batch-100-${i + 1}.log`)])
+    );
+  });
+
   describe('create()', () => {
     it('creates the track directory when it does not exist', async () => {
       fsMocks.access.mockRejectedValueOnce(new Error('ENOENT'));
