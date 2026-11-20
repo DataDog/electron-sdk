@@ -24,9 +24,9 @@
  */
 
 import { createRequire } from 'node:module';
-import { readFileSync, cpSync, mkdirSync, existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { copyRuntimeDependencies } from './copyRuntimeDependencies';
 
 import type { DatadogBundlerPluginOptions } from './bundler-plugin-options';
 
@@ -36,7 +36,7 @@ interface VitePlugin {
   name: string;
   config?: () => { build: { rollupOptions: { external: RegExp[] } } };
   renderChunk?: (code: string, chunk: { isEntry: boolean }, options: { format: string }) => string | null;
-  writeBundle?: (options: { dir?: string }) => void;
+  writeBundle?: (options: { dir?: string }) => Promise<void>;
 }
 
 const CJS_BANNER =
@@ -80,49 +80,8 @@ export function datadogVitePlugin(pluginOptions: DatadogBundlerPluginOptions = {
 
   if (pluginOptions.copyRuntimeDependencies !== true) return plugin;
 
-  plugin.writeBundle = (outputOptions) => {
-    // Copy externalized packages and their transitive dependencies into
-    // node_modules alongside the bundle output so they are available at
-    // runtime in packaged apps (e.g. Electron Forge asars) where the
-    // project's node_modules is not included.
-    const outDir = outputOptions.dir;
-    if (!outDir) return;
-
-    const destModules = join(outDir, 'node_modules');
-    const visited = new Set<string>();
-
-    function copyPackageTree(pkg: string): void {
-      if (visited.has(pkg)) return;
-      visited.add(pkg);
-
-      try {
-        // Resolve the package's main entry, then walk up to find the root
-        const entryPath = _require.resolve(pkg);
-        let pkgDir = dirname(entryPath);
-        while (pkgDir !== dirname(pkgDir) && !existsSync(join(pkgDir, 'package.json'))) {
-          pkgDir = dirname(pkgDir);
-        }
-
-        const destDir = join(destModules, pkg);
-        if (!existsSync(destDir)) {
-          mkdirSync(dirname(destDir), { recursive: true });
-          cpSync(pkgDir, destDir, { recursive: true });
-        }
-
-        // Recursively copy runtime dependencies
-        const pkgJson = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) as {
-          dependencies?: Record<string, string>;
-        };
-        for (const dep of Object.keys(pkgJson.dependencies ?? {})) {
-          copyPackageTree(dep);
-        }
-      } catch {
-        console.warn(`[datadog] Failed to copy package '${pkg}' to build output`);
-      }
-    }
-
-    copyPackageTree('dd-trace-electron');
-    copyPackageTree('@datadog/electron-sdk');
+  plugin.writeBundle = async (outputOptions) => {
+    if (outputOptions.dir) await copyRuntimeDependencies(outputOptions.dir, _require);
   };
 
   return plugin;

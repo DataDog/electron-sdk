@@ -4,8 +4,11 @@ export interface DatadogBundlerPluginOptions {
    *
    * Prefer configuring the application packager to stage external dependencies. Enable this
    * compatibility fallback only when the packager cannot do so.
+   * Missing or uncopyable required dependencies fail the build.
    *
    * @default false
+   * @example
+   * { copyRuntimeDependencies: true }
    */
   copyRuntimeDependencies?: boolean;
 }
