@@ -1,3 +1,4 @@
+import * as fs from 'node:fs/promises';
 import { mockFs } from '../../../mocks.specUtil';
 
 let resolveWhenReady: () => void;
@@ -90,7 +91,6 @@ function mockDmpFile(name = 'crash.dmp', birthtimeMs = 0) {
   mfs.readdir.mockResolvedValue([{ name, isFile: () => true, isDirectory: () => false }]);
   mfs.stat.mockResolvedValue({ birthtimeMs });
   mfs.readFile.mockResolvedValue(new Uint8Array([1]));
-  mfs.unlink.mockResolvedValue(undefined);
 }
 
 async function startAndFlush(eventManager: EventManager) {
@@ -114,6 +114,7 @@ describe('CrashCollection', () => {
     });
 
     mfs.readdir.mockResolvedValue([]);
+    vi.mocked(fs.rm).mockReset().mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -420,7 +421,55 @@ describe('CrashCollection', () => {
 
     await startAndFlush(eventManager);
 
-    expect(mfs.unlink).toHaveBeenCalledWith('/mock/crash/dumps/crash.dmp');
+    expect(fs.rm).toHaveBeenCalledExactlyOnceWith('/mock/crash/dumps/crash.dmp', {
+      recursive: true,
+      maxRetries: 3,
+      retryDelay: 100,
+    });
+  });
+
+  it('does not reprocess a crash while deletion is pending', async () => {
+    mockDmpFile();
+    vi.mocked(processMinidump).mockResolvedValue(createMinidumpResult());
+    let resolveDeletion!: () => void;
+    vi.mocked(fs.rm).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDeletion = resolve;
+        })
+    );
+
+    await startAndFlush(eventManager);
+    expect(rawRumEvents).toHaveLength(1);
+
+    resolveDeletion();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(processMinidump).toHaveBeenCalledTimes(1);
+    expect(rawRumEvents).toHaveLength(1);
+    expect(addError).not.toHaveBeenCalled();
+  });
+
+  it('reports failed deletion separately and continues with the next crash', async () => {
+    mockDmpFile();
+    mfs.readdir.mockResolvedValue([
+      { name: 'locked.dmp', isFile: () => true, isDirectory: () => false },
+      { name: 'good.dmp', isFile: () => true, isDirectory: () => false },
+    ]);
+    vi.mocked(processMinidump).mockResolvedValue(createMinidumpResult());
+    const error = Object.assign(new Error('file locked'), { code: 'EBUSY' });
+    vi.mocked(fs.rm).mockRejectedValueOnce(error);
+
+    await startAndFlush(eventManager);
+
+    expect(rawRumEvents).toHaveLength(2);
+    expect(addError).toHaveBeenCalledExactlyOnceWith(error);
+    expect(display.error).toHaveBeenCalledExactlyOnceWith(
+      'Failed to delete processed crash dump:',
+      '/mock/crash/dumps/locked.dmp',
+      error
+    );
+    expect(fs.rm).toHaveBeenCalledTimes(2);
   });
 
   it('skips non-.dmp files', async () => {
@@ -431,7 +480,6 @@ describe('CrashCollection', () => {
     mfs.stat.mockResolvedValue({ birthtimeMs: 0 });
     mfs.readFile.mockResolvedValue(new Uint8Array([1]));
     vi.mocked(processMinidump).mockResolvedValue(createMinidumpResult());
-    mfs.unlink.mockResolvedValue(undefined);
 
     await startAndFlush(eventManager);
 
@@ -446,7 +494,6 @@ describe('CrashCollection', () => {
     mfs.stat.mockResolvedValue({ birthtimeMs: 0 });
     mfs.readFile.mockRejectedValueOnce(new Error('read error')).mockResolvedValueOnce(new Uint8Array([1]));
     vi.mocked(processMinidump).mockResolvedValue(createMinidumpResult());
-    mfs.unlink.mockResolvedValue(undefined);
 
     await startAndFlush(eventManager);
 
@@ -456,6 +503,7 @@ describe('CrashCollection', () => {
       '/mock/crash/dumps/bad.dmp',
       expect.any(Error)
     );
+    expect(fs.rm).toHaveBeenCalledExactlyOnceWith('/mock/crash/dumps/good.dmp', expect.any(Object));
   });
 
   it('uses ??? for unknown module names', async () => {
