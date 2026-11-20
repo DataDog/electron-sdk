@@ -318,6 +318,47 @@ describe('StandardBatchProducer', () => {
   });
 
   describe('overflow eviction', () => {
+    it('does not read or sort 40 completed batches during 1,000 non-rotating posts', async () => {
+      const producer = await StandardBatchProducer.create(makeConfig({ batchSize: 1_000_000 }), identityPathScrubber);
+      fsMocks.readdir.mockClear();
+      fsMocks.readdir.mockResolvedValue(Array.from({ length: 40 }, (_, i) => `batch-100-${i + 1}.log`));
+      const sort = vi.spyOn(Array.prototype, 'sort');
+
+      for (let order = 0; order < 1_000; order++) {
+        producer.post({ data: { order } });
+      }
+      // Drain writes without flush, which intentionally seals and evicts.
+      await (producer as unknown as { writeQueue: Promise<void> }).writeQueue;
+      const sorts = sort.mock.calls.length;
+      sort.mockRestore();
+
+      expect(fsMocks.readdir).not.toHaveBeenCalled();
+      expect(sorts).toBe(0);
+      expect(fsMocks.rename).not.toHaveBeenCalled();
+      expect(fsMocks.appendFile.mock.calls.map((call) => call[1] as string)).toEqual(
+        Array.from({ length: 1_000 }, (_, order) => `${JSON.stringify({ order })}\n`)
+      );
+    });
+
+    it('evicts on count rotation before flush and keeps open files', async () => {
+      const producer = await StandardBatchProducer.create(makeConfig({ maxEventsPerBatch: 1 }), identityPathScrubber);
+      const logs = Array.from({ length: 105 }, (_, i) => `batch-100-${i + 1}.log`);
+      const files = new Set([...logs, 'batch-101-1.tmp']);
+      fsMocks.readdir.mockImplementation(() => Promise.resolve([...files]));
+      fsMocks.unlink.mockImplementation((file: string) => {
+        files.delete(path.basename(file));
+        return Promise.resolve();
+      });
+
+      producer.post({ data: { order: 1 } });
+      producer.post({ data: { order: 2 } });
+      await (producer as unknown as { writeQueue: Promise<void> }).writeQueue;
+
+      expect(fsMocks.rename).toHaveBeenCalledTimes(1);
+      expect([...files]).toEqual([...logs.slice(5), 'batch-101-1.tmp']);
+      expect(fsMocks.unlink).not.toHaveBeenCalledWith(path.join(config.trackPath, 'batch-100-10.log'));
+    });
+
     it('evicts the oldest .log files when the pending count exceeds the cap', async () => {
       // 102 pending .log files, cap is 100 -> the 2 oldest should be evicted.
       const logFiles = Array.from({ length: 102 }, (_, i) => `batch-${String(i).padStart(4, '0')}.log`);
@@ -345,7 +386,7 @@ describe('StandardBatchProducer', () => {
       fsMocks.appendFile.mockRejectedValue(new Error('ENOSPC'));
 
       producer.post({ data: { event: 'test' } });
-      await producer.flush();
+      await (producer as unknown as { writeQueue: Promise<void> }).writeQueue;
 
       expect(fsMocks.unlink).toHaveBeenCalledWith(path.join(config.trackPath, 'batch-0000.log'));
       expect(fsMocks.unlink).toHaveBeenCalledWith(path.join(config.trackPath, 'batch-0001.log'));

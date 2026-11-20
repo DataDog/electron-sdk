@@ -14,7 +14,7 @@ export interface BatchProducerConfig {
  * Writes serialized event data to `.tmp` batch files on disk.
  * Subclasses implement {@link writeData} to control how each event is serialized and
  * when files are rotated.
- * Writes and flushes enforce the shared completed-file limit on a best-effort basis.
+ * Rotations and flushes enforce the shared completed-file limit on a best-effort basis.
  */
 export abstract class BatchProducer {
   protected trackPath: string;
@@ -36,10 +36,9 @@ export abstract class BatchProducer {
         // Disk write failure is an environment issue the SDK cannot fix (disk full, permissions):
         // surface it to the customer and keep the queue alive.
         display.error('Failed to write batch to disk', error);
+        // Preserve backlog cleanup on write failure (for example ENOSPC).
+        await evictBatchFiles([this.trackPath]);
       }
-      // Evict even when the write failed: a full disk (ENOSPC) is exactly when trimming the backlog
-      // frees space for subsequent writes to succeed.
-      await evictBatchFiles([this.trackPath]);
     });
   }
 
@@ -102,7 +101,9 @@ export abstract class BatchProducer {
       await fs.rename(tmpPath, logPath);
     } catch {
       // File doesn't exist or rename failed - silently ignore
+      return;
     }
+    await evictBatchFiles([this.trackPath]);
   }
 
   /** Seals producer-specific open data during {@link flush}. */
