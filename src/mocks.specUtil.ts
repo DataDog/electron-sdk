@@ -71,6 +71,11 @@ export function mockFs() {
   };
   return mocks;
 }
+
+export function createFsError(code: string, message = code) {
+  return Object.assign(new Error(message), { code });
+}
+
 export function createTestConfiguration(overrides: Partial<Configuration> = {}): Configuration {
   return {
     site: 'datadoghq.com',

@@ -5,6 +5,7 @@ import { monitor } from '../../domain/telemetry';
 import { display } from '../../tools/display';
 import type { PendingBatchStore } from './PendingBatchStore';
 import { evictBatchFiles } from './batchFileEviction';
+import { isMissingPath } from './fsErrors';
 import { AUTHORIZED_PENDING_DIRECTORY_PREFIX, PENDING_DIRECTORY_PREFIX } from './batchPaths';
 
 /**
@@ -150,8 +151,4 @@ async function migrateAuthorizedDirectory(authorizedPath: string, trackPath: str
     await fs.rename(path.join(authorizedPath, file), path.join(trackPath, `${file}-pending-${migrationId}.log`));
   }
   await fs.rm(authorizedPath, { recursive: true, force: true });
-}
-
-function isMissingPath(error: unknown): boolean {
-  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }
