@@ -14,8 +14,8 @@
     "test": "yarn build && playwright test -c test/playwright.config.ts"
   },
   "dependencies": {
-    "@datadog/browser-logs": "7.17.0",
-    "@datadog/browser-rum": "7.17.0",
+    "@datadog/browser-logs": "7.17.1",
+    "@datadog/browser-rum": "7.17.1",
     "@datadog/electron-sdk": "portal:.."
   },
   "resolutions": {
@@ -23,7 +23,7 @@
   },
   "devDependencies": {
     "@datadog/datadog-ci": "5.27.0",
-    "@playwright/test": "1.65.0",
+    "@playwright/test": "1.65.1",
     "@types/node": "25.9.9",
     "chokidar": "6.0.0",
     "concurrently": "10.0.7",
