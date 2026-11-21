@@ -31,15 +31,15 @@
     "package": "yarn build && electron-builder --dir --publish never --config electron-builder.yml && electron-builder --dir --publish never --config electron-builder.plugin-copy.yml"
   },
   "dependencies": {
-    "@datadog/browser-rum": "7.17.0",
+    "@datadog/browser-rum": "7.17.1",
     "@datadog/electron-sdk": "file:../../integration-sdk.tgz"
   },
   "devDependencies": {
-    "@electron/asar": "4.3.1",
+    "@electron/asar": "4.3.2",
     "@types/node": "24.19.2",
     "electron": "41.1.0",
     "electron-builder": "26.18.0",
     "typescript": "5.9.3",
-    "vite": "8.3.6"
+    "vite": "8.3.8"
   }
 }
