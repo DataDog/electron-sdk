@@ -141,8 +141,16 @@ describe('Transport', () => {
       }
       expect(posts[0].post).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ source: EventSource.RENDERER }));
       expect(posts[1].post).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ source: EventSource.MAIN }));
-      expect(mockBatchCreate.mock.calls[2][1]).toMatchObject({ trackType: EventTrack.LOGS, logsSource: 'browser' });
-      expect(mockBatchCreate.mock.calls[3][1]).toMatchObject({ trackType: EventTrack.LOGS, logsSource: 'electron' });
+      expect(mockBatchCreate.mock.calls[2][1]).toMatchObject({
+        trackType: EventTrack.LOGS,
+        trackPath: '/mock/user/data/dd_logs',
+        intakeSource: 'browser',
+      });
+      expect(mockBatchCreate.mock.calls[3][1]).toMatchObject({
+        trackType: EventTrack.LOGS,
+        trackPath: '/mock/user/data/dd_main_logs',
+        intakeSource: 'electron',
+      });
     });
 
     it('should handle SERVER events matching domain track type', async () => {

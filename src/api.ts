@@ -20,7 +20,8 @@ export function setLogsApi(api: LogsCollection | undefined): void {
 /**
  * Main-process logger. Call after awaiting `init()`. Signatures match the Browser Logs logger:
  * level methods accept `(message, context?, error?)`, and `log` also accepts a status before the error.
- * Custom attributes are top-level; SDK identity objects are reserved and log fields take precedence.
+ * Custom attributes are top-level and can override ordinary log fields. Application, session,
+ * execution-context correlation and generated tags remain SDK-owned.
  * Early calls are dropped with a warning once; error values need not be Error instances.
  *
  * @example

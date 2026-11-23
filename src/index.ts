@@ -93,7 +93,7 @@ export async function init(configuration: InitConfiguration): Promise<boolean> {
   const rum = await RumCollection.start(eventManager, hooks, sessionManager);
   rumApi = rum.getApi();
   setDurationVitalApi(rumApi);
-  setLogsApi(new LogsCollection(eventManager, config, trackingConsentManager));
+  setLogsApi(new LogsCollection(eventManager, config));
 
   beforeQuitHandler?.stop();
   beforeQuitHandler = new BeforeQuitHandler(app, _flushTransport);

@@ -65,8 +65,9 @@ describe('BatchManager tracking consent storage', () => {
   const createConsentManager = (consent: TrackingConsent) => TrackingConsentManager.init(createFormatHooks(), consent);
 
   const createBatchConfig = (trackType: EventTrack = EventTrack.RUM): BatchConfig => ({
-    path: basePath,
+    trackPath: path.join(basePath, trackType === EventTrack.LOGS ? 'dd_logs' : trackType),
     trackType,
+    intakeSource: 'electron',
     batchSize: 1024,
     uploadFrequency: 60_000,
   });
@@ -165,12 +166,12 @@ describe('BatchManager tracking consent storage', () => {
   });
 
   it.each(['granted', 'pending', 'not-granted'] as const)(
-    'applies %s consent to SDK-generated main-process diagnostic logs',
+    'applies %s consent to main-process logs',
     async (consent) => {
       const state = await createConsentManager(consent);
       manager = await BatchManager.create(
         config,
-        { ...createBatchConfig(EventTrack.LOGS), logsSource: 'electron' },
+        { ...createBatchConfig(EventTrack.LOGS), trackPath: path.join(basePath, 'dd_main_logs') },
         state,
         identityPathScrubber
       );
@@ -178,7 +179,7 @@ describe('BatchManager tracking consent storage', () => {
         kind: EventKind.SERVER,
         track: EventTrack.LOGS,
         source: EventSource.MAIN,
-        data: { date: Date.now(), message: 'Log rate limit reached', status: 'error', origin: 'agent' },
+        data: { date: Date.now(), message: 'main-process log', status: 'info', origin: 'logger' },
       });
       await manager.flush();
 

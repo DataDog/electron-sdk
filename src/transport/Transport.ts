@@ -1,28 +1,24 @@
 import { app } from 'electron';
+import path from 'node:path';
 
 import { resolveBatchSize, resolveUploadFrequency, type Configuration } from '../config';
 import type { TrackingConsentManager } from '../domain/tracking-consent';
 import { EventKind, EventSource, EventTrack, type EventManager, type ServerEvent } from '../event';
-import { BatchManager, BatchMigration, getTrackPath } from './batch';
+import { BatchManager, BatchMigration } from './batch';
 import type { PathScrubber } from '../tools/pathScrubber';
-import type { LogSource } from '../domain/logs';
 
 type StoreDescriptor =
-  | { trackType: typeof EventTrack.LOGS; source: EventSource }
-  | { trackType: Exclude<EventTrack, typeof EventTrack.LOGS> };
+  | { trackType: typeof EventTrack.LOGS; source: EventSource; directory: string; intakeSource: 'browser' | 'electron' }
+  | { trackType: Exclude<EventTrack, typeof EventTrack.LOGS>; directory: string; intakeSource: 'electron' };
 
-const LOG_SOURCES: Record<EventSource, LogSource> = {
-  [EventSource.RENDERER]: 'browser',
-  [EventSource.MAIN]: 'electron',
-};
-
+// Renaming a directory requires a migration so persisted batches remain available after an upgrade.
 const STORES: StoreDescriptor[] = [
-  { trackType: EventTrack.RUM },
-  { trackType: EventTrack.SPANS },
-  { trackType: EventTrack.LOGS, source: EventSource.RENDERER },
-  { trackType: EventTrack.LOGS, source: EventSource.MAIN },
-  { trackType: EventTrack.PROFILE },
-  { trackType: EventTrack.REPLAY },
+  { trackType: EventTrack.RUM, directory: EventTrack.RUM, intakeSource: 'electron' },
+  { trackType: EventTrack.SPANS, directory: EventTrack.SPANS, intakeSource: 'electron' },
+  { trackType: EventTrack.LOGS, source: EventSource.RENDERER, directory: 'dd_logs', intakeSource: 'browser' },
+  { trackType: EventTrack.LOGS, source: EventSource.MAIN, directory: 'dd_main_logs', intakeSource: 'electron' },
+  { trackType: EventTrack.PROFILE, directory: EventTrack.PROFILE, intakeSource: 'electron' },
+  { trackType: EventTrack.REPLAY, directory: EventTrack.REPLAY, intakeSource: 'electron' },
 ];
 
 /**
@@ -52,7 +48,7 @@ export class Transport {
     const transport = new Transport(config, eventManager, trackingConsentManager, pathScrubber);
     // A new process cannot authorize a previous process's undecided data, even for disabled tracks.
     for (const store of STORES) {
-      await BatchMigration.clearPendingData(getTrackPath(transport.basePath, store.trackType, getLogsSource(store)));
+      await BatchMigration.clearPendingData(path.join(transport.basePath, store.directory));
     }
     for (const store of transport.getStores()) {
       await transport.setupStore(store);
@@ -84,18 +80,17 @@ export class Transport {
    * upload frequency, and storage path for the given track type.
    */
   private async createBatchManager(store: StoreDescriptor) {
-    const path = this.basePath;
     const batchSize = resolveBatchSize(this.config);
     const uploadFrequency = resolveUploadFrequency(this.config);
 
     const manager = await BatchManager.create(
       this.config,
       {
-        path,
+        trackPath: path.join(this.basePath, store.directory),
         trackType: store.trackType,
         batchSize,
         uploadFrequency,
-        logsSource: getLogsSource(store),
+        intakeSource: store.intakeSource,
       },
       this.trackingConsentManager,
       this.pathScrubber
@@ -124,8 +119,4 @@ export class Transport {
   async flush() {
     await Promise.all(this.batchManagers.map((m) => m.flush()));
   }
-}
-
-function getLogsSource(store: StoreDescriptor): LogSource | undefined {
-  return store.trackType === EventTrack.LOGS ? LOG_SOURCES[store.source] : undefined;
 }

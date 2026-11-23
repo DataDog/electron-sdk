@@ -149,7 +149,7 @@ See `src/assembly/` and `src/assembly/commonContext.ts`.
 
 `ExecutionContextCollection` (`src/domain/rum/executionContext/`) composes the lifecycle of two independent trackers:
 
-- **`MainProcessContext`** owns a session-scoped fake view and main execution context for the main process: both are created together when a session starts, at init or on renewal, and closed together on session expiry, sharing one `instance_id` (the OS process pid) across every session the process lives through. It registers its own format hooks, tagging main-process RUM events and logs with `execution_context.id`/`type`/`name` (logs require a tracked RUM session at their timestamp) and spans with `_dd.execution_context.id`, backed by a disk-persisted history so a crash replayed at the next launch (see Error Reporting) still resolves to the execution context of the process that actually crashed.
+- **`MainProcessContext`** owns a session-scoped fake view and main execution context for tracked sessions. Both histories close on session expiry; tracked execution contexts share one `instance_id` (the OS process pid) across sessions. Format hooks tag main-process RUM events and logs with `execution_context.id`/`type`/`name` and spans with `_dd.execution_context.id`, backed by a disk-persisted history so a crash replayed at the next launch (see Error Reporting) resolves to the context of the process that crashed.
 - **`RendererProcessContexts`** tracks one execution context per renderer webContents, created at `web-contents-created` — plus a backfill from `webContents.getAllWebContents()` at start, for any webContents already open when tracking begins (e.g. a deferred `init()` called after a window opened) — rotated on the same session expiry/renewal boundaries, and ended on real process destruction: `destroyed` (`exit_reason: 'clean-exit'`) or `render-process-gone` (the real crash/kill/OOM reason). A crashed webContents that the app reloads is re-registered from the reload's own `did-start-navigation` (on its main frame), before any of the reloaded page's scripts run, since Electron reuses the same webContents object across a crash and never re-fires `web-contents-created` for it. It tags renderer RUM events from its own in-memory state via a separate format hook.
   Each context also carries a `name` derived from `webContents.getURL()` (see `deriveExecutionContextName`), resolved on `dom-ready` rather than waiting for the periodic heartbeat, then frozen for the context's lifetime. Because a crash revival's `did-start-navigation` fires before the new navigation commits, `getURL()` there can still return the pre-crash URL — a `pendingNavigation` flag blocks that state from resolving its name until its own `dom-ready` fires, carried through a session renewal if one lands first.
 
@@ -313,10 +313,11 @@ optional `session` field is omitted.
 The main-process `logger` emits raw LOGS events through `LogsCollection` and `MainAssembly`. It uses
 Browser-style level methods, normalizes arbitrary error values while preserving native Node stacks, attaches errors with
 `source_type:nodejs`, and applies `logsSampleRate` before assembly. The format hooks add application,
-service, user, account, and optional session and main-process execution context, resolved at the log timestamp. Custom attributes are
-flattened into the log, with SDK identity objects reserved and log fields taking precedence. RUM global context is not added.
-Collection bounds and snapshots messages, contexts, and individual error fields with Browser sanitization, then recursively
-merges error and caller context. Logs are dropped while consent is refused. Execution-context correlation
+service, version, user, account, and optional session and main-process execution context, resolved at the log timestamp.
+Custom attributes are flattened into the log and can override ordinary fields, including service and version.
+Application, session, execution-context correlation and generated `ddtags` remain SDK-owned; tags reflect the
+resulting service and version. RUM global context is not added. Collection bounds and snapshots messages and
+caller context with Browser sanitization. Logs are dropped while consent is refused. Execution-context correlation
 requires a tracked RUM session covering the log timestamp.
 
 The SDK also relays `log` events assembled by the renderer's Browser Logs SDK onto the **LOGS track**
@@ -340,8 +341,7 @@ Browser Logs uses an always-tracked session stub in bridge mode, so renderer
 `logsSampleRate` independently to each valid log before enrichment; it defaults to 100. It is separate
 from RUM `sessionSampleRate`, and sampled-in logs have no relay cap.
 
-LOGS batches rotate at either the configured byte threshold or 1,000 events, keeping each JSON array
-within the Logs intake request limit without dropping events.
+LOGS batches rotate at either the configured byte threshold or 1,000 events.
 
 ## Profiling
 

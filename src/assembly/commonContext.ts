@@ -63,7 +63,7 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
     }
   });
 
-  hooks.registerLogs(({ source }) => {
+  hooks.registerLogs(({ source, data }) => {
     switch (source) {
       // A renderer log crosses the bridge already assembled by the browser Logs SDK, and it belongs to
       // the renderer that produced it: its `service`, `ddtags` and `status` are the ones its own
@@ -75,7 +75,8 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
         return {
           application_id: configuration.applicationId,
           service: configuration.service,
-          ddtags,
+          version: configuration.version,
+          ddtags: buildLogTags(configuration, data, ddtags),
         };
     }
   });
@@ -85,6 +86,18 @@ export function registerCommonContext(configuration: Configuration, hooks: Forma
       '_dd.application.id': configuration.applicationId,
     },
   }));
+}
+
+function buildLogTags(
+  configuration: Configuration,
+  data: { service?: string; version?: unknown } | undefined,
+  defaults: string
+): string {
+  const service = typeof data?.service === 'string' ? data.service : configuration.service;
+  const version = typeof data?.version === 'string' ? data.version : configuration.version;
+  return service === configuration.service && version === configuration.version
+    ? defaults
+    : buildDdtags({ ...configuration, service, version });
 }
 
 function buildDdtags(configuration: Configuration): string {

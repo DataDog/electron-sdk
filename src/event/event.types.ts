@@ -15,7 +15,6 @@ export interface RawLogsEvent {
   kind: typeof EventKind.RAW;
   format: typeof EventFormat.LOGS;
   data: LogsEvent;
-  context?: Record<string, unknown>;
   startTime: TimeStamp;
 }
 

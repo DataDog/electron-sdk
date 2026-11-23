@@ -27,6 +27,7 @@ export interface TelemetryAssembleParams {
 export interface LogsAssembleParams {
   startTime: TimeStamp;
   source: EventSource;
+  data?: LogsEvent;
 }
 
 export interface SpanAssembleParams {

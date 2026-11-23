@@ -28,9 +28,7 @@ export class SessionContext {
 
     hooks.registerLogs((params) => {
       const sessionId = this.history.find(params.startTime);
-      // A log without a session is worth sending for a reason of its own: it reports on the customer's
-      // app, not on the SDK, and Logs is a product a customer pays for whether or not RUM sampled the
-      // session.
+      // Logs are sampled independently of RUM sessions, so keep the log even when there is no tracked session.
       //
       // The id is nulled rather than left alone when there is none, as in the telemetry hook above: a
       // renderer log arrives carrying the session id the browser SDK generates for itself in bridge mode,

@@ -106,22 +106,14 @@ The level methods (`ok`, `debug`, `info`, `notice`, `warn`, `error`, `critical`,
 `(message, context?, error?)`, matching the Browser Logs logger. `log(message, context?, status?, error?)`
 defaults to `info`. Call after `init()` resolves; earlier calls are dropped with a warning once.
 
-Main-process logs use `source:electron`. Supplied errors include native Node stacks, causes, custom
-`dd_fingerprint`, `handling:handled`, and `error.source_type:nodejs`. Thrown strings, objects, and errors
-from other JavaScript contexts are accepted. Error `dd_context` and message context become top-level
-attributes; nested fields are merged, with message context winning conflicts. SDK identity objects (`usr`, `account`, `view`,
-`session`, `execution_context`) are reserved in full, even when unset, and SDK log fields take precedence.
-Application, service, user, account, and any tracked RUM session are attached automatically. Main-process logs
-carry `execution_context` only when a tracked RUM session covers the log timestamp; renderer logs keep their own `view`.
-Logs are still sent without a tracked RUM session. The SDK's RUM global context is not added to logs.
-Messages, each supplied context, and individual error fields use Browser's sanitizer with its default limit of
-220 Ki characters per value.
-Oversized values are discarded or truncated with a warning.
+Main-process logs use `source:electron` and include the supplied error's stack. Application, service,
+version, user, account, and the tracked RUM session are attached when available. Logs are still sent without a
+tracked RUM session. Custom context can override ordinary fields, including service and version; application,
+session, execution-context correlation and generated tags remain SDK-owned. The SDK's RUM global context is not added to logs.
 
 Use `datadogLogs.logger` from `@datadog/browser-logs` in renderers, as described below. Renderer logs
-keep `source:browser`; the Electron SDK uploads both sources in separate persisted batches, including
-when retrying failed uploads after an app restart. Main-process logging is explicit: this API does not
-capture console output or automatically duplicate RUM errors as logs.
+keep `source:browser`. Main-process logging is explicit: this API does not capture console output or
+automatically duplicate RUM errors as logs.
 
 #### Renderer log collection
 

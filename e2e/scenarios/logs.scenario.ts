@@ -28,6 +28,7 @@ test.describe('main-process logs', () => {
     expect(renderer.ddforward).toContain('ddsource=browser');
     expect(main.body).toMatchObject({
       service: 'e2e-test-app',
+      version: '1.0.0',
       application_id: 'e2e-test-app-id',
       status: 'error',
       workspace: 'one',
@@ -53,6 +54,34 @@ test.describe('main-process logs', () => {
     expect(renderer.body.view?.id).toBeTruthy();
     expect(renderer.body.service).toBe('e2e-renderer');
     expect(main.headers['dd-evp-origin']).toBe('electron');
+  });
+
+  test('allows custom log fields while keeping SDK correlation', async ({ mainPage, intake }) => {
+    await mainPage.generateMainLog('original message', 'info', {
+      message: 'custom message',
+      service: 'custom-service',
+      version: '2.0.0',
+      application_id: 'other-application',
+      session_id: 'other-session',
+      session: { id: 'other-session', extra: 'ignored' },
+      execution_context: { id: 'other-context', extra: 'ignored' },
+    });
+    await mainPage.flushTransport();
+    const [log] = await intake.waitForLogCount(1);
+    expect(log.body).toMatchObject({
+      message: 'custom message',
+      service: 'custom-service',
+      version: '2.0.0',
+      application_id: 'e2e-test-app-id',
+      execution_context: { type: 'main-process' },
+    });
+    expect(log.body.ddtags).toContain('service:custom-service');
+    expect(log.body.ddtags).toContain('version:2.0.0');
+    expect(log.body.session_id).not.toBe('other-session');
+    expect(log.body.session?.id).toBe(log.body.session_id);
+    expect(log.body.session).not.toHaveProperty('extra');
+    expect(log.body.execution_context?.id).not.toBe('other-context');
+    expect(log.body.execution_context).not.toHaveProperty('extra');
   });
 
   test.describe('without a tracked RUM session', () => {

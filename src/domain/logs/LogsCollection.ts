@@ -9,22 +9,21 @@ import {
   sanitize,
 } from '@datadog/browser-core';
 import { clocksNow } from '@datadog/js-core/time';
-import { mergeInto, isIndexableObject } from '@datadog/js-core/util';
+import { combine, isIndexableObject } from '@datadog/js-core/util';
 import type { Configuration } from '../../config';
-import type { TrackingConsentManager } from '../tracking-consent';
 import { EventFormat, EventKind, type EventManager } from '../../event';
 import { display } from '../../tools/display';
 import { isOneOf } from '../../tools/validation';
 
 export const LOG_STATUSES = ['ok', 'debug', 'info', 'notice', 'warn', 'error', 'critical', 'alert', 'emerg'] as const;
+/** Severity level of a log. */
 export type LogStatus = (typeof LOG_STATUSES)[number];
 
 /** Collects explicitly logged main-process messages independently of RUM session sampling. */
 export class LogsCollection {
   constructor(
     private readonly eventManager: EventManager,
-    private readonly config: Configuration,
-    private readonly consentManager: Pick<TrackingConsentManager, 'allowsDataCapturedAt'>
+    private readonly config: Configuration
   ) {}
 
   log(message: string, context?: object, status: LogStatus = 'info', error?: unknown): void {
@@ -32,10 +31,12 @@ export class LogsCollection {
       display.error('logger: status must be a supported log level. Log will not be sent.');
       return;
     }
+    if (context != null && !isIndexableObject(context)) {
+      display.error('logger: context must be an object. The context will be ignored.');
+    }
     if (!performDraw(this.config.logsSampleRate)) return;
 
     const startClocks = clocksNow();
-    if (!this.consentManager.allowsDataCapturedAt(startClocks.timeStamp)) return;
     const rawError =
       error == null
         ? undefined
@@ -59,41 +60,37 @@ export class LogsCollection {
       }
     }
 
-    const errorContext = sanitize(rawError?.context);
     const messageContext = sanitize(context);
     this.eventManager.notify({
       kind: EventKind.RAW,
       format: EventFormat.LOGS,
       startTime: startClocks.timeStamp,
-      // Bound and snapshot caller-owned values before merging, including cyclic objects.
-      context: mergeInto(
-        isIndexableObject(errorContext) ? errorContext : {},
+      data: combine(
+        {
+          date: startClocks.timeStamp,
+          message: sanitize(message) ?? '',
+          status,
+          origin: 'logger',
+          ...(rawError
+            ? {
+                error: {
+                  kind: rawError.type,
+                  message: rawError.message,
+                  stack: rawError.stack,
+                  causes: rawError.causes?.map((cause) => ({
+                    source: cause.source,
+                    type: cause.type,
+                    message: cause.message,
+                    stack: cause.stack,
+                  })),
+                  handling: rawError.handling,
+                  source_type: 'nodejs',
+                },
+              }
+            : {}),
+        },
         isIndexableObject(messageContext) ? messageContext : {}
       ),
-      data: {
-        date: startClocks.timeStamp,
-        message: sanitize(message) ?? '',
-        status,
-        origin: 'logger',
-        ...(rawError
-          ? {
-              error: {
-                kind: sanitize(rawError.type),
-                message: sanitize(rawError.message),
-                stack: sanitize(rawError.stack),
-                causes: rawError.causes?.map((cause) => ({
-                  source: cause.source,
-                  type: sanitize(cause.type),
-                  message: sanitize(cause.message),
-                  stack: sanitize(cause.stack),
-                })),
-                fingerprint: sanitize(rawError.fingerprint),
-                handling: rawError.handling,
-                source_type: 'nodejs',
-              },
-            }
-          : {}),
-      },
     });
   }
 }

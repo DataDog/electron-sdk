@@ -48,27 +48,20 @@ export class MainAssembly {
     const source = EventSource.MAIN;
 
     if (event.format === EventFormat.LOGS) {
-      const hookResult = this.hooks.triggerLogs({ startTime, source });
+      const hookResult = this.hooks.triggerLogs({ startTime, source, data: event.data });
       if (hookResult !== DISCARDED) {
         return {
           kind: EventKind.SERVER,
           track: EventTrack.LOGS,
           source,
-          // Collection already bounded and snapshotted the message, context, and error.
-          // Reserve identity objects as a whole, even when SDK context is absent.
           data: {
-            ...event.context,
-            usr: undefined,
-            account: undefined,
-            view: undefined,
-            execution_context: undefined,
-            session: undefined,
-            session_id: undefined,
-            user_action: undefined,
-            source: undefined,
-            ddsource: undefined,
-            ...hookResult,
-            ...event.data,
+            ...combine(hookResult, event.data),
+            // Correlation belongs to the SDK, even when no tracked session is available.
+            application_id: hookResult?.application_id,
+            session: hookResult?.session,
+            session_id: hookResult?.session_id,
+            execution_context: hookResult?.execution_context,
+            ddtags: hookResult?.ddtags,
           },
         };
       }
