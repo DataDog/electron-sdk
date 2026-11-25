@@ -33,6 +33,16 @@ export class BridgeWindowPage {
     );
   }
 
+  async addFeatureFlagEvaluation(key: string, value: unknown) {
+    await this.page.evaluate(
+      ([key, value]) =>
+        (
+          globalThis as unknown as { addRendererFeatureFlagEvaluation: (key: string, value: unknown) => void }
+        ).addRendererFeatureFlagEvaluation(key, value),
+      [key, value] as const
+    );
+  }
+
   /** Appends a paragraph to the page, which the Browser SDK records as a replay mutation. */
   async appendText(text: string) {
     await this.page.evaluate((content) => {

@@ -18,6 +18,8 @@ import { setInterval, clearInterval } from '../../telemetry';
 import { FakeViewContext } from './FakeViewContext';
 import { DiskValueHistory } from '../../../tools/DiskValueHistory';
 import { PROCESS_UPDATE_INTERVAL } from './executionContext.constants';
+import { FeatureFlagContext } from '../FeatureFlagContext';
+import type { FeatureFlagsForEvents } from '../../../config';
 
 export const MAIN_EXECUTION_CONTEXT_HISTORY_FILE_NAME = '_dd_execution_context_history';
 
@@ -44,6 +46,8 @@ interface MainProcessState {
  * event and span with the execution context active at that event's timestamp, backed by a
  * disk-persisted history so a crash file replayed from a previous run still resolves to the
  * context that was active when the crash happened.
+ * Also owns the feature-flag context, opening and closing its history with the view and emitting
+ * view updates for accepted evaluations.
  */
 export class MainProcessContext {
   private state!: MainProcessState;
@@ -54,13 +58,15 @@ export class MainProcessContext {
     private readonly eventManager: EventManager,
     private readonly fakeViewContext: FakeViewContext,
     private readonly mainHistory: DiskValueHistory<MainExecutionContextDiskEntry>,
+    private readonly featureFlagContext: FeatureFlagContext,
     private readonly sessionManager: SessionManager
   ) {}
 
   static async start(
     eventManager: EventManager,
     hooks: FormatHooks,
-    sessionManager: SessionManager
+    sessionManager: SessionManager,
+    trackFeatureFlagsForEvents: readonly FeatureFlagsForEvents[] = []
   ): Promise<MainProcessContext> {
     const fakeViewContext = await FakeViewContext.init(hooks);
     const filePath = path.join(app.getPath('userData'), MAIN_EXECUTION_CONTEXT_HISTORY_FILE_NAME);
@@ -68,7 +74,14 @@ export class MainProcessContext {
       filePath,
       expireDelay: SESSION_TIME_OUT_DELAY,
     });
-    const context = new MainProcessContext(eventManager, fakeViewContext, mainHistory, sessionManager);
+    const featureFlagContext = await FeatureFlagContext.init(hooks, trackFeatureFlagsForEvents);
+    const context = new MainProcessContext(
+      eventManager,
+      fakeViewContext,
+      mainHistory,
+      featureFlagContext,
+      sessionManager
+    );
 
     hooks.registerRum(({ source, eventType, startTime }) => {
       // execution_context events (main's own and every renderer's) are fully self-authored —
@@ -109,6 +122,16 @@ export class MainProcessContext {
     this.lifecycleSubscription.unsubscribe();
   }
 
+  getApi() {
+    return {
+      addFeatureFlagEvaluation: (key: string, value: unknown): void => {
+        if (!this.featureFlagContext.addEvaluation(key, value)) return;
+        this.state.documentVersion++;
+        this.emitViewEvent(true);
+      },
+    };
+  }
+
   private startState(): void {
     const session = this.sessionManager.getSession();
     // The fake view takes the session id, and there is none while consent is refused at startup.
@@ -133,6 +156,7 @@ export class MainProcessContext {
     this.fakeViewContext.add(sessionId, startTime);
     this.mainHistory.closeActive(startTime);
     this.mainHistory.add({ id: executionContextId, type: 'main-process' }, startTime);
+    this.featureFlagContext.startView(startTime);
 
     this.emitViewEvent(true);
     this.emitExecutionContextEvent();
@@ -147,6 +171,7 @@ export class MainProcessContext {
     const endTime = timeStampNow();
     this.fakeViewContext.close(endTime);
     this.mainHistory.closeActive(endTime);
+    this.featureFlagContext.closeView(endTime);
     this.state.documentVersion++;
     this.emitViewEvent(false);
     this.emitExecutionContextEvent();

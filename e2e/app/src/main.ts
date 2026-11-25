@@ -41,6 +41,7 @@ function serveBridgeWindowOverAppProtocol(): void {
 import {
   init,
   addError,
+  addFeatureFlagEvaluation,
   _flushTransport,
   stopSession,
   getInternalContext,
@@ -257,6 +258,10 @@ void app.whenReady().then(async () => {
 
   ipcMain.handle('setGlobalContext', (_event, context: Record<string, unknown>) => {
     setGlobalContext(context);
+  });
+
+  ipcMain.handle('addFeatureFlagEvaluation', (_event, key: string, value: unknown) => {
+    addFeatureFlagEvaluation(key, value);
   });
 
   ipcMain.handle('setGlobalContextProperty', (_event, key: string, value: unknown) => {

@@ -26,6 +26,7 @@ interface ElectronAppWindow {
     mainNetRequest: (url: string) => Promise<number>;
     mainNetFetch: (url: string) => Promise<number>;
     flushTransport: () => Promise<void>;
+    addFeatureFlagEvaluation: (key: string, value: unknown) => Promise<void>;
     setGlobalContext: (context: Record<string, unknown>) => Promise<void>;
     setGlobalContextProperty: (key: string, value: unknown) => Promise<void>;
     removeGlobalContextProperty: (key: string) => Promise<void>;
@@ -204,6 +205,13 @@ export class MainPage {
     await this.page.evaluate(
       (c) => (globalThis as unknown as ElectronAppWindow).electronAPI.setGlobalContext(c),
       context
+    );
+  }
+
+  async addFeatureFlagEvaluation(key: string, value: unknown) {
+    await this.page.evaluate(
+      ([key, value]) => (globalThis as unknown as ElectronAppWindow).electronAPI.addFeatureFlagEvaluation(key, value),
+      [key, value] as const
     );
   }
 

@@ -84,6 +84,7 @@ export function createTestConfiguration(overrides: Partial<Configuration> = {}):
     applicationId: 'test-app-id',
     sessionSampleRate: 100,
     trackingConsent: 'granted',
+    trackFeatureFlagsForEvents: [],
     logsSampleRate: 100,
     traceSampleRate: 100,
     traceSamplingRules: [],
