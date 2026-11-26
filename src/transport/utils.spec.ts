@@ -39,9 +39,15 @@ describe('computeIntakeUrlForTrack', () => {
   });
 
   it('preserves the browser source for renderer logs', () => {
-    expect(computeIntakeUrlForTrack('datadoghq.com', 'logs')).toBe(
+    expect(computeIntakeUrlForTrack('datadoghq.com', 'logs', { source: 'browser' })).toBe(
       'https://browser-intake-datadoghq.com/api/v2/logs?ddsource=browser'
     );
+  });
+
+  it.each([undefined, 'http://localhost:3000'])('routes main logs as electron with proxy %s', (proxy) => {
+    const url = new URL(computeIntakeUrlForTrack('datad0g.com', 'logs', { source: 'electron', proxy }));
+    const target = proxy ? url.searchParams.get('ddforward') : `${url.pathname}${url.search}`;
+    expect(target).toBe('/api/v2/logs?ddsource=electron');
   });
 
   it('uses proxy when provided, with ddforward for rum track', () => {

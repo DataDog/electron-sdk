@@ -57,6 +57,22 @@ test('SDK sends telemetry error event to intake', async ({ mainPage, intake }) =
   expect(event._dd.format_version).toBe(2);
 });
 
+test.describe('main telemetry without a tracked session', () => {
+  test.use({ sdkConfigOverrides: { sessionSampleRate: 0 } });
+
+  test('sends SDK telemetry without a session or fake view', async ({ mainPage, intake }) => {
+    await mainPage.generateTelemetryError();
+    await mainPage.flushTransport();
+
+    const events = await intake.waitForEventCount('telemetry', 1, {
+      predicate: (event) => isMainProcessTelemetry(event) && byTelemetryType('log')(event),
+    });
+    expect(events[0].body.telemetry.status).toBe('error');
+    expect(events[0].body.session).toBeUndefined();
+    expect(events[0].body.view).toBeUndefined();
+  });
+});
+
 test('SDK sends a configuration telemetry event on init', async ({ mainPage, intake, electronApp }) => {
   await mainPage.flushTransport();
 
@@ -72,6 +88,7 @@ test('SDK sends a configuration telemetry event on init', async ({ mainPage, int
     source: 'electron',
   });
   expect(event.session?.id).toBeDefined();
+  expect(event.view?.id).toBeDefined();
   expect(event.application?.id).toBe('e2e-test-app-id');
 
   // The proxy points the SDK at the fake intake, so use_proxy is necessarily true here.

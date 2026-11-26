@@ -36,17 +36,16 @@ interface MainProcessState {
 }
 
 /**
- * Owns the fake main-process view and the main execution context as one session-scoped state:
- * both are created together when a session starts, on SDK init or SESSION_RENEW, and closed
- * together on SESSION_EXPIRED. Each new state gets a fresh execution_context.id and view.id, but the emitted
+ * Owns a fake main-process view and execution context for each tracked RUM session.
+ * Both histories close on session expiry. Each tracked session gets a fresh execution_context.id, while the emitted
  * execution_context event's instance_id is always the OS process pid, constant across every session
  * the process lives through. Also registers the format hooks that tag every other main-process RUM
- * event and span with the execution context active at that event's timestamp, backed by a
+ * event, log and span with the execution context active at that event's timestamp, backed by a
  * disk-persisted history so a crash file replayed from a previous run still resolves to the
  * context that was active when the crash happened.
  */
 export class MainProcessContext {
-  private state!: MainProcessState;
+  private state: MainProcessState | undefined;
   private heartbeatId: ReturnType<typeof setInterval> | undefined;
   private lifecycleSubscription!: Subscription;
 
@@ -70,6 +69,12 @@ export class MainProcessContext {
     });
     const context = new MainProcessContext(eventManager, fakeViewContext, mainHistory, sessionManager);
 
+    const getExecutionContext = (startTime: TimeStamp) => {
+      const entry = mainHistory.find(startTime);
+      if (entry === undefined) return SKIPPED;
+      return { execution_context: { id: entry.id, type: entry.type, name: MAIN_PROCESS_EXECUTION_CONTEXT_NAME } };
+    };
+
     hooks.registerRum(({ source, eventType, startTime }) => {
       // execution_context events (main's own and every renderer's) are fully self-authored —
       // this hook only tags *other* event types with the context active at their own startTime.
@@ -77,9 +82,12 @@ export class MainProcessContext {
       // (undefined) one, since both this event and the renderer's own reach here with source
       // MAIN — RendererProcessContexts's own tagging code also runs in the main process.
       if (source !== EventSource.MAIN || eventType === 'execution_context') return SKIPPED;
-      const entry = mainHistory.find(startTime);
-      if (entry === undefined) return SKIPPED;
-      return { execution_context: { id: entry.id, type: entry.type, name: MAIN_PROCESS_EXECUTION_CONTEXT_NAME } };
+      return getExecutionContext(startTime);
+    });
+
+    hooks.registerLogs(({ source, startTime }) => {
+      if (source !== EventSource.MAIN) return SKIPPED;
+      return getExecutionContext(startTime);
     });
 
     hooks.registerSpan(({ startTime }) => {
@@ -110,52 +118,46 @@ export class MainProcessContext {
   }
 
   private startState(): void {
-    const session = this.sessionManager.getSession();
-    // The fake view takes the session id, and there is none while consent is refused at startup.
-    if (session.status === 'not-granted') {
-      return;
-    }
-
-    // One shared startTime for every registration below: the view and execution_context events
-    // cross-tag each other by looking up the other's DiskValueHistory at their own startTime, so
-    // both entries must be registered at the exact same instant — two independent timeStampNow()
-    // reads, even microseconds apart, could land on opposite sides of a lookup boundary and miss.
+    // Close a previous run's active histories even if this session is not tracked.
     const startTime = timeStampNow();
-    const sessionId = session.id;
-    const executionContextId = generateUUID();
-    this.state = { sessionId, executionContextId, startTime, documentVersion: 1 };
-
-    // Close whatever the previous state (this run's prior session, or — for this process's first state —
-    // whatever a previous, since-exited process instance left open) left active, before
-    // registering this one. Safe to call unconditionally: closing an already-closed entry is a
-    // no-op.
     this.fakeViewContext.close(startTime);
-    this.fakeViewContext.add(sessionId, startTime);
     this.mainHistory.closeActive(startTime);
+
+    const sessionId = this.sessionManager.getTrackedSessionId(startTime);
+    if (!sessionId) return;
+
+    // Both histories share one timestamp so their events can resolve each other.
+    const executionContextId = generateUUID();
+    const state: MainProcessState = { sessionId, executionContextId, startTime, documentVersion: 1 };
+    this.state = state;
+    this.fakeViewContext.add(sessionId, startTime);
     this.mainHistory.add({ id: executionContextId, type: 'main-process' }, startTime);
 
-    this.emitViewEvent(true);
-    this.emitExecutionContextEvent();
-    this.startHeartbeat();
+    this.emitViewEvent(state, true);
+    this.emitExecutionContextEvent(state);
+    this.startHeartbeat(state);
   }
 
   private endState(): void {
     this.clearHeartbeat();
+    const state = this.state;
+    if (!state) return;
     // Close both histories at the exact same instant (same reasoning as startState's shared
     // startTime): otherwise main-process telemetry timestamped in the gap before the next
     // SESSION_RENEW would still resolve to this now-expired state.
     const endTime = timeStampNow();
     this.fakeViewContext.close(endTime);
     this.mainHistory.closeActive(endTime);
-    this.state.documentVersion++;
-    this.emitViewEvent(false);
-    this.emitExecutionContextEvent();
+    state.documentVersion++;
+    this.emitViewEvent(state, false);
+    this.emitExecutionContextEvent(state);
+    this.state = undefined;
   }
 
-  private startHeartbeat(): void {
+  private startHeartbeat(state: MainProcessState): void {
     this.heartbeatId = setInterval(() => {
-      this.state.documentVersion++;
-      this.emitExecutionContextEvent();
+      state.documentVersion++;
+      this.emitExecutionContextEvent(state);
     }, PROCESS_UPDATE_INTERVAL);
   }
 
@@ -166,50 +168,50 @@ export class MainProcessContext {
     }
   }
 
-  private emitViewEvent(isActive: boolean): void {
+  private emitViewEvent(state: MainProcessState, isActive: boolean): void {
     const viewEvent: RawRumView = {
       type: 'view',
-      date: this.state.startTime,
+      date: state.startTime,
       view: {
         // use session id for fake view id
-        id: this.state.sessionId,
+        id: state.sessionId,
         is_fake: true,
-        time_spent: toServerDuration(elapsed(this.state.startTime, timeStampNow())),
+        time_spent: toServerDuration(elapsed(state.startTime, timeStampNow())),
         is_active: isActive,
         action: { count: 0 },
         error: { count: 0 },
         resource: { count: 0 },
       },
-      _dd: { document_version: this.state.documentVersion },
+      _dd: { document_version: state.documentVersion },
     };
 
     this.eventManager.notify({
       kind: EventKind.RAW,
       format: EventFormat.RUM,
       data: viewEvent,
-      startTime: this.state.startTime,
+      startTime: state.startTime,
     });
   }
 
-  private emitExecutionContextEvent(): void {
+  private emitExecutionContextEvent(state: MainProcessState): void {
     const data: RawRumExecutionContext = {
       type: 'execution_context',
-      date: this.state.startTime,
+      date: state.startTime,
       execution_context: {
-        id: this.state.executionContextId,
+        id: state.executionContextId,
         type: 'main-process',
         name: MAIN_PROCESS_EXECUTION_CONTEXT_NAME,
         instance_id: String(process.pid),
-        duration: toServerDuration(elapsed(this.state.startTime, timeStampNow())),
+        duration: toServerDuration(elapsed(state.startTime, timeStampNow())),
       },
-      _dd: { document_version: this.state.documentVersion },
+      _dd: { document_version: state.documentVersion },
     };
 
     this.eventManager.notify({
       kind: EventKind.RAW,
       format: EventFormat.RUM,
       data,
-      startTime: this.state.startTime,
+      startTime: state.startTime,
     });
   }
 }

@@ -57,8 +57,9 @@ vi.mock('../utils', () => ({
 
 function createBatchConfig(overrides?: Partial<BatchConfig>): BatchConfig {
   return {
-    path: '/mock/path',
+    trackPath: '/mock/path/rum',
     trackType: EventTrack.RUM,
+    intakeSource: 'electron',
     batchSize: BatchSizes.MEDIUM,
     uploadFrequency: BatchUploadFrequencies.NORMAL,
     ...overrides,
@@ -96,23 +97,30 @@ describe('BatchManager', () => {
       expect(mockProducerCreate).toHaveBeenCalledTimes(1);
     });
 
-    it('limits LOGS batches to the intake maximum of 1,000 entries', async () => {
+    it.each(['browser', 'electron'] as const)('configures separate stores for logs source %s', async (logsSource) => {
+      const { StandardBatchConsumer } = await import('./standard/StandardBatchConsumer');
+      const trackPath = logsSource === 'electron' ? '/mock/path/dd_main_logs' : '/mock/path/dd_logs';
       await BatchManager.create(
         config,
-        createBatchConfig({ trackType: EventTrack.LOGS }),
+        createBatchConfig({ trackType: EventTrack.LOGS, intakeSource: logsSource, trackPath }),
         consentManager,
         identityPathScrubber
       );
 
       expect(mockProducerCreate).toHaveBeenCalledWith(
         {
-          trackPath: '/mock/path/dd_logs',
+          trackPath,
           batchSize: BatchSizes.MEDIUM,
           maxEventsPerBatch: 1_000,
         },
         identityPathScrubber
       );
       expect(mockProducerCreate).toHaveBeenCalledTimes(1);
+      expect(StandardBatchConsumer).toHaveBeenCalledWith({
+        trackPath,
+        intakeUrl: 'https://mock-intake.com/api/v2/rum',
+        clientToken: 'test-token',
+      });
     });
 
     it('creates a StandardBatchConsumer with the resolved trackPath, intakeUrl and clientToken', async () => {
@@ -130,7 +138,7 @@ describe('BatchManager', () => {
       const { ProfileBatchConsumer } = await import('./profiling/ProfileBatchConsumer');
       await BatchManager.create(
         config,
-        createBatchConfig({ trackType: EventTrack.PROFILE }),
+        createBatchConfig({ trackType: EventTrack.PROFILE, trackPath: '/mock/path/profile' }),
         consentManager,
         identityPathScrubber
       );

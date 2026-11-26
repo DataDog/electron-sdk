@@ -186,11 +186,26 @@ describe('registerCommonContext', () => {
       expect(result).toEqual({ application_id: 'app-id' });
     });
 
-    it('contributes nothing on MAIN logs, which the SDK does not produce yet', () => {
+    it('builds tags once across repeated logs and RUM events', () => {
+      const warning = vi.spyOn(display, 'warn').mockImplementation(() => undefined);
+      try {
+        const hooks = createFormatHooks();
+        registerCommonContext(createTestConfiguration({ service: 'invalid service' }), hooks);
+        for (let i = 0; i < 3; i++) {
+          hooks.triggerLogs({ source: EventSource.MAIN, startTime: T0 });
+          hooks.triggerRum({ source: EventSource.MAIN, startTime: T0, eventType: 'view' });
+        }
+        expect(warning).toHaveBeenCalledOnce();
+      } finally {
+        warning.mockRestore();
+      }
+    });
+
+    it('adds main-process identity on MAIN logs', () => {
       const result = triggerLogs(createTestConfiguration(), EventSource.MAIN);
 
-      // Every callback skipped, so there is nothing to combine and the hook yields undefined.
-      expect(result).toBeUndefined();
+      expect(result).toMatchObject({ application_id: 'test-app-id', service: 'test-service' });
+      expect(result).toHaveProperty('ddtags', expect.stringContaining('service:test-service'));
     });
   });
 

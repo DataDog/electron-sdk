@@ -1,4 +1,4 @@
-import { EventTrack } from '../event';
+import type { LogSource } from '../domain/logs';
 
 // For sites with subdomains (e.g., us3.datadoghq.com), replace the first dot with a dash
 function computeIntakeSite(site: string): string {
@@ -23,14 +23,11 @@ export function computeIntakeHostname(site: string, proxy?: string): string {
 export function computeIntakeUrlForTrack(
   site: string,
   trackType: string,
-  options?: { proxy?: string; subdomain?: string }
+  options?: { proxy?: string; subdomain?: string; source?: LogSource }
 ): string {
-  const { proxy, subdomain } = options ?? {};
+  const { proxy, subdomain, source = 'electron' } = options ?? {};
   // Use '&' separator if trackType already contains query params (e.g. profiling/quota?session_id=...)
   const separator = trackType.includes('?') ? '&' : '?';
-  // Renderer logs were assembled by the Browser Logs SDK. Keep the source it would use when sending
-  // directly; DD-EVP-ORIGIN separately identifies the Electron SDK as the uploader.
-  const source = trackType === EventTrack.LOGS ? 'browser' : 'electron';
   const path = `/api/v2/${trackType}${separator}ddsource=${source}`;
 
   if (proxy) {

@@ -46,7 +46,7 @@ describe('RumCollection', () => {
       handle: (e) => rawRumEvents.push(e),
     });
 
-    sessionManager = { getSession: () => ({ id: 'session-1', status: 'tracked' }) } as unknown as SessionManager;
+    sessionManager = { getTrackedSessionId: () => 'session-1' } as unknown as SessionManager;
   });
 
   afterEach(() => {

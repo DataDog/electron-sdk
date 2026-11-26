@@ -47,6 +47,26 @@ export class MainAssembly {
     const startTime = event.startTime ?? timeStampNow();
     const source = EventSource.MAIN;
 
+    if (event.format === EventFormat.LOGS) {
+      const hookResult = this.hooks.triggerLogs({ startTime, source, data: event.data });
+      if (hookResult !== DISCARDED) {
+        return {
+          kind: EventKind.SERVER,
+          track: EventTrack.LOGS,
+          source,
+          data: {
+            ...combine(hookResult, event.data),
+            // Correlation belongs to the SDK, even when no tracked session is available.
+            application_id: hookResult?.application_id,
+            session: hookResult?.session,
+            session_id: hookResult?.session_id,
+            execution_context: hookResult?.execution_context,
+            ddtags: hookResult?.ddtags,
+          },
+        };
+      }
+    }
+
     if (event.format === EventFormat.RUM) {
       const hookResult = this.hooks.triggerRum({
         eventType: event.data.type,

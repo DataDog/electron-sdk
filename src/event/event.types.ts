@@ -9,7 +9,14 @@ import type { LogsEvent } from '../domain/logs';
 
 export type { BrowserProfileEvent, BrowserProfilerTrace };
 
-export type RawEvent = RawRumEvent | RawTelemetryEvent | RawProfileEvent | RawReplayEvent;
+export type RawEvent = RawRumEvent | RawTelemetryEvent | RawProfileEvent | RawReplayEvent | RawLogsEvent;
+
+export interface RawLogsEvent {
+  kind: typeof EventKind.RAW;
+  format: typeof EventFormat.LOGS;
+  data: LogsEvent;
+  startTime: TimeStamp;
+}
 
 export interface RawRumEvent {
   kind: typeof EventKind.RAW;
