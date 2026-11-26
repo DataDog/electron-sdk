@@ -5,9 +5,9 @@ import {
   ErrorSource,
   isError,
   NonErrorPrefix,
-  performDraw,
   sanitize,
 } from '@datadog/browser-core';
+import { performDraw } from '@datadog/js-core/sample';
 import { clocksNow } from '@datadog/js-core/time';
 import { combine, isIndexableObject } from '@datadog/js-core/util';
 import type { Configuration } from '../../config';
