@@ -54,11 +54,18 @@ export class CrashCollection {
           data: buildCrashErrorEvent(crashReport, crashTime),
           startTime: crashTime,
         });
-
-        await fs.unlink(filePath);
       } catch (error) {
         addError(error);
         display.error('Failed to process crash dump:', filePath, error);
+        continue;
+      }
+
+      try {
+        // recursive enables Node's built-in retries, including EBUSY from locked Windows dump files.
+        await fs.rm(filePath, { recursive: true, maxRetries: 3, retryDelay: 100 });
+      } catch (error) {
+        addError(error);
+        display.error('Failed to delete processed crash dump:', filePath, error);
       }
     }
     display.info(`Crash dump processing done.`);
