@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { instrumentElectron } from './instrumentElectron';
 import { patchBrowserWindow } from './browserWindow';
 import { patchIpcHandlers } from './ipc';
@@ -29,9 +29,16 @@ function fakeElectron(): typeof import('electron') {
   } as unknown as typeof import('electron');
 }
 
+const IPC_RESOURCES_ENV_VAR = 'DD_ELECTRON_EXPERIMENTAL_IPC_RESOURCES_ENABLED';
+
 describe('instrumentElectron', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv(IPC_RESOURCES_ENV_VAR, 'true');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it('patches each Electron API once for a fresh electron module', () => {
@@ -46,6 +53,14 @@ describe('instrumentElectron', () => {
     expect(registerBridgeConfigResponder).toHaveBeenCalledWith(expect.anything());
     expect(patchIpcHandlers).toHaveBeenCalledTimes(1);
     expect(patchIpcHandlers).toHaveBeenCalledWith(electron.app, electron.ipcMain);
+  });
+
+  it.each([undefined, 'false'])(`does not patch IPC handlers when ${IPC_RESOURCES_ENV_VAR} is %s`, (value) => {
+    vi.stubEnv(IPC_RESOURCES_ENV_VAR, value);
+
+    instrumentElectron(fakeElectron());
+
+    expect(patchIpcHandlers).not.toHaveBeenCalled();
   });
 
   it('is idempotent: a second call on the same electron module does not re-patch', () => {
@@ -85,6 +100,7 @@ describe('instrumentElectron', () => {
     instrumentElectron(fakeElectron());
 
     expect(registerBridgeConfigResponder).toHaveBeenCalledTimes(1);
+    expect(patchIpcHandlers).toHaveBeenCalledTimes(1);
     expect(patchNet).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,4 +1,4 @@
-import { createTestConfiguration, mockFs } from '../../mocks.specUtil';
+import { mockFs } from '../../mocks.specUtil';
 
 vi.mock('electron', () => ({
   app: {
@@ -58,7 +58,7 @@ describe('RumCollection', () => {
   });
 
   it('uses MainProcessContext and starts ExecutionContextCollection', async () => {
-    const rum = await RumCollection.start(eventManager, hooks, sessionManager, createTestConfiguration());
+    const rum = await RumCollection.start(eventManager, hooks, sessionManager);
 
     const viewEvent = rawRumEvents.find((e) => e.data.type === 'view');
     expect((viewEvent!.data as RawRumView).view.id).toBe('session-1');
@@ -71,7 +71,7 @@ describe('RumCollection', () => {
   });
 
   it('stop() also stops ExecutionContextCollection', async () => {
-    const rum = await RumCollection.start(eventManager, hooks, sessionManager, createTestConfiguration());
+    const rum = await RumCollection.start(eventManager, hooks, sessionManager);
 
     rum.stop();
     rawRumEvents.length = 0;
@@ -92,33 +92,17 @@ describe('RumCollection', () => {
       });
     }
 
-    it.each([
-      { trackIpcResources: true, expectedCount: 1 },
-      { trackIpcResources: false, expectedCount: 0 },
-    ])(
-      'reports $expectedCount resource for a handler call when trackIpcResources is $trackIpcResources',
-      async ({ trackIpcResources, expectedCount }) => {
-        const rum = await RumCollection.start(
-          eventManager,
-          hooks,
-          sessionManager,
-          createTestConfiguration({ trackIpcResources })
-        );
+    it('reports a handler call as a resource', async () => {
+      const rum = await RumCollection.start(eventManager, hooks, sessionManager);
 
-        publishHandlerCall();
+      publishHandlerCall();
 
-        expect(rawRumEvents.filter((e) => e.data.type === 'resource')).toHaveLength(expectedCount);
-        rum.stop();
-      }
-    );
+      expect(rawRumEvents.filter((e) => e.data.type === 'resource')).toHaveLength(1);
+      rum.stop();
+    });
 
     it('stop() also stops reporting handler calls', async () => {
-      const rum = await RumCollection.start(
-        eventManager,
-        hooks,
-        sessionManager,
-        createTestConfiguration({ trackIpcResources: true })
-      );
+      const rum = await RumCollection.start(eventManager, hooks, sessionManager);
 
       rum.stop();
       publishHandlerCall();

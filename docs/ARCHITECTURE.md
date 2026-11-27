@@ -351,7 +351,7 @@ signal the renderer to stop its profiler on `quota_ko`.
 
 ## Instrumentation & Tracing
 
-The SDK instruments the Electron main process to collect spans for outgoing HTTP requests and to time IPC handlers. It also injects a preload script into every renderer process, enabling the Browser SDK to route RUM events through IPC to the Electron SDK.
+The SDK instruments the Electron main process to collect spans for outgoing HTTP requests and, when the app opts in, to time IPC handlers. It also injects a preload script into every renderer process, enabling the Browser SDK to route RUM events through IPC to the Electron SDK.
 
 ### Responsibilities
 
@@ -368,7 +368,7 @@ Instrumentation is split between the SDK and dd-trace-electron:
 - Span creation API (`ddTrace.startSpan()`, `ddTrace.inject()`): used by the SDK's patches to create and propagate spans.
 - The `electron` exporter: collects finished spans and publishes them to a Node.js diagnostics channel (`datadog:apm:electron:export`).
 
-dd-trace-electron's own `electron` instrumentation plugin is explicitly disabled by setting `DD_TRACE_DISABLED_INSTRUMENTATIONS=electron` in `instrument-prelude.ts`, preventing it from double-wrapping `net` and `ipcMain.handle` alongside the SDK's patches, and from emitting IPC spans: IPC handler calls are reported as RUM resources, not spans (see [IPC handlers](#ipc-handlers)). This will be removed once the `electron` plugin is dropped from dd-trace-electron.
+dd-trace-electron's own `electron` instrumentation plugin is explicitly disabled by setting `DD_TRACE_DISABLED_INSTRUMENTATIONS=electron` in `instrument-prelude.ts`, preventing it from double-wrapping `net` and `ipcMain.handle` alongside the SDK's patches, and from emitting IPC spans: when IPC resources are enabled, the SDK reports handler calls as RUM resources rather than spans (see [IPC handlers](#ipc-handlers)). This will be removed once the `electron` plugin is dropped from dd-trace-electron.
 
 ### Instrumentation entry point (`@datadog/electron-sdk/instrument`)
 
@@ -382,7 +382,7 @@ import { app, BrowserWindow } from 'electron';
 On load it:
 
 1. Loads the tracing runtime before Electron.
-2. Calls `patchBrowserWindow`, `patchNet` and `patchIpcHandlers`, and registers the bridge-config responder on `ipcMain`.
+2. Calls `patchBrowserWindow`, `patchNet` and, when the app opts in, `patchIpcHandlers`, and registers the bridge-config responder on `ipcMain`.
 
 The regular SDK `init()` then initializes dd-trace-electron with the `electron` exporter and the resolved tracing
 configuration.
@@ -420,8 +420,9 @@ HTTP spans still produce RUM resources without trace or span identifiers.
 
 ### IPC handlers
 
+- **Opt-in:** every call to an app handler runs through the wrapper, so while IPC resources are experimental it is installed only when `DD_ELECTRON_EXPERIMENTAL_IPC_RESOURCES_ENABLED` is `true` as the instrument entry loads. The switch is read then, not by `init()`, because apps often register their handlers before `init()`. With the bundler plugins, which load the instrument entry before any app code, it has to be set before the bundle runs, for example at launch.
 - **Per instance:** `handle` is an own property of each `IpcMain`, so `ipcMain` is patched on load, `webContents.ipc` and `mainFrame.ipc` at `web-contents-created`, and each frame's `ipc` at `frame-created`.
-- **Across bundles:** the instrument entry and `init()` are separate bundles that share no module state, so each finished call is published on a diagnostics channel (`datadog:electron-sdk:ipc-handle`), as dd-trace-electron does for spans. While nothing subscribes (option off, or before `init()`), the wrapper calls the handler untouched. With `trackIpcResources`, `RumCollection` starts an `IpcCollection` that subscribes to it and emits a resource dated at the handler start, which goes through the same gates as the other main-process events: consent, session and `beforeSendRum`.
+- **Across bundles:** the instrument entry and `init()` are separate bundles that share no module state, so each finished call is published on a diagnostics channel (`datadog:electron-sdk:ipc-handle`), as dd-trace-electron does for spans. Before `init()`, nothing subscribes, so the wrapper calls the handler untouched. `RumCollection` always starts an `IpcCollection`, since only wrapped handlers publish. It subscribes to the channel and emits a resource dated at the handler start, which goes through the same gates as the other main-process events: consent, session and `beforeSendRum`.
 - **Scope:** `handle`, and `handleOnce`, which registers through it. `ipcMain.on` listeners, which receive `send` and `sendSync` messages, are planned in RUM-18778. `ServiceWorkerMain.ipc` handlers, which only receive invokes from their service worker, are not patched.
 
 ### Preload injection
@@ -515,6 +516,6 @@ see [runtime dependency setup](RUNTIME_DEPENDENCIES.md#why-the-forge-override-is
 
 - **Required fields** (e.g. `clientToken`): validation returns `undefined` to signal initialization should abort; no exceptions thrown.
 - **Optional fields** (e.g. `env`): invalid values silently fall back to `undefined`.
-- **Enum and boolean fields** (e.g. `batchSize`, `trackIpcResources`): invalid values are reported and fall back to the default, except `trackingConsent`, whose default grants consent: an invalid or `null` value aborts initialization.
+- **Enum fields** (e.g. `batchSize`): invalid values are reported and fall back to the default, except `trackingConsent`, whose default grants consent: an invalid or `null` value aborts initialization.
 
 See `src/config.ts`.

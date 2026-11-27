@@ -1,6 +1,5 @@
 import { EventManager } from '../../event';
 import type { FormatHooks } from '../../assembly';
-import type { Configuration } from '../../config';
 import type { SessionManager } from '../session';
 import { ErrorCollection, CrashCollection } from './error';
 import { VitalCollection } from './vital';
@@ -14,14 +13,13 @@ export class RumCollection {
     private readonly errorCollection: ErrorCollection,
     private readonly vitalCollection: VitalCollection,
     private readonly operationCollection: OperationCollection,
-    private readonly ipcCollection: IpcCollection | undefined
+    private readonly ipcCollection: IpcCollection
   ) {}
 
   static async start(
     eventManager: EventManager,
     hooks: FormatHooks,
-    sessionManager: SessionManager,
-    configuration: Configuration
+    sessionManager: SessionManager
   ): Promise<RumCollection> {
     const executionContextCollection = await ExecutionContextCollection.start(eventManager, hooks, sessionManager);
 
@@ -29,7 +27,8 @@ export class RumCollection {
     const vitalCollection = new VitalCollection(eventManager);
     const operationCollection = new OperationCollection(eventManager);
     CrashCollection.start(eventManager);
-    const ipcCollection = configuration.trackIpcResources ? new IpcCollection(eventManager) : undefined;
+    // Receives calls only from the handlers the instrument entry wrapped, which it does when the app opts in.
+    const ipcCollection = new IpcCollection(eventManager);
     return new RumCollection(
       executionContextCollection,
       errorCollection,
@@ -52,6 +51,6 @@ export class RumCollection {
     this.errorCollection.stop();
     this.vitalCollection.stop();
     this.operationCollection.stop();
-    this.ipcCollection?.stop();
+    this.ipcCollection.stop();
   }
 }

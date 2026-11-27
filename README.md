@@ -428,21 +428,19 @@ The renderer process keeps using `@datadog/browser-rum` directly (with the `feat
 
 ### IPC Resources _(experimental)_
 
-A renderer that calls `ipcRenderer.invoke` waits for the main process handler to answer. With `trackIpcResources`, each call to a handler registered with `handle` or `handleOnce` on `ipcMain`, `webContents.ipc` or `webFrameMain.ipc` is reported as a RUM resource of type `message`, in the main process view: the channel in `resource.url`, the handler's duration, and `resource.message.is_error: true` when the handler throws or rejects.
+A renderer that calls `ipcRenderer.invoke` waits for the main process handler to answer. With `DD_ELECTRON_EXPERIMENTAL_IPC_RESOURCES_ENABLED=true` in the main process environment, each call to a handler registered with `handle` or `handleOnce` on `ipcMain`, `webContents.ipc` or `webFrameMain.ipc` is reported as a RUM resource of type `message`, in the main process view: the channel in `resource.url`, the handler's duration, and `resource.message.is_error: true` when the handler throws or rejects.
 
-> ⚗️ This option is in preview and may change before stable release.
+> ⚗️ This feature is in preview and may change before stable release.
 
-```ts
-await init({
-  ...configuration,
-  trackIpcResources: true,
-});
+```bash
+DD_ELECTRON_EXPERIMENTAL_IPC_RESOURCES_ENABLED=true electron .
 ```
 
+- **Enabling:** the instrument entry reads the variable when it loads. With the bundler plugins, which load the instrument entry before any app code, set it before the bundle runs, for example at launch.
 - **Volume:** a channel that a renderer polls adds one resource per call.
-- **Filtering:** `beforeSendRum` receives these resources with `source` set to `'main'`. Return `false` to drop a channel's calls, or rename the channel in `resource.url`. Keep identifiers out of channel names: the facets derived from `resource.url`, such as `url_path_group`, don't mask them.
+- **Filtering:** `beforeSendRum` receives these resources with `source: 'main'` in its second argument. Return `false` to drop a channel's calls, or rename the channel in `resource.url`. Keep identifiers out of channel names: the facets derived from `resource.url`, such as `url_path_group`, don't mask them.
 - **Not collected:** messages sent with `send`, `sendSync` or `postMessage`, `ServiceWorkerMain.ipc` handlers, and calls that start before `init()` resolves.
-- **Stack traces:** handlers are wrapped even when the option is off, so an error created before a handler's first `await` has one more SDK frame in its stack.
+- **Stack traces:** an error created before a handler's first `await` has one more SDK frame in its stack.
 
 ### Renderer Profiling
 
@@ -735,7 +733,6 @@ interface FeatureOperationOptions {
 | `batchSize`               | `'SMALL' \| 'MEDIUM' \| 'LARGE'`          | No       | `'MEDIUM'`  | Byte threshold that rotates a batch file early: `SMALL` 16 KiB, `MEDIUM` 512 KiB, `LARGE` 4 MiB                                                                                      |
 | `uploadFrequency`         | `'RARE' \| 'NORMAL' \| 'FREQUENT'`        | No       | `'NORMAL'`  | How often pending batches are uploaded, and the window over which events accumulate: `RARE` 30s, `NORMAL` 10s, `FREQUENT` 5s                                                         |
 | `defaultPrivacyLevel`     | `'mask' \| 'allow' \| 'mask-user-input'`  | No       | `'mask'`    | Default privacy level for renderer session replay                                                                                                                                    |
-| `trackIpcResources`       | `boolean`                                 | No       | `false`     | _(experimental)_ Report calls to main process IPC handlers as RUM resources. See [IPC Resources](#ipc-resources-experimental).                                                       |
 | `allowedRendererHosts`    | `string[]`                                | Yes      | —           | Hostnames allowed for the renderer bridge (required; see table below)                                                                                                                |
 | `beforeSendRum`           | `RumBeforeSend`                           | No       | —           | Modify or discard fully assembled main-process and renderer RUM events                                                                                                               |
 

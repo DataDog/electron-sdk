@@ -14,8 +14,8 @@ const INSTRUMENTED = Symbol.for('@datadog/electron-sdk:instrumented');
 
 /**
  * Instruments the Electron main-process APIs: injects the bridge preload via BrowserWindow, answers
- * bridge-config requests on ipcMain, times IPC handlers, and patches net for outgoing HTTP spans.
- * Idempotent — a second call on the same electron module is a no-op.
+ * bridge-config requests on ipcMain, times IPC handlers when the app opts in, and patches net for
+ * outgoing HTTP spans. Idempotent — a second call on the same electron module is a no-op.
  */
 export function instrumentElectron(electron: typeof import('electron')): void {
   const guarded = electron as unknown as Record<symbol, boolean>;
@@ -36,7 +36,10 @@ export function instrumentElectron(electron: typeof import('electron')): void {
     // Registered at instrumentation time so it always exists, even before init().
     registerBridgeConfigResponder(electron.ipcMain);
     // Patched at instrumentation time: handlers are wrapped when registered, which apps often do before init().
-    patchIpcHandlers(electron.app, electron.ipcMain);
+    // Off by default while IPC resources are experimental, since every call to an app handler runs through the wrapper.
+    if (process.env['DD_ELECTRON_EXPERIMENTAL_IPC_RESOURCES_ENABLED'] === 'true') {
+      patchIpcHandlers(electron.app, electron.ipcMain);
+    }
   }
   if (electron.net) {
     patchNet(electron.net);

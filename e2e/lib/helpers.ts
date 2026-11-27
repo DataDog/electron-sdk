@@ -35,6 +35,9 @@ const HOST_ENV_ALLOWLIST = [
   'PWDEBUG',
 ];
 
+/** Launch environment that enables IPC resources: the instrument entry reads the variable when it loads. */
+export const IPC_RESOURCES_ENV = { DD_ELECTRON_EXPERIMENTAL_IPC_RESOURCES_ENABLED: 'true' };
+
 export interface IntakeFixtures {
   intake: Intake;
   initialIntakeQuotaDecision: 'quota_ok' | 'quota_ko';
@@ -49,6 +52,7 @@ export interface TestFixtures {
   sdkConfigOverrides: Partial<InitConfiguration> | null;
   beforeSendRumEnabled: boolean;
   fileProfiling: boolean;
+  ipcResourcesEnabled: boolean;
 }
 
 /**
@@ -90,11 +94,15 @@ export const test = intakeTest.extend<TestFixtures>({
     { option: true },
   ],
 
-  electronApp: async ({ intake, rumBrowserSdk, sdkConfigOverrides, beforeSendRumEnabled, fileProfiling }, use) => {
+  electronApp: async (
+    { intake, rumBrowserSdk, sdkConfigOverrides, beforeSendRumEnabled, fileProfiling, ipcResourcesEnabled },
+    use
+  ) => {
     const userDataDir = await createUserDataDir();
     const electronApp = await launchApp(intake, userDataDir, rumBrowserSdk, sdkConfigOverrides, {
       ...(beforeSendRumEnabled && { DD_E2E_BEFORE_SEND_RUM: '1' }),
       ...(fileProfiling && { DD_E2E_FILE_PROFILING: '1' }),
+      ...(ipcResourcesEnabled && IPC_RESOURCES_ENV),
     });
     await use(electronApp);
     await electronApp.close();
@@ -120,6 +128,8 @@ export const test = intakeTest.extend<TestFixtures>({
   beforeSendRumEnabled: [false, { option: true }],
 
   fileProfiling: [false, { option: true }],
+
+  ipcResourcesEnabled: [false, { option: true }],
 });
 
 async function launchApp(
@@ -224,7 +234,8 @@ export async function launchAppManually(
 export async function launchDeferredInitApp(
   intake: Intake,
   userDataDir: string,
-  sdkConfigOverrides: Partial<InitConfiguration> = {}
+  sdkConfigOverrides: Partial<InitConfiguration> = {},
+  extraEnv: Record<string, string> = {}
 ): Promise<ElectronApplication> {
   return launchApp(
     intake,
@@ -235,7 +246,7 @@ export async function launchDeferredInitApp(
       defaultPrivacyLevel: 'allow',
       ...sdkConfigOverrides,
     },
-    { DD_E2E_DEFER_INIT: '1' }
+    { DD_E2E_DEFER_INIT: '1', ...extraEnv }
   );
 }
 

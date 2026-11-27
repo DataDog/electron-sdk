@@ -8,7 +8,7 @@
  * Loads the tracing runtime, then:
  * - patches BrowserWindow to inject the bridge preload
  * - answers bridge-config requests from renderer preloads
- * - wraps IPC handlers to time them
+ * - wraps IPC handlers to time them, if DD_ELECTRON_EXPERIMENTAL_IPC_RESOURCES_ENABLED is 'true'
  * - patches net for http span instrumentation
  *
  * Note: Bundlers may break the import order needed for instrumentation. Use the bundler

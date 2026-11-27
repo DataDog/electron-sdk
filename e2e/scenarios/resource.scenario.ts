@@ -126,7 +126,7 @@ const UUID_REGEX = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f
 const HANDLER_DELAY_MS = 100;
 
 test.describe('IPC resources', () => {
-  test.use({ sdkConfigOverrides: { trackIpcResources: true } });
+  test.use({ ipcResourcesEnabled: true });
 
   test('reports an ipcMain handler call as a message resource', async ({ electronApp, mainPage, intake }) => {
     await mainPage.flushTransport();

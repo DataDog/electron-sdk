@@ -61,7 +61,6 @@ function buildConfigurationTelemetry(
     is_main_process: true,
     // ErrorCollection and CrashCollection are started unconditionally by RumCollection.
     track_errors: true,
-    track_ipc_resources: configuration.trackIpcResources,
     number_of_displays: resolveNumberOfDisplays(),
   };
 }

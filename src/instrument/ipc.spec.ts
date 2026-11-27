@@ -153,6 +153,26 @@ describe('patchIpcHandlers', () => {
     expect(messages).toEqual([expect.objectContaining({ isError: true })]);
   });
 
+  it.each([
+    { description: 'while the SDK subscribes', subscribed: true },
+    { description: 'while nothing subscribes', subscribed: false },
+  ])('adds a single frame to an error created before the first await of the handler $description', ({ subscribed }) => {
+    if (!subscribed) {
+      DiagnosticsChannel.channel(IPC_HANDLE_CHANNEL).unsubscribe(onMessage);
+    }
+    let stack = '';
+    ipcMain.handle('settings:get', () => {
+      stack = new Error('boom').stack ?? '';
+    });
+
+    ipcMain.invoke('settings:get');
+
+    // Below the handler's frame: the wrapper's, then the fake dispatcher's.
+    const [, , wrapperFrame, dispatcherFrame] = stack.split('\n');
+    expect(wrapperFrame).toMatch(/[\\/]instrument[\\/]ipc\.ts:/);
+    expect(dispatcherFrame).toMatch(/[\\/]instrument[\\/]ipc\.spec\.ts:/);
+  });
+
   it('rejects with the handler error and flags the call', async () => {
     const error = new Error('boom');
     ipcMain.handle('settings:get', () => Promise.reject(error));

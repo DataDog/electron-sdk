@@ -49,7 +49,7 @@ export function patchIpcHandlers(app: Electron.App, ipcMain: Electron.IpcMain): 
   );
 }
 
-// Calls the handler directly, so that an error thrown before its first `await` gains a single SDK frame.
+// Calls the handler directly, so that an error created before its first `await` gains a single SDK frame.
 function timeHandler(channel: string, handler: Handler): Handler {
   return (event, ...args) => {
     if (!ipcHandleChannel.hasSubscribers) {

@@ -15,6 +15,9 @@ cd playground && yarn dev
 `PLAYGROUND_TRACKING_CONSENT=pending|not-granted` starts the SDK under that tracking consent (`granted` by default);
 the Tracking Consent buttons change it afterwards.
 
+`DD_ELECTRON_EXPERIMENTAL_IPC_RESOURCES_ENABLED=true` reports the calls to main-process IPC handlers, which most
+buttons make, as RUM resources (see [IPC Resources](../README.md#ipc-resources-experimental)).
+
 ## Testing
 
 The playground includes a Playwright test infrastructure for prototyping and self-validation. Scenarios launch the app in headless mode with a mock intake, so agents and developers can iterate and verify that events flow end-to-end.
