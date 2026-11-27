@@ -93,12 +93,6 @@ function mockDmpFile(name = 'crash.dmp', birthtimeMs = 0) {
   mfs.unlink.mockResolvedValue(undefined);
 }
 
-const originalPlatform = process.platform;
-
-function mockPlatform(platform: string) {
-  Object.defineProperty(process, 'platform', { value: platform });
-}
-
 async function startAndFlush(eventManager: EventManager) {
   CrashCollection.start(eventManager);
   resolveWhenReady();
@@ -123,7 +117,6 @@ describe('CrashCollection', () => {
   });
 
   afterEach(() => {
-    mockPlatform(originalPlatform);
     vi.useRealTimers();
     vi.clearAllMocks();
     mfs.reset();
@@ -441,8 +434,7 @@ describe('CrashCollection', () => {
     expect(mfs.unlink).not.toHaveBeenCalled();
   });
 
-  it.each(['EBUSY', 'EPERM'])('leaves a .dmp file locked with %s on Windows for a later launch', async (code) => {
-    mockPlatform('win32');
+  it('leaves a locked .dmp file for a later launch and processes the next ones', async () => {
     mfs.readdir.mockResolvedValue([
       { name: 'locked.dmp', isFile: () => true, isDirectory: () => false },
       { name: 'free.dmp', isFile: () => true, isDirectory: () => false },
@@ -450,7 +442,7 @@ describe('CrashCollection', () => {
     mfs.stat.mockResolvedValue({ birthtimeMs: 0 });
     mfs.readFile.mockResolvedValue(new Uint8Array([1]));
     vi.mocked(processMinidump).mockResolvedValue(createMinidumpResult());
-    mfs.unlink.mockRejectedValueOnce(createFsError(code)).mockResolvedValueOnce(undefined);
+    mfs.unlink.mockRejectedValueOnce(createFsError('EBUSY')).mockResolvedValueOnce(undefined);
 
     await startAndFlush(eventManager);
 
@@ -458,14 +450,10 @@ describe('CrashCollection', () => {
     expect(vi.mocked(addError)).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ['win32', 'EACCES'],
-    ['darwin', 'EPERM'],
-  ])('reports other failures to delete a .dmp file without emitting its crash (%s, %s)', async (platform, code) => {
-    mockPlatform(platform);
+  it('reports other failures to delete a .dmp file without emitting its crash', async () => {
     mockDmpFile();
     vi.mocked(processMinidump).mockResolvedValue(createMinidumpResult());
-    mfs.unlink.mockRejectedValue(createFsError(code));
+    mfs.unlink.mockRejectedValue(createFsError('EPERM'));
 
     await startAndFlush(eventManager);
 
