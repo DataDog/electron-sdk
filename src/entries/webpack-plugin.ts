@@ -27,9 +27,9 @@
  *   };
  */
 
-import { join, dirname } from 'node:path';
-import { mkdirSync, existsSync, readFileSync, cpSync } from 'node:fs';
 import { createRequire } from 'node:module';
+
+import { copyRuntimeDependencies } from './copyRuntimeDependencies';
 
 import type { DatadogBundlerPluginOptions } from './bundler-plugin-options';
 
@@ -57,7 +57,7 @@ interface Compiler {
   };
   hooks: {
     afterEmit: {
-      tap: (name: string, cb: (compilation: { outputOptions: { path: string } }) => void) => void;
+      tapPromise: (name: string, cb: (compilation: { outputOptions: { path: string } }) => Promise<void>) => void;
     };
   };
 }
@@ -81,34 +81,6 @@ function addExcludeToRule(rule: Rule): void {
     rule.exclude = EXCLUDE_PATTERN;
   } else if (rule.exclude instanceof RegExp) {
     rule.exclude = new RegExp(`(?:${rule.exclude.source})|(?:${EXCLUDE_PATTERN.source})`);
-  }
-}
-
-function copyPackageTree(pkg: string, destModules: string, visited: Set<string>): void {
-  if (visited.has(pkg)) return;
-  visited.add(pkg);
-
-  try {
-    const entryPath = _require.resolve(pkg);
-    let pkgDir = dirname(entryPath);
-    while (pkgDir !== dirname(pkgDir) && !existsSync(join(pkgDir, 'package.json'))) {
-      pkgDir = dirname(pkgDir);
-    }
-
-    const destDir = join(destModules, pkg);
-    if (!existsSync(destDir)) {
-      mkdirSync(dirname(destDir), { recursive: true });
-      cpSync(pkgDir, destDir, { recursive: true });
-    }
-
-    const pkgJson = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) as {
-      dependencies?: Record<string, string>;
-    };
-    for (const dep of Object.keys(pkgJson.dependencies ?? {})) {
-      copyPackageTree(dep, destModules, visited);
-    }
-  } catch {
-    console.warn(`[datadog] Failed to copy package '${pkg}' to build output`);
   }
 }
 
@@ -155,15 +127,8 @@ export class DatadogWebpackPlugin {
     if (this.pluginOptions.copyRuntimeDependencies !== true) return;
 
     // Copy externalized packages and their transitive dependencies into the output
-    compiler.hooks.afterEmit.tap('DatadogWebpackPlugin', (compilation) => {
-      const outputPath = compilation.outputOptions.path;
-
-      // Copy externalized packages into node_modules alongside the bundle
-      // so they are available at runtime in packaged apps
-      const destModules = join(outputPath, 'node_modules');
-      const visited = new Set<string>();
-      copyPackageTree('dd-trace-electron', destModules, visited);
-      copyPackageTree('@datadog/electron-sdk', destModules, visited);
+    compiler.hooks.afterEmit.tapPromise('DatadogWebpackPlugin', (compilation) => {
+      return copyRuntimeDependencies(compilation.outputOptions.path, _require);
     });
   }
 }

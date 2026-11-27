@@ -21,9 +21,10 @@
  */
 
 import { createRequire } from 'node:module';
-import { cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { copyRuntimeDependencies } from './copyRuntimeDependencies';
 
 import type { DatadogBundlerPluginOptions } from './bundler-plugin-options';
 
@@ -39,7 +40,7 @@ interface EsbuildPlugin {
       outdir?: string;
       outfile?: string;
     };
-    onEnd: (cb: () => void) => void;
+    onEnd: (cb: () => Promise<void>) => void;
   }) => void;
 }
 
@@ -86,45 +87,11 @@ export function datadogEsbuildPlugin(pluginOptions: DatadogBundlerPluginOptions 
       const currentFile = typeof __filename !== 'undefined' ? __filename : fileURLToPath(import.meta.url);
       const _require = createRequire(currentFile);
 
-      build.onEnd(() => {
+      build.onEnd(async () => {
         const outDir =
           build.initialOptions.outdir ??
           (build.initialOptions.outfile ? dirname(build.initialOptions.outfile) : undefined);
-        if (!outDir) return;
-
-        const destModules = join(outDir, 'node_modules');
-        const visited = new Set<string>();
-
-        function copyPackageTree(pkg: string): void {
-          if (visited.has(pkg)) return;
-          visited.add(pkg);
-
-          try {
-            const entryPath = _require.resolve(pkg);
-            let pkgDir = dirname(entryPath);
-            while (pkgDir !== dirname(pkgDir) && !existsSync(join(pkgDir, 'package.json'))) {
-              pkgDir = dirname(pkgDir);
-            }
-
-            const destDir = join(destModules, pkg);
-            if (!existsSync(destDir)) {
-              mkdirSync(dirname(destDir), { recursive: true });
-              cpSync(pkgDir, destDir, { recursive: true });
-            }
-
-            const pkgJson = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) as {
-              dependencies?: Record<string, string>;
-            };
-            for (const dep of Object.keys(pkgJson.dependencies ?? {})) {
-              copyPackageTree(dep);
-            }
-          } catch {
-            console.warn(`[datadog] Failed to copy package '${pkg}' to build output`);
-          }
-        }
-
-        copyPackageTree('dd-trace-electron');
-        copyPackageTree('@datadog/electron-sdk');
+        if (outDir) await copyRuntimeDependencies(outDir, _require);
       });
     },
   };

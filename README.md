@@ -168,7 +168,8 @@ The SDK instruments Electron as it is loaded, which requires correct module load
 Each plugin accepts `copyRuntimeDependencies`, which controls whether it copies the SDK, `dd-trace-electron`,
 and their runtime dependencies into the build output. It defaults to `false`: the application
 packager must include those dependencies in the packaged app. Set `copyRuntimeDependencies: true`
-only as a best-effort compatibility fallback when the packager cannot stage them.
+only as a compatibility fallback when the packager cannot stage them. Missing or uncopyable required
+dependencies fail the build.
 
 Keep `@datadog/electron-sdk` in the application's production `dependencies`; it brings `dd-trace-electron`
 as a runtime dependency. Applications already using `copyRuntimeDependencies: false` with working

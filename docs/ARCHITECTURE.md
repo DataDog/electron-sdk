@@ -510,9 +510,13 @@ resolution still require its package files. The application packager stages the 
 `dd-trace-electron`, and their runtime dependencies by default. Forge Vite and Webpack need the
 `packagerConfig.ignore` override described in [the setup guide](RUNTIME_DEPENDENCIES.md).
 
-With `copyRuntimeDependencies: true`, the plugins copy package trees into the build output as a
-best-effort compatibility fallback. Their `copyPackageTree` helper walks `dependencies`, skipping
-`optionalDependencies`. Default packager staging can retain the optional OpenTelemetry API
+With `copyRuntimeDependencies: true`, the plugins share an asynchronous copier that resolves each
+dependency from its declaring package and stages it under that parent's `node_modules`. It reuses
+matching ancestors for cycles, preserves distinct dependency versions, refreshes owned package
+directories on rebuild, and excludes installation `node_modules` links from the source copy.
+Copied directories are made owner-writable so read-only stores such as Bazel's can be staged and refreshed.
+Resolution or copy errors fail the build. The copier walks `dependencies`, skipping
+`optionalDependencies` and leaving peers to the application. Default packager staging can retain the optional OpenTelemetry API
 packages. Neither path needs to strip the native product dependencies omitted from the
 `dd-trace-electron` manifest.
 

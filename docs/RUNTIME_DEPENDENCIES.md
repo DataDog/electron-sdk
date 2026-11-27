@@ -127,7 +127,7 @@ source. The main-process bundler configuration must still register the correspon
 
 ## Compatibility fallback
 
-If the packager cannot stage runtime dependencies, enable the plugin's best-effort copier in the
+If the packager cannot stage runtime dependencies, enable the plugin's compatibility copier in the
 existing main-process bundler configuration:
 
 ```ts
@@ -136,8 +136,18 @@ new DatadogWebpackPlugin({ copyRuntimeDependencies: true });
 datadogEsbuildPlugin({ copyRuntimeDependencies: true });
 ```
 
-Use the plugin matching the application's bundler. This fallback depends on the package manager's
-installation layout; prefer packager staging when available.
+Use the plugin matching the application's bundler. The copier resolves dependencies from their
+declaring packages, including isolated pnpm layouts, and stages a nested `node_modules` tree with
+separate versions for each parent. It stages complete copies before refreshing output packages and
+fails the build if a required package cannot be resolved or copied. Both root packages keep their backups
+until all replacements succeed. A failed replacement restores the previous roots and removes newly added
+roots; if restoration itself fails, the affected backups are retained and reported in the error.
+If any output root points to its installed package, copying is skipped entirely to leave the installation
+and its dependency links intact.
+
+Only `dependencies` are traversed; optional dependencies and application-provided peers are not staged.
+This fallback expects ordinary package files on disk; Yarn PnP archive installations are not covered.
+Prefer packager staging when available.
 
 ## Verify the packaged application
 
