@@ -685,6 +685,10 @@ export class Intake {
     return [...this.logs];
   }
 
+  getLogRequestCount(): number {
+    return this.payloadTexts.filter(({ source }) => source.startsWith('/api/v2/logs')).length;
+  }
+
   getLogRequestSizes(): number[] {
     return [...this.logRequestSizes];
   }

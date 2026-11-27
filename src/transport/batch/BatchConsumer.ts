@@ -18,7 +18,7 @@ export interface BatchConsumerConfig {
 /**
  * Reads rotated `.log` batch files from disk, parses their newline-delimited JSON
  * content, and uploads the events to the Datadog intake endpoint.
- * Successfully uploaded files are deleted from disk.
+ * Successfully uploaded files and batches rejected with non-retryable client errors are deleted from disk.
  */
 export abstract class BatchConsumer {
   protected trackPath: string;
@@ -89,7 +89,7 @@ export abstract class BatchConsumer {
 
   /**
    * Reads a batch file, delegates request construction to {@link buildRequest},
-   * sends it, and deletes the file on success.
+   * sends it, and deletes the file on success or a non-retryable client error.
    * If {@link buildRequest} returns `null` the file is deleted without a network call
    * (empty or malformed batch — nothing to send).
    * A file whose read fails is kept for the next upload, without calling {@link buildRequest}.
@@ -108,7 +108,12 @@ export abstract class BatchConsumer {
 
     try {
       const response = await fetch(request);
-      if (response.ok) {
+      const nonRetryable =
+        response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429;
+      if (nonRetryable) {
+        display.warn(`Dropping batch rejected by the intake (HTTP ${response.status}).`);
+      }
+      if (response.ok || nonRetryable) {
         await fs.unlink(filePath);
         return true;
       }
