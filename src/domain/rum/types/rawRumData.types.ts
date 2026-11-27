@@ -10,7 +10,13 @@ import {
 import type { RumExecutionContextEvent } from './mainRumEvent.types';
 
 export type RawRumData =
-  RawRumView | RawRumError | RawRumOperationStepVital | RawRumDurationVital | RawRumResource | RawRumExecutionContext;
+  | RawRumView
+  | RawRumError
+  | RawRumOperationStepVital
+  | RawRumDurationVital
+  | RawRumResource
+  | RawRumMessageResource
+  | RawRumExecutionContext;
 
 export interface RawRumView extends RecursivePartial<RumViewEvent> {
   type: 'view';
@@ -109,6 +115,25 @@ export interface RawRumResource extends RecursivePartial<RumResourceEvent> {
     trace_id?: string;
     span_id?: string;
     format_version: 2;
+  };
+}
+
+type RumResourceEventMessage = NonNullable<RumResourceEvent['resource']['message']>;
+
+export interface RawRumMessageResource extends RecursivePartial<RumResourceEvent> {
+  type: 'resource';
+  date: TimeStamp;
+  resource: {
+    id: string;
+    duration: ServerDuration;
+    type: 'message';
+    url: string;
+    message: {
+      id: string;
+      role: RumResourceEventMessage['role'];
+      api: RumResourceEventMessage['api'];
+      is_error: boolean;
+    };
   };
 }
 

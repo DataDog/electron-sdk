@@ -1,0 +1,1 @@
+export { IpcCollection } from './IpcCollection';

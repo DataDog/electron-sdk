@@ -5,13 +5,15 @@ import { ErrorCollection, CrashCollection } from './error';
 import { VitalCollection } from './vital';
 import { OperationCollection } from './operation';
 import { ExecutionContextCollection } from './executionContext';
+import { IpcCollection } from './ipc';
 
 export class RumCollection {
   private constructor(
     private readonly executionContextCollection: ExecutionContextCollection,
     private readonly errorCollection: ErrorCollection,
     private readonly vitalCollection: VitalCollection,
-    private readonly operationCollection: OperationCollection
+    private readonly operationCollection: OperationCollection,
+    private readonly ipcCollection: IpcCollection
   ) {}
 
   static async start(
@@ -25,7 +27,15 @@ export class RumCollection {
     const vitalCollection = new VitalCollection(eventManager);
     const operationCollection = new OperationCollection(eventManager);
     CrashCollection.start(eventManager);
-    return new RumCollection(executionContextCollection, errorCollection, vitalCollection, operationCollection);
+    // Receives calls only from the handlers the instrument entry wrapped, which it does when the app opts in.
+    const ipcCollection = new IpcCollection(eventManager);
+    return new RumCollection(
+      executionContextCollection,
+      errorCollection,
+      vitalCollection,
+      operationCollection,
+      ipcCollection
+    );
   }
 
   getApi() {
@@ -41,5 +51,6 @@ export class RumCollection {
     this.errorCollection.stop();
     this.vitalCollection.stop();
     this.operationCollection.stop();
+    this.ipcCollection.stop();
   }
 }

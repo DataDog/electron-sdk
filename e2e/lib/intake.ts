@@ -140,6 +140,12 @@ export const byTelemetryType =
 export const isMainProcessEvent = (event: ReceivedEvent<{ execution_context?: { type: string } }>): boolean =>
   event.body.execution_context?.type === 'main-process';
 
+/** Selects the message resources reported for an IPC `channel`. */
+export const byMessageResource =
+  (channel: string) =>
+  ({ body }: ReceivedEvent<RumResourceEvent>): boolean =>
+    body.resource.type === 'message' && body.resource.url === channel;
+
 /** Selects views emitted by a bridge window, i.e. every view the main process did not emit. */
 export const isBridgeView = (event: ReceivedEvent<RumViewEvent>): boolean => !isMainProcessEvent(event);
 

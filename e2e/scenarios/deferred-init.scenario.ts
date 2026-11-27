@@ -1,9 +1,15 @@
 import { expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import type { InitConfiguration } from '@datadog/electron-sdk';
-import type { Intake } from '../lib/intake';
+import { byMessageResource, type Intake } from '../lib/intake';
 import { MainPage } from '../lib/mainPage';
-import { createUserDataDir, cleanupUserDataDir, intakeTest as test, launchDeferredInitApp } from '../lib/helpers';
+import {
+  createUserDataDir,
+  cleanupUserDataDir,
+  intakeTest as test,
+  IPC_RESOURCES_ENV,
+  launchDeferredInitApp,
+} from '../lib/helpers';
 
 const MARKER_HOST = 'deferred-init.example.com';
 // A page loaded before init() must not be blocked: without the instrument-time responder the preload's
@@ -57,8 +63,12 @@ test.describe('deferred init', () => {
     await cleanupUserDataDir(userDataDir);
   });
 
-  async function launch(intake: Intake, sdkConfigOverrides?: Partial<InitConfiguration>): Promise<void> {
-    electronApp = await launchDeferredInitApp(intake, userDataDir, sdkConfigOverrides);
+  async function launch(
+    intake: Intake,
+    sdkConfigOverrides?: Partial<InitConfiguration>,
+    extraEnv?: Record<string, string>
+  ): Promise<void> {
+    electronApp = await launchDeferredInitApp(intake, userDataDir, sdkConfigOverrides, extraEnv);
   }
 
   test('page loaded before init is not blocked and stays on the bridge, masked', async ({ intake }) => {
@@ -88,5 +98,22 @@ test.describe('deferred init', () => {
 
     const errors = await mainPage.whileFlushing(() => intake.getSettledEventsByType('error'));
     expect(errors.map(({ body }) => body.error.message)).toEqual(['after reload']);
+  });
+
+  test('reports the calls to an IPC handler registered before init', async ({ intake }) => {
+    await launch(intake, {}, IPC_RESOURCES_ENV);
+    await electronApp.evaluate(({ ipcMain }) => {
+      ipcMain.handle('e2e:settings', () => 'value');
+    });
+    await runInit(electronApp);
+    const mainPage = new MainPage(await openWindow(electronApp));
+
+    expect(await mainPage.invoke('e2e:settings')).toEqual({ result: 'value' });
+    await mainPage.flushTransport();
+
+    const resourceEvents = await intake.getSettledEventsByType('resource', {
+      predicate: byMessageResource('e2e:settings'),
+    });
+    expect(resourceEvents).toHaveLength(1);
   });
 });

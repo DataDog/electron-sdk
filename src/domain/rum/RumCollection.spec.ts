@@ -17,6 +17,8 @@ vi.mock('../../tools/display', () => ({
 }));
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as DiagnosticsChannel from 'node:diagnostics_channel';
+import { IPC_HANDLE_CHANNEL } from '../../common';
 import { RumCollection } from './RumCollection';
 import { EventManager, EventKind, EventFormat, type RawRumEvent } from '../../event';
 import { createFormatHooks, type FormatHooks } from '../../assembly';
@@ -78,5 +80,34 @@ describe('RumCollection', () => {
 
     // No further execution_context heartbeat once the underlying ExecutionContextCollection is stopped
     expect(rawRumEvents.find((e) => e.data.type === 'execution_context')).toBeUndefined();
+  });
+
+  describe('IPC resources', () => {
+    function publishHandlerCall() {
+      DiagnosticsChannel.channel(IPC_HANDLE_CHANNEL).publish({
+        channel: 'settings:get',
+        startTime: 0,
+        duration: 1,
+        isError: false,
+      });
+    }
+
+    it('reports a handler call as a resource', async () => {
+      const rum = await RumCollection.start(eventManager, hooks, sessionManager);
+
+      publishHandlerCall();
+
+      expect(rawRumEvents.filter((e) => e.data.type === 'resource')).toHaveLength(1);
+      rum.stop();
+    });
+
+    it('stop() also stops reporting handler calls', async () => {
+      const rum = await RumCollection.start(eventManager, hooks, sessionManager);
+
+      rum.stop();
+      publishHandlerCall();
+
+      expect(rawRumEvents.filter((e) => e.data.type === 'resource')).toEqual([]);
+    });
   });
 });

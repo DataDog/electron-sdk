@@ -157,6 +157,10 @@ async function fetchWithNet(url: string): Promise<unknown> {
 ipcMain.handle('main:fetch-api-net', () => fetchWithNet('https://httpbin.org/json'));
 ipcMain.handle('main:fetch-api-net-drop', () => fetchWithNet('https://httpbin.org/json?trace=drop'));
 
+// --- IPC resources demo handler (rejects, so its resource has is_error: true) ---
+
+ipcMain.handle('main:failing-handler', () => Promise.reject(new Error('Failing IPC handler')));
+
 // IPC handler to crash the main process
 ipcMain.handle('crash', () => {
   process.crash();

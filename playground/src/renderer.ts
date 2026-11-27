@@ -69,6 +69,7 @@ interface ElectronAPI {
   mainFetchApiFetch: () => Promise<unknown>;
   mainFetchApiNet: () => Promise<unknown>;
   mainFetchApiNetDrop: () => Promise<unknown>;
+  failingHandler: () => Promise<unknown>;
   openRumExplorer: () => Promise<void>;
   openSecondaryWindow: () => Promise<void>;
   flushTransport: () => Promise<void>;
@@ -325,6 +326,10 @@ setupDemoButton('main-fetch', 'main:fetch-api', () => window.electronAPI.mainFet
 setupDemoButton('main-fetch-fetch', 'main:fetch-api-fetch', () => window.electronAPI.mainFetchApiFetch());
 setupDemoButton('main-fetch-net', 'main:fetch-api-net', () => window.electronAPI.mainFetchApiNet());
 setupDemoButton('main-fetch-net-drop', 'main:fetch-api-net-drop', () => window.electronAPI.mainFetchApiNetDrop());
+
+// --- IPC resources demo button ---
+
+setupDemoButton('failing-handler', 'main:failing-handler', () => window.electronAPI.failingHandler());
 
 // --- Custom duration vital demo buttons ---
 
