@@ -14,6 +14,7 @@ When making changes that impact development workflows or architecture, update th
 | `docs/CONVENTIONS.md`                                         | Coding conventions and style guidelines                     |
 | `docs/ARCHITECTURE.md`                                        | SDK design patterns and event pipeline                      |
 | `docs/RUNTIME_DEPENDENCIES.md`                                | Runtime dependency setup for Forge and other packagers      |
+| `docs/IPC_RESOURCES.md`                                       | IPC handler calls as RUM resources (experimental)           |
 | `docs/TESTING.md`                                             | Unit and E2E testing strategy and infrastructure            |
 | `docs/REVIEW.md`                                              | Code review guide                                           |
 | `scripts/README.md`                                           | Script placement and CLI conventions                        |

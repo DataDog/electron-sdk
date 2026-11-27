@@ -16,7 +16,7 @@ cd playground && yarn dev
 the Tracking Consent buttons change it afterwards.
 
 `DD_ELECTRON_EXPERIMENTAL_IPC_RESOURCES_ENABLED=true` reports the calls to main-process IPC handlers, which most
-buttons make, as RUM resources (see [IPC Resources](../README.md#ipc-resources-experimental)).
+buttons make, as RUM resources (see [IPC Resources](../docs/IPC_RESOURCES.md)).
 
 ## Testing
 

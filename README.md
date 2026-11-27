@@ -223,7 +223,6 @@ await esbuild.build({
 - **RUM Views** — One view per main process instance
 - **RUM Errors** — Capture Node errors and crashes in main process
 - **RUM Resources** — Capture RUM resources from main process network calls
-- **IPC Resources** _(experimental)_ — Capture calls to main process IPC handlers as RUM resources
 - **Traces** — Capture traces for network calls, command execution on main process
 - **Renderer Events** — Capture RUM events from renderer processes via the browser SDK
 - **Custom Duration Vitals** — Measure user-defined durations in the main process
@@ -425,22 +424,6 @@ failOperation('upload', 'abandoned', { operationKey: 'cover_photo' });
 ```
 
 The renderer process keeps using `@datadog/browser-rum` directly (with the `feature_operation_vital` experimental flag enabled on its init). API signatures match exactly, so you can start an operation in one process and complete it in the other — the backend correlates steps by `name` + `operationKey`.
-
-### IPC Resources _(experimental)_
-
-A renderer that calls `ipcRenderer.invoke` waits for the main process handler to answer. With `DD_ELECTRON_EXPERIMENTAL_IPC_RESOURCES_ENABLED=true` in the main process environment, each call to a handler registered with `handle` or `handleOnce` on `ipcMain`, `webContents.ipc` or `webFrameMain.ipc` is reported as a RUM resource of type `message`, in the main process view: the channel in `resource.url`, the handler's duration, and `resource.message.is_error: true` when the handler throws or rejects.
-
-> ⚗️ This feature is in preview and may change before stable release.
-
-```bash
-DD_ELECTRON_EXPERIMENTAL_IPC_RESOURCES_ENABLED=true electron .
-```
-
-- **Enabling:** the instrument entry reads the variable when it loads. With the bundler plugins, which load the instrument entry before any app code, set it before the bundle runs, for example at launch.
-- **Volume:** a channel that a renderer polls adds one resource per call.
-- **Filtering:** `beforeSendRum` receives these resources with `source: 'main'` in its second argument. Return `false` to drop a channel's calls, or rename the channel in `resource.url`. Keep identifiers out of channel names: the facets derived from `resource.url`, such as `url_path_group`, don't mask them.
-- **Not collected:** messages sent with `send`, `sendSync` or `postMessage`, `ServiceWorkerMain.ipc` handlers, and calls that start before `init()` resolves.
-- **Stack traces:** an error created before a handler's first `await` has one more SDK frame in its stack.
 
 ### Renderer Profiling
 
