@@ -47,7 +47,7 @@ export class CrashCollection {
         // birthtimeMs can be 0 on Linux (ext4), fall back to mtimeMs
         const crashTime = (fileStat.birthtimeMs || fileStat.mtimeMs) as TimeStamp;
         const bytes = new Uint8Array(await fs.readFile(filePath));
-        const crashReport = await processMinidump(bytes);
+        const crashError = buildCrashErrorEvent(await processMinidump(bytes), crashTime);
         if (!(await deleteDump(filePath))) {
           continue;
         }
@@ -55,7 +55,7 @@ export class CrashCollection {
         this.eventManager.notify({
           kind: EventKind.RAW,
           format: EventFormat.RUM,
-          data: buildCrashErrorEvent(crashReport, crashTime),
+          data: crashError,
           startTime: crashTime,
         });
       } catch (error) {
