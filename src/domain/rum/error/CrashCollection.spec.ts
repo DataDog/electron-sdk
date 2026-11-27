@@ -1,4 +1,4 @@
-import { mockFs } from '../../../mocks.specUtil';
+import { createFsError, mockFs } from '../../../mocks.specUtil';
 
 let resolveWhenReady: () => void;
 
@@ -421,6 +421,33 @@ describe('CrashCollection', () => {
     await startAndFlush(eventManager);
 
     expect(mfs.unlink).toHaveBeenCalledWith('/mock/crash/dumps/crash.dmp');
+  });
+
+  it('leaves a locked .dmp file for a later launch and processes the next ones', async () => {
+    mfs.readdir.mockResolvedValue([
+      { name: 'locked.dmp', isFile: () => true, isDirectory: () => false },
+      { name: 'free.dmp', isFile: () => true, isDirectory: () => false },
+    ]);
+    mfs.stat.mockResolvedValue({ birthtimeMs: 0 });
+    mfs.readFile.mockResolvedValue(new Uint8Array([1]));
+    vi.mocked(processMinidump).mockResolvedValue(createMinidumpResult());
+    mfs.unlink.mockRejectedValueOnce(createFsError('EBUSY')).mockResolvedValueOnce(undefined);
+
+    await startAndFlush(eventManager);
+
+    expect(rawRumEvents).toHaveLength(1);
+    expect(vi.mocked(addError)).not.toHaveBeenCalled();
+  });
+
+  it('reports other failures to delete a .dmp file without emitting its crash', async () => {
+    mockDmpFile();
+    vi.mocked(processMinidump).mockResolvedValue(createMinidumpResult());
+    mfs.unlink.mockRejectedValue(createFsError('EACCES'));
+
+    await startAndFlush(eventManager);
+
+    expect(rawRumEvents).toHaveLength(0);
+    expect(vi.mocked(addError)).toHaveBeenCalledExactlyOnceWith(expect.any(Error));
   });
 
   it('skips non-.dmp files', async () => {
