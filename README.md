@@ -343,7 +343,8 @@ setTrackingConsent(accepted ? 'granted' : 'not-granted');
   `'not-granted'`.
 - The SDK starts Electron's crash reporter, which writes native crash dumps locally regardless of consent. At the next
   launch, a crash is judged like other data by the consent at the time it happened, then sent, kept or dropped
-  according to the consent of that launch; its dump is deleted either way.
+  according to the consent of that launch, and its dump is deleted. A dump another process still holds open is left,
+  with its crash, for a later launch.
 
 Set the consent in the main process: data from renderers allowed by `allowedRendererHosts` reaches Datadog through
 the main process, while other renderers run the Browser SDK standalone, under its own `trackingConsent`. In bridged

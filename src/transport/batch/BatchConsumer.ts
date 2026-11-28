@@ -3,7 +3,7 @@ import path from 'node:path';
 import { display } from '../../tools/display';
 import { getUserAgent } from '../userAgent';
 import { compareBatchFileNames } from './batchFileName';
-import { isMissingPath } from './fsErrors';
+import { isMissingPath } from '../../tools/fsErrors';
 
 /** Configuration for a {@link BatchConsumer} instance. */
 export interface BatchConsumerConfig {

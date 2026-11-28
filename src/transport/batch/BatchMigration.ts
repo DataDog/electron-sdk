@@ -5,7 +5,7 @@ import { monitor } from '../../domain/telemetry';
 import { display } from '../../tools/display';
 import type { PendingBatchStore } from './PendingBatchStore';
 import { evictBatchFiles } from './batchFileEviction';
-import { isMissingPath } from './fsErrors';
+import { isMissingPath } from '../../tools/fsErrors';
 import { AUTHORIZED_PENDING_DIRECTORY_PREFIX, PENDING_DIRECTORY_PREFIX } from './batchPaths';
 
 /**

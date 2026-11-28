@@ -7,6 +7,7 @@ import { EventFormat, EventKind, EventManager } from '../../../event';
 import type { CrashReport } from '../../../wasm';
 import type { RawRumError, RumErrorEvent } from '../types';
 import { display } from '../../../tools/display';
+import { isLockedFile } from '../../../tools/fsErrors';
 import { addError, monitor } from '../../telemetry';
 
 /**
@@ -15,7 +16,7 @@ import { addError, monitor } from '../../telemetry';
  * - At startup:
  *   - scans crash dump directory for .dmp files recursively
  *   - processes each sequentially through the WASM minidump-processor
- *   - emits RUM error events
+ *   - deletes each dump, then emits its RUM error event
  */
 export class CrashCollection {
   private constructor(private readonly eventManager: EventManager) {}
@@ -46,22 +47,40 @@ export class CrashCollection {
         // birthtimeMs can be 0 on Linux (ext4), fall back to mtimeMs
         const crashTime = (fileStat.birthtimeMs || fileStat.mtimeMs) as TimeStamp;
         const bytes = new Uint8Array(await fs.readFile(filePath));
-        const crashReport = await processMinidump(bytes);
+        const crashError = buildCrashErrorEvent(await processMinidump(bytes), crashTime);
+        if (!(await deleteDump(filePath))) {
+          continue;
+        }
 
         this.eventManager.notify({
           kind: EventKind.RAW,
           format: EventFormat.RUM,
-          data: buildCrashErrorEvent(crashReport, crashTime),
+          data: crashError,
           startTime: crashTime,
         });
-
-        await fs.unlink(filePath);
       } catch (error) {
         addError(error);
         display.error('Failed to process crash dump:', filePath, error);
       }
     }
     display.info(`Crash dump processing done.`);
+  }
+}
+
+/**
+ * Delete a dump before reporting it, so that it is reported once. Windows refuses to delete a file another process
+ * holds open: such a dump is left for a later launch.
+ */
+async function deleteDump(filePath: string): Promise<boolean> {
+  try {
+    await fs.unlink(filePath);
+    return true;
+  } catch (error) {
+    if (isLockedFile(error)) {
+      display.info('Crash dump in use, processing it at a later launch:', filePath);
+      return false;
+    }
+    throw error;
   }
 }
 
