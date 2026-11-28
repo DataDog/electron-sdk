@@ -17,7 +17,7 @@
     "package": "electron-vite build && electron-builder --dir --publish never"
   },
   "dependencies": {
-    "@datadog/browser-rum": "7.17.1",
+    "@datadog/browser-rum": "7.18.0",
     "@datadog/electron-sdk": "file:../../integration-sdk.tgz"
   },
   "devDependencies": {
